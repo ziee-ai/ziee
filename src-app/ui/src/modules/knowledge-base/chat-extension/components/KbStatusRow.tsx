@@ -1,8 +1,8 @@
-import { Tag, message } from '@/components/ui'
+import { Tag, message } from '@ziee/kit'
 import { BookOpen } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { kbKey } from '@/modules/knowledge-base/stores/kbSelectionKey'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 

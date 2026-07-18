@@ -1,13 +1,13 @@
 import { Plus, Search, Eraser } from 'lucide-react'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
 import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
-import { Button, Card, ErrorState, Flex, Text, Input, Select, Tabs } from '@/components/ui'
+import { Button, Card, ErrorState, Flex, Text, Input, Select, Tabs } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 
 export function SystemMcpServersPage() {

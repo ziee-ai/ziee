@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type {
   useConversationSkillsStore,
   useSkillConversationDrawerStore,
@@ -9,7 +9,7 @@ import type {
 import type { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/GroupSystemSkillsWidget.store'
 import type { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/GroupSystemSkillsAssignmentDrawer.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Skill: StoreProxy<ReturnType<typeof useSkillStore.getState>>
     ConversationSkills: StoreProxy<

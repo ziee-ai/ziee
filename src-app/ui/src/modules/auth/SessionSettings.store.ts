@@ -5,8 +5,8 @@ import {
   type UpdateSessionSettingsRequest,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { type StoreProxy } from '@/core/stores'
-import { defineStore } from '@/core/store-kit'
+import { type StoreProxy } from '@ziee/framework/stores'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Admin view of the deployment-wide JWT session settings (singleton):
@@ -81,7 +81,7 @@ export const SessionSettings = defineStore('SessionSettings', {
 
 export const useSessionSettingsStore = SessionSettings.store
 
-declare module '../../core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     SessionSettings: StoreProxy<
       ReturnType<typeof SessionSettings.store.getState>

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Card, Flex, Progress, Spin } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Card, Flex, Progress, Spin } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Renders rebuild progress cards. Self-hides unless an embedding

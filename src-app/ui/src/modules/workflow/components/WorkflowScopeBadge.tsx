@@ -1,4 +1,4 @@
-import { Tag } from '@/components/ui'
+import { Tag } from '@ziee/kit'
 
 interface WorkflowScopeBadgeProps {
   scope: string

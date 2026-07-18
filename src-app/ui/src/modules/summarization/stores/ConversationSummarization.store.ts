@@ -1,6 +1,6 @@
 import { ApiClient } from '@/api-client'
 import type { ConversationSummary } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /** Single-entry read-model for the active conversation's branch summary
  *  (single-entry, not a Map — rotates on switch to avoid cross-user staleness). */

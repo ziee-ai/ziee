@@ -1,4 +1,4 @@
-import { Flex, Tabs } from '@/components/ui'
+import { Flex, Tabs } from '@ziee/kit'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

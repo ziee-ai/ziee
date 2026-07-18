@@ -51,13 +51,13 @@ const bus = vi.hoisted(() => {
 
 vi.mock('@/api-client', () => ({ ApiClient: apiMock }))
 vi.mock('@/core/permissions', () => ({ hasPermissionNow: () => perm.allow }))
-vi.mock('@/core/stores', () => ({
+vi.mock('@ziee/framework/stores', () => ({
   Stores: {
     VoiceModelUpdate: { checkForUpdates: vi.fn(() => Promise.resolve()) },
   },
   createStoreProxy: () => ({}),
 }))
-vi.mock('@/core/events', () => ({
+vi.mock('@ziee/framework/events', () => ({
   useEventBusStore: {
     getState: () => ({
       on: bus.on,

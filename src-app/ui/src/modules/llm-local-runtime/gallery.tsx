@@ -7,7 +7,7 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyNamed, lazyProps } from '@/dev/gallery/support'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 export const gallery: ModuleGallery = {
   overlays: [

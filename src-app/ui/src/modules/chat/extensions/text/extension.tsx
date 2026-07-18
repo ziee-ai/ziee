@@ -154,7 +154,7 @@ const textExtension: ChatExtension = createExtension({
    * Returns content field with text from TextStore
    */
   composeRequestFields: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const content = Stores.Chat.$.TextStore.getText()
     return { content: content?.trim() || '' }
   },
@@ -164,7 +164,7 @@ const textExtension: ChatExtension = createExtension({
    * Only validates - does not return message (that's handled by composeRequestFields)
    */
   beforeSendMessage: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const content = Stores.Chat.$.TextStore.getText()
 
     if (!content || !content.trim()) {

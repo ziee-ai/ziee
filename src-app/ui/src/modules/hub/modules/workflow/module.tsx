@@ -1,6 +1,6 @@
 import { Workflow } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { useHubWorkflowsStore } from '@/modules/hub/modules/workflow/stores/hub-workflows-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/workflow/types'

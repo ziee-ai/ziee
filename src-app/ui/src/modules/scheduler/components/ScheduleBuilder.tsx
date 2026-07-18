@@ -8,8 +8,8 @@ import {
   Segmented,
   Select,
   Text,
-} from '@/components/ui'
-import { Field, FieldTitle } from '@/components/ui/shadcn/field'
+} from '@ziee/kit'
+import { Field, FieldTitle } from '@ziee/kit/shadcn/field'
 import { cn } from '@/lib/utils'
 
 import { buildWeeklyDow, isDowList } from './scheduleCron'

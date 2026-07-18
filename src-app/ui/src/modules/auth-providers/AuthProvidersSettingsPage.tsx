@@ -1,4 +1,4 @@
-import { Alert } from '@/components/ui'
+import { Alert } from '@ziee/kit'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AuthProvidersListSection } from './components/AuthProvidersListSection'
 

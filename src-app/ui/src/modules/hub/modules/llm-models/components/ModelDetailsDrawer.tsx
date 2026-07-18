@@ -1,7 +1,7 @@
 import { Eye, Wrench, MessageSquare } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Flex, Tag, Title, Text, Card } from '@/components/ui'
+import { Flex, Tag, Title, Text, Card } from '@ziee/kit'
 import type { HubModel } from '@/api-client/types'
 
 interface ModelDetailsDrawerProps {

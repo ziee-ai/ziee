@@ -1,8 +1,8 @@
-import { message } from '@/components/ui'
+import { message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions, type VoiceCapability } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { defineExtensionStore } from '@/modules/chat/core/extensions'
 import { paneRegistry } from '@/modules/chat/core/stores/chatBridge'
 import {

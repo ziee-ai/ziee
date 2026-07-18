@@ -1,4 +1,4 @@
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
 
 /**

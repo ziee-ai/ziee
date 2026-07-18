@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Spinner } from '@/components/ui'
+import { Alert, Button, Card, Spinner } from '@ziee/kit'
 
 interface SettingsSectionStatusProps {
   /** Card title, kept identical to the loaded section so the page layout is stable. */

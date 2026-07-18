@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Dialog, Button, message, Text, Combobox } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Dialog, Button, message, Text, Combobox } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 
 interface AddToProjectModalProps {
   open: boolean

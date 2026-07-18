@@ -14,7 +14,7 @@ import {
   Text,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { useState } from 'react'
 import { EMAIL_RE } from '@/lib/validation'

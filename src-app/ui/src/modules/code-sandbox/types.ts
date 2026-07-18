@@ -1,8 +1,8 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
 import type { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     SandboxRootfsVersions: StoreProxy<
       ReturnType<typeof useSandboxRootfsVersionsStore.getState>

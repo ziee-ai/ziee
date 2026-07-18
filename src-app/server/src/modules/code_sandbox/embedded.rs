@@ -33,7 +33,7 @@
 use once_cell::sync::OnceCell;
 use sha2::{Digest, Sha256};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 const BUNDLE: &[u8] = include_bytes!(concat!(
@@ -75,11 +75,11 @@ enum ItemKind {
     Dir,
 }
 
-/// Where the launcher + guest root land after extraction.
-pub struct Extracted {
-    pub launcher: PathBuf,
-    pub guest_root: PathBuf,
-}
+// `Extracted` moved to the sandbox engine (`ziee_sandbox::provider`) so the
+// engine's `GuestAgentProvider` trait + `mac_vm` backend can name the return
+// shape; this module (whose `include_bytes!` needs the SERVER
+// `CARGO_MANIFEST_DIR`) keeps the extraction body and returns the engine type.
+use ziee_sandbox::provider::Extracted;
 
 static EXTRACTED: OnceCell<Extracted> = OnceCell::new();
 

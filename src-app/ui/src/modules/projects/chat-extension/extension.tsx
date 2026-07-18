@@ -1,14 +1,14 @@
 import { FolderOpen, CircleMinus, CirclePlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Button, Confirm, Spin, Tag, Tooltip, message, dialog } from '@/components/ui'
-import type { DropdownItem } from '@/components/ui'
+import { Button, Confirm, Spin, Tag, Tooltip, message, dialog } from '@ziee/kit'
+import type { DropdownItem } from '@ziee/kit'
 import type { Conversation } from '@/api-client/types'
 import { useNavigate } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import type { Project } from '@/api-client/types'
 import { hasPermissionNow, usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   createExtension,
   type ChatExtension,

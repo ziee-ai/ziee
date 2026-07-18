@@ -1,7 +1,7 @@
 import { Plus, Users } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { useEffect, useState } from 'react'
@@ -12,7 +12,7 @@ import {
   Button,
   Empty,
   List,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 export function UserGroupsDrawer() {
   const { isOpen, user } = Stores.UserGroupsDrawer

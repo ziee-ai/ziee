@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { Permissions, type AvailableUpdatesResponse2 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Upstream whisper release feed diffed against installed versions. Mirrors

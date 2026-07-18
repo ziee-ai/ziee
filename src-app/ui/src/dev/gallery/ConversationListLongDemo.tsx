@@ -12,7 +12,7 @@
  */
 import { useMemo, useRef, useState, useEffect } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
-import { Text } from '@/components/ui'
+import { Text } from '@ziee/kit'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import { VirtualizedConversationList } from '@/modules/chat/components/VirtualizedConversationList'
 

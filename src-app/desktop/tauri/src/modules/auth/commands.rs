@@ -5,6 +5,7 @@
 
 use crate::modules::backend;
 use serde::Serialize;
+use sqlx::PgPool;
 use std::sync::Arc;
 
 /// Response for auto-login command
@@ -16,16 +17,21 @@ pub struct AutoLoginResponse {
     pub expires_in: i64, // Seconds until token expires
 }
 
-/// Mint an admin auto-login response given a JWT service.
+/// Mint an admin auto-login response given the server pool + JWT service.
 ///
 /// Extracted from `auto_login` so integration tests can exercise the
 /// happy + admin-missing paths without needing to populate the private
-/// `JWT_SERVICE` OnceLock inside the backend module.
+/// `JWT_SERVICE` / `SERVER_POOL` OnceLocks inside the backend module.
+///
+/// Chunk BG-3: the pool is now threaded (from the `ServerBoot` `BootHandle`)
+/// instead of reaching the global `ziee::Repos` — `UserRepository::new(pool)` is
+/// the same repository `Repos.user` builds from the same pool, so this is
+/// behaviour-identical while de-globalizing the desktop consumer surface.
 pub async fn mint_admin_login(
+    pool: &PgPool,
     jwt_service: &Arc<ziee::JwtService>,
 ) -> Result<AutoLoginResponse, String> {
-    let admin = ziee::Repos
-        .user
+    let admin = ziee::UserRepository::new(pool.clone())
         .get_by_username("admin")
         .await
         .map_err(|e| format!("Failed to get admin: {}", e))?
@@ -35,6 +41,7 @@ pub async fn mint_admin_login(
     // lifetimes + a jti-whitelisted refresh token, so desktop sessions
     // are revocable (logout-everywhere) and pruned like any other.
     let minted = ziee::refresh_tokens::mint_session_tokens(
+        pool,
         jwt_service,
         admin.id,
         &admin.username,
@@ -61,8 +68,10 @@ pub async fn mint_admin_login(
 pub async fn auto_login() -> Result<AutoLoginResponse, String> {
     let jwt_service = backend::get_jwt_service()
         .ok_or_else(|| "Server not ready - JWT service not initialized".to_string())?;
+    let pool = backend::get_server_pool()
+        .ok_or_else(|| "Server not ready - database pool not initialized".to_string())?;
 
-    let response = mint_admin_login(jwt_service).await?;
+    let response = mint_admin_login(pool, jwt_service).await?;
 
     tracing::info!(
         "Desktop auto-login successful for user: {}",

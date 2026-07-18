@@ -1,0 +1,58 @@
+# ziee — embedded default seed (Layer 0), applied by the ziee-seed SDK engine.
+#
+# The declarative desired-state for a stock ziee deployment's DEFAULT data. Baked into the
+# binary (`include_str!`) and applied on every boot in seed-if-empty mode (never clobbers).
+#
+# INTEGRATION POSTURE (non-destructive): the ziee migration baselines still bake the
+# built-in default rows (llm_providers, the `fetch` MCP server, the Default Assistant, the
+# singleton settings rows). Re-declaring them here makes each provider ADOPT the existing
+# baked row into `seed_ledger` (natural-key "already exists → adopt") rather than duplicate
+# it — so this file is the DECLARATIVE AUTHORITY going forward without a data rewrite. New
+# rows declared ONLY here (see `SeedDemo` below) are CREATEd.
+#
+# Secrets are NEVER literals — only `${ENV_VAR}` placeholders. An operator OVERLAY
+# (SEED_FILE / a seed.d/ dir) deep-merges over this by (section, name).
+
+# ── LLM providers ─────────────────────────────────────────────────────────────
+# The 8 built-in defaults are baked (built_in = true) by migration
+# 202607145035_llm_provider_seed.sql — declared here so the seed ADOPTS them.
+# This shipped default is ADOPT-ONLY (it never injects a row absent from the baselines),
+# so applying it perturbs no other test's DB. The CREATE path is proven by the seed test's
+# own overlay (an operator SEED_FILE / seed.d overlay adds new rows the same way).
+llm_providers:
+  items:
+    - { name: OpenAI,        provider_type: openai,     base_url: "https://api.openai.com/v1",                        enabled: false, api_key: "${OPENAI_API_KEY}" }
+    - { name: Anthropic,     provider_type: anthropic,  base_url: "https://api.anthropic.com/v1",                     enabled: false, api_key: "${ANTHROPIC_API_KEY}" }
+    - { name: Groq,          provider_type: groq,       base_url: "https://api.groq.com/openai/v1",                   enabled: false, api_key: "${GROQ_API_KEY}" }
+    - { name: Google Gemini, provider_type: gemini,     base_url: "https://generativelanguage.googleapis.com/v1beta", enabled: false, api_key: "${GEMINI_API_KEY}" }
+    - { name: Mistral AI,    provider_type: mistral,    base_url: "https://api.mistral.ai/v1",                        enabled: false, api_key: "${MISTRAL_API_KEY}" }
+    - { name: DeepSeek,      provider_type: deepseek,   base_url: "https://api.deepseek.com",                         enabled: false, api_key: "${DEEPSEEK_API_KEY}" }
+    - { name: Local,         provider_type: local,      base_url: "http://localhost:8080/v1",                         enabled: false }
+    - { name: OpenRouter,    provider_type: openrouter, base_url: "https://openrouter.ai/api/v1",                     enabled: false, api_key: "${OPENROUTER_API_KEY}" }
+
+# ── Built-in system MCP server (adopts the migration-baked `fetch` row) ───────
+mcp_servers:
+  items:
+    - name: fetch
+      display_name: Web Fetch
+      description: Fetch content from web URLs
+      transport_type: stdio
+      command: uvx
+      args: ["mcp-server-fetch"]
+      enabled: true
+      groups: [Users]
+
+# ── Default assistant template (adopts the migration-baked row) ───────────────
+assistants:
+  items:
+    - name: Default Assistant
+      description: General-purpose AI assistant
+      instructions: You are a helpful, harmless, and honest AI assistant.
+      is_default: true
+
+# ── Singleton admin settings are DELIBERATELY NOT declared here ───────────────
+# The settings singletons are created (with their defaults) by migrations and adopted into
+# the seed_ledger by their GenericSingleton providers on the first seed-if-empty boot, so the
+# migration defaults stay authoritative. Shipping concrete values here would make a global
+# SEED_RECONCILE revert every admin-tuned setting to the embedded default (a data-loss
+# footgun). An operator pins a setting via their OWN overlay in reconcile mode.

@@ -5,7 +5,7 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { adminUser } from '@/dev/gallery/fixtures/auth'
 import { llmGroupsList } from '@/dev/gallery/fixtures/llm-providers'
 

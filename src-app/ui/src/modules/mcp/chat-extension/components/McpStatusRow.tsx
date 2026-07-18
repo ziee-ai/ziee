@@ -1,6 +1,6 @@
-import { Tag } from '@/components/ui'
+import { Tag } from '@ziee/kit'
 import { Wrench } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { pendingConversationKey } from '@/modules/mcp/stores/McpComposer.store'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 

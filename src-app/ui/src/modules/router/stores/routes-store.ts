@@ -1,4 +1,4 @@
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import type { RouteConfig } from '@/modules/router/types'
 
 export const Routes = defineStore('Routes', {

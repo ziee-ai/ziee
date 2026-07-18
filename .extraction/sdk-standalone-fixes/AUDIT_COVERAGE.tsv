@@ -1,0 +1,11 @@
+hunk	file	summary	angles
+H1	sdk crates/ziee-notification/migrations/202607144180_notification_fkeys.sql (del)	remove the 4 domain FKs from the infra crate migration	standalone-apply(sdkfix-04),migration-integrity(sdkfix-03),full-crate-audit(sdkfix-05),security(sdkfix-06),boundary(sdkfix-12)
+H2	server/src/modules/notification/migrations/202607144180_notification_fkeys.sql (new)	byte-identical relocation of the 4 FKs ziee-side	migration-integrity(sdkfix-03),schema-fingerprint(sdkfix-02),security(sdkfix-06),equivalence(sdkfix-01)
+H3	sdk crates/ziee-notification/Cargo.toml (edit)	doc-comment: crate now domain-agnostic + standalone-applicable	boundary(sdkfix-12),standalone-apply(sdkfix-04)
+H4	sdk crates/ziee-build-support/src/migrations.rs (edit)	+compose_merged_migrations_from (explicit dirs); old fn delegates	cross-crate-resolution(sdkfix-08),back-compat(sdkfix-09),schema-fingerprint(sdkfix-02)
+H5	sdk crates/ziee-build-support/src/lib.rs (edit)	export compose_merged_migrations_from	cross-crate-resolution(sdkfix-08),back-compat(sdkfix-09)
+H6	server/build.rs (edit)	pass explicit [ziee-auth,ziee-file,ziee-notification] migration dirs	schema-fingerprint(sdkfix-02),equivalence(sdkfix-01),build-hygiene(sdkfix-10)
+H7	sdk crates/ziee-auth/src/auth/module.rs (new)	AuthModule (distributed_slice) + init/register_routes + 2 tests	wiring-correctness(sdkfix-07),cross-crate-resolution(sdkfix-08),security(sdkfix-06),boundary(sdkfix-12)
+H8	sdk crates/ziee-auth/src/auth/mod.rs (edit)	#[cfg(feature=module)] pub mod module; pub use AuthModule	build-hygiene(sdkfix-10),equivalence(sdkfix-01)
+H9	sdk crates/ziee-auth/Cargo.toml (edit)	module feature (+optional linkme) + tower/http-body-util dev-deps	build-hygiene(sdkfix-10),back-compat(sdkfix-09),equivalence(sdkfix-01)
+H10	.extraction/sdk-standalone-fixes/standalone_apply_gate.sh (new)	per-crate standalone-migration-apply gate	standalone-apply(sdkfix-04),full-crate-audit(sdkfix-05)

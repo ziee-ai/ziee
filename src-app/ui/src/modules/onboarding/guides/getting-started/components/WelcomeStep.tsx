@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import { Title, Paragraph } from '@/components/ui'
+import { Title, Paragraph } from '@ziee/kit'
 import { Rocket } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 export default function WelcomeStep({ registerBeforeNext }: OnboardingStepProps) {
   const user = Stores.Auth.user

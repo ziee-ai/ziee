@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { message } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { message } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { composerPaneKey } from '@/modules/file/stores/File.store'
 import {

@@ -5,11 +5,21 @@
 //! changed entity via its existing permission-checked REST endpoint, so
 //! the SSE channel never carries anything sensitive.
 
+use axum::response::sse::Event;
 use schemars::JsonSchema;
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::modules::permissions::{PermissionCheck, PermissionList};
+// Chunk B5: the audience machinery (`Audience` / `PermRule` + typed
+// constructors), the per-user SSE registry, and the `SyncOrigin` extractor moved
+// into `ziee_framework::sync`, generic over ziee's `Principal` snapshot +
+// `SyncEntityKind`. ziee KEEPS its concrete, schema-bearing wire types below
+// (`SyncEntity`/`SyncAction`/`SyncEvent`/`SyncConnectedData`/`SyncSseEvent`, all
+// deriving `JsonSchema` — so the OpenAPI/`types.ts` surface + the generated
+// `sync:<entity>` vocabulary are byte-unchanged) and re-exports `Audience` from
+// the framework so every emit site's `use crate::modules::sync::{Audience, ..}`
+// is unchanged.
+pub use ziee_framework::sync::Audience;
 
 /// The kind of entity that changed. Serialized snake_case to match the
 /// frontend's `sync:<entity>` event vocabulary.
@@ -249,65 +259,104 @@ crate::sse_event_enum! {
     }
 }
 
-/// Delivery scope for one event, chosen by the publishing handler. There is
-/// NO central per-entity table: the module that owns the mutation decides who
-/// may learn of it, using its OWN typed permissions. Build it with the typed
-/// constructors below so a renamed/removed permission is a compile error.
-#[derive(Debug, Clone)]
-pub enum Audience {
-    /// Only the owning user's connections.
-    Owner(Uuid),
-    /// Only connections whose permission snapshot satisfies the rule
-    /// (admins always qualify).
-    Perm(PermRule),
-    /// Every authenticated connection. No current prod caller (owner/perm
-    /// scoping covers today's entities); retained as intentional API surface.
-    #[allow(dead_code)]
-    Everyone,
+// `Audience` + `PermRule` (+ the `owner`/`everyone`/`perm`/`all_of`/`any_of`
+// typed constructors) now live in `ziee_framework::sync` and are re-exported at
+// the top of this module. The framework registry routes them against each
+// connection's `Principal` snapshot; ziee's typed permissions still drive the
+// constructors, so a renamed/removed permission is a compile error at every
+// emit site — unchanged.
+
+/// Build the wire SSE `Event` for one `{entity, action, id}` change. Kept as the
+/// single serialization point so `publish` (below) and ziee's `SyncEntityKind`
+/// impl (`session_signal`) produce byte-identical events.
+fn sync_sse_event(entity: SyncEntity, action: SyncAction, id: Uuid) -> Event {
+    SyncSseEvent::Sync(SyncEvent { entity, action, id }).into()
 }
 
-/// A composable permission requirement
-#[derive(Debug, Clone)]
-pub enum PermRule {
-    /// The connection must hold EVERY listed permission.
-    All(Vec<&'static str>),
-    /// The connection must hold AT LEAST ONE listed permission.
-    Any(Vec<&'static str>),
+/// ziee's concrete entity vocabulary implements the framework seam: the batched
+/// member fan-out (`deliver_session_to_users`) builds each recipient's event
+/// here, byte-identical to the former inline `SyncEntity::Session` construction.
+impl ziee_framework::sync::SyncEntityKind for SyncEntity {
+    fn session_signal(user_id: Uuid) -> Event {
+        sync_sse_event(SyncEntity::Session, SyncAction::Update, user_id)
+    }
 }
 
-impl Audience {
-    /// Deliver only to `user_id`'s own connections.
-    pub fn owner(user_id: Uuid) -> Self {
-        Audience::Owner(user_id)
+/// ziee's concrete realtime-sync surface for the mountable `sync_routes()` (chunk
+/// sdk-surfaces). Supplies everything the moved SSE subscribe handler needs that
+/// the framework won't name — the `SyncConnPrincipal` snapshot, the singleton
+/// `registry()`, the `SyncSseEvent` handshake + response schema, the
+/// `profile::read` baseline gate, and the `Repos`-backed periodic re-check.
+/// ziee mounts `sync_routes::<ZieeIdentityResolver, SyncEntity>()`.
+#[async_trait::async_trait]
+impl ziee_framework::sync::SyncSurface for SyncEntity {
+    type Principal = super::registry::SyncConnPrincipal;
+    type Wire = SyncSseEvent;
+    type BaselinePerms = (crate::modules::user::permissions::ProfileRead,);
+
+    fn registry() -> &'static ziee_framework::sync::SyncRegistry<Self::Principal> {
+        super::registry::registry()
     }
 
-    /// Deliver to every authenticated connection. Part of the audience API for
-    /// genuinely-public entities; no current caller (owner/perm scoping covers
-    /// today's entities), so retained as intentional API surface.
-    #[allow(dead_code)]
-    pub fn everyone() -> Self {
-        Audience::Everyone
+    fn principal_user_id(principal: &Self::Principal) -> Uuid {
+        principal.user.id
     }
 
-    /// Deliver to holders of a single typed permission, e.g.
-    /// `Audience::perm::<LlmModelsRead>()`.
-    pub fn perm<P: PermissionCheck>() -> Self {
-        Audience::Perm(PermRule::All(vec![P::PERMISSION]))
+    fn connected_signal(conn_id: Uuid) -> Event {
+        SyncSseEvent::Connected(SyncConnectedData {
+            connection_id: conn_id,
+        })
+        .into()
     }
 
-    /// Deliver to holders of ALL permissions in the tuple, e.g.
-    /// `Audience::all_of::<(LlmProvidersRead, LlmModelsRead)>()`. Reuses the
-    /// same `PermissionList` tuple machinery as `RequirePermissions<(A, B)>`.
-    #[allow(dead_code)]
-    pub fn all_of<L: PermissionList>() -> Self {
-        Audience::Perm(PermRule::All(L::permissions()))
-    }
-
-    /// Deliver to holders of ANY permission in the tuple, e.g.
-    /// `Audience::any_of::<(McpServersRead, McpServersAdminRead)>()`.
-    #[allow(dead_code)]
-    pub fn any_of<L: PermissionList>() -> Self {
-        Audience::Perm(PermRule::Any(L::permissions()))
+    async fn recheck(
+        user_id: Uuid,
+        token_ver: Option<i32>,
+    ) -> ziee_framework::sync::RecheckOutcome<Self::Principal> {
+        use ziee_framework::sync::RecheckOutcome;
+        // Reload the active user + groups (WITH the revocation epoch, folded
+        // into the same query), re-check the baseline `profile::read` AND the
+        // epoch, produce a refreshed snapshot — else teardown / transient.
+        match crate::core::Repos.user.get_by_id_with_token_version(user_id).await {
+            Ok(Some((u, token_version))) if u.is_active => {
+                // A logout must also end an ALREADY-OPEN stream: the subscribe
+                // gate checks the epoch once, but the stream then lives until
+                // the token's exp (24h by default). The client-side Session
+                // fan-out is not a boundary for a holder of a stolen token —
+                // they don't run our JS. Free: the query above already loads
+                // the row.
+                if crate::modules::auth::jwt_extractor::verify_token_version(token_ver, token_version)
+                    .is_err()
+                {
+                    return RecheckOutcome::TearDown;
+                }
+                let g = if u.is_admin {
+                    Vec::new()
+                } else {
+                    crate::core::Repos
+                        .user
+                        .get_user_groups(user_id)
+                        .await
+                        .unwrap_or_default()
+                };
+                // Baseline gate: a user who no longer holds profile::read is no
+                // longer entitled to the stream (matches the subscribe-time gate).
+                if !u.is_admin
+                    && !crate::modules::permissions::checker::check_permission_union(
+                        &u,
+                        &g,
+                        "profile::read",
+                    )
+                {
+                    return RecheckOutcome::TearDown;
+                }
+                RecheckOutcome::Refresh(super::registry::SyncConnPrincipal { user: u, groups: g })
+            }
+            // Account removed or deactivated → tear the stream down.
+            Ok(_) => RecheckOutcome::TearDown,
+            // Transient DB error → keep the stream; retry next tick.
+            Err(_) => RecheckOutcome::Transient,
+        }
     }
 }
 
@@ -323,54 +372,25 @@ pub fn publish(
     audience: Audience,
     origin_conn: Option<Uuid>,
 ) {
-    super::registry::registry().deliver(audience, SyncEvent { entity, action, id }, origin_conn);
+    super::registry::registry().deliver(audience, sync_sse_event(entity, action, id), origin_conn);
 }
 
 /// Fan a `Session` permissions-changed signal out to many users at once
 /// (used by group-permission edits that affect every member). Delivers via a
 /// SINGLE registry lock acquisition rather than one `publish` call per user.
 pub fn publish_session_to_users(user_ids: &[Uuid], origin_conn: Option<Uuid>) {
-    super::registry::registry().deliver_session_to_users(user_ids, origin_conn);
+    super::registry::registry().deliver_session_to_users::<SyncEntity>(user_ids, origin_conn);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    struct PermA;
-    impl PermissionCheck for PermA {
-        const NAME: &'static str = "PermA";
-        const PERMISSION: &'static str = "a::read";
-        const DESCRIPTION: &'static str = "";
-        const MODULE: &'static str = "test";
-    }
-    struct PermB;
-    impl PermissionCheck for PermB {
-        const NAME: &'static str = "PermB";
-        const PERMISSION: &'static str = "b::read";
-        const DESCRIPTION: &'static str = "";
-        const MODULE: &'static str = "test";
-    }
-
-    #[test]
-    fn perm_constructor_carries_the_typed_permission_string() {
-        match Audience::perm::<PermA>() {
-            Audience::Perm(PermRule::All(ps)) => assert_eq!(ps, vec!["a::read"]),
-            other => panic!("expected Perm(All), got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn all_of_and_any_of_collect_the_permission_tuple() {
-        match Audience::all_of::<(PermA, PermB)>() {
-            Audience::Perm(PermRule::All(ps)) => assert_eq!(ps, vec!["a::read", "b::read"]),
-            other => panic!("expected Perm(All), got {other:?}"),
-        }
-        match Audience::any_of::<(PermA, PermB)>() {
-            Audience::Perm(PermRule::Any(ps)) => assert_eq!(ps, vec!["a::read", "b::read"]),
-            other => panic!("expected Perm(Any), got {other:?}"),
-        }
-    }
+    // The `Audience`/`PermRule` typed-constructor tests moved to
+    // `ziee_framework::sync::audience` alongside the machinery. The wire-format
+    // tests below stay here: they pin ziee's concrete, schema-bearing wire types
+    // (the `sync:<entity>` frontend vocabulary the generated `types.ts`
+    // depends on), which deliberately did NOT move.
 
     #[test]
     fn wire_payload_is_notify_only_snake_case() {

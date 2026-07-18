@@ -3,8 +3,8 @@ import type {
   McpUserPolicy as McpUserPolicyRow,
   UpdateMcpUserPolicyRequest,
 } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
-import type { StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import type { StoreProxy } from '@ziee/framework/stores'
 import { emitMcpUserPolicyUpdated } from '@/modules/mcp/events/emitters'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 
@@ -98,7 +98,7 @@ export const McpUserPolicy = defineStore('McpUserPolicy', {
 
 export const useMcpUserPolicyStore = McpUserPolicy.store
 
-declare module '../../../core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     McpUserPolicy: StoreProxy<ReturnType<typeof McpUserPolicy.store.getState>>
   }

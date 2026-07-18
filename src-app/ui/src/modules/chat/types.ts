@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import type { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
 import type { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
@@ -14,7 +14,7 @@ export interface ChatExtensionStores {
   // Extensions will augment this interface via declaration merging
 }
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Chat: StoreProxy<
       ReturnType<typeof useChatStore.getState> & ChatExtensionStores
@@ -37,7 +37,7 @@ declare module '@/core/stores' {
  * Use SidebarWidgetItem's shape so any module can register without
  * a new slot type.
  */
-declare module '@/core/module-system/types' {
+declare module '@ziee/framework/module-system/types' {
   interface Slots {
     chatConversationHeaderTrailing: SidebarWidgetItem[]
   }

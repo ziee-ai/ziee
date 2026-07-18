@@ -1,4 +1,4 @@
-import { Progress } from '@/components/ui'
+import { Progress } from '@ziee/kit'
 import type { DownloadStatus } from '@/api-client/types'
 
 interface DownloadProgressProps {

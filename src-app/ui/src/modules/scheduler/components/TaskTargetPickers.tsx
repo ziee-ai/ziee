@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 
-import { Combobox, MultiSelect, Select } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Combobox, MultiSelect, Select } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 
 import { buildModelOptions } from './taskTargetOptions'
 

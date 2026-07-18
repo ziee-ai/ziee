@@ -8,7 +8,7 @@ import {
   type SSEDownloadProgressConnectedData,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
 import {
   emitLlmModelDownloadCompleted,

@@ -2,7 +2,7 @@ import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import { type File as FileEntity, Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 enableMapSet()
 

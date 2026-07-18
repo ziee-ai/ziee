@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { MdInfoOutline } from 'react-icons/md'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { useServerUpdateStore } from '@/modules/server-update/stores/ServerUpdate.store'

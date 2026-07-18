@@ -670,6 +670,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             workspace: tmp.path().to_path_buf(),
             files: Arc::new(Vec::<ConversationFile>::new()),
+            extra_ro_binds: Vec::new(),
         }
     }
 
@@ -880,6 +881,7 @@ mod tests {
                     created_at: chrono::Utc::now(),
                 },
             ]),
+            extra_ro_binds: Vec::new(),
         };
 
         let err = read_file(&ctx, "data.csv", None, None)

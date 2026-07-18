@@ -1,5 +1,5 @@
-import { Alert, Flex } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Alert, Flex } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AvailableModelsCard } from './AvailableModelsCard'
 import { AvailableVersionsCard } from './AvailableVersionsCard'

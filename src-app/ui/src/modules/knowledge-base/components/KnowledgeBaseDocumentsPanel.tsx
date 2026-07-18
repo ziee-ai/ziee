@@ -11,9 +11,9 @@ import {
   Tooltip,
   Upload,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Can } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { type KnowledgeBaseDocument, Permissions } from '@/api-client/types'
 import { ListPagination } from '@/components/common/ListPagination'
 import { FileCard } from '@/modules/file/components/FileCard'

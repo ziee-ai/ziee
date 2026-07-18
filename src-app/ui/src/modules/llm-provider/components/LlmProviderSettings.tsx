@@ -8,7 +8,7 @@ import {
   Title,
   Flex,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'

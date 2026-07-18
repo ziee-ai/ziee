@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui'
+import { Button } from '@ziee/kit'
 import { ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 

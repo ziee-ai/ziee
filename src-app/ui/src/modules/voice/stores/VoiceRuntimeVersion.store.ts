@@ -1,8 +1,8 @@
 import { ApiClient } from '@/api-client'
 import { Permissions, type RuntimeVersionResponse2 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Installed whisper runtime versions. Mirrors the llm-local-runtime

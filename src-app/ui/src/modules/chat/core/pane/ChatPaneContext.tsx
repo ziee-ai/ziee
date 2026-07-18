@@ -14,8 +14,8 @@ import { registerPane, unregisterPane } from '@/modules/chat/core/stores/chatBri
 import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
 import { PaneExtensionRuntime } from '@/modules/chat/core/extensions/PaneExtensionRuntime'
 import type { ChatExtStoreApi } from '@/modules/chat/core/extensions/types'
-import { Stores } from '@/core'
-import { message } from '@/components/ui'
+import { Stores } from '@ziee/framework/stores'
+import { message } from '@ziee/kit'
 
 /** The store instance a pane subtree resolves via `useChatPane()`. */
 type PaneStore = ReturnType<typeof ChatPaneStore.use>
@@ -72,7 +72,7 @@ export function ChatPaneProvider({
       (name) =>
         ((store.__api__.getState() as unknown as Record<string, unknown>)[
           name
-        ] as import('@/core/stores').StoreProxy<any> | undefined) ?? null,
+        ] as import('@ziee/framework/stores').StoreProxy<any> | undefined) ?? null,
     )
     runtime.injectExtensionStores(
       store.__api__.getState() as unknown as Record<string, unknown>,

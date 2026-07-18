@@ -1,4 +1,4 @@
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { Group, User } from '@/api-client/types'
 
 /**

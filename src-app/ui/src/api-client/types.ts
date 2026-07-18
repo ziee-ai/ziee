@@ -2743,13 +2743,6 @@ export interface ListModelsQuery {
   providerId?: string
 }
 
-export interface ListNotificationsQuery {
-  page?: number
-  per_page?: number
-  /** Return only unread notifications. */
-  unread_only?: boolean
-}
-
 export interface ListPromptsResponse {
   prompts: Prompt[]
 }
@@ -4035,16 +4028,38 @@ export interface MutationResponse {
 export interface Notification {
   title: string
   body: string
-  conversation_id?: string
   created_at: string
   id: string
   /** TRUE => client may toast on arrival; FALSE => durable inbox row only. */
   interrupt: boolean
+  /**
+   * The contributing module's notification kind (e.g. `study_share_invite`);
+   *  the frontend dispatches its renderer on this.
+   */
   kind: string
+  /**
+   * Kind-specific structured data the FE renderer reads (e.g.
+   *  `{study_id, share_id}`). Defaults to `{}`.
+   */
+  payload: unknown
   read_at?: string
-  scheduled_task_id?: string
   user_id: string
-  workflow_run_id?: string
+}
+
+/** A module's declaration of one notification kind it produces. */
+export interface NotificationKindDescriptor {
+  /** Human-readable description of when this kind is produced. */
+  description: string
+  /** The stable kind key stored on the row + dispatched on by the FE renderer. */
+  kind: string
+}
+
+/** Query params for the paged inbox list. */
+export interface NotificationListQuery {
+  page?: number
+  per_page?: number
+  /** When true, only unread rows. */
+  unread_only?: boolean
 }
 
 /** Paged list response. */
@@ -7725,6 +7740,7 @@ export const ApiEndpoints = {
   'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
   'Notification.delete': 'DELETE /api/notifications/{id}',
   'Notification.get': 'GET /api/notifications/{id}',
+  'Notification.kinds': 'GET /api/notifications/kinds',
   'Notification.list': 'GET /api/notifications',
   'Notification.markAllRead': 'POST /api/notifications/read-all',
   'Notification.markRead': 'POST /api/notifications/{id}/read',
@@ -8155,6 +8171,7 @@ export type ApiEndpointParameters = {
   'Message.stopGeneration': { conversation_id: string; assistant_message_id: string }
   'Notification.delete': { id: string }
   'Notification.get': { id: string }
+  'Notification.kinds': void
   'Notification.list': { page?: number; per_page?: number; unread_only?: boolean }
   'Notification.markAllRead': void
   'Notification.markRead': { id: string }
@@ -8585,6 +8602,7 @@ export type ApiEndpointResponses = {
   'Message.stopGeneration': void
   'Notification.delete': void
   'Notification.get': Notification
+  'Notification.kinds': NotificationKindDescriptor[]
   'Notification.list': NotificationPage
   'Notification.markAllRead': UnreadCount
   'Notification.markRead': UnreadCount

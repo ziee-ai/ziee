@@ -28,7 +28,7 @@ const modelExtension: ChatExtension = createExtension({
   priority: 10, // High priority - before text (5)
 
   initialize: async (ctx) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { newChatModelKey } = await import(
       '@/modules/user-llm-providers/ModelPicker.store'
     )
@@ -74,7 +74,7 @@ const modelExtension: ChatExtension = createExtension({
    * (ctx.conversationId; null = new chat → the shared new-chat key). (ITEM-5)
    */
   composeRequestFields: async ctx => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { newChatModelKey } = await import(
       '@/modules/user-llm-providers/ModelPicker.store'
     )
@@ -99,7 +99,7 @@ const modelExtension: ChatExtension = createExtension({
    * Runs per pane (each pane's loadConversation invokes it).
    */
   onConversationLoad: async (conversation: Conversation) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     Stores.ModelPicker.initializeFromConversation(
       conversation.id,
       conversation.model_id ?? undefined,

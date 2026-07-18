@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { UserProfileWidget } from '@/modules/user-profile/UserProfileWidget'
 
 export default createModule({

@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import { RootfsVersionGroup } from './RootfsVersionGroup'
-import { Card, Empty, Flex, Separator } from '@/components/ui'
+import { Card, Empty, Flex, Separator } from '@ziee/kit'
 import type { ActionFlags, VersionGroup } from './_rootfsShared'
 
 interface DownloadedRootfsCardProps {

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Button, Card, Flex, Space, Spin, Tag, Text } from '@/components/ui'
+import { Button, Card, Flex, Space, Spin, Tag, Text } from '@ziee/kit'
 import { Pencil } from 'lucide-react'
 import type { Group } from '@/api-client/types'
 

@@ -14,9 +14,9 @@
  * the bytes are ready; the buttons are replaced by a progress bar meanwhile.
  */
 
-import { Button, Progress, Space, Text } from '@/components/ui'
+import { Button, Progress, Space, Text } from '@ziee/kit'
 import { ArrowUp } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 export function UpdateBanner() {
   const {

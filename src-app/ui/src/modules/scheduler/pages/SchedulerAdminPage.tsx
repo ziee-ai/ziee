@@ -9,15 +9,15 @@ import {
   InputNumber,
   Spin,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import {
   Field,
   FieldContent,
   FieldGroup,
   FieldTitle,
-} from '@/components/ui/shadcn/field'
+} from '@ziee/kit/shadcn/field'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
 interface Form {

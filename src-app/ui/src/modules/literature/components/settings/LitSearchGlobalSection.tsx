@@ -11,11 +11,11 @@ import {
   Text,
   message,
   useForm,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Permissions, type UpdateLitSearchSettingsRequest } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 interface CapsForm {
   max_results: number

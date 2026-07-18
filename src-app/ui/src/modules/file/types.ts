@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useFileStore } from './stores/File.store'
 import type { useFilePreviewDrawerStore } from './stores/FilePreviewDrawer.store'
 import type { useFileVersionsStore } from './stores/FileVersions.store'
@@ -6,7 +6,7 @@ import type { usePdfHighlightStore } from './stores/PdfHighlight.store'
 import type { useDeliverablesStore } from './stores/Deliverables.store'
 import type { ProjectFiles } from './project-extension/stores/ProjectFiles.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     File: StoreProxy<ReturnType<typeof useFileStore.getState>>
     FilePreviewDrawer: StoreProxy<

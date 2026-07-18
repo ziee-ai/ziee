@@ -12,12 +12,12 @@
  */
 
 import { createModule, type AppModule } from '@ziee/ui-core'
-import { Stores, type StoreProxy } from '@/core/stores'
+import { Stores, type StoreProxy } from '@ziee/framework/stores'
 import { invoke } from '@tauri-apps/api/core'
 import type { AutoLoginResponse } from '@/modules/auth/Auth.store'
 import { useBootstrapStore } from '@ziee/desktop/modules/desktop-base/Bootstrap.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Bootstrap: StoreProxy<ReturnType<typeof useBootstrapStore.getState>>
   }

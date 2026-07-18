@@ -1,6 +1,6 @@
 import type { McpServer } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 interface GroupServers {
   groupId: string

@@ -11,7 +11,7 @@ import {
   Tag,
   Text,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'

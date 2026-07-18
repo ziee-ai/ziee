@@ -8,9 +8,9 @@ import {
   Tag,
   Text,
   type DescriptionsItem,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Permissions, type Group } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission, evaluatePermission } from '@/core/permissions'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
 import type { GroupWidget } from '@/modules/user/types/GroupWidget'

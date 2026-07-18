@@ -1,0 +1,11 @@
+hunk	file	summary	angles
+H1	sdk kit/src/{kit,shadcn}/* (117 files, new)	component source moved byte-preserved; only @/ import specifiers rewritten kit-relative	equivalence(F1-01),import-rewrite-correctness(F1-05),domain-agnostic(F1-02),api-surface(F1-12)
+H2	sdk kit/src/{lib/utils.ts,hooks/use-mobile.ts,internal/div-scroll-x.tsx} (new)	vendored byte-identical pure micro-deps so the kit imports no @/	self-contained-deps(F1-04),equivalence(F1-01),domain-agnostic(F1-02)
+H3	sdk kit/src/internal/div-scroll-y.tsx (new)	store-free subset of app DivScrollY; severs Stores.AppLayout coupling; dialog never used nativeFlow	coupling-severed(F1-03),equivalence(F1-01),domain-agnostic(F1-02),self-contained-deps(F1-04)
+H4	sdk kit/src/{index.ts,testIds.generated.ts,*.md} (barrel + registry + docs)	barrel moved (only line-1 comment changed); registry + docs byte-for-byte	equivalence(F1-01),api-surface(F1-12),single-source(F1-09)
+H5	sdk kit/src/styles/tokens.css + css.d.ts (new)	design-token layer (byte-identical index.css 47-205) + ambient CSS decl	design-tokens(F1-11),build-hygiene(F1-13),domain-agnostic(F1-02)
+H6	sdk kit/{package.json,tsconfig.json}	exports (barrel + ./* + tokens.css), third-party deps, react peers, bundler tsconfig	dep-completeness(F1-07),module-resolution(F1-06),build-hygiene(F1-13),gate-tsc(F1-08)
+H7	ziee ui/src (348 edits) + ui/tests/testid.ts + package.json + tsconfig paths; components/ui deleted	repoint @/components/ui -> @ziee/kit; add dep + paths; delete moved slice	single-source(F1-09),module-resolution(F1-06),gate-tsc(F1-08),submodule-wiring(F1-10)
+H8	ziee desktop/ui/src (15 edits) + package.json + tsconfig paths	repoint @/components/ui -> @ziee/kit; add dep + paths	single-source(F1-09),module-resolution(F1-06),gate-tsc(F1-08),api-surface(F1-12)
+H9	root npm install (workspace wiring)	node_modules/@ziee/kit symlink + hoisted third-party deps	submodule-wiring(F1-10),dep-completeness(F1-07),gate-tsc(F1-08)
+H10	ui/scripts/{gen-kit-manifest,gen-testid-registry,classify-gallery-coverage}.mjs (UNCHANGED)	kit-scanning tooling still points at old path; out of tsc gate	tooling-followup(F1-14),single-source(F1-09),gate-tsc(F1-08)

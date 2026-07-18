@@ -148,8 +148,8 @@ const fileExtension: ChatExtension = createExtension({
     const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
     const { FilePanel: FilePanelComponent } = await import('@/modules/file/components/FilePanel')
     const { File: FileOutlinedIcon } = await import('lucide-react')
-    const { Spin: SpinComponent } = await import('@/components/ui')
-    const { Stores: StoresRef } = await import('@/core/stores')
+    const { Spin: SpinComponent } = await import('@ziee/kit')
+    const { Stores: StoresRef } = await import('@ziee/framework/stores')
 
     registerPanelRenderer('file', {
       icon: <FileOutlinedIcon />,
@@ -161,7 +161,7 @@ const fileExtension: ChatExtension = createExtension({
       },
     })
 
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     // Bind to the OWNING pane's chat store (ITEM-34/5) — not the global
     // singleton — so these subscriptions watch THIS pane's conversation/edit
     // state. Unsubs are stored per-pane (keyed by ctx.chatStore) for cleanup.
@@ -250,7 +250,7 @@ const fileExtension: ChatExtension = createExtension({
     _composedRequest: any,
     composerPaneId?: string | null,
   ): Promise<MessageContent[]> => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
     if (!fileStore) return []
 
@@ -299,7 +299,7 @@ const fileExtension: ChatExtension = createExtension({
       .filter((f): f is FileEntity => f !== null)
     if (stubs.length === 0) return
 
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
     if (!fileStore) return
 
@@ -331,7 +331,7 @@ const fileExtension: ChatExtension = createExtension({
   // disable lands (race) or some other extension's useSendBlocker
   // doesn't propagate. Same semantics as the useSendBlocker hook.
   beforeSendMessage: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
     // Check if there are any files still uploading (use action method to avoid React hooks)
@@ -349,7 +349,7 @@ const fileExtension: ChatExtension = createExtension({
 
   // Compose request fields to add file_ids to send message request
   composeRequestFields: async (ctx) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
 
     // The SENDING pane's file ids (ITEM-32).
     const fileStore = Stores.File
@@ -372,7 +372,7 @@ const fileExtension: ChatExtension = createExtension({
   // user may have focused another pane; the store's own paneId is stable
   // (ITEM-32/DRIFT-2.13).
   onMessageSent: async (ownerPaneId) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
     const paneKey = composerPaneKey(ownerPaneId)
 
@@ -387,7 +387,7 @@ const fileExtension: ChatExtension = createExtension({
   // errored), threaded from the pane's store. The error frame arrives async, so
   // focus is unreliable; using it would restore into / clobber the wrong pane.
   onStreamError: async (_error, ownerPaneId) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
     // Restore only THIS pane's backed-up files (leaves other panes untouched).
@@ -399,7 +399,7 @@ const fileExtension: ChatExtension = createExtension({
   // Clear backup on successful completion — keyed by the OWNING pane (same async-
   // boundary reasoning as onStreamError).
   afterStreamComplete: async (_message, ownerPaneId) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const fileStore = Stores.File
 
     // Clear THIS pane's backup since its message was sent successfully.

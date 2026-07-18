@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { RuntimeVersionResponse } from '@/api-client/types'
 
 export interface RuntimeVersionCreatedEvent extends BaseEvent {
@@ -28,7 +28,7 @@ export interface RuntimeModelUsageChangedEvent extends BaseEvent {
   }
 }
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'runtime_version.created': RuntimeVersionCreatedEvent
     'runtime_version.deleted': RuntimeVersionDeletedEvent

@@ -7,7 +7,7 @@
  * scan; the acceptance harness targets this dir via --root.
  */
 import { ArrowRight, Copy } from 'lucide-react'
-import { Button } from '@/components/ui'
+import { Button } from '@ziee/kit'
 
 export function IconActionMismatch() {
   return (

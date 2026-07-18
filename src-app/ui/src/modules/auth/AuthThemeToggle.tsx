@@ -1,5 +1,5 @@
 import { Sun, Moon } from 'lucide-react'
-import { Button } from '@/components/ui'
+import { Button } from '@ziee/kit'
 import { useTheme } from '@/hooks/useTheme'
 
 /**

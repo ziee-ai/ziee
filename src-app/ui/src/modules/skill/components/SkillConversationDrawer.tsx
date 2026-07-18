@@ -1,5 +1,5 @@
-import { Dialog } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Dialog } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { ConversationSkillsPanel } from './ConversationSkillsPanel'
 import { SkillDetailDrawer } from './SkillDetailDrawer'
 

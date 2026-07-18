@@ -1,6 +1,6 @@
 import { ApiClient } from '@/api-client'
 import type { MemoryAuditEntry } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const MemoryAudit = defineStore('MemoryAudit', {
   immer: true,

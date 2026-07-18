@@ -406,16 +406,23 @@ async fn persist_links_run_link_attributes_ingested_file_to_real_run() {
     assert!(!links[0].uri.contains("ziee://"), "no host-path leak in the recalled URI");
 
     // Run-link branch: the ingested file is attributed to the producing run — it SURVIVES
-    // (was not orphan-deleted) and carries the run id.
-    let row = sqlx::query!(
-        "SELECT workflow_run_id FROM files WHERE id = $1",
-        art.file_id
+    // (was not orphan-deleted) and carries the run id. The file<->run link now lives in the
+    // `file_workflow_runs` join table (chunk `ziee-file`: the store carries no run column).
+    let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM files WHERE id = $1")
+        .bind(art.file_id)
+        .fetch_one(&pool)
+        .await
+        .expect("ingested file row survives (not orphaned)");
+    assert_eq!(exists, 1, "ingested resource_link file row survives");
+    let linked_run: Option<Uuid> = sqlx::query_scalar(
+        "SELECT workflow_run_id FROM file_workflow_runs WHERE file_id = $1",
     )
-    .fetch_one(&pool)
+    .bind(art.file_id)
+    .fetch_optional(&pool)
     .await
-    .expect("ingested file row survives (not orphaned)");
+    .expect("query join table");
     assert_eq!(
-        row.workflow_run_id,
+        linked_run,
         Some(run_id),
         "the ingested resource_link file must be linked to its producing run"
     );
@@ -489,13 +496,13 @@ async fn code_sandbox_chat_path_persists_artifact_without_run_link() {
     assert_eq!(links[0].uri, format!("/api/files/{}", art.file_id));
     assert!(!links[0].uri.contains("ziee://"), "host path must not leak to the client");
 
-    // It is NOT linked to any workflow run (chat path).
+    // It is NOT linked to any workflow run (chat path) — no `file_workflow_runs` join row.
     let run_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT workflow_run_id FROM files WHERE id = $1")
+        sqlx::query_scalar("SELECT workflow_run_id FROM file_workflow_runs WHERE file_id = $1")
             .bind(art.file_id)
-            .fetch_one(&pool)
+            .fetch_optional(&pool)
             .await
-            .expect("file row exists");
+            .expect("query join table");
     assert!(run_id.is_none(), "chat-path file must not be linked to a workflow run");
 
     pool.close().await;

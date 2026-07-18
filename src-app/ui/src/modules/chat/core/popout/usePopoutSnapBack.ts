@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@/core'
+import { Stores } from '@ziee/framework/stores'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import { snapBackAsNewPane } from './planPopoutSnapBack'
 import {

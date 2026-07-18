@@ -5,7 +5,7 @@ import {
   type Project,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /// Page size for the project-conversations list. Matches ChatHistory's primary
 /// list; bounded by the backend's PaginationQuery::resolved() clamp (≤100).

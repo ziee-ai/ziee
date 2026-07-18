@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type {
   useMcpStore,
   useSystemMcpServersStore,
@@ -11,7 +11,7 @@ import type { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/
 import type { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
 import type { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     McpServer: StoreProxy<ReturnType<typeof useMcpStore.getState>>
     SystemMcpServer: StoreProxy<

@@ -14,6 +14,9 @@ workspace = true
 
 [build-dependencies]
 tauri-build = { version = "2.4", features = [] }
+# Chunk sdk-batteries (decision #11): per-worktree build-DB keying (was a
+# `#[path]`-included copy of the server's build_helper/worktree_db.rs).
+ziee-build-support = { path = "../../../sdk/crates/ziee-build-support" }
 
 [dependencies]
 # Tauri framework (desktop-only, kept local)
@@ -26,6 +29,12 @@ tauri-plugin-decorum = "1.1.1"
 
 # Backend server (embedded as library)
 ziee = { path = "../../server" }
+
+# Reusable SDK desktop shell. Chunk BG-3: ziee-desktop implements the harness's
+# `ServerBoot` seam (the app-side embed-server boundary) and consumes the
+# single-user auto-login strategy — the prerequisite for D-full (the live Tauri
+# shell move). The harness names ONLY the SDK crates, never `ziee`.
+ziee-desktop-harness = { path = "../../../sdk/desktop/harness" }
 
 # Inherited from `src-app/Cargo.toml::[workspace.dependencies]`.
 # sqlx in particular MUST match ziee's so pgvector (`>= 0.8, < 0.10`)
@@ -77,6 +86,11 @@ tempfile.workspace = true
 serial_test.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
+# Chunk ziee-test-harness: the desktop integration_tests binary `#[path]`-
+# reincludes the server's harness shim, which now names the SDK's
+# ziee-test-harness crate (the generic spawn/isolation engine) instead of
+# ziee-build-support directly.
+ziee-test-harness = { path = "../../../sdk/crates/ziee-test-harness" }
 # Used by integration_tests/common/ — the test harness uses sqlx to
 # create per-test databases and seed group/permission rows for the
 # remote-access integration tests that moved here from server/tests/.

@@ -1,5 +1,5 @@
 import type { Group } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /** Open/selected-group state for the Group LLM Providers assignment drawer. */
 export const GroupLlmProvidersAssignment = defineStore('GroupLlmProvidersAssignment', {

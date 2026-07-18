@@ -1,8 +1,8 @@
 import { ApiClient } from '@/api-client'
 import { type EnvironmentInfo, Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import type { StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import type { StoreProxy } from '@ziee/framework/stores'
 
 /**
  * Shared catalog of known sandbox flavors + the host command allowlist — backs
@@ -85,7 +85,7 @@ export const SandboxFlavors = defineStore('SandboxFlavors', {
 
 export const useSandboxFlavorsStore = SandboxFlavors.store
 
-declare module '../../../core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     SandboxFlavors: StoreProxy<ReturnType<typeof SandboxFlavors.store.getState>>
   }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, message } from '@/components/ui'
+import { Button, message } from '@ziee/kit'
 import { Check, Copy as CopyIcon } from 'lucide-react'
 import {
   createExtension,

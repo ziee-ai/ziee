@@ -22,8 +22,8 @@ import {
   Textarea,
   Title,
   useForm,
-} from '@/components/ui'
-import type { TableColumn } from '@/components/ui'
+} from '@ziee/kit'
+import type { TableColumn } from '@ziee/kit'
 import type { GalleryStory } from '../story'
 
 const noop = () => undefined

@@ -1,0 +1,20 @@
+file	change	reconciliation	angles
+sdk/crates/ziee-file/Cargo.toml	add [features] routes + optional aide(+axum-query)/axum/ziee-framework/ziee-auth/jsonwebtoken	engine/surface split mirroring ziee-auth; axum-query supplies OperationInput for Query (workspace aide already had it → union unchanged); standalone build green	standalone-crate-build,clean-build,equivalence-openapi
+sdk/crates/ziee-file/src/lib.rs	#[cfg(feature="routes")] pub mod http	gates the HTTP surface; engine compiles without it	standalone-crate-build,scope-boundary
+sdk/crates/ziee-file/src/http/mod.rs	NEW routes-bundle module + re-exports	declares context/handlers/routes; re-exports file_routes + content_disposition + cache consts + FileContext	seam-injection,consumer-shim
+sdk/crates/ziee-file/src/http/context.rs	NEW FileContext + DownloadTokenSigner	the injected per-request handle (repo + FileEvents + signer)	seam-injection,security-no-domain-leak
+sdk/crates/ziee-file/src/http/handlers/mod.rs	NEW handler module tree	pub mod download/management/versions + glob re-exports	equivalence-routing
+sdk/crates/ziee-file/src/http/handlers/download.rs	NEW (moved download_file+generate_download_token+content_disposition+consts+docs)	T-1/T-2/T-3; generic over R; signer via ctx.download_token; golden byte-identical	equivalence-openapi,security-download-token-authpath,seam-injection
+sdk/crates/ziee-file/src/http/handlers/management.rs	NEW (moved list/get/preview/raw/thumbnail/text/text-rects/delete + geometry helpers+tests+docs)	T-1/T-2; delete via ctx.events; align_span_to_boxes+tests verbatim; golden byte-identical	equivalence-openapi,security-ownership-scope,behaviour-restore-reindex
+sdk/crates/ziee-file/src/http/handlers/versions.rs	NEW (moved list/head/get/restore/download/preview/text versions + version_and_file + DTOs + docs)	T-1/T-4/T-5/T-6; restore via ctx.events on_file_changed+on_committed; pagination consts inlined	equivalence-openapi,behaviour-restore-reindex,security-ownership-scope
+sdk/crates/ziee-file/src/http/routes.rs	NEW file_routes<R>()	17 moved routes; generic; GET-only on /versions + GET/DELETE on /{id} (merge on shared path)	equivalence-routing,equivalence-openapi
+sdk/Cargo.lock	aide/axum/jsonwebtoken reach ziee-file	dep unification; no version change	clean-build
+src-app/server/src/modules/file/handlers/download.rs	-228L: keep ONLY download_with_token + re-export content_disposition/import FILE_CONTENT_CACHE_CONTROL	T-3/Decision-1: identity re-check stays ziee; moved fns deleted here (source-deletion)	security-download-token-authpath,consumer-shim
+src-app/server/src/modules/file/handlers/management.rs	DELETED (fully moved)	every symbol resolves in ziee_file::http; no ziee residue	equivalence-routing,scope-boundary
+src-app/server/src/modules/file/handlers/versions.rs	-338L: keep ONLY append_version+AppendVersionRequest+docs	Decision-2: commit_new_version→ProcessingManager stays ziee; moved fns deleted	scope-boundary,behaviour-restore-reindex
+src-app/server/src/modules/file/handlers/mod.rs	drop `pub mod management`	management fully moved	clean-build
+src-app/server/src/modules/file/routes.rs	file_router() = merge(file_routes::<ZieeIdentityResolver>) + 6 retained routes	T-7; same paths+operationIds+order-independent; golden byte-identical	equivalence-routing,equivalence-openapi
+src-app/server/src/modules/file/ingest.rs	+ZieeFileEvents::on_committed + build_file_context	T-6/T-8; on_committed(is_new=false)→spawn_reindex; context builder	seam-injection,behaviour-restore-reindex
+src-app/server/src/lib.rs	+Extension(build_file_context) in setup_server	desktop/openapi-gen path gets FileContext	seam-injection,clean-build
+src-app/server/src/main.rs	+Extension(build_file_context) in the bin router block	the ziee binary gets FileContext (cleared the dead-code warning)	seam-injection,clean-build
+src-app/Cargo.lock	dep graph refresh (aide/axum/jsonwebtoken via ziee-file)	no version change	clean-build

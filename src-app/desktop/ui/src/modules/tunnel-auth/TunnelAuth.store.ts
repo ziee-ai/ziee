@@ -8,8 +8,8 @@
 
 import { ApiClient } from '@/api-client'
 import type { AuthConfigResponse, AuthResponse } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { Stores } from '@ziee/framework/stores'
 
 function applySession(res: AuthResponse): void {
   // Hand the whole pair to the shared Auth store: it captures the body refresh

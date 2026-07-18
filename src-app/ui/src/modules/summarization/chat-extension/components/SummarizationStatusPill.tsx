@@ -1,7 +1,7 @@
 import { Shrink, FileText, EyeOff, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Tooltip, Tag, Dropdown, message } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Tooltip, Tag, Dropdown, message } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 
 type Mode = 'inherit' | 'on' | 'off'

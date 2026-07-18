@@ -1,10 +1,11 @@
 import { Permissions } from '@/api-client/types'
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 import { NotificationBellWidget } from './components/NotificationBellWidget'
 import { useNotificationsStore } from './stores/Notifications.store'
 import '@/modules/notification/types' // register Stores.Notifications (declaration merge)
+import '@/modules/notification/kinds' // register ziee's notification kinds/renderers (SDK seam)
 
 const NotificationsPage = lazyWithPreload(() =>
   import('./pages/NotificationsPage').then(m => ({

@@ -14,10 +14,10 @@ import {
   Tag,
   Text,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { User } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'

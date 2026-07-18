@@ -7,7 +7,7 @@ import {
   Switch,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { useEffect, useState } from 'react'
 import type { ProxySettings } from '@/api-client/types'

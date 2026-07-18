@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import { Brain, ChevronDown } from 'lucide-react'
-import { Button, Card, Text } from '@/components/ui'
+import { Button, Card, Text } from '@ziee/kit'
 import { cn } from '@/lib/utils'
 import type { MessageContent } from '@/api-client/types'
 

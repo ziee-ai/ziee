@@ -1,5 +1,5 @@
 import type { LlmProvider } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const LlmProviderDrawer = defineStore('LlmProviderDrawer', {
   state: { isOpen: false, editingProvider: null as LlmProvider | null },

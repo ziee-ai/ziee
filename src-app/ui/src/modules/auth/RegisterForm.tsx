@@ -10,12 +10,12 @@ import {
   Text,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { EMAIL_RE } from '@/lib/validation'
 import { Lock, Mail, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { CreateUserRequest } from '@/api-client/types'
 
 interface RegisterFormProps {

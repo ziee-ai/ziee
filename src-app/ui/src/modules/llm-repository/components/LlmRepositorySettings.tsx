@@ -7,15 +7,15 @@ import {
   ErrorState,
   Flex,
   Switch,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import {
   Text,
   message,
   Separator,
   Confirm,
-} from '@/components/ui'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type LlmRepository } from '@/api-client/types'

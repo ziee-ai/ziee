@@ -1,6 +1,6 @@
-import { Button } from '@/components/ui'
+import { Button } from '@ziee/kit'
 import { SquareArrowOutUpRight } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { openConversationWindow } from '@/modules/chat/core/popout/openConversationWindow'
 import { popoutActionVisible } from '@/modules/chat/core/popout/popoutVisibility'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'

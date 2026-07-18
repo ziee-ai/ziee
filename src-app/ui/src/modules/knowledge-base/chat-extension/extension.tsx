@@ -46,7 +46,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
     const { registerPanelRenderer } = await import(
       '@/modules/chat/core/stores/Chat.store'
     )
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { KbSourcePanel } = await import('./components/KbSourcePanel')
     registerPanelRenderer('kb_source', {
       icon: <BookOpen />,
@@ -94,7 +94,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   },
 
   onConversationLoad: async conversation => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const store = Stores.KnowledgeBaseComposer
     // Per-conversation (ITEM-46): hydrate THIS conversation's own slot.
     if (conversation.id) await store.loadForConversation(conversation.id)
@@ -106,7 +106,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   },
 
   onMessageSent: async ownerPaneId => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { pendingKbKey } = await import('../stores/kbSelectionKey')
     const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     const snap = Stores.KnowledgeBaseComposer.$

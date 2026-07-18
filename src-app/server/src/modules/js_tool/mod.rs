@@ -105,7 +105,7 @@ impl AppModule for JsToolModule {
         // Deploy-level kill switch (default enabled) — mirrors web_search /
         // lit_search. When off, the server row is never registered so the chat
         // extension never attaches run_js.
-        if !is_enabled(&ctx.config) {
+        if !is_enabled(&crate::module_api::app_config(ctx)) {
             tracing::info!("js_tool: disabled by config (js_tool.enabled=false); run_js not registered");
             return Ok(());
         }

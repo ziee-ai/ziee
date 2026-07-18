@@ -8,9 +8,9 @@ import {
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
-import { Button, Tooltip } from '@/components/ui'
+import { Button, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '@/modules/file/types/viewer'

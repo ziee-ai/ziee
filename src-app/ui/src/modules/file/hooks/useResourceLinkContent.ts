@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * URL-keyed cache for fetched resource_link text contents.

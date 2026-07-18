@@ -83,7 +83,11 @@ async fn run_now_prompt_produces_a_notification() {
         n["kind"], "scheduled_task_result",
         "expected a success notification, got {n:?}"
     );
-    assert!(n["conversation_id"].is_string(), "should link the conversation");
+    // R2: kind-specific ids ride the `payload` jsonb column, not top-level FKs.
+    assert!(
+        n["payload"]["conversation_id"].is_string(),
+        "should link the conversation via payload"
+    );
     assert!(n["read_at"].is_null(), "should arrive unread");
     assert_eq!(page["unread"], 1);
 }

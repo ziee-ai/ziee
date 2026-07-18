@@ -1,7 +1,7 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useHubSkillsStore } from '@/modules/hub/modules/skill/stores/hub-skills-store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     HubSkills: StoreProxy<ReturnType<typeof useHubSkillsStore.getState>>
   }

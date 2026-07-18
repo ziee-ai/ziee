@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Flex, Confirm, Tooltip, Text, Title } from '@/components/ui'
+import { Button, Card, Flex, Confirm, Tooltip, Text, Title } from '@ziee/kit'
 import { Copy, Pencil, Trash2 } from 'lucide-react'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type Project } from '@/api-client/types'

@@ -1,0 +1,11 @@
+hunk	file	summary	angles
+H1	sdk sync/registry.rs (new)	SyncRegistry<P>+ClientConn<P>, deliver takes Event, principal routing, session fan-out<E>, caps/prune, tests	equivalence,permission-routing(B5-01),deliver-signature(B5-07),caps-pruning(B5-06),session-fanout(B5-04),self-echo(B5-05),generics-bounds(B5-09),test-fidelity(B5-12)
+H2	sdk sync/audience.rs (new)	Audience/PermRule + 5 typed constructors + 2 moved tests	equivalence,api-surface(B5-13),cross-crate-resolution(B5-10),test-fidelity(B5-12)
+H3	sdk sync/mod.rs (new)	SyncEntityKind trait (session_signal) + re-exports	schema-neutrality(B5-03),session-fanout(B5-04),generics-bounds(B5-09)
+H4	sdk sync/extractor.rs (new)	SyncOrigin + SYNC_CONNECTION_HEADER verbatim	equivalence,cross-crate-resolution(B5-10),api-surface(B5-13)
+H5	sdk lib.rs + Cargo.toml	pub mod sync + crate-root re-export; add tokio+uuid	cross-crate-resolution(B5-10),build-hygiene(B5-11),api-surface(B5-13)
+H6	ziee sync/event.rs	drop Audience(re-export), SyncEntityKind impl, publish/publish_session rewrite, drop 2 tests	equivalence(B5-01),schema-neutrality(B5-02),session-fanout(B5-04),deliver-signature(B5-07),security(B5-15)
+H7	ziee sync/registry.rs	shim: SyncConnPrincipal+Principal impl, lazy_static singleton, registry()	equivalence(B5-01),singleton-lifecycle(B5-08),permission-routing(B5-01),generics-bounds(B5-09)
+H8	ziee sync/extractor.rs	shim re-export of SyncOrigin	api-surface(B5-13),cross-crate-resolution(B5-10),build-hygiene(B5-11)
+H9	ziee sync/handlers.rs	ClientConn{principal:SyncConnPrincipal{..}} + refresh(SyncConnPrincipal{..})	equivalence(B5-01),singleton-lifecycle(B5-08),api-surface(B5-13)
+H10	ziee permissions/mod.rs + types.rs	drop mod-level PermissionList re-export; #[allow] bin-tree types re-export	build-hygiene(B5-11),api-surface(B5-13),cross-crate-resolution(B5-10)

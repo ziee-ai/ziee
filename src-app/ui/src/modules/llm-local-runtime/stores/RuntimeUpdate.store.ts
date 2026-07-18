@@ -1,6 +1,6 @@
 import { ApiClient } from '@/api-client'
-import { defineStore } from '@/core/store-kit'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { Stores } from '@ziee/framework/stores'
 import type { RuntimeEngine, RuntimeUpdateCheck } from '../types'
 
 export const RuntimeUpdate = defineStore('RuntimeUpdate', {

@@ -1,8 +1,8 @@
-import { Button, message } from '@/components/ui'
+import { Button, message } from '@ziee/kit'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import { Seam } from '@/core/overrides'
+import { Seam } from '@ziee/framework/overrides'
 
 /**
  * "Monitor" button shown in the Hardware settings title bar.
@@ -20,7 +20,7 @@ import { Seam } from '@/core/overrides'
  * seam is inside the gate, so the desktop override also only renders when
  * permitted.
  */
-declare module '@/core/overrides' {
+declare module '@ziee/framework/overrides' {
   interface UIOverrides {
     // Override takes no props — the shared permission gate + label/icon are
     // supplied by core; only the click behavior (native window) differs.

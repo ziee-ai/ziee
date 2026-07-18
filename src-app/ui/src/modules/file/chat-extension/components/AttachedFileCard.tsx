@@ -1,4 +1,4 @@
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { FileCard } from '@/modules/file/components/FileCard'
 import type { File as FileEntity } from '@/api-client/types'

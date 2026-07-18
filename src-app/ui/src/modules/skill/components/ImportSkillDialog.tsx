@@ -1,8 +1,8 @@
 import { Inbox } from 'lucide-react'
-import { Alert, Button, Dialog, Space, Text, Upload, message } from '@/components/ui'
+import { Alert, Button, Dialog, Space, Text, Upload, message } from '@ziee/kit'
 import { useState } from 'react'
 import type { ValidateSkillResponse } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 interface ImportSkillDialogProps {
   open: boolean

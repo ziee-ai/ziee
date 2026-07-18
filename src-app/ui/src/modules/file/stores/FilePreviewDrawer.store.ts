@@ -6,7 +6,7 @@
 // gets a working preview without per-surface plumbing.
 
 import type { File as FileEntity } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const FilePreviewDrawer = defineStore('FilePreviewDrawer', {
   state: { isOpen: false, file: null as FileEntity | null },

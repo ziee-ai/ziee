@@ -10,7 +10,7 @@ import {
   Tooltip,
   message,
   dialog,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { formatSpeed, formatTime } from '@/utils/downloadUtils'
 import {
   Permissions,
@@ -22,7 +22,7 @@ import {
 } from '@/api-client/types'
 import { useState } from 'react'
 import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { useHubModelDownloadGate } from '@/modules/hub/modules/llm-models/hooks/useHubModelDownloadGate'
 

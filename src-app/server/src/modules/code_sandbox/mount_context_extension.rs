@@ -103,6 +103,7 @@ impl ChatExtension for MountContextExtension {
                 .workspace_root
                 .join(context.conversation_id.to_string()),
             files: Arc::new(Vec::new()),
+            extra_ro_binds: Vec::new(),
         };
 
         // Same resolution + sanitization execute_command uses, so the paths the

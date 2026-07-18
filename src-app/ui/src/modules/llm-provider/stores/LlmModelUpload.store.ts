@@ -4,7 +4,7 @@ import type {
   ModelEngineSettings,
 } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
 
 /** Upload progress for a single file */

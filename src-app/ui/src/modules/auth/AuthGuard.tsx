@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { AuthPage } from '@/modules/auth/AuthPage'
 import { Loading } from '@/core/components/Loading'
 

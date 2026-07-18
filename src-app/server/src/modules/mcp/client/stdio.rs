@@ -88,7 +88,7 @@ pub struct StdioMcpClient {
     /// counter so a pending swap-drain can evict the old-version
     /// mount once every sandboxed MCP server using it shuts down.
     /// `None` for non-sandboxed paths.
-    _sandbox_inflight: Option<crate::modules::code_sandbox::version_manager::InflightGuard>,
+    _sandbox_inflight: Option<crate::modules::code_sandbox::registry::InflightGuard>,
 }
 
 impl StdioMcpClient {

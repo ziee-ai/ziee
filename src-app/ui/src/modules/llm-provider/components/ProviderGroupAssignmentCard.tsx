@@ -1,10 +1,10 @@
-import { Card } from '@/components/ui'
+import { Card } from '@ziee/kit'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
 import { emitLlmProviderGroupsChanged } from '@/modules/llm-provider/events'
 

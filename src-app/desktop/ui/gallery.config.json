@@ -1,0 +1,11 @@
+{
+  "galleryDir": "src/dev/gallery",
+  "srcDir": "src",
+  "surfaceRoots": ["src/modules", "src/components/ui"],
+  "kitImport": "@ziee/kit",
+  "port": 1455,
+  "galleryUrl": "/gallery.html",
+  "extraTrees": ["../../ui/src"],
+  "kitTestIds": ["../../../sdk/packages/kit/src", "../../../sdk/packages/shell/src"],
+  "testidOut": "../../../sdk/packages/kit/src/testIds.generated.ts"
+}

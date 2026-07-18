@@ -10,12 +10,12 @@ import {
   Switch,
   Text,
   Tooltip,
-} from '@/components/ui'
-import { message } from '@/components/ui'
+} from '@ziee/kit'
+import { message } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { useParams } from 'react-router-dom'
 import { useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type LlmModel } from '@/api-client/types'

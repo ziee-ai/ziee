@@ -12,11 +12,11 @@ import {
   Upload,
   useForm,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { formatBytes } from '@/utils/downloadUtils'

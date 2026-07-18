@@ -3,7 +3,7 @@ import { Workflow as WorkflowIcon } from 'lucide-react'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import type { Workflow } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { GroupEntityAssignmentWidget } from '@/components/common/group-entity-assignment/GroupEntityAssignmentWidget'
 

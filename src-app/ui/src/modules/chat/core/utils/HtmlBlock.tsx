@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { CustomRendererProps } from 'streamdown'
 import { Check, Copy as CopyIcon } from 'lucide-react'
-import { Button, Segmented, message } from '@/components/ui'
+import { Button, Segmented, message } from '@ziee/kit'
 import { cn } from '@/lib/utils'
 import { SANDBOX, buildSandboxedSrcdoc } from './htmlBlockSandbox'
 

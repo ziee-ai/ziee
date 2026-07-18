@@ -1,9 +1,8 @@
 // Group handlers
 
-use crate::core::Repos;
 use aide::transform::TransformOperation;
 use axum::{
-    Json, debug_handler,
+    Extension, Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
 };
@@ -11,8 +10,9 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
+    modules::auth::context::{AuthContext, AuthSyncAction, AuthSyncEntity},
     modules::permissions::{RequirePermissions, with_permission},
-    modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+    modules::sync::{Audience, SyncOrigin},
 };
 
 use crate::modules::user::{
@@ -32,9 +32,10 @@ use crate::modules::user::{
 #[debug_handler]
 pub async fn list_groups(
     _auth: RequirePermissions<(GroupsRead,)>,
+    Extension(ctx): Extension<AuthContext>,
     Query(params): Query<PaginationQuery>,
 ) -> ApiResult<Json<GroupListResponse>> {
-    let (groups, total) = Repos.group.list(params.page, params.per_page).await?;
+    let (groups, total) = ctx.group().list(params.page, params.per_page).await?;
 
     let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
 
@@ -64,10 +65,10 @@ pub fn list_groups_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn get_group(
     _auth: RequirePermissions<(GroupsRead,)>,
+    Extension(ctx): Extension<AuthContext>,
     Path(group_id): Path<Uuid>,
 ) -> ApiResult<Json<Group>> {
-    let group = Repos
-        .group
+    let group = ctx.group()
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -90,6 +91,7 @@ pub fn get_group_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_group(
     auth: RequirePermissions<(GroupsCreate,)>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Json(request): Json<CreateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
@@ -124,19 +126,18 @@ pub async fn create_group(
     }
 
     // Check if group name already exists
-    if Repos.group.get_by_name(&request.name).await?.is_some() {
+    if ctx.group().get_by_name(&request.name).await?.is_some() {
         return Err(AppError::conflict("Group name").into());
     }
 
     // Create group
-    let group = Repos
-        .group
+    let group = ctx.group()
         .create(&request.name, request.description, request.permissions)
         .await?;
 
-    sync_publish(
-        SyncEntity::Group,
-        SyncAction::Create,
+    ctx.sync.publish(
+        AuthSyncEntity::Group,
+        AuthSyncAction::Create,
         group.id,
         Audience::perm::<GroupsRead>(),
         origin.0,
@@ -161,13 +162,13 @@ pub fn create_group_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_group(
     auth: RequirePermissions<(GroupsEdit,)>,
+    Extension(ctx): Extension<AuthContext>,
     Path(group_id): Path<Uuid>,
     origin: SyncOrigin,
     Json(request): Json<UpdateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Check if group exists
-    let existing_group = Repos
-        .group
+    let existing_group = ctx.group()
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -216,14 +217,13 @@ pub async fn update_group(
 
     // Check if new name already exists
     if let Some(ref name) = request.name
-        && let Some(existing) = Repos.group.get_by_name(name).await?
+        && let Some(existing) = ctx.group().get_by_name(name).await?
             && existing.id != group_id {
                 return Err(AppError::conflict("Group name").into());
             }
 
     // Update group
-    let group = Repos
-        .group
+    let group = ctx.group()
         .update(
             group_id,
             request.name,
@@ -233,9 +233,9 @@ pub async fn update_group(
         )
         .await?;
 
-    sync_publish(
-        SyncEntity::Group,
-        SyncAction::Update,
+    ctx.sync.publish(
+        AuthSyncEntity::Group,
+        AuthSyncAction::Update,
         group.id,
         Audience::perm::<GroupsRead>(),
         origin.0,
@@ -246,8 +246,8 @@ pub async fn update_group(
     // waiting up to 60s for the per-connection re-check. Batched into a single
     // registry-lock acquisition (the default Users group can contain every
     // user). Best-effort: a query failure just falls back to the re-check.
-    if let Ok(member_ids) = Repos.group.get_member_ids(group.id).await {
-        crate::modules::sync::publish_session_to_users(&member_ids, origin.0);
+    if let Ok(member_ids) = ctx.group().get_member_ids(group.id).await {
+        ctx.sync.publish_session_to_users(&member_ids, origin.0);
     }
 
     Ok((StatusCode::OK, Json(group)))
@@ -270,12 +270,12 @@ pub fn update_group_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn delete_group(
     _auth: RequirePermissions<(GroupsDelete,)>,
+    Extension(ctx): Extension<AuthContext>,
     Path(group_id): Path<Uuid>,
     origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if group exists
-    let group = Repos
-        .group
+    let group = ctx.group()
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -286,11 +286,11 @@ pub async fn delete_group(
     }
 
     // Delete group
-    Repos.group.delete(group_id).await?;
+    ctx.group().delete(group_id).await?;
 
-    sync_publish(
-        SyncEntity::Group,
-        SyncAction::Delete,
+    ctx.sync.publish(
+        AuthSyncEntity::Group,
+        AuthSyncAction::Delete,
         group_id,
         Audience::perm::<GroupsRead>(),
         origin.0,
@@ -315,17 +315,17 @@ pub fn delete_group_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn get_group_members(
     auth: RequirePermissions<(GroupsRead,)>,
+    Extension(ctx): Extension<AuthContext>,
     Path(group_id): Path<Uuid>,
     Query(params): Query<PaginationQuery>,
 ) -> ApiResult<Json<UserListResponse>> {
     // Check if group exists
-    if Repos.group.get_by_id(group_id).await?.is_none() {
+    if ctx.group().get_by_id(group_id).await?.is_none() {
         return Err(AppError::not_found("Group").into());
     }
 
     // Get group members
-    let (mut users, total) = Repos
-        .group
+    let (mut users, total) = ctx.group()
         .get_members(group_id, params.page, params.per_page)
         .await?;
 
@@ -369,17 +369,17 @@ pub fn get_group_members_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn assign_user_to_group(
     auth: RequirePermissions<(GroupsAssignUsers,)>,
+    Extension(ctx): Extension<AuthContext>,
     origin: SyncOrigin,
     Json(request): Json<AssignUserToGroupRequest>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    if Repos.user.get_by_id(request.user_id).await?.is_none() {
+    if ctx.user().get_by_id(request.user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
     }
 
     // Check if group exists
-    let target_group = Repos
-        .group
+    let target_group = ctx.group()
         .get_by_id(request.group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -418,26 +418,25 @@ pub async fn assign_user_to_group(
     }
 
     // Assign user to group
-    Repos
-        .user
+    ctx.user()
         .assign_to_group(request.user_id, request.group_id, Some(auth.user.id))
         .await?;
 
     // Signal the affected user that their permissions changed so their
     // open sessions re-bootstrap /auth/me immediately (the 60s re-check is
     // the backstop). Owner-scoped to that user only.
-    sync_publish(
-        SyncEntity::Session,
-        SyncAction::Update,
+    ctx.sync.publish(
+        AuthSyncEntity::Session,
+        AuthSyncAction::Update,
         request.user_id,
         Audience::owner(request.user_id),
         origin.0,
     );
 
     // The group's member list changed → refresh admins viewing it elsewhere.
-    sync_publish(
-        SyncEntity::Group,
-        SyncAction::Update,
+    ctx.sync.publish(
+        AuthSyncEntity::Group,
+        AuthSyncAction::Update,
         request.group_id,
         Audience::perm::<GroupsRead>(),
         origin.0,
@@ -461,35 +460,36 @@ pub fn assign_user_to_group_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn remove_user_from_group(
     _auth: RequirePermissions<(GroupsAssignUsers,)>,
+    Extension(ctx): Extension<AuthContext>,
     Path((user_id, group_id)): Path<(Uuid, Uuid)>,
     origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    if Repos.user.get_by_id(user_id).await?.is_none() {
+    if ctx.user().get_by_id(user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
     }
 
     // Check if group exists
-    if Repos.group.get_by_id(group_id).await?.is_none() {
+    if ctx.group().get_by_id(group_id).await?.is_none() {
         return Err(AppError::not_found("Group").into());
     }
 
     // Remove user from group
-    Repos.user.remove_from_group(user_id, group_id).await?;
+    ctx.user().remove_from_group(user_id, group_id).await?;
 
     // Signal the affected user that their permissions changed (Owner-scoped).
-    sync_publish(
-        SyncEntity::Session,
-        SyncAction::Update,
+    ctx.sync.publish(
+        AuthSyncEntity::Session,
+        AuthSyncAction::Update,
         user_id,
         Audience::owner(user_id),
         origin.0,
     );
 
     // The group's member list changed → refresh admins viewing it elsewhere.
-    sync_publish(
-        SyncEntity::Group,
-        SyncAction::Update,
+    ctx.sync.publish(
+        AuthSyncEntity::Group,
+        AuthSyncAction::Update,
         group_id,
         Audience::perm::<GroupsRead>(),
         origin.0,

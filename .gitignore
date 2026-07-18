@@ -52,18 +52,24 @@ src-app/server/vendor/pgvector/pg_config_wrapper/
 
 # Claude Code local state + docs — never tracked (settings, agents,
 # worktrees, scheduled-task lock, and any architecture notes under here).
-# .claude is machine-local EXCEPT the committed agent infra below
+# .claude is machine-local EXCEPT the committed agent infra below.
+# NOTE: the skills + lifecycle entries are now SYMLINKS into the agent-kit
+# submodule (agent-kit/). A whitelist entry must have NO trailing slash — a
+# trailing-slash pattern matches directories ONLY, and a symlink is a file, so
+# `!.claude/lifecycle/` would leave the symlink IGNORED. No-slash tracks both a
+# real dir (main checkout, pre-merge) and a symlink (consume branch).
 .claude/*
 !.claude/skills/
 .claude/skills/*
-!.claude/skills/feature-lifecycle/
-!.claude/skills/feature-orchestration/
-!.claude/skills/design-variant-tournament/
-!.claude/skills/shadcn-component-discovery/
-!.claude/skills/shadcn-component-review/
-!.claude/skills/frontend-ui-engineering/
-!.claude/skills/design-taste-frontend/
-!.claude/lifecycle/
+!.claude/skills/feature-lifecycle
+!.claude/skills/feature-orchestration
+!.claude/skills/design-variant-tournament
+!.claude/skills/shadcn-component-discovery
+!.claude/skills/shadcn-component-review
+!.claude/skills/frontend-ui-engineering
+!.claude/skills/design-taste-frontend
+!.claude/lifecycle
+!.claude/app.config
 
 # Transient server build/packaging staging (server-release.yml + nfpm smoke).
 /dist/

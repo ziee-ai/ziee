@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react'
-import { Input, Switch, Textarea, Tree, Text } from '@/components/ui'
-import type { TreeProps } from '@/components/ui'
+import { Input, Switch, Textarea, Tree, Text } from '@ziee/kit'
+import type { TreeProps } from '@ziee/kit'
 import { useMemo, useState } from 'react'
 import { Permissions, PermissionDescriptions } from '@/api-client/types'
 

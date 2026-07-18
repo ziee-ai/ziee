@@ -8,7 +8,7 @@ import {
   Text,
   Title,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useMemo, useState } from 'react'
 import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
@@ -16,7 +16,7 @@ import { ApiClient } from '@/api-client'
 import type { Skill } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { STREAMDOWN_PLUGINS } from '@/components/common/streamdownPlugins'
 import { SkillScopeBadge } from './SkillScopeBadge'

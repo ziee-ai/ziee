@@ -1,13 +1,13 @@
 import { Check } from 'lucide-react'
-import { Button, Card, Select } from '@/components/ui'
+import { Button, Card, Select } from '@ziee/kit'
 import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldTitle,
-} from '@/components/ui/shadcn/field'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit/shadcn/field'
+import { Stores } from '@ziee/framework/stores'
 import type { ThemePreference } from '@/modules/config-client/ConfigClient.store'
 import {
   ACCENT_PRESETS,

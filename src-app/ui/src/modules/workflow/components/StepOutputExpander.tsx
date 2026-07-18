@@ -1,4 +1,4 @@
-import { Spin, Accordion, Paragraph, message } from '@/components/ui'
+import { Spin, Accordion, Paragraph, message } from '@ziee/kit'
 import { useState } from 'react'
 import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import { ApiClient } from '@/api-client'

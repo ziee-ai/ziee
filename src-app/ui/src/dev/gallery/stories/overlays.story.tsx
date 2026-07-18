@@ -10,8 +10,8 @@ import {
   Dropdown,
   Popover,
   Sheet,
-} from '@/components/ui'
-import { FieldError } from '@/components/ui/shadcn/field'
+} from '@ziee/kit'
+import { FieldError } from '@ziee/kit/shadcn/field'
 import type { GalleryStory } from '../story'
 
 const noop = () => undefined

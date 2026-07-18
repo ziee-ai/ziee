@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { AuthProviderResponse } from '@/api-client/types'
 
 export interface AuthProviderCreatedEvent extends BaseEvent {
@@ -47,7 +47,7 @@ export type AuthProviderModuleEvent =
   | AuthProviderDeletedEvent
   | AuthProviderAutoDisabledEvent
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'auth_provider.created': AuthProviderCreatedEvent
     'auth_provider.updated': AuthProviderUpdatedEvent

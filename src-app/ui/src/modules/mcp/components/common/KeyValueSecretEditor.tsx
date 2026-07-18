@@ -1,4 +1,4 @@
-import { Button, Input, PasswordInput, Switch, Tooltip, Text, FormField, FormList, useFormContext, useWatch, Flex } from '@/components/ui'
+import { Button, Input, PasswordInput, Switch, Tooltip, Text, FormField, FormList, useFormContext, useWatch, Flex } from '@ziee/kit'
 import { Trash2, Plus } from 'lucide-react'
 
 /**

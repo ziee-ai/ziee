@@ -1,7 +1,7 @@
 import { ArrowUpDown, Check } from 'lucide-react'
-import { Button, Dropdown, Select } from '@/components/ui'
-import type { DropdownItem } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Button, Dropdown, Select } from '@ziee/kit'
+import type { DropdownItem } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import type { ConversationSort } from '@/modules/chat/stores/ChatHistory.store'
 
 export const SORT_OPTIONS: { value: ConversationSort; label: string }[] = [

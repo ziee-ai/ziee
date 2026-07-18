@@ -1,5 +1,5 @@
 import type { RuntimeEngine } from '../types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const RuntimeDownloadDrawer = defineStore('RuntimeDownloadDrawer', {
   state: { open: false, engine: null as RuntimeEngine | null },

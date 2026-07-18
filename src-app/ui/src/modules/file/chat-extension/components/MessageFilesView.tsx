@@ -1,4 +1,4 @@
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import { InlineFilePreview } from './InlineFilePreview'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'

@@ -13,7 +13,7 @@ import {
   lazyProps,
   whenTrue,
 } from '@/dev/gallery/support'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   firstEnabledRemoteProviderId,
   llmGroupsList,

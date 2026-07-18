@@ -1,5 +1,5 @@
 import type { Group } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const GroupMembersDrawer = defineStore('GroupMembersDrawer', {
   state: { isOpen: false, selectedGroup: null as Group | null },

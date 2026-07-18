@@ -163,6 +163,7 @@ pub async fn login_password_only(
     // non-revocable token surviving logout is bad for a phone session on
     // a shared device.
     let with_jti = ziee::refresh_tokens::mint_session_tokens(
+        ziee::Repos.pool(),
         &jwt_service,
         user.id,
         &user.username,

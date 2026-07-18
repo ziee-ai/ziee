@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { Group, User } from '@/api-client/types'
 
 // Define module-specific events
@@ -72,7 +72,7 @@ export type UserModuleEvent =
   | GroupMemberRemovedEvent
 
 // Register events in global registry via declaration merging
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'group.created': GroupCreatedEvent
     'group.updated': GroupUpdatedEvent

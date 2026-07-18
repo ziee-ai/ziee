@@ -14,7 +14,7 @@ import {
   type VersionStatus,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { reconcileInitialTask } from './installTaskReconcile'
 
 /** Per-(version, arch, flavor, package) action state — drives the install /

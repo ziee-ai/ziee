@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { Permissions, type UserConnectorKeyCatalogEntry } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * The calling user's OWN lit-search connector keys. Each user may supply their

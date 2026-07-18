@@ -9,10 +9,10 @@ import {
   Title,
   message,
   useForm,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'

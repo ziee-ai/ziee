@@ -8,12 +8,12 @@ import {
   useState,
 } from 'react'
 import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
-import { Flex } from '@/components/ui'
-import { Text } from '@/components/ui'
+import { Flex } from '@ziee/kit'
+import { Text } from '@ziee/kit'
 import { Loader2, MessageSquare } from 'lucide-react'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatMessage } from '@/modules/chat/components/ChatMessage'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import {
   anchorRestoreNeeded,
   captureTopAnchor,

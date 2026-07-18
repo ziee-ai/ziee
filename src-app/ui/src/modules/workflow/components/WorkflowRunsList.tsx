@@ -1,10 +1,10 @@
 import { Trash2 } from 'lucide-react'
-import { Button, Empty, List, Confirm, Space, Tag, Text, Link, message } from '@/components/ui'
+import { Button, Empty, List, Confirm, Space, Tag, Text, Link, message } from '@ziee/kit'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 const STATUS_COLOR: Record<string, string> = {
   completed: 'green',

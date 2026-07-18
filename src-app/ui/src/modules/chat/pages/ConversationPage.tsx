@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
-import { Alert, Button, ErrorState, Tooltip } from '@/components/ui'
+import { Alert, Button, ErrorState, Tooltip } from '@ziee/kit'
 import { Columns2, GripVertical, Search as SearchIcon, X } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import {
@@ -37,7 +37,7 @@ import { useHeaderLeftInset } from '@/modules/layouts/app-layout/hooks/useHeader
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
-import { Stores } from '@/core'
+import { Stores } from '@ziee/framework'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'

@@ -27,9 +27,14 @@ impl AutoAssignMcpServerHandler {
 impl ziee::EventHandler for AutoAssignMcpServerHandler {
     async fn handle(
         &self,
-        event: &ziee::AppEvent,
+        event: &(dyn std::any::Any + Send + Sync),
         _pool: &sqlx::PgPool,
     ) -> std::result::Result<(), ziee::AppError> {
+        // The framework `EventHandler` erases the event to `&dyn Any`; recover
+        // the app's concrete `AppEvent`.
+        let Some(event) = event.downcast_ref::<ziee::AppEvent>() else {
+            return Ok(());
+        };
         if let ziee::AppEvent::McpServer(ziee::McpServerEvent::SystemServerCreated {
             server_id,
         }) = event

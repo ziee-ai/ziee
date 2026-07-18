@@ -4,7 +4,7 @@
  */
 
 import { RotateCw } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import {
   Alert,
@@ -17,7 +17,7 @@ import {
   Paragraph,
   Link,
   Tooltip,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 const UPGRADE_COMMAND =
   'curl -fsSL https://github.com/ziee-ai/ziee/releases/latest/download/install.sh | sh'

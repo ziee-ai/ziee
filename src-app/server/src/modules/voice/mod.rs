@@ -93,7 +93,11 @@ impl AppModule for VoiceModule {
         // section means enabled). Operators opt OUT with `voice: { enabled:
         // false }`; an admin cannot re-enable it (distinct from the runtime
         // `voice_runtime_settings.enabled` toggle).
-        let enabled = ctx.config.voice.as_ref().map(|c| c.enabled).unwrap_or(true);
+        let enabled = crate::module_api::app_config(ctx)
+            .voice
+            .as_ref()
+            .map(|c| c.enabled)
+            .unwrap_or(true);
         self.enabled = enabled;
         if !enabled {
             tracing::info!("voice: disabled in config; skipping reaper + route registration");

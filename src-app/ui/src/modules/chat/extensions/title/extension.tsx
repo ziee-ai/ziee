@@ -35,7 +35,7 @@ const titleExtension: ChatExtension = createExtension({
       }))
 
       // Emit event for ChatHistory to update
-      const { Stores } = await import('@/core/stores')
+      const { Stores } = await import('@ziee/framework/stores')
       await Stores.EventBus.emit({
         type: 'conversation.titleUpdated',
         data: {

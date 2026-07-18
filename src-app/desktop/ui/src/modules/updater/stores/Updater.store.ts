@@ -7,8 +7,8 @@
 
 import { getVersion } from '@tauri-apps/api/app'
 import { ApiClient } from '@/api-client'
-import { defineStore } from '@/core/store-kit'
-import { type StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { type StoreProxy } from '@ziee/framework/stores'
 
 // Poll cadence while downloading (smooth progress bar without hammering).
 const POLL_INTERVAL_MS = 800
@@ -48,7 +48,7 @@ interface UpdaterState {
   stopPolling: () => void
 }
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Updater: StoreProxy<UpdaterState>
   }

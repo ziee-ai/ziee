@@ -83,7 +83,7 @@ pub async fn setup_admin(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Mint + whitelist the session tokens (admin-configured lifetimes).
-    let minted = mint_session_tokens(&jwt_service, user.id, &user.username, &user.email, user.is_admin)
+    let minted = mint_session_tokens(Repos.pool(), &jwt_service, user.id, &user.username, &user.email, user.is_admin)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 

@@ -1,5 +1,5 @@
-import { Spin } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Spin } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { RawCodeView } from '../shared/RawCodeView'

@@ -111,7 +111,7 @@ pub fn get_user_workflow_docs(op: TransformOperation) -> TransformOperation {
 async fn cleanup_run_artifacts(user_id: Uuid, run_id: Uuid, conversation_id: Option<Uuid>) {
     if conversation_id.is_none() {
         let storage = crate::modules::file::storage::manager::get_file_storage();
-        if let Ok(fids) = Repos.file.list_ids_by_workflow_run(run_id).await {
+        if let Ok(fids) = Repos.file_workflow_runs.list_file_ids(run_id).await {
             for fid in fids {
                 match Repos.file.delete(fid, user_id).await {
                     Ok(blob_ids) => {
@@ -148,8 +148,9 @@ pub async fn delete_user_workflow(
         )).into());
     }
     // Clean up each run's on-disk artifacts BEFORE the workflow_runs rows
-    // cascade away — `files.workflow_run_id` is `ON DELETE SET NULL`, so
-    // run-created blobs + staged dirs would otherwise be orphaned forever.
+    // cascade away — the `file_workflow_runs` join rows CASCADE-delete with the
+    // run (chunk `ziee-file`), so run-created blobs + staged dirs would
+    // otherwise be orphaned forever.
     if let Ok(runs) = repository::list_run_refs_for_workflow(Repos.pool(), id).await {
         for (run_id, conv_id) in runs {
             cleanup_run_artifacts(auth.user.id, run_id, conv_id).await;
@@ -493,7 +494,7 @@ pub async fn delete_run(
     // a conversation-run's files belong to the chat context and are kept.
     if row.conversation_id.is_none() {
         let storage = crate::modules::file::storage::manager::get_file_storage();
-        for fid in Repos.file.list_ids_by_workflow_run(run_id).await? {
+        for fid in Repos.file_workflow_runs.list_file_ids(run_id).await? {
             match Repos.file.delete(fid, auth.user.id).await {
                 Ok(blob_ids) => {
                     for blob_id in blob_ids {

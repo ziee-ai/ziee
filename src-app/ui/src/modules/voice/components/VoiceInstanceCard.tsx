@@ -13,9 +13,9 @@ import {
   Spin,
   Tag,
   Text,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Can, usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /** Format a duration in seconds as `1h 02m 03s`. */
 function formatUptime(secs: number): string {

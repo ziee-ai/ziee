@@ -1,4 +1,4 @@
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { SPLIT_LIMITS, type SplitDirection } from '@/modules/chat/core/split/limits'
 import {
   openConversationInWorkspace as reconcileOpen,

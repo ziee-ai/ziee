@@ -1,5 +1,5 @@
-import type { AppModule } from '@/core/module-system/types'
-import { useModuleSystemStore } from '@/core'
+import type { AppModule } from '@ziee/framework/module-system/types'
+import { useModuleSystemStore } from '@ziee/framework'
 
 /**
  * Auto-discovers and registers all modules from the modules directory.

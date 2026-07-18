@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Card, Empty } from '@/components/ui'
+import { Card, Empty } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import type { SSELogLineData, SSELogLagData } from '@/api-client/types'
 

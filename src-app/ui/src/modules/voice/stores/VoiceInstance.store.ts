@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { Permissions, type VoiceInstanceInfo } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * The single managed whisper-server instance (status/state + restart/stop).

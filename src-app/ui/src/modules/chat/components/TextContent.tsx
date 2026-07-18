@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import type { MessageContent } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { citationTokenize } from '@/modules/chat/core/utils/citationTokenize'

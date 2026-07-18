@@ -46,7 +46,7 @@ const eventBusMock = vi.hoisted(() => ({
   emit: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('@/core/stores', () => ({
+vi.mock('@ziee/framework/stores', () => ({
   Stores: {
     Auth: authStoreMock,
     EventBus: eventBusMock,

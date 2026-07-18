@@ -518,7 +518,7 @@ pub async fn persist_links(
             let audience = jwt_audience.unwrap_or("ziee-api");
             // Current epoch, not a default — this loopback token is validated by
             // the same RequirePermissions gate as any user token.
-            let tv = match crate::modules::auth::refresh_tokens::current_token_version(user_id).await
+            let tv = match crate::modules::auth::refresh_tokens::current_token_version(Repos.pool(), user_id).await
             {
                 Ok(Some(v)) => v,
                 Ok(None) => {
@@ -719,7 +719,7 @@ pub async fn persist_links(
     if let Some(run) = workflow_run_id {
         let mut orphaned: Vec<Uuid> = Vec::new();
         for art in &outcome.saved {
-            if let Err(e) = Repos.file.set_workflow_run_id(art.file_id, run).await {
+            if let Err(e) = Repos.file_workflow_runs.link(art.file_id, run).await {
                 // Reconcile: the file was ingested but couldn't be linked to the
                 // producing run, so the A5 delete-cascade would never reclaim it.
                 // Delete it now (DB row + blobs) so it doesn't leak on disk/DB.

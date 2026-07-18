@@ -22,8 +22,8 @@
  * This file is strictly "the core loader with a blocklist."
  */
 
-import type { AppModule } from '@/core/module-system/types'
-import { useModuleSystemStore } from '@/core'
+import type { AppModule } from '@ziee/framework/module-system/types'
+import { useModuleSystemStore } from '@ziee/framework'
 
 /**
  * Core module names to skip on desktop. Identified by

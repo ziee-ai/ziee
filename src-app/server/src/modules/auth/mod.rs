@@ -1,111 +1,74 @@
-// Auth module - JWT-based authentication
-pub mod cookie;
-pub mod events;
-pub mod handlers;
-pub mod jwt;
-pub mod jwt_extractor;
-pub mod password;
-pub mod permissions;
-pub mod providers;
-pub mod refresh_tokens;
-mod repository;
-pub mod routes;
-pub mod session_settings;
-pub mod types;
+// Auth module - JWT-based authentication.
+//
+// Chunk BA-full moved the auth CORE (repositories + `query!` macros,
+// login/register/LDAP/OAuth2, the JWT + Session & Token-Refresh subsystem, the
+// cookie helpers, the injected `context` seams, the at-rest secret provider
+// repository) into the `ziee-auth` crate. This module keeps the HTTP/aide
+// boundary (`handlers` / `routes` / `permissions` / `jwt_extractor` + the
+// session-settings REST handlers + the `AuthModule` registration) and re-exports
+// the moved pieces as equivalence-preserving shims, so every
+// `crate::modules::auth::…` call site is unchanged.
 
-// Re-exports
-pub use jwt::JwtService;
-// Suppress unused-import false positive: the re-export IS needed for `pub use modules::auth::hash_password` in lib.rs.
+// Chunk ziee-auth-routes (decision N10) moved the auth HTTP/aide SURFACE
+// (`handlers` / `routes` / `jwt_extractor` / the session-settings REST handlers
+// + the auth-domain permissions) into `ziee_auth::auth::{http, permissions}` as
+// a mountable, resolver-generic routes bundle. This module is now a THIN
+// CONSUMER: it mounts the SDK routes with ziee's concrete `ZieeIdentityResolver`
+// and supplies config (the reverse-proxy trust flag) at boot. The module-path
+// shims below keep every `crate::modules::auth::{handlers, jwt_extractor,
+// permissions, session_settings}::…` call site resolving unchanged.
+
+/// Shim: the auth handlers live in `ziee_auth::auth::http::handlers`. Only the
+/// two items other app modules name are re-exported (`token_response` — the
+/// first-run `setup_admin` cookie-mode shaper; `ensure_unique_username` — the
+/// OAuth username-collision helper).
+pub mod handlers {
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::http::handlers::{ensure_unique_username, token_response};
+}
+
+/// Shim: the JWT request extractors live in `ziee_auth::auth::http::jwt_extractor`.
+pub mod jwt_extractor {
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::http::jwt_extractor::{JwtAuth, OptionalJwtAuth, verify_token_version};
+}
+
+/// Shim: the auth-domain permission keys live in `ziee_auth::auth::permissions`.
+pub mod permissions {
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::permissions::{
+        AuthProvidersManage, AuthProvidersRead, SessionSettingsManage, SessionSettingsRead,
+    };
+}
+
+/// Shim: the session-settings REST handlers + DTOs live in ziee-auth.
+pub mod session_settings {
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::http::session_settings::{
+        get_session_settings, get_session_settings_docs, update_session_settings,
+        update_session_settings_docs,
+    };
+    #[allow(unused_imports)]
+    pub use ziee_auth::auth::session_settings::{SessionSettings, UpdateSessionSettingsRequest};
+}
+
+// Re-export shims for the moved core + the routes-bundle builders (module paths
+// + item re-exports preserved). The `context`/`AuthContext`/sink types are
+// reached via the `context` module path (`crate::modules::auth::context::…`).
 #[allow(unused_imports)]
-pub use password::hash_password;
-pub use repository::AuthRepository;
-pub use routes::{auth_admin_routes, auth_routes};
-pub use session_settings::SessionSettingsRepository;
-pub use types::AuthResponse;
+pub use ziee_auth::auth::{
+    AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, auth_admin_routes,
+    auth_routes, context, cookie, events, hash_password, jwt, password, providers, refresh_tokens,
+    repository, trust_forwarded_headers, types,
+};
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
-use once_cell::sync::OnceCell;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
-
-/// Set at module init from `config.server.trust_forwarded_headers`.
-/// When false, the OAuth-authorize handler derives redirect_uri from
-/// the HOST header only — defending self-hosted-direct deployments
-/// against attacker-supplied X-Forwarded-Host headers.
-static TRUST_FORWARDED_HEADERS: OnceCell<bool> = OnceCell::new();
-
-/// Returns true if the deployment configured a trusted reverse proxy
-/// in front of the server. Handlers use this to decide whether to
-/// honor X-Forwarded-Host / X-Forwarded-Proto. Defaults to `false`
-/// (the safer self-hosted-direct posture) when init() hasn't run
-/// (e.g. in unit tests that bypass the module loader).
-pub fn trust_forwarded_headers() -> bool {
-    TRUST_FORWARDED_HEADERS.get().copied().unwrap_or(false)
-}
-
-/// Operator-configured public origin to root OAuth `redirect_uri`s at,
-/// cached at module init from `code_sandbox.public_base_url`
-/// (ZIEE_PUBLIC_FILE_ORIGIN) — but ONLY when it declares an `https://`
-/// origin (see `https_public_origin`). `None` until init() runs.
-static CONFIGURED_PUBLIC_ORIGIN: OnceCell<Option<String>> = OnceCell::new();
-
-/// The operator-configured https public origin (no trailing slash) that
-/// OAuth `redirect_uri`s should be rooted at, or `None` to derive the
-/// origin from request headers. Behind an HTTPS edge that terminates TLS
-/// and forwards plain HTTP to this container, the header-derived scheme is
-/// `http`, producing `http://` redirect_uris that Google rejects; a
-/// configured https origin fixes that deterministically. Safe against the
-/// F-07 header-spoofing class because the value is operator-controlled, not
-/// request-derived.
-pub fn configured_public_origin() -> Option<String> {
-    CONFIGURED_PUBLIC_ORIGIN.get().cloned().flatten()
-}
-
-/// Return the trimmed origin (no trailing slash) IFF `raw` is a non-empty
-/// `https://` URL; otherwise `None`. An http / loopback value — e.g. the
-/// LOCAL default `http://172.21.0.1:8080` that `code_sandbox.public_base_url`
-/// carries for host-gateway file fetches — returns `None`, so local dev keeps
-/// deriving the redirect_uri from request headers and is unaffected.
-pub(crate) fn https_public_origin(raw: Option<&str>) -> Option<String> {
-    let s = raw?.trim();
-    // Case-insensitive scheme check; must be EXACTLY the https scheme, not
-    // merely a string that contains "https".
-    if s.is_empty() || !s.to_ascii_lowercase().starts_with("https://") {
-        return None;
-    }
-    Some(s.trim_end_matches('/').to_string())
-}
-
-#[cfg(test)]
-mod public_origin_tests {
-    use super::https_public_origin;
-
-    #[test]
-    fn only_https_origins_are_used() {
-        // Deploy: an https public origin is adopted (trailing slash trimmed).
-        assert_eq!(
-            https_public_origin(Some("https://biognosia.tinnguyen-lab.com")).as_deref(),
-            Some("https://biognosia.tinnguyen-lab.com")
-        );
-        assert_eq!(
-            https_public_origin(Some("https://x.example/")).as_deref(),
-            Some("https://x.example")
-        );
-        assert_eq!(
-            https_public_origin(Some("HTTPS://x.example")).as_deref(),
-            Some("HTTPS://x.example")
-        );
-        // Local default + empties → None → fall back to header derivation.
-        assert_eq!(https_public_origin(Some("http://172.21.0.1:8080")), None);
-        assert_eq!(https_public_origin(Some("")), None);
-        assert_eq!(https_public_origin(Some("   ")), None);
-        assert_eq!(https_public_origin(None), None);
-    }
-}
 
 /// Register auth module
 #[distributed_slice(MODULE_ENTRIES)]
@@ -149,16 +112,20 @@ impl AppModule for AuthModule {
         // Arc<Config> through every Axum extension layer. OnceCell::set
         // is idempotent on second-call (returns Err which we ignore —
         // module re-init isn't expected but isn't an error condition).
-        let _ = TRUST_FORWARDED_HEADERS.set(ctx.config.server.trust_forwarded_headers);
+        ziee_auth::auth::set_trust_forwarded_headers(ctx.config.server.trust_forwarded_headers);
         // Cache the operator-configured https public origin (if any) the same
         // way, so the free-function OAuth-authorize handler can root
-        // redirect_uris at it without threading Arc<Config> through Axum.
-        let _ = CONFIGURED_PUBLIC_ORIGIN.set(https_public_origin(
-            ctx.config
+        // redirect_uris at it without threading Arc<Config> through Axum. The
+        // `code_sandbox.public_base_url` lives on the app's full Config (recovered
+        // via the opaque app_config slot, NOT the framework's narrowed ctx.config);
+        // the crate applies the https-only gate, so an http loopback default is
+        // ignored and local dev keeps header-derivation.
+        ziee_auth::auth::set_configured_public_origin(
+            crate::module_api::app_config(ctx)
                 .code_sandbox
                 .as_ref()
                 .and_then(|cs| cs.public_base_url.as_deref()),
-        ));
+        );
 
         // One-time copy of the YAML jwt lifetimes into the session_settings
         // singleton (migration 129). Writes only while seeded_from_config is
@@ -171,7 +138,7 @@ impl AppModule for AuthModule {
             let access_hours = ctx.config.jwt.access_token_expiry_hours;
             let refresh_days = ctx.config.jwt.refresh_token_expiry_days;
             tokio::spawn(async move {
-                let repo = session_settings::SessionSettingsRepository::new((*pool).clone());
+                let repo = SessionSettingsRepository::new((*pool).clone());
                 if let Err(e) = repo.seed_from_config_once(access_hours, refresh_days).await {
                     tracing::warn!(error = ?e, "session_settings config seed failed; DB defaults remain");
                 }
@@ -230,9 +197,13 @@ impl AppModule for AuthModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
+            // Mount the SDK routes bundle with ziee's concrete identity resolver
+            // (the auth MECHANISM); the wire schema is fixed to ziee-auth's own
+            // `User`/`Group` types via the builder's associated-type bound.
+            type Resolver = crate::modules::permissions::extractors::ZieeIdentityResolver;
             let auth_router = ApiRouter::new()
-                .nest("/auth", auth_routes())
-                .merge(auth_admin_routes());
+                .nest("/auth", auth_routes::<Resolver>())
+                .merge(auth_admin_routes::<Resolver>());
             // NOTE: `/users/me/password` (change_password) lives in the
             // desktop tunnel_auth crate now — only the desktop feature
             // (Remote Access password-auth gate) needs it.

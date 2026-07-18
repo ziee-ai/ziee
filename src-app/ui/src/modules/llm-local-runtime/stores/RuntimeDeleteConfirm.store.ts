@@ -1,5 +1,5 @@
 import type { RuntimeVersionResponse } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const RuntimeDeleteConfirm = defineStore('RuntimeDeleteConfirm', {
   state: { version: null as RuntimeVersionResponse | null },

@@ -1,0 +1,7 @@
+hunk	file	summary	angles
+H1	sdk crates/ziee-health/src/types.rs (new)	HealthResponse moved byte-for-byte	equivalence(health-01),canonical-equality(health-03),boundary(health-06)
+H2	sdk crates/ziee-health/src/handlers.rs (new)	health_check + docs + 5 tests moved byte-for-byte	equivalence(health-01),api-surface(health-02),test-fidelity(health-07)
+H3	sdk crates/ziee-health/src/routes.rs (new)	routes() builder moved byte-for-byte	equivalence(health-01),api-surface(health-02),boundary(health-06)
+H4	sdk crates/ziee-health/{lib.rs,Cargo.toml} (new)	pub mod types/handlers/routes + pub use routes::routes; DB-free dep set	cross-crate-resolution(health-05),build-hygiene(health-08),boundary(health-06)
+H5	src-app server/src/modules/health/mod.rs (edit)	registration retained; body re-exported via pub use ziee_health::{handlers,routes,types}	shim-transparency(health-04),cross-crate-resolution(health-05),desktop-parity(health-09)
+H6	src-app server/Cargo.toml (edit)	add ziee-health path dep	cross-crate-resolution(health-05)

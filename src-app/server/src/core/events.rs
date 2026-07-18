@@ -6,11 +6,15 @@
 //
 // Event infrastructure - currently unused but part of the core architecture
 
-use async_trait::async_trait;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-use crate::common::AppError;
+// The domain-free `EventHandler` trait moved to `ziee-framework` (Chunk B2) —
+// its `handle` takes the event type-erased (`&dyn Any`) so the framework stays
+// app-agnostic. Re-exported here so `crate::core::events::EventHandler` /
+// `crate::core::EventHandler` call sites are unchanged. The domain-coupled
+// `AppEvent` enum + the `EventBus` dispatcher stay app-side (they move in B5).
+pub use ziee_framework::EventHandler;
 
 /// Main application event enum
 /// Each module contributes a variant containing its module-specific events
@@ -68,18 +72,6 @@ pub enum AppEvent {
     // Add new module events here as the application grows
 }
 
-/// Trait for handling application events
-/// Modules implement this to react to events they care about
-#[async_trait]
-pub trait EventHandler: Send + Sync {
-    /// Handle an event
-    /// Return error to log it, but won't stop other handlers from running
-    async fn handle(&self, event: &AppEvent, pool: &PgPool) -> Result<(), AppError>;
-
-    /// Name for logging and debugging
-    fn handler_name(&self) -> &'static str;
-}
-
 /// Hard cap on concurrent in-flight emit_async tasks. Closes
 /// 14-core F-15 (Medium): the original `emit_async` spawned an
 /// unbounded tokio task per emission. Under burst load (a chat storm
@@ -119,7 +111,12 @@ impl EventBus {
         tracing::debug!("Emitting event: {:?}", event);
 
         for handler in &self.handlers {
-            if let Err(e) = handler.handle(&event, &self.pool).await {
+            // `&AppEvent` erases to the framework handler's `&dyn Any` param;
+            // each handler downcasts back to `AppEvent`.
+            if let Err(e) = handler
+                .handle(&event as &(dyn std::any::Any + Send + Sync), &self.pool)
+                .await
+            {
                 tracing::error!(
                     "Event handler '{}' failed for event {:?}: {}",
                     handler.handler_name(),
@@ -161,7 +158,10 @@ impl EventBus {
 
         tokio::spawn(async move {
             for handler in handlers {
-                if let Err(e) = handler.handle(&event, &pool).await {
+                if let Err(e) = handler
+                    .handle(&event as &(dyn std::any::Any + Send + Sync), &pool)
+                    .await
+                {
                     tracing::error!(
                         "Event handler '{}' failed for event {:?}: {}",
                         handler.handler_name(),
@@ -192,4 +192,86 @@ impl Clone for EventBus {
             inflight: self.inflight.clone(),
         }
     }
+}
+
+// ─────────────────────── Chunk BG: auth-seam impls ───────────────────────
+//
+// The auth (+ user) module declares the `AuthEventSink` / `AuthSyncSink` /
+// `OutboundHttp` abstractions (see `modules::auth::context`) and no longer
+// names the `EventBus`, `sync::publish`, or `url_validator` globals. The APP
+// installs these concrete impls — the only place the global singletons and the
+// app-aggregate `AppEvent` are named for the auth event/sync/outbound paths —
+// and hands the assembled `AuthContext` to the router as an extension.
+
+use crate::modules::auth::context::{
+    AuthContext, AuthEventSink, AuthSyncAction, AuthSyncEntity, AuthSyncSink,
+};
+use crate::modules::auth::providers::events::AuthProviderEvent;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity};
+use crate::modules::user::events::UserEvent;
+
+/// `EventBus`-backed event sink. Wraps each module event into the
+/// app-aggregate `AppEvent` and fires it fire-and-forget — byte-identical to
+/// the former `event_bus.emit_async(UserEvent::created(..))` call sites.
+struct EventBusAuthSink {
+    bus: Arc<EventBus>,
+}
+
+impl AuthEventSink for EventBusAuthSink {
+    fn emit_user(&self, ev: UserEvent) {
+        self.bus.emit_async(AppEvent::User(ev));
+    }
+    fn emit_auth_provider(&self, ev: AuthProviderEvent) {
+        self.bus.emit_async(AppEvent::AuthProvider(ev));
+    }
+}
+
+/// `sync::publish`-backed sync sink — the single place the auth/user sync
+/// notifications reach the global publish functions.
+struct PublishSyncSink;
+
+impl AuthSyncSink for PublishSyncSink {
+    fn publish(
+        &self,
+        entity: AuthSyncEntity,
+        action: AuthSyncAction,
+        id: uuid::Uuid,
+        audience: Audience,
+        origin: Option<uuid::Uuid>,
+    ) {
+        // Map the crate-local auth abstractions (Chunk BA-full #4 transform)
+        // onto the app's concrete `SyncEntity` / `SyncAction`. `ziee-auth`
+        // cannot name these enums (they derive `JsonSchema` for the OpenAPI
+        // codegen contract), so the trait speaks in `AuthSyncEntity` /
+        // `AuthSyncAction` and the app maps here. Same events, same audiences.
+        let entity = match entity {
+            AuthSyncEntity::User => SyncEntity::User,
+            AuthSyncEntity::Group => SyncEntity::Group,
+            AuthSyncEntity::Profile => SyncEntity::Profile,
+            AuthSyncEntity::Session => SyncEntity::Session,
+            AuthSyncEntity::SessionSettings => SyncEntity::SessionSettings,
+            AuthSyncEntity::AuthProvider => SyncEntity::AuthProvider,
+        };
+        let action = match action {
+            AuthSyncAction::Create => SyncAction::Create,
+            AuthSyncAction::Update => SyncAction::Update,
+            AuthSyncAction::Delete => SyncAction::Delete,
+        };
+        crate::modules::sync::publish(entity, action, id, audience, origin);
+    }
+    fn publish_session_to_users(&self, user_ids: &[uuid::Uuid], origin: Option<uuid::Uuid>) {
+        crate::modules::sync::publish_session_to_users(user_ids, origin);
+    }
+}
+
+/// Assemble the [`AuthContext`] the auth/user handlers pull from the request
+/// extensions, installing the app-backed sinks. Called once at boot by
+/// `lib.rs` / `main.rs` (and thus the desktop embed).
+pub fn build_auth_context(pool: Arc<PgPool>, event_bus: Arc<EventBus>) -> AuthContext {
+    AuthContext::new(
+        pool,
+        crate::core::secrets::storage_key().map(|s| s.to_string()),
+        Arc::new(EventBusAuthSink { bus: event_bus }),
+        Arc::new(PublishSyncSink),
+    )
 }

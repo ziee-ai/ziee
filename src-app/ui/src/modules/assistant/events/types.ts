@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { Assistant } from '@/api-client/types'
 
 export interface AssistantCreatedEvent extends BaseEvent {
@@ -51,7 +51,7 @@ export type AssistantModuleEvent =
   | AssistantTemplateUpdatedEvent
   | AssistantTemplateDeletedEvent
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'assistant.created': AssistantCreatedEvent
     'assistant.updated': AssistantUpdatedEvent

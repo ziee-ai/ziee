@@ -11,9 +11,9 @@ import {
   Paragraph,
   Text,
   Link,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 interface ProviderApiKeyModalProps {
   providerId: string

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageSquarePlus, Search, X } from 'lucide-react'
-import { Button, Empty, Input, Tooltip } from '@/components/ui'
+import { Button, Empty, Input, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
-import { Stores } from '@/core'
+import { Stores } from '@ziee/framework/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import {

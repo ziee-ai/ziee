@@ -56,7 +56,7 @@ export interface RuntimeUpdateCheck extends RuntimeUpdateCheckRaw {
 export type RuntimeEngine = 'llamacpp' | 'mistralrs'
 
 // Store type declarations
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useRuntimeVersionStore } from './stores/RuntimeVersion.store'
 import type { useRuntimeUpdateStore } from './stores/RuntimeUpdate.store'
 import type { useRuntimeDownloadDrawerStore } from './stores/RuntimeDownloadDrawer.store'
@@ -65,7 +65,7 @@ import type { useRuntimeConfigStore } from './stores/RuntimeConfig.store'
 import type { useRuntimeModelUsageStore } from './stores/RuntimeModelUsage.store'
 import type { useRuntimeDownloadProgressStore } from './stores/RuntimeDownloadProgress.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     RuntimeVersion: StoreProxy<ReturnType<typeof useRuntimeVersionStore.getState>>
     RuntimeUpdate: StoreProxy<ReturnType<typeof useRuntimeUpdateStore.getState>>

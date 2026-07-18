@@ -36,6 +36,21 @@
       "@/*": ["../../ui/src/*"],
       "@ziee/ui-core": ["../../ui/src/index.ts"],
       "@ziee/ui-core/*": ["../../ui/src/*"],
+      "@ziee/kit": ["../../../sdk/packages/kit/src/index.ts"],
+      "@ziee/kit/*": ["../../../sdk/packages/kit/src/*"],
+      "@ziee/framework": ["../../../sdk/packages/framework/src/index.ts"],
+      "@ziee/framework/api-client": [
+        "../../../sdk/packages/framework/src/api-client/index.ts"
+      ],
+      "@ziee/framework/*": ["../../../sdk/packages/framework/src/*"],
+      "@ziee/shell": ["../../../sdk/packages/shell/src/index.ts"],
+      "@ziee/shell/*": ["../../../sdk/packages/shell/src/*"],
+      "@ziee/notification-ui": [
+        "../../../sdk/packages/notification-ui/src/index.ts"
+      ],
+      "@ziee/notification-ui/*": ["../../../sdk/packages/notification-ui/src/*"],
+      "@ziee/gallery": ["../../../sdk/packages/gallery/src/index.ts"],
+      "@ziee/gallery/*": ["../../../sdk/packages/gallery/src/*"],
       "csstype": ["./node_modules/csstype"]
     }
   },

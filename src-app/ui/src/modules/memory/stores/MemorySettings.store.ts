@@ -5,7 +5,7 @@ import type {
 } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { emitMemorySettingsUpdated } from '@/modules/memory/events'
 
 // Widened patch type — `retention_days` + `extraction_model_id` are

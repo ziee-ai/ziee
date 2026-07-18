@@ -5,7 +5,7 @@ import {
   type UpdateJsToolSettings,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Runtime-configurable limits for the built-in `run_js` tool (singleton row via

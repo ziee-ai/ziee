@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Textarea } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Textarea } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
   getDraft,

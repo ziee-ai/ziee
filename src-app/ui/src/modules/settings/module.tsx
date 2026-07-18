@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { Settings as SettingsIcon } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { SettingsLayoutDef } from './SettingsLayout'

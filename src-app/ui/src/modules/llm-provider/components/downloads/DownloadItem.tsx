@@ -1,5 +1,5 @@
 import { X, CircleCheck, CircleAlert, Eye } from 'lucide-react'
-import { Button, Card, Flex, Space, Tag, Tooltip, Text } from '@/components/ui'
+import { Button, Card, Flex, Space, Tag, Tooltip, Text } from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
 import { DownloadProgress } from '@/modules/llm-provider/components/downloads/DownloadProgress'
 import { formatBytes, formatSpeed, formatETA } from '@/utils/downloadUtils'

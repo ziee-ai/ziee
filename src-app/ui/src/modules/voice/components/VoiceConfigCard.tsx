@@ -17,9 +17,9 @@ import {
   Text,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 
 const MIB = 1024 * 1024
