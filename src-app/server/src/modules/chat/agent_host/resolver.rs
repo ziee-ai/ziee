@@ -2,10 +2,10 @@
 //!
 //! Two of the six `agent_core` seams, in their CHAT flavor. They mirror the
 //! workflow twins in `modules::workflow::agent_dispatch`
-//! ([`WorkflowModelResolver`] / `McpToolProvider`) closely — the ONLY behavioral
-//! divergence is the disabled-server gate: the chat host passes
-//! `enforce_conversation_disabled = false` to the shared `call_mcp_tool`, exactly
-//! preserving chat's current non-enforcement (DEC-17).
+//! ([`WorkflowModelResolver`] / `McpToolProvider`) closely, both passing
+//! `enforce_conversation_disabled = true` so the conversation's `disabled_servers`
+//! are honored at CALL time as well as attach time (B2 — supersedes the original
+//! DEC-17 non-enforcement).
 //!
 //! # UX walk
 //! A user sends a chat message. The model, mid-turn, asks to run a tool. The core
@@ -28,10 +28,11 @@
 //!   (the shared chokepoint); we must NOT double-record here. Sessions are stamped
 //!   with `McpToolCallSource::Chat` so the recorded row's `source` reads `chat`
 //!   (distinct from the workflow twin's `Workflow`).
-//! - **Disabled-server gate** — SKIPPED here (`enforce_conversation_disabled =
-//!   false`). Chat applies its per-conversation disabled-server filtering earlier,
-//!   at attach time (which servers land in `tool_scope.servers`), so re-enforcing
-//!   at call time would be a behavior change. Preserve `false`.
+//! - **Disabled-server gate** — ENFORCED here (`enforce_conversation_disabled =
+//!   true`, B2). Chat applies its per-conversation disabled-server filtering at
+//!   attach time (which servers land in `tool_scope.servers`); this adds the
+//!   call-time check as defense-in-depth so a server the user disabled AFTER attach
+//!   (or reached via bare-name recovery) is still refused.
 //! - **Cancellation** — the chat stop-generation token (per-`assistant_message_id`,
 //!   from `CANCELLATION_TRACKER`) is wrapped as a [`CancelSignal`] and raced against
 //!   each MCP call inside `call_mcp_tool`'s `tokio::select!`. A stop-generation
@@ -274,14 +275,19 @@ impl ToolProvider for ChatToolProvider {
         };
         send_tool_start_event(self.tx.as_ref(), &call.id, &tool_name, &server_name, &call.input)
             .await;
-        // DEC-17: the chat host passes `enforce_conversation_disabled = false` —
-        // chat applies disabled-server filtering at attach time, not call time.
+        // B2: enforce the conversation's `disabled_servers` at CALL time
+        // (`enforce_conversation_disabled = true`), as defense-in-depth on TOP of
+        // the attach-time filter. Attach-time filtering is the primary gate, but a
+        // tool that still reaches here for a server the user disabled AFTER the
+        // tools were attached (a later turn) — or via bare-name recovery — must be
+        // refused, honoring the user's disable. (Was `false` under DEC-17, which
+        // silently ignored a call-time disable.)
         let outcome = call_mcp_tool(
             &scope,
             &server_name,
             &tool_name,
             call.input.clone(),
-            false,
+            true,
             &self.cancel,
             // Route through the shared chokepoint WITH the chat context so a
             // sampling server gets a `new_with_sampling` session + the journal row

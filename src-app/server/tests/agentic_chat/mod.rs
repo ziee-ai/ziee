@@ -1833,3 +1833,78 @@ async fn files_mcp_tool_call_is_recorded_as_built_in() {
     );
 }
 
+
+/// B2: the chat AGENT-CORE path enforces the conversation's `disabled_servers` at
+/// CALL time (`enforce_conversation_disabled = true`). Disabling the files_mcp
+/// `read_file` TOOL in the conversation does NOT remove it from the attached set
+/// (there is no attach-time filter for `disabled_servers` — it is enforced only in
+/// `call_mcp_tool`), so the model still calls it — and the call must be REFUSED,
+/// not executed. Proves the ON path honors the user's disable at call time (the
+/// DEC-17 non-enforcement was a security gap). Runs flag ON.
+#[tokio::test]
+async fn chat_agent_core_enforces_conversation_disabled_server_at_call_time() {
+    let _flag = crate::common::AgentCoreFlag::on();
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "b2_disabled").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server,
+        &user.token,
+        &user.user_id,
+        &stub.base_url,
+        true,
+        None,
+    )
+    .await;
+
+    // A file so files_mcp READ tools attach (manifest_available = files present).
+    let project_id = create_project(&server, &user, "b2-proj").await;
+    let file_id = upload_text(&server, &user, "notes.txt", "B2_SECRET_MARKER content").await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // Disable the files_mcp `read_file` TOOL in THIS conversation.
+    let files_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, b"files.ziee.internal");
+    let resp = reqwest::Client::new()
+        .put(server.api_url(&format!("/conversations/{conv_id}/mcp-settings")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "approval_mode": "auto_approve",
+            "auto_approved_tools": [],
+            "disabled_servers": [{ "server_id": files_id, "tools": ["read_file"] }],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "set conversation disabled_servers");
+
+    // The model calls read_file → must be refused at call time.
+    let body = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file read it",
+    )
+    .await;
+
+    // read_file WAS attached (there is no attach-time filter for disabled_servers),
+    // so the refusal below is a CALL-time enforcement, not attach filtering.
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "read_file must be ATTACHED so the refusal is call-time enforcement; requests={:?}",
+        stub.requests()
+    );
+    // The disabled tool must NOT return the file content ...
+    assert!(
+        !body.contains("B2_SECRET_MARKER"),
+        "a disabled tool must NOT return the file content; body={body}"
+    );
+    // ... and the tool result must surface the 'disabled in this conversation' refusal.
+    assert!(
+        body.to_lowercase().contains("disabled"),
+        "the tool result must carry the disabled-in-conversation refusal; body={body}"
+    );
+}
