@@ -349,3 +349,16 @@ Sweep done. Awaiting go on fixing.
 **Fix (SHARED `workflow/dispatch.rs`, agent-core-chat-only effect):** broadened the accessibility check to accept `get_any_server(id).is_built_in && enabled` (per-tool authz still enforced downstream at the JSON-RPC handler). Only the chat uuid-server-name path hits this branch (workflow uses server NAMES → the resolve_tool_server path; OFF chat uses `execute_tool`) → OFF byte-identical by construction.
 - **ON:** `control_mcp::real_llm_discovers_capabilities` **2/2 PASS** post-fix (was 0/2).
 - **OFF invariant:** control_mcp OFF `write_requires_approval` is model-flaky (1-fail/1-pass over reruns — the local model doesn't always emit a mutating invoke); `discovers_capabilities` unaffected. OFF chat doesn't use `call_mcp_tool`. Full mcp:: regression owed for the definitive OFF==457/40 check.
+
+### APPROVAL Layer 2 (resume-execution) — root-caused deeper; PARTIAL (gate name-resolution kept), bare-name recovery remains
+**Instrumented root cause:** `execute_approved_tools_sync` finds the approved tool + claims it (Won), but hits "No server_id in approval record" → skips execution → count=0. The pending approval row was persisted WITHOUT a server_id because the stub emits a **BARE tool name `"echo"`** (no `server__` prefix) → `split_server_tool` yields empty `server_str` → `server_id=None`. The legacy path recovers this via `recover_server_id_for_bare_name` (needs the advertised bare-name→server map).
+**Partial fix (kept, OFF-safe, agent-core-only `gate.rs`):** the `ChatHumanGate` now resolves a NAME-prefixed `server_str`→`server_id` before persisting (a real improvement for name-namespaced servers). **Insufficient for the bare-name stub case** — that needs the advertised-tools map threaded into the gate (or bare-name namespacing in `UniquifyingModelClient`, the one place feeding gate+transcript+execution). Real models namespace their tool names, so this is a stub/edge robustness gap; approval_claim (stub) still ON-fails at count=0.
+
+### CLUSTER STATUS after this pass
+- ✅ **SAMPLING** — 5/5 flag-delta FIXED (ON serial 9/10 == OFF 9/10), OFF byte-identical.
+- ✅ **JOURNALING** — FIXED (control_mcp::discovers_capabilities ON 2/2), OFF byte-identical.
+- ✅ **APPROVAL Layer 1** (id-collision) — FIXED (uniquify.rs), OFF byte-identical.
+- ⏳ **APPROVAL Layer 2** (resume-execution) — root-caused (bare-name server recovery); partial gate fix; bare-name recovery remains.
+- ⏳ **PROJECT re-injection** — not started.
+- ⏳ **write_requires_approval** (approval-prompt firing) — not addressed; model-flaky OFF.
+- ⏳ **FULL two-flag regression** (chat 162/9 + mcp 457/40) — OWED (per-cluster OFF checks held so far, but the shared call_mcp_tool changes need the full mcp:: OFF==457/40 confirmation).

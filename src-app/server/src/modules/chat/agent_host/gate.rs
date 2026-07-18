@@ -360,7 +360,17 @@ pub struct ChatHumanGate {
 #[async_trait]
 impl HumanGate for ChatHumanGate {
     async fn request(&self, _run_id: Uuid, ask: GateAsk) -> Result<GateOutcome, AppError> {
-        let (server_id, server_str, tool_name) = split_server_tool(&ask.call);
+        let (mut server_id, server_str, tool_name) = split_server_tool(&ask.call);
+        // The namespaced tool prefix may be a server NAME (not a uuid) — e.g. a
+        // user-registered server whose tools are advertised as `<name>__<tool>`.
+        // Resolve it to the server_id so the PERSISTED approval row carries a
+        // usable id; otherwise the resume path (`execute_approved_tools_sync`) hits
+        // "No server_id in approval record" and never executes the approved tool.
+        if server_id.is_none() && !server_str.is_empty() {
+            server_id = crate::modules::workflow::dispatch::resolve_tool_server(self.user_id, &server_str)
+                .await
+                .ok();
+        }
 
         // Resolve a human-friendly server name for the approval card. Mirrors
         // mcp.rs (name from the server row, else the id/prefix string).
