@@ -1035,7 +1035,7 @@ fn tool_result_text(result: &crate::modules::mcp::client::traits::ToolResult) ->
 // the chat agent host import it from `mcp/`, not from each other (§9 DAG).
 // Re-exported for this module's internal callers.
 pub(crate) use crate::modules::mcp::agent_tool_call::{
-    call_mcp_tool, resolve_tool_server, CancelSignal, McpCallScope, McpToolCallError,
+    call_mcp_tool, CancelSignal, McpCallScope, McpToolCallError,
 };
 
 // `RunHandle` (workflow-owned) implements the shared `CancelSignal` trait — the

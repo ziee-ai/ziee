@@ -45,8 +45,8 @@ use crate::common::AppError;
 // Shared MCP tool-call chokepoint now lives in `mcp::agent_tool_call` (§9 DAG:
 // shared infra, imported from `mcp/` by both this host and the chat host).
 use crate::modules::mcp::agent_tool_call::{
-    builtin_server_id_by_name, call_mcp_tool, mcp_to_agent_result, split_tool_name, McpCallScope,
-    McpToolCallError,
+    builtin_server_id_by_name, call_mcp_tool, mcp_to_agent_result, resolve_tool_server,
+    split_tool_name, McpCallScope, McpToolCallError,
 };
 use crate::modules::workflow::dispatch::{resolve_prompt, StepDispatcher};
 use crate::modules::workflow::events::{
@@ -215,9 +215,7 @@ impl ToolProvider for McpToolProvider {
             // A server the user can't reach (or that fails to list) contributes
             // no tools rather than failing the whole turn.
             let server_id =
-                match crate::modules::workflow::dispatch::resolve_tool_server(self.user_id, server_name)
-                    .await
-                {
+                match resolve_tool_server(self.user_id, server_name).await {
                     Ok(id) => id,
                     Err(e) => {
                         tracing::warn!("agent: server '{server_name}' not accessible: {e}");
