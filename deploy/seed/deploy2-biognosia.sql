@@ -67,6 +67,34 @@ UPDATE assistants
        updated_at = NOW()
  WHERE name = 'BioGnosia' AND is_template = true;
 
+-- ── 2b. Clone BioGnosia to every EXISTING user as their default ───────────────
+-- CloneTemplateAssistantsHandler only clones the default template on NEW signup,
+-- so users who already existed when this deploy runs would never get it. Give
+-- every current user a personal BioGnosia (idempotent — skipped for anyone who
+-- already has one). Single-purpose deploy: BioGnosia is everyone's default, so
+-- first clear any OTHER personal default, then ensure every BioGnosia clone is
+-- default.
+UPDATE assistants
+   SET is_default = false, updated_at = NOW()
+ WHERE is_template = false AND created_by IS NOT NULL
+   AND is_default = true AND name <> 'BioGnosia';
+
+INSERT INTO assistants (name, description, instructions, parameters,
+        created_by, is_template, is_default, enabled)
+SELECT t.name, t.description, t.instructions, t.parameters,
+       u.id, false, true, true
+FROM assistants t CROSS JOIN users u
+WHERE t.name = 'BioGnosia' AND t.is_template = true
+  AND NOT EXISTS (
+      SELECT 1 FROM assistants a
+       WHERE a.created_by = u.id AND a.name = 'BioGnosia' AND a.is_template = false
+  );
+
+UPDATE assistants
+   SET is_default = true, updated_at = NOW()
+ WHERE is_template = false AND created_by IS NOT NULL
+   AND name = 'BioGnosia' AND is_default = false;
+
 -- ── 3. biognosia as the ONLY external data MCP server ─────────────────────────
 -- (Re)assert the biognosia system server (is_system=true → user_id=NULL, per
 -- CHECK system_server_must_have_no_owner). Reachable via the host gateway
