@@ -97,6 +97,50 @@ fn split_server_tool(call: &ToolCall) -> (Option<Uuid>, String, String) {
 /// Is `(server_id, tool_name)` in an unattended run's allow-list? Mirrors the
 /// (module-private) `mcp.rs::unattended_tool_allowed`: the list is a JSON array
 /// of `{ server_id, tool_name? }` (`tool_name` absent ⇒ whole server allowed).
+/// Recover the `server_id` for a BARE tool name — a model that returned `<tool>`
+/// with no `<server>__` prefix. Finds which of the user's accessible servers
+/// advertises a tool by this name (first match wins), listing on demand. Mirrors
+/// the legacy `recover_server_id_for_bare_name` (which pre-builds the bare-name→id
+/// map in `before_llm_call`); here it runs only at gate time when the prefix was
+/// absent, so the persisted approval row carries a usable id for the resume path.
+async fn resolve_bare_tool_server(user_id: Uuid, tool_name: &str) -> Option<Uuid> {
+    let manager = crate::modules::mcp::client::manager::global()?;
+    let servers = crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
+        crate::core::Repos.pool(),
+        user_id,
+    )
+    .await
+    .ok()?;
+    for s in servers {
+        if !s.enabled {
+            continue;
+        }
+        if let Ok(session) = manager
+            .get_or_create_with_context(
+                s.id,
+                user_id,
+                None,
+                None,
+                None,
+                None,
+                crate::modules::mcp::tool_calls::models::McpToolCallSource::Chat,
+            )
+            .await
+        {
+            let listed = {
+                let mut g = session.write().await;
+                g.list_tools().await
+            };
+            if let Ok(tools) = listed {
+                if tools.iter().any(|t| t.name == tool_name) {
+                    return Some(s.id);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn unattended_tool_allowed(allow: &serde_json::Value, server_str: &str, tool_name: &str) -> bool {
     allow
         .as_array()
@@ -370,6 +414,12 @@ impl HumanGate for ChatHumanGate {
             server_id = crate::modules::workflow::dispatch::resolve_tool_server(self.user_id, &server_str)
                 .await
                 .ok();
+        }
+        // BARE tool name (the model returned `<tool>` with no `<server>__` prefix):
+        // recover which of the user's accessible servers advertises it — the legacy
+        // `recover_server_id_for_bare_name` equivalent, listed on demand at gate time.
+        if server_id.is_none() {
+            server_id = resolve_bare_tool_server(self.user_id, &tool_name).await;
         }
 
         // Resolve a human-friendly server name for the approval card. Mirrors

@@ -362,3 +362,19 @@ Sweep done. Awaiting go on fixing.
 - ⏳ **PROJECT re-injection** — not started.
 - ⏳ **write_requires_approval** (approval-prompt firing) — not addressed; model-flaky OFF.
 - ⏳ **FULL two-flag regression** (chat 162/9 + mcp 457/40) — OWED (per-cluster OFF checks held so far, but the shared call_mcp_tool changes need the full mcp:: OFF==457/40 confirmation).
+
+
+## STEP-2 refactor — precision-backed cluster verification (deterministic gates preferred)
+
+### ✅ APPROVAL — FIXED (deterministic gate ON 2/2 + OFF 2/2)
+Gate = `mcp::approval_claim_test::approved_tool_is_claimed_and_executes_exactly_once` (DETERMINISTIC stub, not the model-flaky control_mcp real-LLM test). Two layers, both fixed:
+- **L1 id-collision** — `uniquify.rs` (`UniquifyingModelClient`).
+- **L2 resume-execution** — the stub emits a BARE tool name `echo` (no `server__` prefix) → gate persisted `server_id=None` → `execute_approved_tools_sync` hit "No server_id in approval record" → count=0. Fix: `ChatHumanGate` now recovers the server for a bare tool name via `resolve_bare_tool_server` (lists the user's accessible servers, first advertising the tool wins — the legacy `recover_server_id_for_bare_name` equivalent). **`gate.rs` agent-core-only → OFF byte-identical.**
+- ON: `logs/approval_ON_{1,2}.log` (1/1 x2). OFF: `logs/approval_OFF_{1,2}.log` (1/1 x2).
+- NOTE: `control_mcp::real_llm_write_requires_approval` is NOT a gate — it's model-flaky (failed OFF in `fix_journaling_OFF.log`; the local Qwen didn't attempt the write). Deterministic gate used instead.
+
+### ✅ JOURNALING — backed (ON 2/2 + OFF 2/2, tee'd)
+`control_mcp::real_llm_discovers_capabilities`: ON `logs/journaling_ON_{1,2}.log` (1/1 x2), OFF `logs/journaling_OFF_{1,2}.log` (1/1 x2). The recording is deterministic once the model calls the tool; consistently green now.
+
+### ✅ SAMPLING straggler — classified as bridge-contention flake, NOT a flag-delta
+`test_sampling_lifecycle_event_order`: ON serial 3/3 pass; ON parallel 2/2 pass (`logs/sampling_ON_parallel_{1,2}.log`); OFF parallel pass (`logs/sampling_OFF_parallel.log`). The single earlier ON-parallel failure (fix_sampling_ON.log) was a transient bridge-contention flake (6 concurrent LLM calls: 2 tests x 3 round-trips), not reproduced. Sampling failure set is `{llm_response_content}` (model-empty-content) ON==OFF everywhere → 0 flag-delta. Real-LLM/sampling tests run serially per CLAUDE.md.
