@@ -107,6 +107,35 @@ fn tool_system_guidance(tools: &[ai_providers::Tool]) -> String {
     guidance
 }
 
+/// Render the "Connected MCP servers" system-prompt section from the EXTERNAL
+/// (non-built-in) servers advertised this turn. Each entry is
+/// `(server_name, server_description, advertised_tool_count)`. Returns `None` when
+/// there are no external servers, so the caller adds nothing.
+///
+/// This is what lets the model answer "what is biognosia/rcpa/dscc" — the per-tool
+/// `[name]` prefix says which server a tool belongs to; this section says what each
+/// server IS. Built-in servers (files, memory, web_search, …) are excluded by the
+/// caller and never appear here. The blurb is the admin/user-set server description
+/// (no untrusted server-provided text), emitted ONCE per server (not per tool).
+fn connected_servers_section(servers: &[(String, Option<String>, usize)]) -> Option<String> {
+    if servers.is_empty() {
+        return None;
+    }
+    let mut section = String::from(
+        "\n\n## Connected MCP servers\n\
+         These external MCP servers are connected to this conversation; their tools \
+         are tagged with a `[server]` prefix in the tool list.",
+    );
+    for (name, description, tool_count) in servers {
+        let tools = format!("({tool_count} tools)");
+        match description.as_deref().map(str::trim).filter(|d| !d.is_empty()) {
+            Some(desc) => section.push_str(&format!("\n- {name} — {desc} {tools}")),
+            None => section.push_str(&format!("\n- {name} {tools}")),
+        }
+    }
+    Some(section)
+}
+
 /// Guidance appended (as `hidden_content`) to a tool result whose produced files were saved
 /// as durable artifacts, listing the download URLs the model may hand to another tool.
 ///
@@ -1842,6 +1871,11 @@ impl ChatExtension for McpChatExtension {
         // Collect tools from all configured servers
         let mut all_tools = Vec::new();
         let mut always_mode_context: Vec<String> = Vec::new();
+        // Roster of EXTERNAL (non-built-in) servers whose tools are advertised this
+        // turn — `(name, description, advertised_tool_count)`. Drives the
+        // "Connected MCP servers" system-prompt section so the model can say what
+        // biognosia/rcpa/dscc ARE (built-ins are excluded).
+        let mut external_servers: Vec<(String, Option<String>, usize)> = Vec::new();
 
         for (server_id, requested_tools) in &server_configs {
             // Find server details
@@ -1970,9 +2004,12 @@ impl ChatExtension for McpChatExtension {
                             description: t["description"].as_str().map(|s| s.to_string()),
                             input_schema: t["inputSchema"].clone(),
                         };
-                        if let Some(ai_tool) =
-                            helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool)
-                        {
+                        // `ask_user` is a built-in (`is_built_in = true`) → no label.
+                        if let Some(ai_tool) = helpers::convert_mcp_tool_to_ai_tool(
+                            server.id,
+                            &mcp_tool,
+                            (!server.is_built_in).then(|| server.name.as_str()),
+                        ) {
                             all_tools.push(ai_tool);
                         }
                     }
@@ -2037,10 +2074,26 @@ impl ChatExtension for McpChatExtension {
             // list_tools output (a silent rename would break dispatch on
             // the return path; the warning log captures the (server, tool)
             // pair).
+            // External servers (`is_built_in = false`) tag their tools with a
+            // `[<name>]` description prefix; built-ins pass `None` (unlabeled).
+            let server_label = (!server.is_built_in).then(|| server.name.as_str());
+            let mut advertised = 0usize;
             for mcp_tool in tools_to_add {
-                if let Some(ai_tool) = helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool) {
+                if let Some(ai_tool) =
+                    helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool, server_label)
+                {
                     all_tools.push(ai_tool);
+                    advertised += 1;
                 }
+            }
+            // Record external servers in the roster (count = tools ACTUALLY
+            // advertised, i.e. after any name-guard drops).
+            if !server.is_built_in {
+                external_servers.push((
+                    server.name.clone(),
+                    server.description.clone(),
+                    advertised,
+                ));
             }
         }
 
@@ -2147,7 +2200,12 @@ impl ChatExtension for McpChatExtension {
             // This is a soft hint — the model can still answer directly if no tool is relevant.
             // Only injected on iteration 1 to avoid redundancy in follow-up tool-calling loops.
             if context.iteration == 1 {
-                let system_addition = tool_system_guidance(&request.tools);
+                let mut system_addition = tool_system_guidance(&request.tools);
+                // Append the "Connected MCP servers" roster (external servers only)
+                // so the model can answer "what is <server>".
+                if let Some(roster) = connected_servers_section(&external_servers) {
+                    system_addition.push_str(&roster);
+                }
 
                 if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
                     if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
@@ -4102,6 +4160,42 @@ mod tests {
         let url = build_artifact_download_url(&origin, "/api", Uuid::nil(), "tok");
         assert!(url.starts_with("http://127.0.0.1:8080/api/files/"), "{url}");
         assert!(!url.contains("0.0.0.0"), "{url}");
+    }
+
+    // TEST-3: the "Connected MCP servers" section builder.
+    #[test]
+    fn connected_servers_section_renders_roster() {
+        // Empty → no section at all.
+        assert!(super::connected_servers_section(&[]).is_none());
+
+        let servers = vec![
+            (
+                "biognosia".to_string(),
+                Some("Bio-knowledge graph".to_string()),
+                7,
+            ),
+            // Empty description → name + count only, no `— ` blurb.
+            ("rcpa".to_string(), None, 4),
+            // Whitespace-only description is treated as empty.
+            ("dscc".to_string(), Some("   ".to_string()), 3),
+        ];
+        let section = super::connected_servers_section(&servers).expect("non-empty → Some");
+
+        assert!(section.contains("## Connected MCP servers"));
+        assert!(
+            section.contains("- biognosia — Bio-knowledge graph (7 tools)"),
+            "described server: `- <name> — <desc> (N tools)`; got: {section}"
+        );
+        assert!(
+            section.contains("- rcpa (4 tools)") && !section.contains("rcpa —"),
+            "empty-description server: `- <name> (N tools)` with no dash; got: {section}"
+        );
+        assert!(
+            section.contains("- dscc (3 tools)") && !section.contains("dscc —"),
+            "whitespace description treated as empty; got: {section}"
+        );
+        // One heading for the whole roster, not one per server.
+        assert_eq!(section.matches("## Connected MCP servers").count(), 1);
     }
 }
 
