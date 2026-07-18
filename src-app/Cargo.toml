@@ -22,10 +22,9 @@ members = [
     "desktop/tauri",
     "stub-engine",
     "stub-whisper-server",
-    "sandbox-guest-agent",
-    "sandbox-vm-launcher",
-    "sandbox-vm-protocol",
-    "sandbox-seccomp",
+    # sandbox-{guest-agent,vm-launcher,vm-protocol,seccomp} relocated to
+    # sdk/crates/ (domain-agnostic leaves consumed by the ziee-sandbox engine).
+    # The server + guest-agent reach them via cross-workspace path deps.
 ]
 
 # Members that opt in via `field.workspace = true` inherit these.

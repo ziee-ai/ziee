@@ -29,7 +29,7 @@
 
 import { LeftSidebar as CoreLeftSidebar } from '@ziee/ui-core/modules/layouts/app-layout/components/LeftSidebar'
 import { useWindowMinSize } from '@ziee/ui-core/modules/layouts/app-layout/hooks/useWindowMinSize'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { isMacOS, isTauriView } from '@ziee/desktop/core/platform'
 
 /**

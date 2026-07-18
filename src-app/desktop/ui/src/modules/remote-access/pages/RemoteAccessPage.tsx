@@ -37,18 +37,18 @@ import {
   message,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import {
   Field,
   FieldContent,
   FieldDescription,
   FieldLabel,
-} from '@/components/ui/shadcn/field'
+} from '@ziee/kit/shadcn/field'
 import { CircleCheck, Copy, RotateCw, TriangleAlert } from 'lucide-react'
 import { z } from 'zod'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useMemo, useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
 export function RemoteAccessPage() {

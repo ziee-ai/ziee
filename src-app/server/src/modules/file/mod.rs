@@ -9,6 +9,14 @@ use std::sync::Arc;
 use crate::module_api::{AppModule, ModuleEntry, MODULE_ENTRIES};
 use crate::ModuleContext;
 
+// ── Chunk `ziee-file`: the STORE half moved to the `ziee-file` SDK crate. ──
+// These re-export shims keep every `crate::modules::file::{models,repository,
+// storage,types,permissions,utils::{extension_of,magic,zipbomb}}::…` path — and
+// the ~59 external store consumers — resolving unchanged. The domain PROCESSING,
+// handlers/routes, sync, config, ingest-orchestration, and the chat/project
+// bridges stay app-side below.
+pub use ziee_file::{models, permissions, storage, types};
+
 pub mod available_files;
 pub mod chat_extension;
 pub mod config;
@@ -16,24 +24,19 @@ pub mod deliverables;
 pub mod geometry_backfill;
 pub mod handlers;
 pub mod ingest;
-pub mod models;
-pub mod permissions;
 pub mod processing;
 pub mod project_extension;
 pub mod provider_routing;
-pub mod repository;
 pub mod routes;
-pub mod storage;
 pub mod sync;
 pub mod versioning;
-pub mod types;
 pub mod utils;
 
-// Re-export repository for global Repos access
-pub use repository::FileRepository;
+// Re-export repository for global Repos access (from the SDK crate).
+pub use ziee_file::FileRepository;
 
 use routes::file_router;
-use storage::manager::init_file_storage;
+use ziee_file::init_file_storage;
 
 // Self-registration via distributed slice
 #[distributed_slice(MODULE_ENTRIES)]

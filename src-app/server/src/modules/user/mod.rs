@@ -1,18 +1,21 @@
-// User module - User and group management
-pub mod events;
+// User module - User and group management.
+//
+// Chunk BA-full moved the user CORE (repositories + `query!` macros, wire DTOs,
+// the effective-permissions service, user-lifecycle events) into `ziee-auth`.
+// This module keeps the HTTP/aide boundary (`handlers` — including the
+// domain-coupled `delete_user` admin cascade over skill/file/hub cleanup —
+// `routes`, `permissions`) + the `models` shim, and re-exports the moved pieces
+// so every `crate::modules::user::…` call site is unchanged.
 pub mod handlers;
 pub mod models;
 pub mod permissions;
-pub mod repository;
 mod routes;
-mod service;
-pub mod types;
 
-// Re-exports
+// Re-export shims for the moved core (module paths + item re-exports preserved).
 pub use models::*;
-pub use repository::{GroupRepository, UserRepository};
 pub use routes::{group_router, user_router};
-pub use service::UserService;
+#[allow(unused_imports)]
+pub use ziee_auth::user::{GroupRepository, UserRepository, UserService, events, repository, types};
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;

@@ -1,7 +1,7 @@
 import { Permissions, type LlmProvider } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineLocalStore } from '@/core/store-kit'
+import { defineLocalStore } from '@ziee/framework/store-kit'
 
 /**
  * PRIVATE, per-widget store (one instance per group row) — MIGRATED from a global

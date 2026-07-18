@@ -5,11 +5,11 @@
  * cross-tab cache invalidation if/when we add it) can react.
  *
  * Event TYPES are declared in `./types.ts` via TypeScript declaration
- * merging into `@/core/events::AppEvents`. Importing this file is
+ * merging into `@ziee/framework/events::AppEvents`. Importing this file is
  * also what brings that declaration into the project's type universe.
  */
 
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import './types'
 
 export const emitRemoteAccessStatusChanged = async (

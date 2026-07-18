@@ -14,9 +14,9 @@ import {
   Text,
   Title,
   Progress,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { CircleCheck, Book, ArrowLeft } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { OnboardingSlot } from './types/OnboardingSlot'
 import type { OnboardingStepProps } from './types/onboarding'
 

@@ -12,11 +12,11 @@ import {
   Switch,
   message,
   useForm,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useMemo, useState } from 'react'
 import type { DiscoveredModel } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'

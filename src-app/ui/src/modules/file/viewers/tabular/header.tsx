@@ -1,6 +1,6 @@
 import { ClipboardCopy, FileDown } from 'lucide-react'
-import { Button, Space, message } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Button, Space, message } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { CopyButton, RawToggle } from '../shared/chrome'
 import { copyTabularSelection, exportTabularView } from './tableView'

@@ -50,7 +50,7 @@ export { CHAT_SLOTS } from './types'
 
 // Extension store authoring — store-kit model (state / actions / init / persist / $).
 // Returns a `() => proxy` factory for a chat-extension's `store.createStore`.
-export { defineExtensionStore } from '@/core/store-kit'
+export { defineExtensionStore } from '@ziee/framework/store-kit'
 
 // Registry
 export {

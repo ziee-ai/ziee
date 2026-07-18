@@ -1,5 +1,5 @@
 import type { Group } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /** Open/selected-group state for the System Skills assignment drawer. */
 export const GroupSystemSkillsAssignment = defineStore('GroupSystemSkillsAssignment', {

@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type {
   useUserAssistantsStore,
   useTemplateAssistantsStore,
@@ -6,7 +6,7 @@ import type {
 } from '@/modules/assistant/stores'
 import type { useAssistantDrawerStore } from '@/modules/assistant/components/AssistantDrawer.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     UserAssistants: StoreProxy<
       ReturnType<typeof useUserAssistantsStore.getState>

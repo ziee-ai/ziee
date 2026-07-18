@@ -6,12 +6,12 @@ import {
   Title,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { Pencil, Check, X } from 'lucide-react'
 import { IoIosArrowBack } from 'react-icons/io'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'

@@ -1,0 +1,14 @@
+file	start	end	angles
+src-app/server/build.rs	66	145	equivalence,build-integration,completeness
+src-app/server/src/core/database/mod.rs	31	42	build-integration,regression,equivalence
+src-app/server/src/modules/MIGRATIONS.md	1	60	naming-convention,module-ownership,security
+sdk/crates/ziee-auth/migrations/202607140050_auth_schema.sql	1	210	equivalence,module-ownership,security
+sdk/crates/ziee-auth/migrations/202607144000_auth_fkeys.sql	1	40	fk-integrity,equivalence,build-integration
+sdk/crates/ziee-auth/migrations/202607144500_auth_seed.sql	1	20	security,data-integrity,equivalence
+src-app/server/src/modules/app/migrations/202607140001_app_bootstrap.sql	1	16	build-integration,module-ownership,equivalence
+src-app/server/src/modules/*/migrations/*_schema.sql	1	9999	equivalence,completeness,module-ownership
+src-app/server/src/modules/*/migrations/*_fkeys.sql	1	9999	fk-integrity,equivalence,build-integration
+src-app/server/src/modules/*/migrations/*_seed.sql	1	9999	data-integrity,equivalence,security
+src-app/server/src/modules/*/migrations/*_grant_permissions.sql	1	9999	security,data-integrity,equivalence
+src-app/server/migrations/(deleted 137)	0	0	completeness,equivalence,regression
+sdk/crates/ziee-auth/migrations/(deleted 10 numeric)	0	0	completeness,security,equivalence

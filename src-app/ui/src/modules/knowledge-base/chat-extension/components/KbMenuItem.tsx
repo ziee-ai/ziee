@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Input, Popover, message } from '@/components/ui'
+import { Input, Popover, message } from '@ziee/kit'
 import { BookOpen, Check, ChevronRight } from 'lucide-react'
 import { type KnowledgeBase, Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { kbKey } from '@/modules/knowledge-base/stores/kbSelectionKey'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 

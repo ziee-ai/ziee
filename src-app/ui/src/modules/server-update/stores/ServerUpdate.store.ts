@@ -5,8 +5,8 @@
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { type StoreProxy } from '@/core/stores'
-import { defineStore } from '@/core/store-kit'
+import { type StoreProxy } from '@ziee/framework/stores'
+import { defineStore } from '@ziee/framework/store-kit'
 
 const DISMISSED_VERSION_KEY = 'ziee:server-update:dismissed-version'
 
@@ -25,7 +25,7 @@ interface ServerUpdateState {
   dismiss: () => void
 }
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     ServerUpdate: StoreProxy<ServerUpdateState>
   }

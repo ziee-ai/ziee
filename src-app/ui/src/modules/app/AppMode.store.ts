@@ -1,5 +1,5 @@
-import type { StoreProxy } from '@/core/stores'
-import { defineStore } from '@/core/store-kit'
+import type { StoreProxy } from '@ziee/framework/stores'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Portable "what kind of build is this" flag for core UI code that branches on
@@ -12,7 +12,7 @@ interface AppModeState {
   setMultiUserMode: (value: boolean) => void
 }
 
-declare module '../../core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     AppMode: StoreProxy<AppModeState>
   }

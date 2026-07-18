@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { type AvailableSkillEntry, Permissions, type Skill } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Per-conversation skill opt-out store (Path B). Every installed skill is

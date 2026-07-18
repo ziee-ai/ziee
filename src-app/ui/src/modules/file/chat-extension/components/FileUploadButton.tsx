@@ -1,6 +1,6 @@
 import { Paperclip } from 'lucide-react'
-import { Button, Tooltip, Upload, message } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Button, Tooltip, Upload, message } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { composerPaneKey } from '@/modules/file/stores/File.store'
 import { usePermission } from '@/core/permissions'

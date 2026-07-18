@@ -1,0 +1,8 @@
+hunk	file	summary	angles
+H1	sdk crates/ziee-framework/src/openapi/emit_ts.rs (new)	generator moved verbatim (prod 1-1237) + new test module (2 pure units + generator_golden_fixture)	equivalence(B6-01),purity(B6-02),golden-test-split(B6-07),test-fidelity(B6-08)
+H2	sdk crates/ziee-framework/src/openapi/mod.rs (new)	finish_and_emit tail: finish_api->openapi.json->emit_ts->types.ts, output paths parameterized	equivalence(B6-01),output-path-parameterization(B6-05),driver-split(B6-06),byte-identity(B6-03)
+H3	sdk crates/ziee-framework/{lib.rs,Cargo.toml}	pub mod openapi; add indexmap+serde_json deps	cross-crate-resolution(B6-10),api-surface(B6-09),boundary(B6-13)
+H4	sdk crates/ziee-framework/src/openapi/fixtures/{openapi.json,types.ts} (new)	golden fixture spec + committed expected generator output	golden-test-split(B6-07),test-fidelity(B6-08),equivalence(B6-01)
+H5	ziee src-app/server/src/openapi/mod.rs (edit; emit_ts.rs deleted)	driver head keeps app config/globals/module-init, hands off to finish_and_emit; hosts moved regen-drift guards	driver-split(B6-06),output-path-parameterization(B6-05),golden-test-split(B6-07),test-fidelity(B6-08),equivalence(B6-01)
+H6	ziee src-app/server/src/lib.rs (edit)	crate-root re-exports source directly from ziee_framework::openapi::*	api-surface(B6-09),build-hygiene(B6-11),cross-crate-resolution(B6-10)
+H7	ziee src-app/desktop/tauri/src/openapi.rs (edit)	merged router -> ziee::finish_and_emit; drop dead fs import + mut	desktop-parity(B6-12),byte-identity(B6-03),output-path-parameterization(B6-05),build-hygiene(B6-11)

@@ -4,6 +4,12 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::code_sandbox::models::{ConversationFile, SandboxWorkspaceFile};
+// The resource-limits VALUE types stay in the engine crate (re-exported via the
+// shim); their DB read/write methods stay here (they `sqlx::query_as` over
+// `code_sandbox_settings`, which must not move to the build-DB-free engine).
+use crate::modules::code_sandbox::resource_limits::{
+    CodeSandboxResourceLimits, UpdateCodeSandboxResourceLimits,
+};
 
 /// Repository for the code_sandbox module.
 ///
@@ -332,5 +338,120 @@ impl CodeSandboxRepository {
 
         tx.commit().await.map_err(Self::db_err)?;
         Ok(())
+    }
+
+    /// Read the singleton settings row. Always returns Some because the
+    /// migration seeds it; a missing row would mean the DB is partially
+    /// migrated, in which case bubble up an internal error.
+    pub async fn get_resource_limits(&self) -> Result<CodeSandboxResourceLimits, AppError> {
+        let row: Option<CodeSandboxResourceLimits> = sqlx::query_as(
+            r#"
+            SELECT memory_max_bytes, memory_swap_max_bytes, pids_max, cpu_max,
+                   address_space_bytes, fsize_bytes, nproc_max, nofile_max, cpu_secs_max,
+                   timeout_secs, vm_idle_evict_secs,
+                   mac_vm_vcpus, mac_vm_ram_mib, vm_max_concurrent_execs,
+                   created_at, updated_at
+            FROM code_sandbox_settings
+            WHERE id = TRUE
+            "#,
+        )
+        .fetch_optional(self.pool())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = ?e, "code_sandbox: read resource_limits");
+            AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR",
+                "database error",
+            )
+        })?;
+        row.ok_or_else(|| {
+            AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "SANDBOX_SETTINGS_MISSING",
+                "code_sandbox_settings singleton row is missing — run migrations",
+            )
+        })
+    }
+
+    /// PATCH-style update: only the `Some` fields are written. Returns the
+    /// post-update row so the handler can return it without a second SELECT.
+    /// Validation happens at the call site (see
+    /// [`UpdateCodeSandboxResourceLimits::validate`]).
+    pub async fn update_resource_limits(
+        &self,
+        patch: &UpdateCodeSandboxResourceLimits,
+    ) -> Result<CodeSandboxResourceLimits, AppError> {
+        let row: Option<CodeSandboxResourceLimits> = sqlx::query_as(
+            r#"
+            UPDATE code_sandbox_settings SET
+                memory_max_bytes        = COALESCE($1, memory_max_bytes),
+                memory_swap_max_bytes   = COALESCE($2, memory_swap_max_bytes),
+                pids_max                = COALESCE($3, pids_max),
+                cpu_max                 = COALESCE($4, cpu_max),
+                address_space_bytes     = COALESCE($5, address_space_bytes),
+                fsize_bytes             = COALESCE($6, fsize_bytes),
+                nproc_max               = COALESCE($7, nproc_max),
+                nofile_max              = COALESCE($8, nofile_max),
+                cpu_secs_max            = COALESCE($9, cpu_secs_max),
+                timeout_secs            = COALESCE($10, timeout_secs),
+                vm_idle_evict_secs      = COALESCE($11, vm_idle_evict_secs),
+                mac_vm_vcpus            = COALESCE($12, mac_vm_vcpus),
+                mac_vm_ram_mib          = COALESCE($13, mac_vm_ram_mib),
+                vm_max_concurrent_execs = COALESCE($14, vm_max_concurrent_execs),
+                updated_at              = NOW()
+            WHERE id = TRUE
+            RETURNING memory_max_bytes, memory_swap_max_bytes, pids_max, cpu_max,
+                      address_space_bytes, fsize_bytes, nproc_max, nofile_max, cpu_secs_max,
+                      timeout_secs, vm_idle_evict_secs,
+                      mac_vm_vcpus, mac_vm_ram_mib, vm_max_concurrent_execs,
+                      created_at, updated_at
+            "#,
+        )
+        .bind(patch.memory_max_bytes)
+        .bind(patch.memory_swap_max_bytes)
+        .bind(patch.pids_max)
+        .bind(patch.cpu_max.as_deref())
+        .bind(patch.address_space_bytes)
+        .bind(patch.fsize_bytes)
+        .bind(patch.nproc_max)
+        .bind(patch.nofile_max)
+        .bind(patch.cpu_secs_max)
+        .bind(patch.timeout_secs)
+        .bind(patch.vm_idle_evict_secs)
+        .bind(patch.mac_vm_vcpus)
+        .bind(patch.mac_vm_ram_mib)
+        .bind(patch.vm_max_concurrent_execs)
+        .fetch_optional(self.pool())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = ?e, "code_sandbox: update resource_limits");
+            // Surface the most common operator mistake (CHECK constraint
+            // violation) with a 422 so the UI can render it clearly.
+            if let sqlx::Error::Database(db) = &e
+                && db.constraint().is_some() {
+                    return AppError::new(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "SANDBOX_LIMIT_DB_CONSTRAINT",
+                        format!(
+                            "value rejected by DB constraint {:?}: {}",
+                            db.constraint(),
+                            db.message()
+                        ),
+                    );
+                }
+            AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR",
+                "database error",
+            )
+        })?;
+        row.ok_or_else(|| {
+            AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "SANDBOX_SETTINGS_MISSING",
+                "code_sandbox_settings singleton row is missing — run migrations",
+            )
+        })
     }
 }

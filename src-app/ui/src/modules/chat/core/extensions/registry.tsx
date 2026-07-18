@@ -10,6 +10,7 @@ import type {
   ContentRendererProps,
 } from '@/modules/chat/core/extensions/types'
 import React from 'react'
+import { createSlotRegistry } from '@ziee/framework/slots'
 
 /**
  * Central registry for managing chat extensions
@@ -23,13 +24,17 @@ export class ChatExtensionRegistry {
   private initialized = false
 
   /**
-   * Slot registry: Maps slot names to components with order
-   * Built at registration time for efficient rendering
+   * Slot registry: maps slot names to ordered components, built at
+   * registration time for efficient rendering. Backed by the generic
+   * `@ziee/framework/slots` primitive (gap G8) — the register/unregister/
+   * order-sort/keyed-render mechanics are shared with any app's slot registry.
+   * The enabled-gate delegates to this class's `extensionOptions` so a disabled
+   * extension's slot components hide, preserving prior behavior exactly.
    */
-  private slotRegistry: Map<
-    ChatSlotName,
-    Array<{ extension: ChatExtension; Component: React.ComponentType; order: number }>
-  > = new Map()
+  private slots = createSlotRegistry<ChatSlotName>({
+    isEnabled: (name) => this.extensionOptions.get(name)?.enabled !== false,
+    label: 'ChatExtensions',
+  })
 
   /**
    * Content type registry: Maps content types to renderer components
@@ -140,19 +145,9 @@ export class ChatExtensionRegistry {
       )
     }
 
-    // Register slot components in slot registry
+    // Register slot components via the generic slot registry (gap G8).
     if (extension.slots) {
-      for (const [slotName, slotRegistration] of Object.entries(extension.slots)) {
-        if (!this.slotRegistry.has(slotName as ChatSlotName)) {
-          this.slotRegistry.set(slotName as ChatSlotName, [])
-        }
-
-        this.slotRegistry.get(slotName as ChatSlotName)!.push({
-          extension,
-          Component: slotRegistration.component,
-          order: slotRegistration.order ?? 100, // Default order: 100
-        })
-      }
+      this.slots.register(extension.name, extension.slots)
 
       console.log(
         `[ChatExtensions] Registered slots for ${extension.name}:`,
@@ -235,15 +230,8 @@ export class ChatExtensionRegistry {
     this.extensions.delete(name)
     this.extensionOptions.delete(name)
 
-    // Clear slot registry entries for this extension
-    for (const [slotName, entries] of this.slotRegistry.entries()) {
-      const filtered = entries.filter(entry => entry.extension.name !== name)
-      if (filtered.length === 0) {
-        this.slotRegistry.delete(slotName)
-      } else {
-        this.slotRegistry.set(slotName, filtered)
-      }
-    }
+    // Clear this extension's slot entries via the generic slot registry.
+    this.slots.unregister(name)
 
     // Clear content-type registry entries for this extension
     for (const [contentType, entries] of this.contentTypeRegistry.entries()) {
@@ -360,7 +348,7 @@ export class ChatExtensionRegistry {
     chatStore?: import('./types').ChatExtStoreApi,
     resolveStore?: (
       name: string,
-    ) => import('@/core/stores').StoreProxy<any> | null,
+    ) => import('@ziee/framework/stores').StoreProxy<any> | null,
   ): Promise<void> {
     if (this.initialized) {
       console.warn('[ChatExtensions] Already initialized')
@@ -383,7 +371,7 @@ export class ChatExtensionRegistry {
     chatStore?: import('./types').ChatExtStoreApi,
     resolveStore?: (
       name: string,
-    ) => import('@/core/stores').StoreProxy<any> | null,
+    ) => import('@ziee/framework/stores').StoreProxy<any> | null,
   ): Promise<void> {
     const extensions = this.getExtensions()
     console.log(
@@ -400,7 +388,7 @@ export class ChatExtensionRegistry {
       resolve =
         resolve ??
         ((name) =>
-          (state[name] as import('@/core/stores').StoreProxy<any>) ?? null)
+          (state[name] as import('@ziee/framework/stores').StoreProxy<any>) ?? null)
     }
 
     for (const extension of extensions) {
@@ -618,7 +606,7 @@ export class ChatExtensionRegistry {
     chatStore?: import('./types').ChatExtStoreApi,
     resolveStore?: (
       name: string,
-    ) => import('@/core/stores').StoreProxy<any> | null,
+    ) => import('@ziee/framework/stores').StoreProxy<any> | null,
   ): Promise<void> {
     const extensions = this.getExtensions()
     console.log(
@@ -635,7 +623,7 @@ export class ChatExtensionRegistry {
       resolve =
         resolve ??
         ((name) =>
-          (state[name] as import('@/core/stores').StoreProxy<any>) ?? null)
+          (state[name] as import('@ziee/framework/stores').StoreProxy<any>) ?? null)
     }
 
     for (const extension of extensions) {
@@ -946,34 +934,9 @@ export class ChatExtensionRegistry {
    * Components are sorted by their order property (lower = renders first)
    */
   renderSlot(slot: ChatSlotName): React.ReactNode[] {
-    const registered = this.slotRegistry.get(slot)
-
-    if (!registered || registered.length === 0) {
-      return []
-    }
-
-    // Filter by enabled extensions and sort by order (not priority)
-    const enabledRegistered = registered
-      .filter(({ extension }) => {
-        const options = this.extensionOptions.get(extension.name)
-        return options?.enabled !== false
-      })
-      .sort((a, b) => a.order - b.order) // Sort by order property
-
-    const renderers: React.ReactNode[] = []
-
-    for (const { extension, Component } of enabledRegistered) {
-      try {
-        renderers.push(<Component key={extension.name} />)
-      } catch (error) {
-        console.error(
-          `[ChatExtensions] Error rendering slot '${slot}' in ${extension.name}:`,
-          error,
-        )
-      }
-    }
-
-    return renderers
+    // Delegates to the generic slot registry (gap G8): enabled-filter (via the
+    // `isEnabled` gate wired at construction) + order-sort + keyed render.
+    return this.slots.renderSlot(slot)
   }
 
   /**
@@ -1301,11 +1264,11 @@ export const chatExtensionRegistry = new ChatExtensionRegistry()
 export function useConversationMenuContributions(
   conversation: import('@/api-client/types').Conversation,
 ): {
-  items: import('@/components/ui').DropdownItem[]
+  items: import('@ziee/kit').DropdownItem[]
   overlays: React.ReactNode[]
   keepMenuOpen: boolean
 } {
-  const items: import('@/components/ui').DropdownItem[] = []
+  const items: import('@ziee/kit').DropdownItem[] = []
   const overlays: React.ReactNode[] = []
   let keepMenuOpen = false
   const extensions = chatExtensionRegistry

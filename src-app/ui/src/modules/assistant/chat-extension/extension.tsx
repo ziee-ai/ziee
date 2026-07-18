@@ -3,7 +3,7 @@ import {
   type ChatExtension,
   type ExtensionRequestFields,
 } from '@/modules/chat/core/extensions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { AssistantMenuItem } from '@/modules/assistant/chat-extension/components/AssistantMenuItem'
 import { AssistantStatusChip } from '@/modules/assistant/chat-extension/components/AssistantStatusChip'
 
@@ -32,7 +32,7 @@ const assistantExtension: ChatExtension = createExtension({
   priority: 80,
 
   initialize: async (ctx) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { newChatAssistantKey } = await import(
       '@/modules/assistant/stores/AssistantPicker.store'
     )

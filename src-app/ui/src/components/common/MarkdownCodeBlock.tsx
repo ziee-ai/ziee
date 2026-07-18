@@ -1,5 +1,5 @@
 import { lazy, Suspense, type JSX, type ReactNode } from 'react'
-import { Tooltip } from '@/components/ui'
+import { Tooltip } from '@ziee/kit'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { nodeToText } from '@/components/common/markdownHeadings'
 

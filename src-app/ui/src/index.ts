@@ -8,11 +8,11 @@
 export { default as App } from './App'
 
 // Core utilities and stores
-export * from './core'
+export * from '@ziee/framework'
 
 // Module system
 export { loadModules } from './modules/loader'
-export { createModule } from './core/module'
+export { createModule } from '@ziee/framework/module'
 
 // Auth guard for protected routes
 export { AuthGuard } from './modules/auth'
@@ -21,4 +21,4 @@ export { AuthGuard } from './modules/auth'
 export * from './api-client'
 
 // Re-export types for consumers
-export type { AppModule } from './core/module-system/types'
+export type { AppModule } from '@ziee/framework/module-system/types'

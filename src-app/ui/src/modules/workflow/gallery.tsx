@@ -15,7 +15,7 @@ import type {
 } from '@/api-client/types'
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyBound, lazyNamed, lazyProps } from '@/dev/gallery/support'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { workflowCassette } from '@/dev/gallery/fixtures/workflow'
 import { llmGroupsList } from '@/dev/gallery/fixtures/llm-providers'
 
@@ -192,7 +192,7 @@ const elicitErrorSurface = lazy(async () => {
 /** EditableArrayTable inside a RHF Form whose field array is empty → the
  *  "No rows" empty `<tr>` (:358). */
 const arrayEmptySurface = lazy(async () => {
-  const { Form, useForm } = await import('@/components/ui')
+  const { Form, useForm } = await import('@ziee/kit')
   const { EditableArrayTable } = await import(
     '@/modules/workflow/components/EditableArrayTable'
   )

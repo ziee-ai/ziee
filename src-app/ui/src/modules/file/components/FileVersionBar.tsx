@@ -1,8 +1,8 @@
 import { GitCompare, History, Undo2 } from 'lucide-react'
 import { useState } from 'react'
-import { Select, Button, Tag, Dialog } from '@/components/ui'
-import { message } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Select, Button, Tag, Dialog } from '@ziee/kit'
+import { message } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { FileVersionDiff } from '@/modules/file/components/FileVersionDiff'
 

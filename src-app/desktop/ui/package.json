@@ -10,6 +10,9 @@
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-opener": "^2.5.4",
+    "@ziee/kit": "*",
+    "@ziee/framework": "*",
+    "@ziee/gallery": "*",
     "dayjs": "^1.11.20",
     "i18next": "^26.2.0",
     "i18next-browser-languagedetector": "^8.2.1",
@@ -64,7 +67,8 @@
     "lint:logical-direction": "node ../../ui/scripts/lint-logical-direction.mjs",
     "lint:tooltip-placement": "node ../../ui/scripts/lint-tooltip-placement.mjs",
     "check:kit-manifest": "node ../../ui/scripts/gen-kit-manifest.mjs --check",
-    "check:testid-registry": "node ../../ui/scripts/gen-testid-registry.mjs --check",
+    "check:testid-registry": "node ../../../sdk/packages/gallery/scripts/gen-testid-registry.mjs --check",
+    "gen:testid-registry": "node ../../../sdk/packages/gallery/scripts/gen-testid-registry.mjs",
     "check:override-registry": "node ../../ui/scripts/gen-override-registry.mjs --check",
     "check:design-spec": "node ../../ui/scripts/gen-design-spec.mjs --check",
     "gallery:geometry": "node scripts/gallery-geometry-audit.mjs",
@@ -100,8 +104,8 @@
     "test:tauri-driver": "node tests/tauri-driver/smoke.mjs",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:unit:watch": "vitest --config vitest.config.ts",
-    "check:gallery-seed-registry": "node ../../ui/scripts/gen-gallery-seed-registry.mjs --src src --check",
-    "gen:gallery-seed-registry": "node ../../ui/scripts/gen-gallery-seed-registry.mjs --src src"
+    "check:gallery-seed-registry": "node ../../../sdk/packages/gallery/scripts/gen-gallery-seed-registry.mjs --src src --check",
+    "gen:gallery-seed-registry": "node ../../../sdk/packages/gallery/scripts/gen-gallery-seed-registry.mjs --src src"
   },
   "type": "module"
 }

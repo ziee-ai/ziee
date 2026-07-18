@@ -11,7 +11,7 @@
  * by MessageList (DEV-only).
  */
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '@/components/ui'
+import { Button } from '@ziee/kit'
 import {
   MessageList,
   type MessageListHandle,

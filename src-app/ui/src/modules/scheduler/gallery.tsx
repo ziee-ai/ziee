@@ -7,7 +7,7 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ScheduledTask } from '@/api-client/types'
 
 const USER = 'aaaa0000-0000-0000-0000-000000000001'

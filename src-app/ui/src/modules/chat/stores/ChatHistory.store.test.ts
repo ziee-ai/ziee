@@ -50,11 +50,11 @@ vi.mock('@/core/permissions', () => ({
   hasPermissionNow: () => perm.allow,
   Permissions: {},
 }))
-vi.mock('@/core/stores', () => ({
+vi.mock('@ziee/framework/stores', () => ({
   Stores: { EventBus: { emit: vi.fn(() => Promise.resolve()) } },
   createStoreProxy: () => ({}),
 }))
-vi.mock('@/core/events', () => ({
+vi.mock('@ziee/framework/events', () => ({
   useEventBusStore: {
     getState: () => ({
       on: bus.on,

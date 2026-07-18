@@ -7,9 +7,9 @@ import type {
   ProjectMcpSettingsRequest,
   ProjectMcpSettingsResponse,
 } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { useProjectDetailStore } from '@/modules/projects/stores'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /** Canonical in-store representation (the GET-shape response). */
 export type ProjectMcpSettings = ProjectMcpSettingsResponse

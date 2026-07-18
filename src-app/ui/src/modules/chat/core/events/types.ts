@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { Conversation } from '@/api-client/types'
 
 /**
@@ -43,7 +43,7 @@ export interface ConversationDeletedEvent extends BaseEvent {
 /**
  * Augment global AppEvents registry
  */
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'conversation.created': ConversationCreatedEvent
     'conversation.titleUpdated': ConversationTitleUpdatedEvent

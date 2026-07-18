@@ -1,4 +1,4 @@
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Open-state for the whisper-model upload drawer. Mirrors the llm-provider

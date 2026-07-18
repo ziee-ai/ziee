@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { Descriptions, Space, Tag, Paragraph, Title } from '@/components/ui'
+import { Descriptions, Space, Tag, Paragraph, Title } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import type { DescriptionsItem } from '@/components/ui'
+import type { DescriptionsItem } from '@ziee/kit'
 import type { IndexItem } from '@/api-client/types'
 
 interface SkillDetailsDrawerProps {

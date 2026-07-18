@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
-import { Spinner } from '@/components/ui'
+import { Spinner } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { FilePanel } from '@/modules/file/components/FilePanel'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {

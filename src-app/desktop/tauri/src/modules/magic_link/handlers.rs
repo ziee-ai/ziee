@@ -176,6 +176,7 @@ pub async fn exchange(
     // the full refresh-token TTL, defeating the logout button's whole
     // purpose.
     let with_jti = ziee::refresh_tokens::mint_session_tokens(
+        ziee::Repos.pool(),
         &jwt_service,
         user.id,
         &user.username,

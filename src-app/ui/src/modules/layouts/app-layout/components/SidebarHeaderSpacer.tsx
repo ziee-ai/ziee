@@ -1,4 +1,4 @@
-import { Seam } from '@/core/overrides'
+import { Seam } from '@ziee/framework/overrides'
 
 /**
  * Top spacer in the LeftSidebar that clears the area covered by
@@ -11,7 +11,7 @@ import { Seam } from '@/core/overrides'
  * registers `layout.sidebar-header-spacer`
  * (`desktop/ui/src/modules/desktop-base/overrides/sidebar-header-spacer.tsx`).
  */
-declare module '@/core/overrides' {
+declare module '@ziee/framework/overrides' {
   interface UIOverrides {
     'layout.sidebar-header-spacer': Record<string, never>
   }

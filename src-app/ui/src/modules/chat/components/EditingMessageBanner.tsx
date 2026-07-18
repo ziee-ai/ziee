@@ -1,7 +1,7 @@
-import { Button, Tooltip } from '@/components/ui'
-import { Text } from '@/components/ui'
+import { Button, Tooltip } from '@ziee/kit'
+import { Text } from '@ziee/kit'
 import { Pencil, X } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**

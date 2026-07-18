@@ -1,55 +1,10 @@
-//! Process-global access to the at-rest secret storage key.
+//! Re-export shim — Chunk BG-2.
 //!
-//! Initialized once at server boot from `Config::secrets::storage_key`.
-//! Repository code that encrypts / decrypts api_key + token + password
-//! columns reads from here rather than threading the key through every
-//! function signature.
-//!
-//! When the key is unset, the application boots in compat mode:
-//! new writes go to the plaintext columns and a tracing::warn fires.
-//! Closes 06-llm-provider F-02 (Critical) once configured.
+//! The at-rest secret storage-key process-global moved to `ziee-framework`
+//! alongside the `secret` crypto that reads it (so `resolve_optional_secret`
+//! keeps its exact signature). It is ONE static per process regardless of which
+//! crate owns it; `init_storage_key` (boot) writes it, every `storage_key()`
+//! read observes the same value — behaviour byte-identical. This shim keeps
+//! every consumer that names `crate::core::secrets::…` byte-unchanged.
 
-use once_cell::sync::OnceCell;
-
-static STORAGE_KEY: OnceCell<Option<String>> = OnceCell::new();
-
-/// Initialize the global storage key. Idempotent; first call wins (a
-/// second call with a different value logs a tracing::warn and ignores
-/// the new value, same as init_repositories).
-pub fn init_storage_key(key: Option<String>) {
-    if let Err(prev) = STORAGE_KEY.set(key.clone())
-        && prev != key {
-            tracing::warn!(
-                "init_storage_key called twice with different values; \
-                 ignoring second call"
-            );
-        }
-    if let Some(stored) = STORAGE_KEY.get() {
-        match stored.as_deref() {
-            Some(k) if k.len() >= 32 => {
-                tracing::info!("Secret storage key configured ({} chars)", k.len());
-            }
-            Some(k) => {
-                tracing::warn!(
-                    "Secret storage key configured but only {} chars — \
-                     minimum is 32. Encryption helpers will refuse to use it.",
-                    k.len()
-                );
-            }
-            None => {
-                tracing::warn!(
-                    "No secret storage key configured (secrets.storage_key); \
-                     api_key / token / password columns will stay in plaintext. \
-                     Set secrets.storage_key in your config to encrypt at rest."
-                );
-            }
-        }
-    }
-}
-
-/// Return the configured storage key. None when unset (compat mode) or
-/// when init_storage_key hasn't been called yet (test contexts that
-/// don't go through the full server boot).
-pub fn storage_key() -> Option<&'static str> {
-    STORAGE_KEY.get().and_then(|opt| opt.as_deref())
-}
+pub use ziee_framework::secrets::*;

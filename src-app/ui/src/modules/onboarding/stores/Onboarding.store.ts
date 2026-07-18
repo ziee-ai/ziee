@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
-import type { BaseEvent } from '@/core/events'
-import { defineStore } from '@/core/store-kit'
-import { createStoreProxy, Stores } from '@/core/stores'
+import type { BaseEvent } from '@ziee/framework/events'
+import { defineStore } from '@ziee/framework/store-kit'
+import { createStoreProxy, Stores } from '@ziee/framework/stores'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 
 // Monotonic token so a superseded in-flight load (e.g. after a fast user
@@ -146,7 +146,7 @@ export interface OnboardingStepCompletedEvent extends BaseEvent {
   data: { guideId: string; stepId: string }
 }
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'onboarding.guide_completed': OnboardingGuideCompletedEvent
     'onboarding.step_completed': OnboardingStepCompletedEvent

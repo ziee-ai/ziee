@@ -22,7 +22,16 @@ impl CloneTemplateAssistantsHandler {
 
 #[async_trait]
 impl EventHandler for CloneTemplateAssistantsHandler {
-    async fn handle(&self, event: &AppEvent, _pool: &PgPool) -> Result<(), AppError> {
+    async fn handle(
+        &self,
+        event: &(dyn std::any::Any + Send + Sync),
+        _pool: &PgPool,
+    ) -> Result<(), AppError> {
+        // The framework `EventHandler` erases the event to `&dyn Any`; recover
+        // the app's concrete `AppEvent` (a non-`AppEvent` payload is ignored).
+        let Some(event) = event.downcast_ref::<AppEvent>() else {
+            return Ok(());
+        };
         match event {
             AppEvent::User(UserEvent::Created { user }) => {
                 tracing::info!(

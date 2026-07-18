@@ -1,6 +1,6 @@
-import { Card } from '@/components/ui'
+import { Card } from '@ziee/kit'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type DownloadInstance } from '@/api-client/types'
 

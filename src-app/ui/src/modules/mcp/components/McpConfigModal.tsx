@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, InputNumber, message } from '@/components/ui'
+import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, Separator, Button, InputNumber, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Trash2 } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { Tool } from '@/api-client/types'
 import { pendingConversationKey, projectConfigKey } from '@/modules/mcp/stores/McpComposer.store'
 

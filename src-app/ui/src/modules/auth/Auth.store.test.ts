@@ -34,16 +34,29 @@ const bus = vi.hoisted(() => ({
   removeGroupListeners: () => {},
 }))
 
+// The store + its store-kit authoring layer moved to the `@ziee/framework/*`
+// SDK packages (SDK extraction): `ApiClient` still resolves from `@/api-client`,
+// but `setUnauthorizedHandler` is `@ziee/framework/api-client/core`, and the
+// `Stores` proxy / `createStoreProxy` / `useEventBusStore` that store-kit reads
+// are `@ziee/framework/{stores,events}`. Same mock shapes as before, repointed.
 vi.mock('@/api-client', () => ({
   ApiClient: apiMock,
-  setUnauthorizedHandler: vi.fn(),
   isTauri: () => false,
 }))
-vi.mock('@/core/stores', () => ({
-  Stores: { EventBus: { emit: vi.fn(() => Promise.resolve()) } },
+vi.mock('@ziee/framework/api-client/core', () => ({
+  setUnauthorizedHandler: vi.fn(),
+}))
+vi.mock('@ziee/framework/stores', () => ({
+  Stores: {
+    EventBus: {
+      emit: vi.fn(() => Promise.resolve()),
+      on: () => () => {},
+      removeGroupListeners: () => {},
+    },
+  },
   createStoreProxy: () => ({}),
 }))
-vi.mock('@/core/events', () => ({
+vi.mock('@ziee/framework/events', () => ({
   useEventBusStore: { getState: () => bus },
 }))
 

@@ -1,8 +1,8 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useConversationSummarizationStore } from './stores/ConversationSummarization.store'
 import type { useSummarizationAdminStore } from './stores/SummarizationAdmin.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     SummarizationAdmin: StoreProxy<
       ReturnType<typeof useSummarizationAdminStore.getState>

@@ -5,7 +5,7 @@ import {
   type VoiceCatalogResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * The downloadable whisper-model catalog fetched from the configured source

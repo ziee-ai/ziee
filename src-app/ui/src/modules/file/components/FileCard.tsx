@@ -4,9 +4,9 @@ import {
   Button, Checkbox, Progress, Spin, Tooltip, Text, message as kitMessage,
   Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle,
   AttachmentDescription, AttachmentActions, AttachmentTrigger,
-} from '@/components/ui'
-import { Confirm } from '@/components/ui'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit'
+import { Confirm } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type File as FileEntity } from '@/api-client/types'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'

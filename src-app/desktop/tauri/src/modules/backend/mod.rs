@@ -5,7 +5,10 @@
 pub mod commands;
 mod handlers;
 mod routes;
+mod server_boot;
 mod state;
+
+pub use server_boot::ZieeServerBoot;
 
 #[cfg(not(debug_assertions))]
 mod static_files;
@@ -15,18 +18,30 @@ pub use state::BackendState;
 use crate::module_api::DesktopModule;
 use anyhow::Result;
 use axum::{body::Body, http::Request, response::Response};
+use sqlx::PgPool;
 use std::sync::{Arc, OnceLock};
 use tauri::{App, Manager};
 use ziee::ApiRouter;
+use ziee_desktop_harness::boot::ServerBoot;
+use ziee_desktop_harness::window::{spawn_boot_then_window, WindowConfig};
 
 /// Global storage for backend config (set during init, used when starting server)
 static BACKEND_CONFIG: OnceLock<ziee::Config> = OnceLock::new();
 static BACKEND_STATE: OnceLock<BackendState> = OnceLock::new();
 static JWT_SERVICE: OnceLock<Arc<ziee::JwtService>> = OnceLock::new();
+/// The server DB pool, stashed from the `ServerBoot` `BootHandle` (Chunk BG-3)
+/// so the `auto_login` Tauri command threads it instead of reaching the global
+/// `ziee::Repos`. D-full's harness-owned command reads the same handle.
+static SERVER_POOL: OnceLock<PgPool> = OnceLock::new();
 
 /// Get the JWT service (for Tauri commands)
 pub fn get_jwt_service() -> Option<&'static Arc<ziee::JwtService>> {
     JWT_SERVICE.get()
+}
+
+/// Get the server DB pool (for Tauri commands) — threaded from the BootHandle.
+pub fn get_server_pool() -> Option<&'static PgPool> {
+    SERVER_POOL.get()
 }
 
 pub struct BackendModule {
@@ -246,146 +261,90 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
         AutoAssignMcpServerHandler::new(),
     ];
 
-    // Clone config so the closure can build a CORS layer that
-    // matches the server's own — `start_server_with_routes` takes
-    // ownership of `config`, so we need our own copy first.
-    let cors_config = config.clone();
+    // Chunk BG-3: the embed-server boundary is the harness `ServerBoot` seam.
+    // `ZieeServerBoot::boot` wraps `start_server_with_routes` + the desktop
+    // route re-layering (CORS + Extension(jwt)) and hands back a `BootHandle`
+    // carrying {addr, pool, jwt}. The desktop-consumer post-boot steps below
+    // thread that handle's pool/jwt instead of re-reaching the `ziee::Repos` /
+    // JWT globals — the de-globalization D-full needs.
+    let boot: Arc<dyn ServerBoot> = Arc::new(ZieeServerBoot::new(config, desktop_routes, handlers));
 
-    tauri::async_runtime::spawn(async move {
-        match ziee::start_server_with_routes(
-            config,
-            move |router, jwt| {
-            // Store JWT service for Tauri command access
-            let _ = JWT_SERVICE.set(jwt.clone());
-            tracing::info!("JWT service stored for Tauri commands");
+    // Chunk D-full: the window + boot→window lifecycle now lives in the harness
+    // (`ziee_desktop_harness::window::spawn_boot_then_window`), generic over
+    // `Arc<dyn ServerBoot>`. The harness owns the spawn, the per-OS
+    // `create_main_window`, and the "create the window on BOTH the success and
+    // failure paths" contract. This app supplies only its window parameters +
+    // its domain post-boot steps (the `on_ready` closure below).
+    let window = WindowConfig {
+        title: String::new(),
+        inner_size: (1200.0, 800.0),
+        min_inner_size: (400.0, 600.0),
+        effect_radius: 8.0,
+        traffic_light_position: (20.0, 22.0),
+    };
 
-            // Initialize desktop repositories with server's pool
-            // Repos is available here because start_server_with_routes
-            // initializes it before calling this closure
-            let pool = ziee::Repos.pool().clone();
-            crate::core::init_desktop_repositories(pool);
-            tracing::info!("Desktop repositories initialized with server pool");
+    spawn_boot_then_window(boot, app_handle, window, move |handle| async move {
+        // Stash the JWT service (threaded from the BootHandle, not the
+        // raw route-builder closure) for the `auto_login` Tauri command.
+        let _ = JWT_SERVICE.set(handle.jwt.clone());
+        let _ = SERVER_POOL.set(handle.pool.clone());
+        tracing::info!("JWT service stored for Tauri commands");
 
-            // Re-apply CORS + Extension(jwt) to the merged desktop
-            // routes. `setup.app` already has these layers but axum's
-            // `.merge()` does NOT propagate parent layers onto
-            // merged routes. Without these:
-            //   - Browser preflight OPTIONS → 405 (no CORS layer).
-            //   - Authenticated requests → 500 "JWT service not
-            //     configured" (RequirePermissions can't find the
-            //     Arc<JwtService> extension).
-            let desktop_cors = ziee::create_cors_layer(&cors_config);
-            let router = router.merge(
-                desktop_routes
-                    .layer(axum::Extension(jwt.clone()))
-                    .layer(desktop_cors),
+        // Run desktop-specific migrations (threaded pool)
+        if let Err(e) = run_desktop_migrations(&handle.pool).await {
+            // Surface as ERROR (not WARN) with an actionable
+            // message — the server stays up and /api/health
+            // continues to respond, but any handler that
+            // touches desktop-only tables (remote_access /
+            // magic_link / desktop_settings) will return 500
+            // until the operator intervenes. Cross-process
+            // signaling to the UI bootstrap spinner is
+            // tracked separately (M21 partial).
+            tracing::error!(
+                error = %e,
+                "Failed to run desktop migrations — the app may be unusable. \
+                 Check the DB connection and consider resetting the data directory."
             );
-
-            // Development: proxy non-API requests to Vite dev server
-            // This enables Playwright testing by serving both API and frontend from same origin
-            #[cfg(debug_assertions)]
-            let router = {
-                tracing::info!("Development mode: enabling Vite proxy fallback");
-                router.fallback(proxy_to_vite)
-            };
-
-            // Production: serve embedded static files, br/gzip-compressed.
-            // The CompressionLayer is scoped to the static fallback ONLY (not
-            // the API/SSE routes on `router`), and negotiates encoding from the
-            // request's Accept-Encoding. tower-http's DefaultPredicate already
-            // skips already-compressed types + tiny bodies. This shrinks the
-            // ~1.7 MB JS + 210 KB CSS bundle to a fraction on the wire for the
-            // Remote Access tunnel (the local Tauri webview loads over tauri://
-            // and never hits this path).
-            #[cfg(not(debug_assertions))]
-            let router = {
-                tracing::info!("Production mode: serving embedded static files (br/gzip)");
-                router.fallback_service(
-                    axum::routing::any(static_files::serve_embedded_files)
-                        .layer(tower_http::compression::CompressionLayer::new()),
-                )
-            };
-
-            router
-            },
-            handlers,
-        )
-        .await
-        {
-            Ok(addr) => {
-                tracing::info!("Backend server started successfully on {}", addr);
-
-                // Run desktop-specific migrations
-                if let Err(e) = run_desktop_migrations().await {
-                    // Surface as ERROR (not WARN) with an actionable
-                    // message — the server stays up and /api/health
-                    // continues to respond, but any handler that
-                    // touches desktop-only tables (remote_access /
-                    // magic_link / desktop_settings) will return 500
-                    // until the operator intervenes. Cross-process
-                    // signaling to the UI bootstrap spinner is
-                    // tracked separately (M21 partial).
-                    tracing::error!(
-                        error = %e,
-                        "Failed to run desktop migrations — the app may be unusable. \
-                         Check the DB connection and consider resetting the data directory."
-                    );
-                }
-
-                // Register the host-folder mount provider against the generic
-                // sandbox seam (desktop-only feature #3, Part B). Safe after
-                // migrations: the provider reads the host_mount_* tables lazily
-                // at execute_command time.
-                crate::modules::host_mount::register_provider();
-
-                // Ensure admin exists (create on first run)
-                if let Err(e) = ensure_desktop_admin().await {
-                    tracing::error!("Failed to ensure desktop admin: {}", e);
-                }
-
-                // Idempotent backfill: every system MCP server gets a
-                // row in `user_group_mcp_servers` for every group.
-                // Runs every boot to catch built-in registrations
-                // (memory MCP) whose insert-if-absent path may not
-                // emit `SystemServerCreated`. See the function doc
-                // for the full rationale.
-                if let Err(e) = backfill_system_mcp_assignments().await {
-                    tracing::error!(
-                        error = %e,
-                        "backfill_system_mcp_assignments failed — system MCP servers may not be visible to the admin until manually assigned"
-                    );
-                }
-
-                // Flip the singleton `memory_admin_settings.enabled`
-                // to TRUE on every boot. Defaults to FALSE in the
-                // migration (server's opt-in posture) — desktop
-                // single-admins shouldn't have to discover an admin
-                // toggle to start using Memory. Idempotent.
-                if let Err(e) = enable_memory_admin_default().await {
-                    tracing::error!(
-                        error = %e,
-                        "enable_memory_admin_default failed — Memory will appear disabled until the admin flips it"
-                    );
-                }
-
-                state.set_ready(true);
-
-                // Create window now that server is ready
-                create_main_window(&app_handle);
-            }
-            Err(e) => {
-                tracing::error!("Failed to start backend server: {}", e);
-                // Propagate the failure to the user instead of leaving the app
-                // invisible. The spawned start task has no caller to return the
-                // error to, so without this the window (created only on the Ok
-                // path below) never appears and a failed launch is silent.
-                // Creating the window anyway lets the desktop UI's bootstrap
-                // retry loop run, time out against the dead backend, and render
-                // the 'failed' state ("Backend failed to start. Try restarting
-                // Ziee.").
-                create_main_window(&app_handle);
-            }
         }
+
+        // Register the host-folder mount provider against the generic
+        // sandbox seam (desktop-only feature #3, Part B). Safe after
+        // migrations: the provider reads the host_mount_* tables lazily
+        // at execute_command time.
+        crate::modules::host_mount::register_provider();
+
+        // Ensure the single owner exists (create on first run),
+        // threading the BootHandle pool.
+        if let Err(e) = ensure_desktop_admin(&handle.pool).await {
+            tracing::error!("Failed to ensure desktop admin: {}", e);
+        }
+
+        // Idempotent backfill: every system MCP server gets a
+        // row in `user_group_mcp_servers` for every group.
+        // Runs every boot to catch built-in registrations
+        // (memory MCP) whose insert-if-absent path may not
+        // emit `SystemServerCreated`. See the function doc
+        // for the full rationale.
+        if let Err(e) = backfill_system_mcp_assignments().await {
+            tracing::error!(
+                error = %e,
+                "backfill_system_mcp_assignments failed — system MCP servers may not be visible to the admin until manually assigned"
+            );
+        }
+
+        // Flip the singleton `memory_admin_settings.enabled`
+        // to TRUE on every boot. Defaults to FALSE in the
+        // migration (server's opt-in posture) — desktop
+        // single-admins shouldn't have to discover an admin
+        // toggle to start using Memory. Idempotent.
+        if let Err(e) = enable_memory_admin_default(&handle.pool).await {
+            tracing::error!(
+                error = %e,
+                "enable_memory_admin_default failed — Memory will appear disabled until the admin flips it"
+            );
+        }
+
+        state.set_ready(true);
     });
 }
 
@@ -405,8 +364,7 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
 /// — that's intentional for the default-on posture; if a user
 /// genuinely wants Memory off forever on their desktop, they can
 /// override via a config flag in the future.
-async fn enable_memory_admin_default() -> Result<()> {
-    let pool = ziee::Repos.pool();
+async fn enable_memory_admin_default(pool: &PgPool) -> Result<()> {
     sqlx::query("UPDATE memory_admin_settings SET enabled = TRUE WHERE id = 1")
         .execute(pool)
         .await
@@ -416,10 +374,8 @@ async fn enable_memory_admin_default() -> Result<()> {
 }
 
 /// Run desktop-specific database migrations
-async fn run_desktop_migrations() -> Result<()> {
+async fn run_desktop_migrations(pool: &PgPool) -> Result<()> {
     tracing::info!("Running desktop migrations...");
-
-    let pool = ziee::Repos.pool();
 
     // Use set_ignore_missing(true) because server migrations are tracked
     // in the same _sqlx_migrations table but are not in our migrations folder
@@ -799,94 +755,6 @@ mod tests {
     }
 }
 
-/// Create the main window with platform-specific customizations
-fn create_main_window(app_handle: &tauri::AppHandle) {
-    tracing::info!("Creating main window...");
-
-    // macOS: no native decorations initially (overlay titlebar set below).
-    #[cfg(target_os = "macos")]
-    let mut main_window_builder = tauri::webview::WebviewWindowBuilder::new(
-        app_handle,
-        "main",
-        tauri::WebviewUrl::App("index.html".into()),
-    )
-    .title("")
-    .inner_size(1200.0, 800.0)
-    .min_inner_size(400.0, 600.0)
-    .resizable(true)
-    .fullscreen(false)
-    .decorations(false)
-    .center()
-    .effects(tauri::utils::config::WindowEffectsConfig {
-        effects: vec![
-            tauri::window::Effect::Mica,
-            tauri::window::Effect::Acrylic,
-            tauri::window::Effect::Blur,
-        ],
-        state: Some(tauri::window::EffectState::Active),
-        radius: Some(8.0),
-        color: None,
-    });
-
-    // Windows + Linux: native decorations.
-    //  - Windows then overlays decorum's custom titlebar (preserves Aero
-    //    snapping, snap layouts that a pure HTML titlebar can't replicate).
-    //  - Linux relies entirely on the WM's server-side decorations
-    //    (xfwm4 / Mutter / KWin) for border + shadow + close/min/max
-    //    trio. XFCE / GNOME / KDE all default to right-aligned buttons,
-    //    which matches the project's other platforms.
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    let main_window_builder = tauri::webview::WebviewWindowBuilder::new(
-        app_handle,
-        "main",
-        tauri::WebviewUrl::App("index.html".into()),
-    )
-    .title("")
-    .inner_size(1200.0, 800.0)
-    // Match macOS's `min_inner_size(400, 600)` — the previous 800-wide
-    // floor blocked the sidebar's xs-mode (drawer / overlay) layout
-    // path from ever rendering on Windows. The responsive UI already
-    // handles widths down to 400.
-    .min_inner_size(400.0, 600.0)
-    .resizable(true)
-    .fullscreen(false)
-    .decorations(true)
-    .center()
-    .effects(tauri::utils::config::WindowEffectsConfig {
-        effects: vec![
-            tauri::window::Effect::Mica,
-            tauri::window::Effect::Acrylic,
-            tauri::window::Effect::Blur,
-        ],
-        state: Some(tauri::window::EffectState::Active),
-        radius: Some(8.0),
-        color: None,
-    });
-
-    // macOS: overlay titlebar with native traffic light position (no glitch on resize)
-    // x=20 matches the standard inset Apple uses in Notes / Finder /
-    // Mail; the earlier x=12 sat too close to the window edge and
-    // read as "tighter than other macOS apps".
-    #[cfg(target_os = "macos")]
-    {
-        main_window_builder = main_window_builder
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .decorations(true)
-            .traffic_light_position(tauri::LogicalPosition::new(20.0, 22.0));
-    }
-
-    main_window_builder
-        .build()
-        .expect("failed to build the main application window");
-
-    // Post-build: Windows overlay
-    #[cfg(target_os = "windows")]
-    {
-        use tauri::Manager;
-        use tauri_plugin_decorum::WebviewWindowExt;
-        let main_window = app_handle.get_webview_window("main").unwrap();
-        main_window.create_overlay_titlebar().unwrap();
-    }
-
-    tracing::info!("Main window created successfully");
-}
+// Chunk D-full: `create_main_window` moved verbatim into the reusable harness
+// shell (`ziee_desktop_harness::window::create_main_window`), driven by the
+// harness's `spawn_boot_then_window` from `start_backend_server` above.

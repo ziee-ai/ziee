@@ -4,7 +4,7 @@ import {
   defineStore,
   type StoreInitCtx,
   type StoreSet,
-} from '@/core/store-kit'
+} from '@ziee/framework/store-kit'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { ApiClient } from '@/api-client'
 import type {
@@ -720,7 +720,7 @@ const chatStoreConfig = {
         set({ conversation, loading: false })
 
         if (emitCreated) {
-          const { Stores } = await import('@/core/stores')
+          const { Stores } = await import('@ziee/framework/stores')
           await Stores.EventBus.emit({
             type: 'conversation.created',
             data: { conversation },
@@ -1850,7 +1850,7 @@ const chatStoreConfig = {
           conversation = afterHook
           set({ conversation })
         }
-        const { Stores } = await import('@/core/stores')
+        const { Stores } = await import('@ziee/framework/stores')
         await Stores.EventBus.emit({
           type: 'conversation.created',
           data: { conversation },
@@ -2014,7 +2014,7 @@ const chatStoreConfig = {
         }))
 
         if (updates.title !== undefined) {
-          const { Stores } = await import('@/core/stores')
+          const { Stores } = await import('@ziee/framework/stores')
           await Stores.EventBus.emit({
             type: 'conversation.titleUpdated',
             data: {

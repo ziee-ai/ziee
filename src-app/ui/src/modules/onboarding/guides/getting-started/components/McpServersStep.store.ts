@@ -1,8 +1,8 @@
 import { ApiClient } from '@/api-client'
 import { type HubMCPServer, type McpServer, Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import { createStoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { createStoreProxy } from '@ziee/framework/stores'
 
 export const McpServersStep = defineStore('McpServersStep', {
   immer: true,

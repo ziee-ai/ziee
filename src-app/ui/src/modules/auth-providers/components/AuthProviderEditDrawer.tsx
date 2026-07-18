@@ -16,14 +16,14 @@ import {
   Paragraph,
   message,
   dialog,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {
   Permissions,
   type AuthProviderResponse,
   type TestProviderResponse,
 } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions/Can'
 import { usePermission } from '@/core/permissions/usePermission'
 import type { ProviderTemplate } from '../types'

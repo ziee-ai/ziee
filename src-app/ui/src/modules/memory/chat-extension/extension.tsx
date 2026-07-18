@@ -31,7 +31,7 @@ const memoryExtension: ChatExtension = createExtension({
   // Best-effort: if extraction hasn't finished server-side, the
   // sync:memory event subscription handles eventual consistency.
   afterStreamComplete: async (_message) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     Stores.Memories.load()
     return {}
   },

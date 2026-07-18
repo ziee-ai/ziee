@@ -1,5 +1,5 @@
 import type { ScheduledTask } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /** Open/edit state for the scheduled-task create/edit drawer. */
 export const SchedulerDrawer = defineStore('SchedulerDrawer', {

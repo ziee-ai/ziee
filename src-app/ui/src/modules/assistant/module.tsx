@@ -1,5 +1,5 @@
 import { Bot } from 'lucide-react'
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { useAssistantDrawerStore } from '@/modules/assistant/components/AssistantDrawer.store'
 import {
   useAssistantPickerStore,

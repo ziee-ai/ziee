@@ -1,5 +1,5 @@
 import type { User } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const ResetPasswordDrawer = defineStore('ResetPasswordDrawer', {
   state: { isOpen: false, user: null as User | null },

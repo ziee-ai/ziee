@@ -1,4 +1,4 @@
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { Assistant } from '@/api-client/types'
 
 export const emitAssistantCreated = async (assistant: Assistant) => {

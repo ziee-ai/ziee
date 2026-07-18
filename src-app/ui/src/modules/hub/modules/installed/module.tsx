@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { LayoutGrid } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

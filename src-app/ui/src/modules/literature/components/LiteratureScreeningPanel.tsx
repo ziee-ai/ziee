@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Download } from 'lucide-react'
-import { Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Text, Title, Paragraph } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Text, Title, Paragraph } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
   type LiteratureRecord,

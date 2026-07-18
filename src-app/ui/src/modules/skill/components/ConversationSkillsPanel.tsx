@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { deriveHiddenSkills } from '@/modules/skill/stores/ConversationSkills.store'
 import {
   Alert,
@@ -10,7 +10,7 @@ import {
   Switch,
   Text,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 interface ConversationSkillsPanelProps {
   conversationId: string

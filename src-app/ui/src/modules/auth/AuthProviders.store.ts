@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import type { PublicProvider } from '@/api-client/types'
-import { type StoreProxy } from '@/core/stores'
-import { defineStore } from '@/core/store-kit'
+import { type StoreProxy } from '@ziee/framework/stores'
+import { defineStore } from '@ziee/framework/store-kit'
 
 interface AuthProvidersState {
   providers: PublicProvider[]
@@ -11,7 +11,7 @@ interface AuthProvidersState {
   loadProviders: () => Promise<void>
 }
 
-declare module '../../core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     AuthProviders: StoreProxy<AuthProvidersState>
   }

@@ -1,5 +1,5 @@
 import { createJSONStorage } from 'zustand/middleware'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 // Guarded persistence storage (mirrors ConfigClient.store): accessing
 // localStorage throws in locked-down contexts (private mode, sandboxed iframe).

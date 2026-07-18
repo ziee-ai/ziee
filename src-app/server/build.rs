@@ -19,8 +19,10 @@ mod sandbox_runtime;
 mod wsl2_agent;
 #[path = "build_helper/pgvector.rs"]
 mod pgvector_build;
-#[path = "build_helper/worktree_db.rs"]
-mod worktree_db;
+// Chunk sdk-batteries (decision #11): per-worktree build-DB keying + module-owned
+// migration composition now live in the SDK's `ziee-build-support` crate (a
+// build-dependency), so both ziee AND a second app share one implementation.
+use ziee_build_support::worktree_db;
 // hub_seed runs LAST inside setup_external_binaries and PANICS on
 // failure (unlike the helpers above, which warn-and-continue). See
 // the divider comment in setup_external_binaries() for the rationale.
@@ -52,6 +54,49 @@ fn redact_database_url(url: &str) -> String {
     url.to_string()
 }
 
+/// MIGRATE-squash (N3.1 / N7): compose the merged migration directory used by
+/// BOTH the build-DB provisioner (this file) and the runtime `sqlx::migrate!`
+/// (`core/database/mod.rs`). It is `<manifest>/migrations-merged` = the UNION of
+/// every **module-owned** `migrations/` dir:
+///   - `<manifest>/src/modules/*/migrations/`   (each ziee server module)
+///   - `<manifest>/../../sdk/crates/*/migrations/` (SDK crates: ziee-auth, …)
+///
+/// Chunk sdk-batteries (G5): the composition logic moved VERBATIM into
+/// `ziee_build_support::compose_merged_migrations` (an SDK contract, decision
+/// N7); this thin wrapper just supplies ziee's own merged-dir + module-roots so
+/// the output stays byte-identical.
+///
+/// Gap N-2: ziee lists its schema-bound SDK crates EXPLICITLY rather than
+/// blind-globbing `sdk/crates/*/migrations`. The SDK crates ziee actually
+/// schema-binds are `ziee-auth`, `ziee-file`, `ziee-notification`,
+/// `ziee-onboarding`, and `ziee-seed` (the ones that ship a `migrations/` dir
+/// today); naming them makes the merged set independent of which OTHER SDK
+/// crates happen to sit on disk. A fresh app lists only ITS linked schema-bound
+/// crates the same way.
+fn compose_merged_migrations() {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let merged = manifest.join("migrations-merged");
+    // The app's OWN module roots (globbed for `*/migrations`).
+    let app_module_roots = [manifest.join("src/modules")];
+    // The SDK crates ziee schema-binds, named EXPLICITLY (not a blind glob).
+    let sdk_crates = manifest.join("../../sdk/crates");
+    let sdk_crate_migration_dirs = [
+        sdk_crates.join("ziee-auth/migrations"),
+        sdk_crates.join("ziee-file/migrations"),
+        sdk_crates.join("ziee-notification/migrations"),
+        sdk_crates.join("ziee-onboarding/migrations"),
+        // ziee-seed owns the `seed_ledger` migration (the table-agnostic
+        // seed-ownership ledger). Named explicitly alongside the other
+        // SDK-crate migration dirs so it composes into the merged set.
+        sdk_crates.join("ziee-seed/migrations"),
+    ];
+    ziee_build_support::compose_merged_migrations_from(
+        &merged,
+        &app_module_roots,
+        &sdk_crate_migration_dirs,
+    );
+}
+
 #[tokio::main]
 async fn main() {
     // Get DATABASE_URL or use local dev fallback (build-time only;
@@ -66,8 +111,9 @@ async fn main() {
     let explicit = env::var("DATABASE_URL").ok();
 
     // Per-worktree build-DB isolation: when DATABASE_URL is the committed
-    // docker-compose default (the sentinel — see build_helper/worktree_db.rs),
-    // give THIS worktree its own database on the same :54321 cluster so a
+    // docker-compose default (the sentinel — see
+    // ziee_build_support::worktree_db), give THIS worktree its own database on
+    // the same :54321 cluster so a
     // concurrent build in another worktree can't wipe our schema mid-build.
     // A genuine operator/CI override (any other DATABASE_URL) is honored
     // unchanged. Opt out with ZIEE_BUILD_DB_PERWORKTREE=0.
@@ -79,45 +125,10 @@ async fn main() {
         let db_name = format!("ziee_build_{}", worktree_db::worktree_key(&manifest_dir));
         // Ensure the per-worktree database exists (connect to the cluster's
         // maintenance `postgres` db, CREATE if missing — idempotent + race
-        // tolerant: a concurrent creator just makes our CREATE a no-op error
-        // we swallow). Then point the build at it.
-        let admin_url = worktree_db::with_database(&base, "postgres");
-        match sqlx::postgres::PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&admin_url)
-            .await
-        {
-            Ok(admin) => {
-                let exists: Option<(i32,)> = sqlx::query_as(
-                    "SELECT 1 FROM pg_database WHERE datname = $1",
-                )
-                .bind(&db_name)
-                .fetch_optional(&admin)
-                .await
-                .ok()
-                .flatten();
-                if exists.is_none() {
-                    // CREATE DATABASE can't run in a tx; ignore the
-                    // duplicate_database error if another worktree's build
-                    // raced us to it.
-                    let _ = sqlx::query(&format!("CREATE DATABASE {db_name}"))
-                        .execute(&admin)
-                        .await;
-                }
-                admin.close().await;
-                println!(
-                    "build.rs: per-worktree build DB → {} (set ZIEE_BUILD_DB_PERWORKTREE=0 to disable)",
-                    db_name
-                );
-                worktree_db::with_database(&base, &db_name)
-            }
-            Err(e) => {
-                // Couldn't reach the cluster to provision — fall back to the
-                // base URL and let the connect-below surface the real error.
-                eprintln!("build.rs: per-worktree DB provisioning skipped: {e}");
-                base
-            }
-        }
+        // tolerant). Moved VERBATIM into `ziee_build_support::ensure_build_db`
+        // (G4); on cluster-unreachable it falls back to `base` so the connect
+        // below surfaces the real error.
+        ziee_build_support::ensure_build_db(&base, &db_name).await
     } else {
         explicit.unwrap_or_else(|| worktree_db::DEFAULT_BUILD_DB_URL.to_string())
     };
@@ -155,14 +166,24 @@ async fn main() {
         .await
         .ok();
 
-    // Run migrations — server's own AND the desktop tauri crate's.
+    // Chunk BA-full: compose the MERGED migration directory
+    // (`migrations-merged` = the app's own `migrations/` ∪ `ziee-auth`'s
+    // structural auth-table migrations, both keeping their original version
+    // numbers + byte content). The auth-table migrations moved into
+    // `ziee-auth` (which owns them + its `query!` macros); the merged,
+    // version-sorted set reproduces ziee's exact `_sqlx_migrations` history
+    // so deployed DBs are unaffected. BOTH this build-DB provisioner AND the
+    // runtime `sqlx::migrate!` (core/database/mod.rs) point at the merged dir.
+    compose_merged_migrations();
+
+    // Run migrations — the merged server set AND the desktop tauri crate's.
     // The desktop crate's `remote_access` + `magic_link` modules
     // use `sqlx::query_as!()` macros that need the build DB to
     // include their schema (remote_access_settings, magic_link_tokens).
     // Folding both migration dirs into a single Migrator means the
     // shared build DB on port 54321 has every table both crates
     // touch, and macro validation succeeds for either crate.
-    for migrations_dir_rel in ["migrations", "../desktop/tauri/migrations"] {
+    for migrations_dir_rel in ["migrations-merged", "../desktop/tauri/migrations"] {
         let migrations_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join(migrations_dir_rel);
         if !migrations_path.exists() {

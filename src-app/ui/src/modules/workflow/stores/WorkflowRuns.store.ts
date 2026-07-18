@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { Permissions, type WorkflowRunSummary } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Per-workflow run history (A4). `runs` is keyed by workflowId so the detail

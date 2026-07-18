@@ -1,5 +1,5 @@
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-import { Tabs } from '@/components/ui'
+import { Tabs } from '@ziee/kit'
 import { SandboxRootfsVersionsSection } from './SandboxRootfsVersionsSection'
 import { SandboxResourceLimitsSection } from './SandboxResourceLimitsSection'
 

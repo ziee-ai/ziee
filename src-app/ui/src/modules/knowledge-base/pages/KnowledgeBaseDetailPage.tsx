@@ -15,8 +15,8 @@ import {
   Tag,
   Text,
   Title,
-} from '@/components/ui'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'

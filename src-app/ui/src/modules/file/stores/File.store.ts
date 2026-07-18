@@ -1,7 +1,7 @@
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { type ImageViewState, clampScale, zoomStep } from '../viewers/image/zoom'
 import type { TabularViewState } from '../viewers/tabular/tableView'
@@ -913,7 +913,7 @@ export const File = defineStore('File', {
       // Lazy-import to avoid a circular dep with the api-client module
       // (which itself depends on auth-storage parsing — keeping that
       // out of the file-store load order).
-      const { getAuthToken } = await import('@/api-client/core')
+      const { getAuthToken } = await import('@ziee/framework/api-client/core')
       const token = getAuthToken()
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

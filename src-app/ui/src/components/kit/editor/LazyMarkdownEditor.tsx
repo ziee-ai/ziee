@@ -1,5 +1,5 @@
 import { forwardRef, lazy, Suspense } from 'react'
-import { Spin } from '@/components/ui'
+import { Spin } from '@ziee/kit'
 import type { CanvasEditorHandle } from './types'
 
 /**

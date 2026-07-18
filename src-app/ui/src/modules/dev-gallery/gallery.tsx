@@ -8,7 +8,7 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyNamed, lazyProps } from '@/dev/gallery/support'
-import { dialog } from '@/components/ui'
+import { dialog } from '@ziee/kit'
 
 export const gallery: ModuleGallery = {
   overlays: [
@@ -18,7 +18,7 @@ export const gallery: ModuleGallery = {
       slug: 'overlay-dialog-host-described',
       surface: 'components/ui/kit/dialog-host',
       title: 'Imperative dialog — described',
-      component: lazyNamed(() => import('@/components/ui'), 'DialogHost'),
+      component: lazyNamed(() => import('@ziee/kit'), 'DialogHost'),
       open: () => {
         void dialog.info({
           title: 'Heads up',
@@ -35,7 +35,7 @@ export const gallery: ModuleGallery = {
       slug: 'overlay-dialog-host-bare',
       surface: 'components/ui/kit/dialog-host',
       title: 'Imperative dialog — bare (no description)',
-      component: lazyNamed(() => import('@/components/ui'), 'DialogHost'),
+      component: lazyNamed(() => import('@ziee/kit'), 'DialogHost'),
       open: () => {
         void dialog.warning({
           title: 'Bare alert (no description)',

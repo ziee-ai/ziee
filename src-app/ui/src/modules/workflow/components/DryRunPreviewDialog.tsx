@@ -1,7 +1,7 @@
-import { Alert, Dialog, Spin, Statistic, Table, Text } from '@/components/ui'
+import { Alert, Dialog, Spin, Statistic, Table, Text } from '@ziee/kit'
 import { useEffect, useState } from 'react'
 import type { DryRunResult, DryRunStep, Workflow } from '@/api-client/types'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 interface DryRunPreviewDialogProps {
   workflow: Workflow

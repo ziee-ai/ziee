@@ -1,4 +1,4 @@
-import { Title } from '@/components/ui'
+import { Title } from '@ziee/kit'
 
 import {
   LlmModelParameterField,

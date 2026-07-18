@@ -15,8 +15,8 @@ import {
   Text,
   message,
   useForm,
-} from '@/components/ui'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 

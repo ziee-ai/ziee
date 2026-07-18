@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { User } from 'lucide-react'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/types'

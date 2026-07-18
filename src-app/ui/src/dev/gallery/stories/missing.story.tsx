@@ -26,7 +26,7 @@ import {
   Tag,
   Upload,
   useForm,
-} from '@/components/ui'
+} from '@ziee/kit'
 import type { GalleryStory } from '../story'
 
 const noop = () => undefined

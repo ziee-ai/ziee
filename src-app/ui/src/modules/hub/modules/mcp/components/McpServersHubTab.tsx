@@ -1,8 +1,8 @@
 import { useState, useMemo, lazy, Suspense, ChangeEvent } from 'react'
-import { Button, Input, MultiSelect, Combobox, Text, ErrorState, Empty } from '@/components/ui'
+import { Button, Input, MultiSelect, Combobox, Text, ErrorState, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { Plug, Search, Eraser } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 const McpServerDrawer = lazy(() =>

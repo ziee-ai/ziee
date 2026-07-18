@@ -1,11 +1,11 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useMemoriesStore } from './stores/Memories.store'
 import type { useMemorySettingsStore } from './stores/MemorySettings.store'
 import type { useMemoryAdminStore } from './stores/MemoryAdmin.store'
 import type { useMemoryAuditStore } from './stores/MemoryAudit.store'
 import type { useCoreMemoryBlocksStore } from './stores/CoreMemoryBlocks.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Memories: StoreProxy<ReturnType<typeof useMemoriesStore.getState>>
     MemorySettings: StoreProxy<

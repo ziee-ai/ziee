@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { IoMdPerson } from 'react-icons/io'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

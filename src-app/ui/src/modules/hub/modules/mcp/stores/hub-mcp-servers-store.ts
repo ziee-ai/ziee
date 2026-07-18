@@ -4,7 +4,7 @@ import type {
   HubMCPServer,
   McpServer,
 } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { emitMcpServerCreated, emitMcpServerDeleted } from '@/modules/mcp/events'
 
 export const HubMcpServers = defineStore('HubMcpServers', {

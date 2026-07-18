@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**

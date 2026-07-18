@@ -1,4 +1,4 @@
-import type { BaseEvent } from '@/core/events'
+import type { BaseEvent } from '@ziee/framework/events'
 import type { LlmRepository } from '@/api-client/types'
 
 export interface LlmRepositoryCreatedEvent extends BaseEvent {
@@ -45,7 +45,7 @@ export type LlmRepositoryModuleEvent =
   | LlmRepositoryDeletedEvent
   | LlmRepositoryAutoDisabledEvent
 
-declare module '@/core/events' {
+declare module '@ziee/framework/events' {
   interface AppEvents {
     'llm_repository.created': LlmRepositoryCreatedEvent
     'llm_repository.updated': LlmRepositoryUpdatedEvent

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Import } from 'lucide-react'
-import { Button, Empty, message, Spin, Tag, Text } from '@/components/ui'
+import { Button, Empty, message, Spin, Tag, Text } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/types'
 import type { BibliographyEntry } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { CitationCard } from '../../components/CitationCard'
 import { ImportCitationsModal } from '../../components/ImportCitationsModal'
 

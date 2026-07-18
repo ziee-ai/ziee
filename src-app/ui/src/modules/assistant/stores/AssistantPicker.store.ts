@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { type Assistant, Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * The composer key for a not-yet-created (new-chat) conversation's assistant

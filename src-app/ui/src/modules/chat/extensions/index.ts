@@ -45,6 +45,7 @@
 
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import type { ChatExtension } from '@/modules/chat/core/extensions'
+import { collectGlobDefaults } from '@ziee/framework/slots'
 
 // Path 1: in-chat extensions.
 const inChatExtensions = import.meta.glob<{ default: ChatExtension }>(
@@ -59,21 +60,19 @@ const siblingModuleExtensions = import.meta.glob<{ default: ChatExtension }>(
   { eager: true },
 )
 
-const allExtensionFiles = {
-  ...inChatExtensions,
-  ...siblingModuleExtensions,
-}
-
 console.log('[Chat Extensions] Auto-discovering extensions...')
 
-const discoveredExtensions: ChatExtension[] = []
+// Merge both glob maps + extract default exports via the generic
+// auto-discovery helper (gap G8); the priority-ordering policy stays here.
+const discovered = collectGlobDefaults<ChatExtension>(
+  inChatExtensions,
+  siblingModuleExtensions,
+)
 
-for (const [path, moduleExports] of Object.entries(allExtensionFiles)) {
-  const extension = moduleExports.default
-  if (extension) {
-    discoveredExtensions.push(extension)
-    console.log(`[Chat Extensions] Discovered: ${extension.name} (${path})`)
-  }
+const discoveredExtensions: ChatExtension[] = []
+for (const { path, value: extension } of discovered) {
+  discoveredExtensions.push(extension)
+  console.log(`[Chat Extensions] Discovered: ${extension.name} (${path})`)
 }
 
 // Sort extensions by priority (lower = higher priority)

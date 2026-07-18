@@ -21,6 +21,7 @@ mod tier2_mcp_listing;
 mod tier2_built_in_protection;
 mod tier2_workspace_reaper;
 mod tier3_http;
+mod tier3_read_artifacts;
 mod tier3_concurrency;
 mod tier3_versions;
 mod tier3_resource_limits;

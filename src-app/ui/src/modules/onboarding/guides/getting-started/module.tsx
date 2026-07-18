@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { lazy } from 'react'
 import { useApiKeysStepStore } from './components/ApiKeysStep.store'
 import { useMcpServersStepStore } from './components/McpServersStep.store'

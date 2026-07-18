@@ -1,0 +1,20 @@
+side	file	hunk	angles	verdict
+ziee	src-app/server/src/modules/auth/mod.rs	@@-9,25 shim block (handlers/jwt_extractor/permissions/session_settings module shims + core re-export incl auth_routes/auth_admin_routes)	call-site-preservation,equivalence,api-contract	pass
+ziee	src-app/server/src/modules/auth/mod.rs	@@-150,9 register_routes mounts auth_routes::<ZieeIdentityResolver>() + auth_admin_routes::<ZieeIdentityResolver>()	identity-pluggability,api-contract,equivalence	pass
+ziee	src-app/server/src/modules/user/permissions.rs	@@-5,24 replace ProfileRead/ProfileEdit defs with pub use ziee_auth::user::permissions shim	call-site-preservation,equivalence,security	pass
+ziee	src-app/server/src/modules/auth/handlers.rs	whole-file DELETE (moved to sdk http/handlers.rs)	equivalence,api-contract,security	pass
+ziee	src-app/server/src/modules/auth/routes.rs	whole-file DELETE (moved)	equivalence,api-contract	pass
+ziee	src-app/server/src/modules/auth/jwt_extractor.rs	whole-file DELETE (moved)	equivalence,security	pass
+ziee	src-app/server/src/modules/auth/session_settings.rs	whole-file DELETE (moved)	equivalence,api-contract,sync-emission	pass
+ziee	src-app/server/src/modules/auth/permissions.rs	whole-file DELETE (moved)	equivalence,security	pass
+sdk	crates/ziee-auth/Cargo.toml	@@-3,11 add [features] default/routes + optional aide/axum	build-isolation,dead-code/warnings,equivalence	pass
+sdk	crates/ziee-auth/src/auth/http/handlers.rs	NEW 2247L (moved; 84 mechanical deltas vs original)	equivalence,security,api-contract,sync-emission	pass
+sdk	crates/ziee-auth/src/auth/http/routes.rs	NEW 101L (generic route builders)	identity-pluggability,api-contract,equivalence	pass
+sdk	crates/ziee-auth/src/auth/http/jwt_extractor.rs	NEW 124L (verbatim + 2 import lines)	equivalence,security	pass
+sdk	crates/ziee-auth/src/auth/http/session_settings.rs	NEW 89L (2 handlers generic over R; validation+publish preserved)	equivalence,sync-emission,api-contract	pass
+sdk	crates/ziee-auth/src/auth/http/mod.rs	NEW 17L (routes-bundle module + re-exports; feature-gated)	build-isolation,api-contract,equivalence	pass
+sdk	crates/ziee-auth/src/auth/permissions.rs	NEW 65L (4 auth-domain perms; only import changed)	equivalence,security,api-contract	pass
+sdk	crates/ziee-auth/src/auth/mod.rs	@@-15,12 pub mod permissions + cfg(routes) pub mod http + re-export builders	build-isolation,call-site-preservation,equivalence	pass
+sdk	crates/ziee-auth/src/user/mod.rs	@@-7,6 pub mod permissions	call-site-preservation,equivalence	pass
+sdk	crates/ziee-auth/src/user/permissions.rs	NEW 32L (ProfileRead/ProfileEdit; const strings byte-identical)	equivalence,security,api-contract	pass
+sdk	Cargo.lock	generated dep-lock (aide/axum under ziee-auth) — EXCLUDED per generated-file rule; verified via cargo check + golden	build-isolation	n/a-generated

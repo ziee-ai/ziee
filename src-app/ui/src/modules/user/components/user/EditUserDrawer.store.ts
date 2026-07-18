@@ -1,5 +1,5 @@
 import type { User } from '@/api-client/types'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const EditUserDrawer = defineStore('EditUserDrawer', {
   state: { isOpen: false, editingUser: null as User | null },

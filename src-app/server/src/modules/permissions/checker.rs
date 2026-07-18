@@ -1,4 +1,9 @@
 use crate::modules::user::models::{Group, User};
+// Chunk B1b: the generic string-set evaluator moved to `ziee-identity`
+// (framework-generic — it operates purely on permission strings). This
+// concrete UNION check over ziee's `User`/`Group` stays here and calls it, so
+// the logic is byte-identical and every call site is unchanged.
+use ziee_identity::check_permissions_array;
 
 // =====================================================
 // Permission Checking Logic
@@ -19,34 +24,6 @@ pub fn check_permission_union(user: &User, groups: &[Group], required_permission
         }
 
         if check_permissions_array(&group.permissions, required_permission) {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Check if a permission array contains the required permission
-/// Supports exact match, wildcards, and hierarchical wildcards
-fn check_permissions_array(permissions: &[String], required_permission: &str) -> bool {
-    // Check exact match
-    if permissions.contains(&required_permission.to_string()) {
-        return true;
-    }
-
-    // Check full wildcard
-    if permissions.contains(&"*".to_string()) {
-        return true;
-    }
-
-    // Check hierarchical wildcards
-    // "users::*" matches "users::read", "users::edit"
-    // "config::auth::*" matches "config::auth::read", "config::auth::edit"
-    let parts: Vec<&str> = required_permission.split("::").collect();
-    for i in 1..parts.len() {
-        let prefix = parts[0..i].join("::");
-        let wildcard = format!("{}::*", prefix);
-        if permissions.contains(&wildcard) {
             return true;
         }
     }

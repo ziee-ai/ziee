@@ -1,13 +1,41 @@
 use serde::Deserialize;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
+
+// The app-agnostic server settings — postgresql / server (host/port/CORS/
+// rate-limit) / logging / jwt — moved to `ziee_core::config::ServerConfig` in
+// Chunk B2 (the Config split). ziee's monolithic `Config` composes it via
+// `#[serde(flatten)]` + `Deref`, so the serialized (YAML) shape is byte-identical
+// and every `config.postgresql` / `config.server` / `config.jwt` /
+// `config.database_url()` call site keeps working unchanged. These types are
+// re-exported so the many `crate::core::config::{JwtConfig, CorsConfig, …}` and
+// `ziee::{CorsConfig, JwtConfig}` paths resolve exactly as before. The full set
+// (not just the internally-referenced ones) is re-exported to preserve the
+// pre-split public surface of `crate::core::config`.
+#[allow(unused_imports)]
+pub use ziee_core::config::{
+    CorsConfig, EmbeddedPostgreSqlConfig, ExternalPostgreSqlConfig, HttpServerConfig, JwtConfig,
+    LoggingConfig, LoggingConfigPostgres, PoolConfig, PostgreSqlConfig, RateLimitConfig,
+    ServerConfig,
+};
+
+// Chunk BA-full: the `From<JwtConfig> for JwtSettings` bridge moved INTO
+// `ziee-auth` (`auth::jwt`) — once `JwtSettings` moved to the SDK crate, both
+// types are foreign to the app, so the impl can no longer live here (orphan
+// rule). `ziee-auth` depends on `ziee-core` (which owns `JwtConfig`), so it
+// owns the conversion. Every `JwtService::try_new(config.jwt.into())` call site
+// is unchanged.
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
-    pub postgresql: PostgreSqlConfig,
-    pub server: ServerConfig,
-    #[serde(default)]
-    pub logging: Option<LoggingConfig>,
-    pub jwt: JwtConfig,
+    /// Framework server settings (postgresql / server / logging / jwt),
+    /// flattened so the wire shape is byte-identical to the pre-split Config.
+    /// `Deref`/`DerefMut` expose its fields directly, so `config.postgresql`,
+    /// `config.server`, `config.jwt`, `config.database_url()`, etc. are
+    /// unchanged.
+    #[serde(flatten)]
+    pub server_config: ServerConfig,
+
     #[serde(default)]
     pub app: Option<AppConfig>,
     #[serde(default)]
@@ -48,6 +76,23 @@ pub struct Config {
     /// desktop server (the desktop app has its own auto-updater).
     #[serde(default)]
     pub update_check: UpdateCheckConfig,
+}
+
+// Transparent access to the flattened `ServerConfig`: `config.postgresql`,
+// `config.server`, `config.jwt`, `config.logging`, `config.database_url()`,
+// `config.server_address()` all resolve through `Deref`/`DerefMut` exactly as
+// they did when these were inline fields/methods on `Config`.
+impl Deref for Config {
+    type Target = ServerConfig;
+    fn deref(&self) -> &ServerConfig {
+        &self.server_config
+    }
+}
+
+impl DerefMut for Config {
+    fn deref_mut(&mut self) -> &mut ServerConfig {
+        &mut self.server_config
+    }
 }
 
 /// Server self-update notification config. See `Config::update_check`.
@@ -113,82 +158,12 @@ pub struct SecretsConfig {
     pub storage_key: Option<String>,
 }
 
-/// Configuration for the code_sandbox built-in MCP server.
-///
-/// Disabled by default so dev environments without bwrap / rootfs boot cleanly.
-/// Flip `enabled` to true after bwrap is installed and the rootfs is mounted.
-#[derive(Debug, Deserialize, Clone)]
-pub struct CodeSandboxConfig {
-    /// Master switch. When false, the module's `init()` returns early
-    /// (no boot probes, no MCP row upsert, no reaper task).
-    #[serde(default)]
-    pub enabled: bool,
-    /// Path to the cached rootfs squashfs files. Default
-    /// `<app.data_dir>/sandbox-rootfs/` (filled by `resolve_paths`).
-    /// Bind-mounted read-only into every bwrap call.
-    #[serde(default)]
-    pub rootfs_path: Option<String>,
-    /// Per-conversation sandbox workspaces root. Default
-    /// `<app.data_dir>/sandboxes/`. Was previously derived ad-hoc in
-    /// `code_sandbox/mod.rs` with no override.
-    #[serde(default)]
-    pub workspace_root: Option<String>,
-    /// Delegated cgroup v2 parent. Empty string → rlimits-only mode
-    /// (no per-call cgroup scope; rlimits still enforce memory + procs).
-    #[serde(default)]
-    pub cgroup_parent: String,
-    /// When true (default), the FIRST `execute_command` for a flavor
-    /// whose rootfs isn't cached yet prompts the user for consent (via
-    /// an MCP elicitation) before starting the multi-hundred-MB
-    /// download. Set false to always auto-download silently.
-    #[serde(default = "default_require_download_consent")]
-    pub require_download_consent: bool,
-    /// Flavors whose advertised size is below this threshold (MiB) skip
-    /// the consent prompt and download silently — so the small
-    /// `minimal` rootfs stays frictionless while a large `full` rootfs
-    /// always asks. Only consulted when `require_download_consent` is true.
-    #[serde(default = "default_auto_download_under_mb")]
-    pub auto_download_under_mb: u64,
-    /// Audit H-8: refuse to register the sandbox MCP server on Windows when
-    /// WSL2 `networkingMode = mirrored` is enabled in `.wslconfig`. In
-    /// mirrored mode the Windows host's 127.0.0.1 (Postgres, the Ziee API
-    /// itself, browser DevTools, …) is reachable from inside the distro,
-    /// and `--share-net` carries that into the sandbox. The previous
-    /// behavior was a warn-log only. Operators who genuinely want this
-    /// configuration must opt in with `allow_wsl2_mirrored_mode: true`.
-    /// No-op on Linux/macOS.
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub allow_wsl2_mirrored_mode: bool,
-    /// Audit H-4: refuse to register when the cloud instance metadata
-    /// service (169.254.169.254) is reachable from the host AND `--share-net`
-    /// would expose it to LLM-generated code. On EC2/GCE/Azure, IMDS hands
-    /// out IAM/role credentials that the sandboxed workload can curl + ship
-    /// to whatever egress the LLM is told to use. Operators on a cloud host
-    /// who genuinely want this configuration (e.g. behind IMDSv2 with a
-    /// hop-limit of 1 + sandboxed bash unable to set the v2 token header)
-    /// must opt in with `allow_cloud_imds_reachable: true`. No-op on hosts
-    /// where IMDS is unreachable (the common dev / on-prem case).
-    #[serde(default)]
-    pub allow_cloud_imds_reachable: bool,
-    /// Public base origin for file download links handed to MCP clients on
-    /// a different host (e.g. a reverse-proxy / tunnel URL like
-    /// `https://3000--….coder…`). When set, BOTH `get_resource_link`
-    /// (user attachments + workspace artifacts) and the MCP artifact-save
-    /// pipeline's tool-to-tool download URLs root links here instead of the
-    /// loopback origin — see `public_file_origin`, the shared resolver.
-    /// The built-in MCP server's own dial URL stays on 127.0.0.1 (see
-    /// `loopback_host`); this only affects returned link origins, never the
-    /// dial URL. Note: `get_resource_link` additionally requires
-    /// `enabled: true` (it reads the initialized sandbox state), whereas the
-    /// artifact-save pipeline honors this field regardless of `enabled`.
-    /// Empty/unset → loopback behavior: download URLs use the 127.0.0.1
-    /// loopback and no longer derive from `server.host`. So an operator who
-    /// binds `server.host` to a non-loopback, externally-reachable address
-    /// and needs a remote MCP server to fetch artifacts MUST set this.
-    #[serde(default)]
-    pub public_base_url: Option<String>,
-}
+// `CodeSandboxConfig` moved to the build-DB-free sandbox engine crate
+// (`ziee_sandbox::sandbox_config`) with the engine carve; re-exported here so
+// this crate's `Config { code_sandbox: Option<CodeSandboxConfig> }` field +
+// `resolve_paths` field access + the `public_file_origin`/`rootfs_path`/
+// `workspace_root` call sites resolve unchanged.
+pub use ziee_sandbox::sandbox_config::CodeSandboxConfig;
 
 /// Configuration for the `bio_mcp` built-in MCP server (BioMCP biomedical
 /// connectors run as a managed `biomcp serve-http` sidecar).
@@ -389,62 +364,6 @@ impl Default for ChatConfig {
     }
 }
 
-impl Default for CodeSandboxConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            rootfs_path: None,
-            workspace_root: None,
-            cgroup_parent: String::new(),
-            require_download_consent: default_require_download_consent(),
-            auto_download_under_mb: default_auto_download_under_mb(),
-            allow_wsl2_mirrored_mode: false,
-            allow_cloud_imds_reachable: false,
-            public_base_url: None,
-        }
-    }
-}
-
-impl CodeSandboxConfig {
-    /// `rootfs_path` after `Config::resolve_paths` has run. Panics if
-    /// called on an unresolved config (programmer error — `load_from`
-    /// always resolves).
-    pub fn rootfs_path(&self) -> &str {
-        self.rootfs_path
-            .as_deref()
-            .expect("rootfs_path filled by Config::resolve_paths")
-    }
-    #[allow(dead_code)]
-    pub fn workspace_root(&self) -> &str {
-        self.workspace_root
-            .as_deref()
-            .expect("workspace_root filled by Config::resolve_paths")
-    }
-
-    /// Origin (`scheme://host[:port]`, no trailing slash, no path) for file
-    /// download links handed to MCP clients. Returns `public_base_url` when
-    /// it is set + non-empty; otherwise the caller's already-pinned loopback
-    /// origin.
-    ///
-    /// This is the single source of truth for the origin used by BOTH
-    /// `get_resource_link` (user attachments + workspace artifacts) and the
-    /// MCP artifact-save pipeline's tool-to-tool download URLs. Keeping both
-    /// paths on this one helper guarantees the LLM is never handed a
-    /// `127.0.0.1` / `0.0.0.0` link for a file when the deployment has a
-    /// reachable `public_base_url` configured.
-    ///
-    /// `loopback_origin` must already be the canonical loopback the caller
-    /// derived via [`crate::modules::code_sandbox::loopback_host`] (i.e.
-    /// `http://127.0.0.1:{port}`) — never `0.0.0.0`, a wildcard, or the
-    /// configured bind host, which are not routable destinations.
-    pub fn public_file_origin(&self, loopback_origin: &str) -> String {
-        match self.public_base_url.as_deref() {
-            Some(base) if !base.trim().is_empty() => base.trim().trim_end_matches('/').to_string(),
-            _ => loopback_origin.trim_end_matches('/').to_string(),
-        }
-    }
-}
-
 impl CachesConfig {
     #[allow(dead_code)]
     pub fn hf_models_dir(&self) -> &str {
@@ -469,203 +388,9 @@ impl CachesConfig {
     }
 }
 
-fn default_require_download_consent() -> bool {
-    true
-}
-
-fn default_auto_download_under_mb() -> u64 {
-    100
-}
-
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
     pub data_dir: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct PostgreSqlConfig {
-    pub use_embedded: bool,
-    #[serde(default)]
-    pub embedded: Option<EmbeddedPostgreSqlConfig>,
-    #[serde(default)]
-    pub external: Option<ExternalPostgreSqlConfig>,
-    #[serde(default)]
-    pub pool: Option<PoolConfig>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct EmbeddedPostgreSqlConfig {
-    pub version: String,
-    pub port: u16,
-    pub bind_address: String,
-    pub username: String,
-    pub password: String,
-    pub database: String,
-    /// Postgres install tree (bin/lib/share). Default
-    /// `<app.data_dir>/postgres/` (filled by `resolve_paths`).
-    /// postgresql_embedded skips re-extraction if the version matches —
-    /// safe to share across server upgrades.
-    #[serde(default)]
-    pub installation_dir: Option<String>,
-    /// PGDATA cluster (pg_wal, base, postgresql.conf). Default
-    /// `<app.data_dir>/postgres-data/`. Operators commonly override
-    /// to put the cluster on a fast disk.
-    #[serde(default)]
-    pub data_dir: Option<String>,
-    pub timezone: String,
-    pub log_timezone: String,
-    pub logging: LoggingConfigPostgres,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct ExternalPostgreSqlConfig {
-    pub host: String,
-    pub port: u16,
-    pub username: String,
-    pub password: String,
-    pub database: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct LoggingConfigPostgres {
-    pub collector: bool,
-    pub directory: String,
-    pub filename: String,
-    pub statement: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct PoolConfig {
-    pub max_connections: u32,
-    pub min_connections: u32,
-    pub acquire_timeout_secs: u64,
-    #[serde(default)]
-    pub idle_timeout_secs: Option<u64>,
-    #[serde(default)]
-    pub max_lifetime_secs: Option<u64>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct ServerConfig {
-    pub host: String,
-    pub port: u16,
-    pub api_prefix: String,
-    #[serde(default)]
-    pub cors: Option<CorsConfig>,
-    /// Rate-limit configuration (tower-governor). Optional — defaults
-    /// to 50 req/s sustained, 500-burst (enough for a normal SPA
-    /// cold-load without 429s). Hardened deployments behind a real
-    /// reverse proxy should override downward here; tests override
-    /// upward since sequential sweeps against 127.0.0.1 share a
-    /// single peer-IP bucket.
-    #[serde(default)]
-    pub rate_limit: Option<RateLimitConfig>,
-    /// Honor X-Forwarded-Host / X-Forwarded-Proto in OAuth
-    /// redirect_uri derivation.
-    ///
-    /// **Default false.** Only set true when the server is behind a
-    /// reverse proxy that STRIPS inbound X-Forwarded-* headers and
-    /// sets them itself (nginx `proxy_set_header`, Caddy `header_up`,
-    /// Cloudflare / Vercel / Fly defaults, the Vite dev proxy in
-    /// this repo's vite.config.ts). When the server is exposed
-    /// directly, this MUST stay false — otherwise an attacker can
-    /// send `X-Forwarded-Host: evil.com` to the backend and a
-    /// permissive IdP (Keycloak wildcard, Dex, Authentik) will hand
-    /// the OAuth `code` to evil.com. F-07 attack class.
-    #[serde(default)]
-    pub trust_forwarded_headers: bool,
-    /// Per-file upload size cap, in MiB (binary — `N * 1024 * 1024`).
-    ///
-    /// **Default 128.** Enforced by `upload_file_inner` for every upload
-    /// entry point (`/files/upload` + `/projects/{id}/files/upload`); the
-    /// per-route body limit is derived as `cap + 16 MiB` so the request is
-    /// rejected before buffering an over-cap body into RAM. Keep the layers
-    /// consistent: `nginx client_max_body_size ≥ body limit ≥ this cap`
-    /// (nginx defaults to 1 GiB, so any cap up to ~1000 fits). Raise this
-    /// for deployments handling large scientific/genomics files
-    /// (`.rds`/`.csv` commonly 80–200 MB+); via the docker image, set
-    /// `ZIEE_MAX_FILE_UPLOAD_MB`.
-    #[serde(default = "default_max_file_upload_mb")]
-    pub max_file_upload_mb: u64,
-}
-
-/// Default per-file upload cap in MiB. 128 MiB comfortably covers the
-/// common 80–200 MB genomics-file range while staying well under nginx's
-/// 1 GiB body limit.
-fn default_max_file_upload_mb() -> u64 {
-    128
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct RateLimitConfig {
-    /// Master on/off switch for the global tower-governor rate limiter.
-    /// Defaults to `true` (preserve the A3 DoS-protection posture).
-    ///
-    /// Set `false` on trusted / non-public deployments. The built-in
-    /// code_sandbox + memory MCP servers are reached over loopback
-    /// (`http://127.0.0.1`), so every internal tool call shares the same
-    /// peer-IP bucket as user traffic and a rapid agent tool loop makes the
-    /// server self-throttle (HTTP 429 "Too Many Requests"). When this is
-    /// `false` the `GovernorLayer` is not installed at all, so NO traffic —
-    /// internal or external — is rate-limited.
-    #[serde(default = "default_rate_limit_enabled")]
-    pub enabled: bool,
-    /// Sustained requests-per-second per peer IP.
-    #[serde(default = "default_rate_limit_per_second")]
-    pub per_second: u64,
-    /// Token-bucket burst capacity.
-    #[serde(default = "default_rate_limit_burst_size")]
-    pub burst_size: u32,
-}
-
-fn default_rate_limit_enabled() -> bool {
-    true
-}
-
-fn default_rate_limit_per_second() -> u64 {
-    50
-}
-
-fn default_rate_limit_burst_size() -> u32 {
-    500
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct CorsConfig {
-    pub allow_origins: Vec<String>,
-    pub allow_methods: Vec<String>,
-    pub allow_headers: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct LoggingConfig {
-    pub level: String,
-    pub format: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct JwtConfig {
-    pub secret: String,
-    pub issuer: String,
-    pub audience: String,
-    /// Initial seed + DB-read fallback since migration 129: the live value
-    /// is the `session_settings.access_token_expiry_hours` row (admin-
-    /// configurable), copied from this field exactly once at first boot.
-    pub access_token_expiry_hours: i64,
-    /// Initial seed + DB-read fallback (see access_token_expiry_hours).
-    #[serde(default = "default_refresh_token_expiry")]
-    pub refresh_token_expiry_days: i64,
-    /// DEBUG-ONLY test seam: overrides the access-token TTL with a
-    /// seconds-granularity value so integration/e2e suites can exercise
-    /// token expiry without waiting hours. Honored only under
-    /// `cfg!(debug_assertions)` — physically inert in release builds
-    /// (same pattern as `SYNC_RECHECK_TICK_MS`).
-    #[serde(default)]
-    pub access_token_expiry_seconds: Option<i64>,
-}
-
-fn default_refresh_token_expiry() -> i64 {
-    30
 }
 
 impl Config {
@@ -780,42 +505,6 @@ impl Config {
             .and_then(|e| e.installation_dir.as_ref())
             .map(PathBuf::from)
     }
-
-    pub fn database_url(&self) -> String {
-        if self.postgresql.use_embedded {
-            let embedded = self
-                .postgresql
-                .embedded
-                .as_ref()
-                .expect("embedded config must be present when use_embedded is true");
-            format!(
-                "postgresql://{}:{}@{}:{}/{}",
-                embedded.username,
-                embedded.password,
-                embedded.bind_address,
-                embedded.port,
-                embedded.database
-            )
-        } else {
-            let external = self
-                .postgresql
-                .external
-                .as_ref()
-                .expect("external config must be present when use_embedded is false");
-            format!(
-                "postgresql://{}:{}@{}:{}/{}",
-                external.username,
-                external.password,
-                external.host,
-                external.port,
-                external.database
-            )
-        }
-    }
-
-    pub fn server_address(&self) -> String {
-        format!("{}:{}", self.server.host, self.server.port)
-    }
 }
 
 /// Join a subpath onto a base dir and stringify. Used by `resolve_paths`
@@ -843,44 +532,6 @@ fn find_available_port(start_port: u16, end_port: u16) -> Option<u16> {
 
     // Fallback to portpicker if range is exhausted
     portpicker::pick_unused_port()
-}
-
-#[cfg(test)]
-mod rate_limit_config_tests {
-    use super::RateLimitConfig;
-
-    // serde_json (not yaml) keeps the test dependency-free; RateLimitConfig
-    // derives Deserialize so the format is irrelevant to what we assert.
-
-    #[test]
-    fn enabled_defaults_true_when_field_omitted() {
-        // The pre-existing block shape (per_second/burst_size only, e.g.
-        // tests/common/mod.rs) must keep the limiter enabled.
-        let cfg: RateLimitConfig =
-            serde_json::from_str(r#"{"per_second":1,"burst_size":2}"#).unwrap();
-        assert!(cfg.enabled, "enabled should default to true");
-        assert_eq!(cfg.per_second, 1);
-        assert_eq!(cfg.burst_size, 2);
-    }
-
-    #[test]
-    fn can_disable_with_just_enabled_flag() {
-        // `enabled: false` alone is enough; per_second/burst_size fall back
-        // to their serde defaults.
-        let cfg: RateLimitConfig = serde_json::from_str(r#"{"enabled":false}"#).unwrap();
-        assert!(!cfg.enabled);
-        assert_eq!(cfg.per_second, 50);
-        assert_eq!(cfg.burst_size, 500);
-    }
-
-    #[test]
-    fn full_block_parses_all_fields() {
-        let cfg: RateLimitConfig =
-            serde_json::from_str(r#"{"enabled":true,"per_second":100,"burst_size":200}"#).unwrap();
-        assert!(cfg.enabled);
-        assert_eq!(cfg.per_second, 100);
-        assert_eq!(cfg.burst_size, 200);
-    }
 }
 
 #[cfg(test)]
@@ -920,55 +571,6 @@ mod voice_config_tests {
 }
 
 #[cfg(test)]
-mod public_file_origin_tests {
-    use super::CodeSandboxConfig;
-
-    fn cfg(public_base_url: Option<&str>) -> CodeSandboxConfig {
-        CodeSandboxConfig {
-            public_base_url: public_base_url.map(str::to_string),
-            ..Default::default()
-        }
-    }
-
-    const LOOPBACK: &str = "http://127.0.0.1:8080";
-
-    #[test]
-    fn uses_public_base_url_when_set() {
-        let c = cfg(Some("https://tunnel.example.com"));
-        assert_eq!(c.public_file_origin(LOOPBACK), "https://tunnel.example.com");
-    }
-
-    #[test]
-    fn trims_trailing_slash_and_surrounding_whitespace() {
-        let c = cfg(Some("  https://tunnel.example.com/  "));
-        assert_eq!(c.public_file_origin(LOOPBACK), "https://tunnel.example.com");
-    }
-
-    #[test]
-    fn falls_back_to_loopback_when_unset() {
-        let c = cfg(None);
-        assert_eq!(c.public_file_origin(LOOPBACK), "http://127.0.0.1:8080");
-    }
-
-    #[test]
-    fn falls_back_when_empty_or_whitespace() {
-        assert_eq!(cfg(Some("")).public_file_origin(LOOPBACK), LOOPBACK);
-        assert_eq!(cfg(Some("   ")).public_file_origin(LOOPBACK), LOOPBACK);
-    }
-
-    #[test]
-    fn never_emits_wildcard_when_caller_passes_pinned_loopback() {
-        // The helper trusts the caller's pinned loopback (always 127.0.0.1 via
-        // loopback_host). Regardless of public_base_url being absent, the
-        // result must never carry a wildcard / unroutable bind address.
-        let c = cfg(None);
-        let origin = c.public_file_origin("http://127.0.0.1:9000");
-        assert!(origin.starts_with("http://127.0.0.1"), "origin: {origin}");
-        assert!(!origin.contains("0.0.0.0"), "origin: {origin}");
-    }
-}
-
-#[cfg(test)]
 mod packaging_config_tests {
     use super::Config;
 
@@ -990,29 +592,5 @@ mod packaging_config_tests {
                  package install boots from it): {e}"
             )
         });
-    }
-}
-
-#[cfg(test)]
-mod max_file_upload_tests {
-    use super::{default_max_file_upload_mb, ServerConfig};
-
-    #[test]
-    fn default_is_128() {
-        assert_eq!(default_max_file_upload_mb(), 128);
-    }
-
-    #[test]
-    fn omitted_key_deserializes_to_default() {
-        let yaml = "host: 127.0.0.1\nport: 3000\napi_prefix: /api\n";
-        let cfg: ServerConfig = serde_norway::from_str(yaml).expect("parse ServerConfig");
-        assert_eq!(cfg.max_file_upload_mb, 128);
-    }
-
-    #[test]
-    fn explicit_key_overrides_default() {
-        let yaml = "host: 127.0.0.1\nport: 3000\napi_prefix: /api\nmax_file_upload_mb: 256\n";
-        let cfg: ServerConfig = serde_norway::from_str(yaml).expect("parse ServerConfig");
-        assert_eq!(cfg.max_file_upload_mb, 256);
     }
 }

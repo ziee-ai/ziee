@@ -7,8 +7,8 @@ import {
   Outlet,
   Link,
 } from 'react-router-dom'
-import { Button, Result } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Button, Result } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
 import { usePermission } from '@/core/permissions'

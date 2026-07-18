@@ -1,7 +1,7 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useRoutesStore } from '@/modules/router/stores/routes-store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Routes: StoreProxy<ReturnType<typeof useRoutesStore.getState>>
   }

@@ -7,43 +7,35 @@ use std::sync::Mutex;
 
 use crate::core::config::CachesConfig;
 
-/// Global application data directory
-/// This stores models, caches, temporary files, etc.
-pub static APP_DATA_DIR: Lazy<Mutex<PathBuf>> = Lazy::new(|| {
-    // Default to ~/.ziee if not set
-    let default_path = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".ziee");
-    Mutex::new(default_path)
-});
+// APP_DATA_DIR + SERVER_ADDR (and their accessors + `test_app_data_dir`) moved
+// to `ziee-core` (`ziee_core::app_state`) in Chunk B1. The `~/.ziee` default is
+// now derived from a configurable app-name (T-1); ziee registers "ziee" via the
+// `ensure_app_name` guard threaded through the data-dir accessors below, so the
+// default stays `~/.ziee` byte-for-byte. `get_server_addr`/`set_server_addr`
+// are pure re-export shims (decision N2). CACHES_CONFIG + MAX_FILE_UPLOAD_BYTES
+// remain here (CachesConfig moves in B2; the upload cap keeps its docker/nginx
+// tests + private slack const app-side).
+pub use ziee_core::app_state::{get_server_addr, set_server_addr};
 
-/// Set the application data directory.
-///
-/// Closes 14-core F-25 + F-17 (Info / Low): poison recovery rather than
-/// silent log-and-continue. If a previous holder panicked while
-/// mutating APP_DATA_DIR, recover the inner value and overwrite it.
-/// The data dir is set-once at boot so the recovery branch should
-/// never fire in practice.
-pub fn set_app_data_dir(path: PathBuf) {
-    let mut guard = APP_DATA_DIR.lock().unwrap_or_else(|poisoned| {
-        tracing::error!("APP_DATA_DIR mutex poisoned in set_app_data_dir; recovering");
-        poisoned.into_inner()
-    });
-    *guard = path;
-    tracing::info!("Application data directory set to: {}", guard.display());
+/// Registers the "ziee" app-name in ziee-core exactly once, before the first
+/// data-dir access, so `ziee_core`'s configurable default resolves to `~/.ziee`
+/// (identical to the pre-extraction hardcode). Idempotent.
+static APP_NAME_INIT: std::sync::Once = std::sync::Once::new();
+fn ensure_app_name() {
+    APP_NAME_INIT.call_once(|| ziee_core::app_state::set_app_name("ziee"));
 }
 
-/// Get the current application data directory.
-/// Returns a cloned PathBuf to avoid holding the mutex lock.
-/// Poison recovery same as set_app_data_dir (14-core F-17 + F-25).
+/// Set the application data directory. Shim over `ziee_core::app_state`
+/// (registers the "ziee" app-name first so the default matches `~/.ziee`).
+pub fn set_app_data_dir(path: PathBuf) {
+    ensure_app_name();
+    ziee_core::app_state::set_app_data_dir(path);
+}
+
+/// Get the current application data directory. Shim over `ziee_core::app_state`.
 pub fn get_app_data_dir() -> PathBuf {
-    APP_DATA_DIR
-        .lock()
-        .unwrap_or_else(|poisoned| {
-            tracing::error!("APP_DATA_DIR mutex poisoned in get_app_data_dir; recovering");
-            poisoned.into_inner()
-        })
-        .clone()
+    ensure_app_name();
+    ziee_core::app_state::get_app_data_dir()
 }
 
 /// Global cache-paths config (Phase-2 path consolidation). Holds the
@@ -72,28 +64,6 @@ pub fn get_caches_config() -> CachesConfig {
             tracing::error!("CACHES_CONFIG mutex poisoned in get_caches_config; recovering");
             poisoned.into_inner()
         })
-        .clone()
-}
-
-/// Server-side host + port + api_prefix, captured from `Config::server`
-/// at boot. Used by the llm_local_runtime URL injection to derive the
-/// proxy base_url at read time. The api_prefix matters because module
-/// routes are nested under it (`app_builder.rs`), so the externally
-/// reachable proxy URL is `http://host:port{api_prefix}/local-llm/v1`.
-/// Default `("127.0.0.1", 3000, "/api")` so pre-boot reads work in tests.
-pub static SERVER_ADDR: Lazy<Mutex<(String, u16, String)>> =
-    Lazy::new(|| Mutex::new(("127.0.0.1".to_string(), 3000, "/api".to_string())));
-
-#[allow(dead_code)]
-pub fn set_server_addr(host: String, port: u16, api_prefix: String) {
-    let mut guard = SERVER_ADDR.lock().unwrap_or_else(|p| p.into_inner());
-    *guard = (host, port, api_prefix);
-}
-
-pub fn get_server_addr() -> (String, u16, String) {
-    SERVER_ADDR
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
         .clone()
 }
 
@@ -144,13 +114,8 @@ pub fn file_upload_body_limit_bytes() -> usize {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_app_data_dir() {
-        let test_path = PathBuf::from("/tmp/test-ziee");
-        set_app_data_dir(test_path.clone());
-        let retrieved_path = get_app_data_dir();
-        assert_eq!(retrieved_path, test_path);
-    }
+    // NOTE: `test_app_data_dir` moved with APP_DATA_DIR into `ziee-core`
+    // (`app_state::tests`) in Chunk B1.
 
     #[test]
     fn max_file_upload_bytes_round_trip_and_derived_body_limit() {

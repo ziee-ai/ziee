@@ -6,6 +6,11 @@ mod modules;
 mod openapi;
 mod utils;
 
+// Core macros moved to `ziee-core` in Chunk B1; re-exported at the crate root
+// so existing `crate::sse_event_enum!` / `crate::impl_string_to_enum!` /
+// `crate::impl_json_from!` call sites resolve unchanged (decision N2).
+pub use ziee_core::{impl_json_from, impl_string_to_enum, sse_event_enum};
+
 use clap::Parser;
 use module_api::ModuleContext;
 use tokio::signal;
@@ -225,8 +230,24 @@ async fn main() {
             .and_then(|s| s.storage_key.clone()),
     );
 
+    // Run the declarative config-as-code seed (ziee-seed engine) in the
+    // post-migration window — schema + repos + storage key are ready and the
+    // server is not serving yet. Mirrors setup_server (the desktop/embedded
+    // boot path). A bad requested overlay fails boot rather than serve a
+    // misconfigured deployment.
+    if let Err(e) = core::seed::run(&pool).await {
+        tracing::error!("Declarative seed failed: {}", e);
+        std::process::exit(1);
+    }
+    tracing::info!("Declarative seed applied");
+
     // Initialize modules
-    let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
+    // ServerConfig into the framework context; full Config via the opaque slot.
+    let module_context = ModuleContext::new(
+        pool.clone(),
+        std::sync::Arc::new(config.server_config.clone()),
+        std::sync::Arc::new(config.clone()),
+    );
     let mut modules = core::app_builder::create_modules();
 
     // Initialize all modules
@@ -262,7 +283,7 @@ async fn main() {
 
     // Set up MCP session manager
     let mcp_session_manager = std::sync::Arc::new(modules::mcp::client::McpSessionManager::new(
-        module_context.config.clone(),
+        module_api::app_config(&module_context),
     ));
     // Make it reachable from the event-bus path (`McpSessionCleanupHandler`)
     // — module event handlers are registered before this point and can't
@@ -365,8 +386,30 @@ async fn main() {
             axum::http::header::HeaderName::from_static("strict-transport-security"),
             axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
         ))
+        // Chunk BG: per-request auth/user dependency handle (pool + installed
+        // event/sync/outbound sinks) — replaces those handlers' reach into
+        // `Repos` / `EventBus` / `sync::publish` / `url_validator`.
+        .layer(axum::Extension(core::events::build_auth_context(
+            pool.clone(),
+            event_bus.clone(),
+        )))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service))
+        // Chunk `ziee-file-http`: the per-request handle the mountable
+        // `ziee_file::http::file_routes` handlers pull from the extensions —
+        // the file store repository + ziee's `FileEvents` seam impl + the
+        // download-token signer — so those handlers no longer reach `Repos.file`
+        // / the file-module JWT global / `sync::publish`.
+        .layer(axum::Extension(modules::file::ingest::build_file_context(
+            pool.clone(),
+            &config.jwt,
+        )))
+        // Chunk B3: the framework's permission extractors pull this injected
+        // resolver (backed by Repos + the JWT service above) from the request
+        // extensions to authenticate + authorize, so enforcement stays generic.
+        .layer(axum::Extension(std::sync::Arc::new(
+            crate::modules::permissions::extractors::ZieeIdentityResolver,
+        )))
         .layer(axum::Extension(mcp_session_manager.clone()))
         .layer(cors);
 

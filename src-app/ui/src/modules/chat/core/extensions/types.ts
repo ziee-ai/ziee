@@ -434,7 +434,7 @@ export type ChatExtStoreApi = import('zustand').Mutate<
  */
 export interface ChatExtensionContext {
   chatStore: ChatExtStoreApi
-  store: import('@/core/stores').StoreProxy<any> | null
+  store: import('@ziee/framework/stores').StoreProxy<any> | null
 }
 
 /**
@@ -493,7 +493,7 @@ export interface ChatExtension {
     /** Store key for registration (e.g., "McpStore", "FileStore") */
     name: string
     /** Factory function to create the store instance */
-    createStore: () => import('@/core/stores').StoreProxy<any>
+    createStore: () => import('@ziee/framework/stores').StoreProxy<any>
   }
 
   /**
@@ -569,7 +569,7 @@ export interface ChatExtension {
   useConversationMenu?: (
     conversation: import('@/api-client/types').Conversation,
   ) => {
-    items: import('@/components/ui').DropdownItem[]
+    items: import('@ziee/kit').DropdownItem[]
     overlays?: import('react').ReactNode
     /**
      * Set true while any overlay (popconfirm, sub-popover) is

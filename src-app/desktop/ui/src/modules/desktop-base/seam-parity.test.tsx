@@ -8,8 +8,8 @@
  * DRIFT-1.6 for why the other shadows stayed structural file-swaps).
  */
 import { describe, test, expect, beforeEach } from 'vitest'
-import { resolveOverride } from '@/core/overrides'
-import { __clearOverrides } from '@/core/overrides/registry'
+import { resolveOverride } from '@ziee/framework/overrides'
+import { __clearOverrides } from '@ziee/framework/overrides/registry'
 import { register as registerHardware } from './overrides/hardware-monitor'
 import { register as registerSpacer } from './overrides/sidebar-header-spacer'
 

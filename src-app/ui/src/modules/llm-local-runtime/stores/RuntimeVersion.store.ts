@@ -5,8 +5,8 @@ import {
   type RuntimeVersionResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import { Stores } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { Stores } from '@ziee/framework/stores'
 import {
   emitRuntimeVersionDefaultChanged,
   emitRuntimeVersionDeleted,

@@ -81,7 +81,7 @@ impl AppModule for ProjectModule {
         // routes contribute zero, lifecycle hooks fan out to zero handlers).
         let registry = auto_register_project_extensions(
             (*ctx.db_pool).clone(),
-            ctx.config.clone(),
+            crate::module_api::app_config(ctx),
         );
         let registry_arc = Arc::new(registry);
         self.extension_registry = Some(registry_arc.clone());

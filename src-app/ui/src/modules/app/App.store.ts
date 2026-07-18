@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import type { SetupAdminRequest } from '@/api-client/types'
-import type { StoreProxy } from '@/core/stores'
-import { defineStore } from '@/core/store-kit'
+import type { StoreProxy } from '@ziee/framework/stores'
+import { defineStore } from '@ziee/framework/store-kit'
 
 interface AppState {
   needsSetup: boolean | null
@@ -13,7 +13,7 @@ interface AppState {
   clearSetupError: () => void
 }
 
-declare module '../../core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     App: StoreProxy<AppState>
   }

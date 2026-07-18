@@ -23,13 +23,13 @@
  * the filter list + flat menu logic.
  */
 
-import { Button, Dropdown, Flex, Menu, Title } from '@/components/ui'
+import { Button, Dropdown, Flex, Menu, Title } from '@ziee/kit'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect, useRef } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 // Settings page entries that are specific to multi-user SaaS features
 // with no equivalent on single-admin desktop. These are explicitly

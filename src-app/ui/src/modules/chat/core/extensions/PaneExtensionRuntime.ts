@@ -1,6 +1,6 @@
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import type { ChatExtStoreApi } from '@/modules/chat/core/extensions/types'
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 
 /**
  * Per-pane extension runtime (ITEM-34). The `chatExtensionRegistry` is the global

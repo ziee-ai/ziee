@@ -110,7 +110,7 @@ pub async fn run_headless(config_file: Option<String>) -> Result<()> {
         // re-run them and find them already applied — sqlx::migrate
         // is idempotent.
         let mut server_migrator = sqlx::migrate::Migrator::new(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../server/migrations"),
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../server/migrations-merged"),
         )
         .await
         .map_err(|e| anyhow::anyhow!("Headless server-migrator create failed: {}", e))?;

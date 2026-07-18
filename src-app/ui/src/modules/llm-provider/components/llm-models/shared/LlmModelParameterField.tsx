@@ -7,7 +7,7 @@ import {
   Select,
   Tag,
   Textarea,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 interface StringArrayInputProps {
   value?: string[]

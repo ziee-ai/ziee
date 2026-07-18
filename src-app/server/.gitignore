@@ -23,3 +23,4 @@ Cargo.lock
 
 # Downloaded binaries (embedded at compile time)
 binaries/
+/migrations-merged/

@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { useHardwareStore } from '@/modules/hardware/Hardware.store'

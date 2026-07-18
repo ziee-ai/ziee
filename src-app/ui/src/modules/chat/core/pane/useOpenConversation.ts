@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { dialog } from '@/components/ui'
-import { Stores } from '@/core'
+import { dialog } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import { focusPopoutWindowIfOpen } from '@/modules/chat/core/popout/focusPopoutWindow'
 import {

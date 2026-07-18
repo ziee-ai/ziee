@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert } from '@/components/ui'
+import { Alert } from '@ziee/kit'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import type { BundledLanguage, ShikiTransformer } from 'shiki'

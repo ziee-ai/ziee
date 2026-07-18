@@ -1,4 +1,4 @@
-import { Button, Flex, Tooltip } from '@/components/ui'
+import { Button, Flex, Tooltip } from '@ziee/kit'
 
 interface SettingsFormActionsProps {
   /** Primary submit handler — wire to `form.handleSubmit(onSubmit)`. */

@@ -14,8 +14,8 @@ import {
   Text,
   Tooltip,
   message,
-} from '@/components/ui'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type RuntimeVersionResponse2 } from '@/api-client/types'
 

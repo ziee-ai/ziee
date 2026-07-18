@@ -9,8 +9,14 @@ pub mod pdf;
 pub mod office;
 
 use crate::common::AppError;
-use crate::modules::file::models::ProcessingMetadata;
 use traits::{ContentProcessor, ImageGenerator};
+
+// The pure-data `ProcessingResult` moved to the `ziee-file` SDK crate (chunk
+// `ziee-file`); re-exported here so every `super::ProcessingResult` /
+// `processing::ProcessingResult` path (this module's submodules + upload/
+// versioning) resolves unchanged. The PRODUCERS below (ProcessingManager +
+// the per-format processors) stay app-side.
+pub use crate::modules::file::models::ProcessingResult;
 
 /// Maximum number of pages we rasterize into preview-page images at
 /// upload time. A 200-page PDF at the 2000px-per-page render size
@@ -19,21 +25,6 @@ use traits::{ContentProcessor, ImageGenerator};
 /// `ProcessingMetadata::page_count` retains the true total and the
 /// frontend surfaces a "showing first N of M pages" banner.
 pub const PREVIEW_PAGE_CAP: u32 = 50;
-
-/// Processing result
-#[derive(Debug, Clone, Default)]
-pub struct ProcessingResult {
-    pub text_pages: Vec<String>,
-    /// Per-page citation geometry (JSON), aligned 1:1 with `text_pages` when
-    /// present. Each entry is a JSON array of per-cleaned-char fraction boxes so
-    /// a chunk's cleaned `[char_start, char_end)` span maps directly to
-    /// highlight rectangles. Empty for non-PDF / geometry-less pages (the
-    /// citation UI degrades to a page-level deep-link).
-    pub geometry_pages: Vec<String>,
-    pub metadata: ProcessingMetadata,
-    pub thumbnails: Vec<Vec<u8>>,
-    pub images: Vec<Vec<u8>>,
-}
 
 /// File processing manager
 pub struct ProcessingManager {

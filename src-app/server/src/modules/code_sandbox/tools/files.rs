@@ -124,6 +124,43 @@ fn io_err(detail: impl Into<String>) -> AppError {
     )
 }
 
+/// Tool-produced ("model-authored") artifacts for this conversation, hydrated
+/// to head-version `File` records. These are files a tool created via MCP
+/// `resource_link` / code_sandbox `save_as_artifact` (`created_by IN
+/// ('mcp','llm')`) — owned by the user and provenance-scoped to the
+/// conversation, but NOT user attachments, so they never appear in `ctx.files`.
+///
+/// Shared by the `read_file`/`edit_file` resolution fallback and `list_files`
+/// so the two surfaces can't drift. Reuses the exact reviewed provenance query
+/// the files-MCP manifest uses (`file::available_files::model_authored_file_ids`,
+/// spanning all branches of the conversation), then batch-hydrates + re-checks
+/// ownership via `get_by_ids_and_user`.
+async fn conversation_model_authored_files(
+    ctx: &SandboxContext,
+) -> Result<Vec<crate::modules::file::models::File>, AppError> {
+    let ids = crate::modules::file::available_files::model_authored_file_ids(
+        ctx.conversation_id,
+        ctx.user_id,
+    )
+    .await?;
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut recs = crate::core::Repos
+        .file
+        .get_by_ids_and_user(&ids, ctx.user_id)
+        .await?;
+    // `get_by_ids_and_user` (WHERE id = ANY(...)) does not preserve order, but
+    // `ids` is deterministic (model_authored_file_ids ORDER BY created_at, id).
+    // Restore that order so a same-name collision resolves the SAME record every
+    // call — a stable `list_files` size for a collapsed duplicate row, and a
+    // deterministic pick were the ambiguity rule ever relaxed.
+    let rank: std::collections::HashMap<Uuid, usize> =
+        ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+    recs.sort_by_key(|r| rank.get(&r.id).copied().unwrap_or(usize::MAX));
+    Ok(recs)
+}
+
 // ------------------------------------------------------------------
 // read_file
 // ------------------------------------------------------------------
@@ -231,7 +268,56 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
                     )
                 });
             }
-            Err(io_err(format!("read {}: {e}", path.display())))
+            // Neither the workspace nor a user attachment matched. Try the
+            // model-authored artifact set — files a tool produced (MCP
+            // resource_link / save_as_artifact, `created_by IN ('mcp','llm')`).
+            // They're owned by the user + scoped to this conversation but are
+            // not user attachments, so the `ctx.files` fallback above never
+            // sees them. Same filename + ambiguity rule as attachments.
+            let mut authored: Vec<_> = conversation_model_authored_files(ctx)
+                .await?
+                .into_iter()
+                .filter(|f| f.filename == filename)
+                .collect();
+            if authored.len() > 1 {
+                return Err(AppError::new(
+                    StatusCode::BAD_REQUEST,
+                    "AMBIGUOUS_FILENAME",
+                    format!(
+                        "{filename} matches {} tool-produced files with the same \
+                         name in this conversation. read_file resolves artifacts by \
+                         name only and cannot tell them apart; read a specific one \
+                         by its id using the files read_file tool.",
+                        authored.len()
+                    ),
+                ));
+            }
+            if let Some(rec) = authored.pop() {
+                let ext = crate::modules::file::utils::extension_of(filename);
+                let storage = crate::modules::file::storage::manager::get_file_storage();
+                let bytes = storage
+                    .load_original(ctx.user_id, rec.blob_version_id, &ext)
+                    .await
+                    .map_err(|le| io_err(format!("load artifact {filename}: {le:?}")))?;
+                return String::from_utf8(bytes).map_err(|_| {
+                    AppError::new(
+                        StatusCode::BAD_REQUEST,
+                        "BINARY_FILE",
+                        format!("{filename} is not valid UTF-8 (binary file)"),
+                    )
+                });
+            }
+            // Genuinely not found. Return a clean 404 (no host path) so the
+            // guarded dispatch surfaces an actionable `invalid_params` instead
+            // of the opaque `-32603 "tool read_file failed"`.
+            Err(AppError::new(
+                StatusCode::NOT_FOUND,
+                "FILE_NOT_FOUND",
+                format!(
+                    "{filename} not found in the workspace or this conversation's \
+                     files; call list_files to see available files"
+                ),
+            ))
         }
         Err(e) => Err(io_err(format!("read {}: {e}", path.display()))),
     }
@@ -376,6 +462,38 @@ pub async fn list_files(ctx: &SandboxContext) -> Result<serde_json::Value, AppEr
             "name": name,
             "size": meta.len(),
             "is_file": meta.is_file(),
+        }));
+    }
+    // Also surface tool-produced artifacts (`created_by IN ('mcp','llm')`) that
+    // read_file/edit_file can now resolve (via the same shared source), so a
+    // readable artifact is discoverable here too. (These are NOT bind-mounted
+    // into the execute_command shell — by design.)
+    //
+    // Only list a name read_file would actually resolve TO the artifact: skip
+    // any name already claimed by a workspace file or one of this user's
+    // conversation attachments (both of which read_file resolves FIRST — listing
+    // the artifact there would advertise a size the read path never returns), and
+    // list each artifact name once (two same-named artifacts are AMBIGUOUS to
+    // read_file, so a single row keeps list and read consistent). `insert`
+    // returns false when the name is already claimed.
+    let mut seen: std::collections::HashSet<String> = out
+        .iter()
+        .filter_map(|e| e["name"].as_str().map(|s| s.to_owned()))
+        .collect();
+    seen.extend(
+        ctx.files
+            .iter()
+            .filter(|f| f.user_id == ctx.user_id)
+            .map(|f| f.filename.clone()),
+    );
+    for rec in conversation_model_authored_files(ctx).await? {
+        if !seen.insert(rec.filename.clone()) {
+            continue;
+        }
+        out.push(json!({
+            "name": rec.filename,
+            "size": rec.file_size,
+            "is_file": true,
         }));
     }
     // Stable alphabetical sort. Without this the LLM sees a
@@ -552,6 +670,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             workspace: tmp.path().to_path_buf(),
             files: Arc::new(Vec::<ConversationFile>::new()),
+            extra_ro_binds: Vec::new(),
         }
     }
 
@@ -762,6 +881,7 @@ mod tests {
                     created_at: chrono::Utc::now(),
                 },
             ]),
+            extra_ro_binds: Vec::new(),
         };
 
         let err = read_file(&ctx, "data.csv", None, None)

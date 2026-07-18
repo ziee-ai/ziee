@@ -158,7 +158,7 @@ fn ensure_desktop_admin_creates_admin_on_first_run() {
         let pool = shared_pool().await;
         clean_users(pool).await;
 
-        ensure_desktop_admin()
+        ensure_desktop_admin(pool)
             .await
             .expect("ensure_desktop_admin should succeed on empty DB");
 
@@ -181,8 +181,8 @@ fn ensure_desktop_admin_is_idempotent() {
         let pool = shared_pool().await;
         clean_users(pool).await;
 
-        ensure_desktop_admin().await.expect("first call should succeed");
-        ensure_desktop_admin()
+        ensure_desktop_admin(pool).await.expect("first call should succeed");
+        ensure_desktop_admin(pool)
             .await
             .expect("second call should be a no-op (no error, no duplicate)");
 
@@ -200,10 +200,10 @@ fn mint_admin_login_returns_valid_jwt_for_bootstrapped_admin() {
     rt().block_on(async {
         let pool = shared_pool().await;
         clean_users(pool).await;
-        ensure_desktop_admin().await.expect("bootstrap admin");
+        ensure_desktop_admin(pool).await.expect("bootstrap admin");
 
         let jwt = test_jwt_service();
-        let response = mint_admin_login(&jwt)
+        let response = mint_admin_login(pool, &jwt)
             .await
             .expect("mint_admin_login should succeed when admin exists");
 
@@ -231,10 +231,10 @@ fn mint_admin_login_registers_whitelisted_jti() {
     rt().block_on(async {
         let pool = shared_pool().await;
         clean_users(pool).await;
-        ensure_desktop_admin().await.expect("bootstrap admin");
+        ensure_desktop_admin(pool).await.expect("bootstrap admin");
 
         let jwt = test_jwt_service();
-        let response = mint_admin_login(&jwt)
+        let response = mint_admin_login(pool, &jwt)
             .await
             .expect("mint_admin_login should succeed when admin exists");
 
@@ -263,7 +263,7 @@ fn mint_admin_login_errors_when_admin_missing() {
         clean_users(pool).await;
 
         let jwt = test_jwt_service();
-        let err = mint_admin_login(&jwt)
+        let err = mint_admin_login(pool, &jwt)
             .await
             .expect_err("should error when no admin exists");
 

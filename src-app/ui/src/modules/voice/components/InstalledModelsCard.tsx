@@ -17,9 +17,9 @@ import {
   Tag,
   Text,
   Tooltip,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { formatBytes } from '@/utils/downloadUtils'
 
 const PAGE_SIZE = 10

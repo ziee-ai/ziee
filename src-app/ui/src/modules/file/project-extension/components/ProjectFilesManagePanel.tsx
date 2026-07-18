@@ -21,8 +21,8 @@ import {
   Text,
   Tooltip,
   Upload,
-} from '@/components/ui'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { FileCard } from '@/modules/file/components/FileCard'

@@ -5,7 +5,7 @@ import {
   InputNumber,
   PasswordInput,
   Switch,
-} from '@/components/ui'
+} from '@ziee/kit'
 import type { FieldSchema } from './elicitationOptions'
 
 /**

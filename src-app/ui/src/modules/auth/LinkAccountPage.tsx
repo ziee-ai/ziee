@@ -11,10 +11,10 @@ import {
   Paragraph,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { z } from 'zod'
 import { Lock } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 
 const linkAccountSchema = z.object({

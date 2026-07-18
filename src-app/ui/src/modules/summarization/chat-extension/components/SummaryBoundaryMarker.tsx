@@ -1,7 +1,7 @@
 import { Shrink, ChevronRight, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import { Card, Separator, Flex, Text } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Card, Separator, Flex, Text } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
 
 /**

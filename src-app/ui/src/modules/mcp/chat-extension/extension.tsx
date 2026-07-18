@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { Alert, Button, Card, Progress, Text } from '@/components/ui'
+import { Alert, Button, Card, Progress, Text } from '@ziee/kit'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ToolStatusIcon } from '@/modules/chat/core/ToolStatusIcon'
@@ -10,7 +10,7 @@ import {
   type ChatExtension,
   type ContentRendererProps,
 } from '@/modules/chat/core/extensions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
 import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
@@ -418,7 +418,7 @@ const mcpExtension: ChatExtension = createExtension({
   priority: 50, // Higher priority to handle events early
 
   initialize: async (ctx) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { ApiClient } = await import('@/api-client')
 
     // Bind the editing-message restore to the OWNING pane's chat store
@@ -965,7 +965,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Allow empty text when there are pending tool approvals
   beforeSendMessage: async () => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
     const mcpStore = Stores.McpComposer
 
@@ -986,7 +986,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Compose request fields to include MCP config and approval decisions
   composeRequestFields: async (ctx) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
     const mcpStore = Stores.McpComposer
     // Resolve the SENDING pane's own MCP config + approvals (ITEM-33/51) — from the
@@ -1023,7 +1023,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Load conversation MCP settings when conversation is opened
   onConversationLoad: async (conversation) => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const mcpStore = Stores.McpComposer
     const mcpStoreProxy = Stores.McpComposer
 
@@ -1146,7 +1146,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Clear approval decisions after message is sent
   onMessageSent: async ownerPaneId => {
-    const { Stores } = await import('@/core/stores')
+    const { Stores } = await import('@ziee/framework/stores')
     const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     // Read via `$` snapshot (state fields + actions both live on getState())
     const mcpStore = Stores.McpComposer.$

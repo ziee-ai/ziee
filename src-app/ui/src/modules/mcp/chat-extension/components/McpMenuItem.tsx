@@ -1,5 +1,5 @@
 import { Wrench } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'

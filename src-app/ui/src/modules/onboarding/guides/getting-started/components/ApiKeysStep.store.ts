@@ -1,8 +1,8 @@
 import { ApiClient } from '@/api-client'
 import type { ProviderWithModels } from '@/api-client/types'
-import { message } from '@/components/ui'
-import { defineStore } from '@/core/store-kit'
-import { createStoreProxy } from '@/core/stores'
+import { message } from '@ziee/kit'
+import { defineStore } from '@ziee/framework/store-kit'
+import { createStoreProxy } from '@ziee/framework/stores'
 
 export const ApiKeysStep = defineStore('ApiKeysStep', {
   immer: true,

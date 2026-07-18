@@ -1,0 +1,18 @@
+{
+  "galleryDir": "src/dev/gallery",
+  "surfaceRoots": ["src/modules", "src/components/ui"],
+  "kitImport": "@ziee/kit",
+  "port": 1420,
+  "galleryUrl": "/gallery.html",
+  "prodMarker": "ZIEE_GALLERY_SEED_MARKER",
+  "distDir": "../../dist/ui",
+  "buildCmd": "npm run build:nocheck",
+  "devCmd": ["npm", "run", "dev"],
+  "extraTrees": ["../desktop/ui/src"],
+  "kitTestIds": ["../../sdk/packages/kit/src", "../../sdk/packages/shell/src"],
+  "testidOut": "../../sdk/packages/kit/src/testIds.generated.ts",
+  "runtimeBaselineModule": "src/dev/gallery/runtime-baseline.js",
+  "visualConfig": "playwright.visual.config.ts",
+  "visualSpecs": ["layout.spec.ts", "states.spec.ts", "overlays.spec.ts"],
+  "visualSnapshotSpecs": ["gallery.spec.ts"]
+}

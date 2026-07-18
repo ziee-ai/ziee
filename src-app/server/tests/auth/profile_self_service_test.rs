@@ -814,10 +814,10 @@ async fn test_ensure_unique_username_collision_retry() {
     // process global). Same canonical pattern as
     // `auth::mod::test_ensure_unique_username_collision_suffix_and_defaults`.
     let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
-    ziee::init_repositories(pool);
+    ziee::init_repositories(pool.clone());
 
     // Free base → returned unchanged.
-    let fresh = ziee::auth_ensure_unique_username("brandnewbase")
+    let fresh = ziee::auth_ensure_unique_username(&pool, "brandnewbase")
         .await
         .expect("free base resolves");
     assert_eq!(fresh, "brandnewbase");
@@ -843,14 +843,14 @@ async fn test_ensure_unique_username_collision_retry() {
         }
     };
     register_exact("collide").await;
-    let bumped = ziee::auth_ensure_unique_username("collide")
+    let bumped = ziee::auth_ensure_unique_username(&pool, "collide")
         .await
         .expect("taken base resolves to a numbered variant");
     assert_eq!(bumped, "collide2", "a taken base must derive base2");
 
     // Occupy "collide2" too → must skip to "collide3".
     register_exact("collide2").await;
-    let bumped3 = ziee::auth_ensure_unique_username("collide")
+    let bumped3 = ziee::auth_ensure_unique_username(&pool, "collide")
         .await
         .expect("resolves past the second collision");
     assert_eq!(bumped3, "collide3", "base + base2 taken → base3");

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { LoginForm } from '@/modules/auth/LoginForm'
 import { RegisterForm } from '@/modules/auth/RegisterForm'
 import { AuthScreenLayout } from '@/modules/auth/AuthScreenLayout'

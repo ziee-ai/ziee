@@ -1,4 +1,4 @@
-import { FormField, Select, Button, Tooltip } from '@/components/ui'
+import { FormField, Select, Button, Tooltip } from '@ziee/kit'
 import { CircleAlert } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 

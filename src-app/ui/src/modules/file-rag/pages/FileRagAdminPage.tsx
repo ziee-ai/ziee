@@ -1,5 +1,5 @@
-import { Alert, Spinner } from '@/components/ui'
-import { Stores } from '@/core/stores'
+import { Alert, Spinner } from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { EnableSection } from '../components/sections/EnableSection'
 import { EmbeddingSection } from '../components/sections/EmbeddingSection'

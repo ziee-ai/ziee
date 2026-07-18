@@ -8,7 +8,7 @@ export interface OnboardingSlot {
   steps: OnboardingStep[]
 }
 
-declare module '@/core/module-system/types' {
+declare module '@ziee/framework/module-system/types' {
   interface Slots {
     onboarding: OnboardingSlot[]
   }

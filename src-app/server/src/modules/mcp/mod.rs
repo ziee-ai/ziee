@@ -13,6 +13,7 @@ pub mod resource_link;
 mod routes;
 pub mod runtime_types;
 pub mod sampling;
+pub mod seed;
 pub mod settings;
 pub mod tool_calls;
 mod types;

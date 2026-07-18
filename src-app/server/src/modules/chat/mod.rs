@@ -60,7 +60,7 @@ impl AppModule for ChatModule {
         // Extensions are discovered at build time and registered in order based on METADATA.order
         let registry = Arc::new(auto_register_extensions(
             (*ctx.db_pool).clone(),
-            ctx.config.clone(),
+            crate::module_api::app_config(ctx),
         ));
 
         // Run each extension's one-time `initialize()` lifecycle hook (DB prep /

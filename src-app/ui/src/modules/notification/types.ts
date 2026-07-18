@@ -1,8 +1,8 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 
 import type { useNotificationsStore } from './stores/Notifications.store'
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Notifications: StoreProxy<ReturnType<typeof useNotificationsStore.getState>>
   }

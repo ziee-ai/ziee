@@ -32,6 +32,7 @@ mod onboarding;
 mod notification;
 mod project;
 mod scheduler;
+mod seed;
 mod server_update;
 mod skill;
 mod summarization;

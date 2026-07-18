@@ -2,8 +2,8 @@
  * File Dialog Store — native file picker dialogs via @tauri-apps/plugin-dialog.
  */
 import { open, save } from '@tauri-apps/plugin-dialog'
-import { defineStore } from '@/core/store-kit'
-import { type StoreProxy } from '@/core/stores'
+import { defineStore } from '@ziee/framework/store-kit'
+import { type StoreProxy } from '@ziee/framework/stores'
 
 interface FileFilter {
   name: string
@@ -66,7 +66,7 @@ export const FileDialog = defineStore('FileDialog', {
 
 export const useFileDialogStore = FileDialog.store
 
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     FileDialog: StoreProxy<ReturnType<typeof FileDialog.store.getState>>
   }

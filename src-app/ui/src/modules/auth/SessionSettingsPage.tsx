@@ -9,10 +9,10 @@ import {
   Spin,
   message,
   useForm,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 

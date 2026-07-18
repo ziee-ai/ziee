@@ -1,7 +1,7 @@
 // Emitters for project↔file events. Relocated from
 // `modules/projects/events/emitters.ts`.
 
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 export const emitProjectFileAttached = async (
   projectId: string,

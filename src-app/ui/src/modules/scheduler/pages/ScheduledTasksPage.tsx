@@ -10,9 +10,9 @@ import {
   Spin,
   Text,
   Title,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Can } from '@/core/permissions'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { cn } from '@/lib/utils'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'

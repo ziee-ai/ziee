@@ -5,7 +5,7 @@ import {
   type UpdateCodeSandboxResourceLimits,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Runtime-configurable resource caps for the code sandbox (singleton row via

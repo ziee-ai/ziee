@@ -1,11 +1,11 @@
 import { ApiClient } from '@/api-client'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type {
   ChangePasswordRequest,
   UpdateProfileRequest,
 } from '@/api-client/types'
 import { emitProfileUpdated } from '@/modules/profile/events'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const Profile = defineStore('Profile', {
   immer: true,

@@ -30,4 +30,9 @@ pub mod types;
 // Re-export main types
 pub use extractors::RequirePermissions;
 pub use openapi::with_permission;
-pub use types::{PermissionCheck, PermissionInfo, PermissionList};
+// `PermissionList`'s only `permissions::`-path consumer was the sync module's
+// `Audience::{all_of, any_of}` constructors, which moved to
+// `ziee_framework::sync` in chunk B5. The trait itself is unchanged and still
+// re-exported via `permissions::types` (+ `crate::PermissionList`), so tuple
+// call sites (`<(A, B) as PermissionList>::…`) are unaffected.
+pub use types::{PermissionCheck, PermissionInfo};

@@ -1,5 +1,5 @@
 import { Fragment, memo, useMemo, useRef, type ReactNode } from 'react'
-import { Alert, ScrollArea } from '@/components/ui'
+import { Alert, ScrollArea } from '@ziee/kit'
 import { cn } from '@/lib/utils'
 import type {
   MessageWithContent,

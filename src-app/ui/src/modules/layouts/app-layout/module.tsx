@@ -1,4 +1,4 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
 import '@/modules/layouts/app-layout/types'
 

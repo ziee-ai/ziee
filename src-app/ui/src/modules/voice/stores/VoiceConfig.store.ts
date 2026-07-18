@@ -5,7 +5,7 @@ import {
   type VoiceSettings,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 /**
  * Deployment-wide voice settings singleton. Mirrors llm-local-runtime's

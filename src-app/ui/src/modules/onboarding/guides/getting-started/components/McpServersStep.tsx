@@ -9,10 +9,10 @@ import {
   Separator,
   Tag,
   Switch,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Wrench } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 

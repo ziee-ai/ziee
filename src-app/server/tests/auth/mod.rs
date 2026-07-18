@@ -1462,15 +1462,15 @@ async fn test_ensure_unique_username_collision_suffix_and_defaults() {
     }
 
     // Taken base + taken base2 → next free is base3.
-    let got = ziee::ensure_unique_username("ssobase").await.expect("unique");
+    let got = ziee::ensure_unique_username(&pool, "ssobase").await.expect("unique");
     assert_eq!(got, "ssobase3", "lowest free numeric suffix");
 
     // A free base is returned verbatim.
     let free = format!("freebase_{}", &uuid::Uuid::new_v4().to_string()[..8]);
-    assert_eq!(ziee::ensure_unique_username(&free).await.unwrap(), free);
+    assert_eq!(ziee::ensure_unique_username(&pool, &free).await.unwrap(), free);
 
     // Empty base defaults to "user" (or user2… if taken) — must be non-empty.
-    let defaulted = ziee::ensure_unique_username("   ").await.unwrap();
+    let defaulted = ziee::ensure_unique_username(&pool, "   ").await.unwrap();
     assert!(
         defaulted == "user" || defaulted.starts_with("user"),
         "empty base must default to a user-prefixed name, got {defaulted}"

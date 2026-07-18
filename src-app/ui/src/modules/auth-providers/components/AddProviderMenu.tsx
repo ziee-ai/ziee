@@ -1,4 +1,4 @@
-import { Button, Dropdown, Tooltip } from '@/components/ui'
+import { Button, Dropdown, Tooltip } from '@ziee/kit'
 import { Plus } from 'lucide-react'
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from '../types'
 

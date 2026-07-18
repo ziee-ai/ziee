@@ -5415,7 +5415,6 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
- "memoffset",
 ]
 
 [[package]]
@@ -8148,34 +8147,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandbox-guest-agent"
-version = "0.1.0"
-dependencies = [
- "libc",
- "sandbox-seccomp",
- "sandbox-vm-protocol",
- "tokio",
- "tokio-vsock",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "sandbox-seccomp"
 version = "0.1.0"
 dependencies = [
  "libseccomp",
  "tempfile",
-]
-
-[[package]]
-name = "sandbox-vm-launcher"
-version = "0.1.0"
-dependencies = [
- "libc",
- "sandbox-vm-protocol",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -10334,19 +10310,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-vsock"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b319ef9394889dab2e1b4f0085b45ba11d0c79dc9d1a9d1afc057d009d0f1c7"
-dependencies = [
- "bytes",
- "futures",
- "libc",
- "tokio",
- "vsock",
-]
-
-[[package]]
 name = "toml"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11127,16 +11090,6 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
-
-[[package]]
-name = "vsock"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ba782755fc073877e567c2253c0be48e4aa9a254c232d36d3985dfae0bd5205"
-dependencies = [
- "libc",
- "nix 0.31.3",
-]
 
 [[package]]
 name = "vswhom"
@@ -12642,7 +12595,6 @@ dependencies = [
  "ab_glyph",
  "ai-providers",
  "aide",
- "ash",
  "async-stream",
  "async-trait",
  "axum",
@@ -12681,10 +12633,8 @@ dependencies = [
  "macros",
  "mime_guess",
  "mockall",
- "nvml-wrapper",
  "oauth2",
  "once_cell",
- "opencl3",
  "openidconnect",
  "paste",
  "pdf-extract",
@@ -12699,8 +12649,6 @@ dependencies = [
  "rmcp",
  "rquickjs",
  "rsa",
- "sandbox-seccomp",
- "sandbox-vm-protocol",
  "schemars 0.9.0",
  "semver",
  "serde",
@@ -12729,14 +12677,95 @@ dependencies = [
  "ureq",
  "url",
  "uuid",
- "wgpu-hal",
  "which",
  "windows-service",
  "windows-sys 0.59.0",
  "winreg 0.52.0",
  "wiremock",
+ "ziee-auth",
+ "ziee-build-support",
+ "ziee-control-mcp",
+ "ziee-core",
+ "ziee-file",
+ "ziee-framework",
+ "ziee-hardware",
+ "ziee-health",
+ "ziee-identity",
+ "ziee-notification",
+ "ziee-onboarding",
+ "ziee-sandbox",
+ "ziee-seed",
+ "ziee-server-update",
+ "ziee-test-harness",
  "zip 6.0.0",
  "zstd",
+]
+
+[[package]]
+name = "ziee-auth"
+version = "0.0.0"
+dependencies = [
+ "aide",
+ "async-trait",
+ "axum",
+ "axum-login",
+ "base64 0.22.1",
+ "bcrypt",
+ "chrono",
+ "http",
+ "jsonwebtoken",
+ "ldap3",
+ "oauth2",
+ "openidconnect",
+ "rand 0.9.4",
+ "reqwest 0.12.28",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sqlx 0.8.6",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "ziee-core",
+ "ziee-framework",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-build-support"
+version = "0.0.0"
+dependencies = [
+ "sqlx 0.8.6",
+ "tokio",
+]
+
+[[package]]
+name = "ziee-control-mcp"
+version = "0.0.0"
+dependencies = [
+ "aide",
+ "serde_json",
+ "tracing",
+ "ziee-framework",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-core"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "dirs",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "serde_norway",
+ "sqlx 0.8.6",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -12785,6 +12814,238 @@ dependencies = [
  "url",
  "uuid",
  "ziee",
+ "ziee-build-support",
+ "ziee-desktop-harness",
+ "ziee-test-harness",
+]
+
+[[package]]
+name = "ziee-desktop-harness"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "sqlx 0.8.6",
+ "tauri",
+ "tauri-plugin-decorum",
+ "tracing",
+ "uuid",
+ "ziee-auth",
+ "ziee-core",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-file"
+version = "0.0.0"
+dependencies = [
+ "aide",
+ "async-trait",
+ "axum",
+ "chrono",
+ "hex",
+ "jsonwebtoken",
+ "mime_guess",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx 0.8.6",
+ "tokio",
+ "tracing",
+ "uuid",
+ "ziee-auth",
+ "ziee-core",
+ "ziee-framework",
+ "ziee-identity",
+ "zip 6.0.0",
+]
+
+[[package]]
+name = "ziee-framework"
+version = "0.0.0"
+dependencies = [
+ "aide",
+ "async-stream",
+ "async-trait",
+ "axum",
+ "chrono",
+ "futures-util",
+ "indexmap 2.14.0",
+ "linkme",
+ "once_cell",
+ "postgresql_embedded",
+ "reqwest 0.12.28",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sqlx 0.8.6",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower-http",
+ "tower_governor",
+ "tracing",
+ "url",
+ "uuid",
+ "ziee-build-support",
+ "ziee-core",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-hardware"
+version = "0.0.0"
+dependencies = [
+ "ash",
+ "axum",
+ "chrono",
+ "lazy_static",
+ "nvml-wrapper",
+ "opencl3",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tokio",
+ "tracing",
+ "uuid",
+ "wgpu-hal",
+ "ziee-core",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-health"
+version = "0.0.0"
+dependencies = [
+ "aide",
+ "axum",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ziee-identity"
+version = "0.0.0"
+dependencies = [
+ "schemars 0.9.0",
+ "serde",
+ "ziee-core",
+]
+
+[[package]]
+name = "ziee-notification"
+version = "0.0.0"
+dependencies = [
+ "aide",
+ "async-trait",
+ "axum",
+ "chrono",
+ "linkme",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sqlx 0.8.6",
+ "tokio",
+ "uuid",
+ "ziee-auth",
+ "ziee-build-support",
+ "ziee-core",
+ "ziee-framework",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-onboarding"
+version = "0.0.0"
+dependencies = [
+ "schemars 0.9.0",
+ "serde",
+ "sqlx 0.8.6",
+ "uuid",
+ "ziee-build-support",
+ "ziee-core",
+]
+
+[[package]]
+name = "ziee-sandbox"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "dashmap",
+ "hex",
+ "libc",
+ "once_cell",
+ "rmcp",
+ "sandbox-seccomp",
+ "sandbox-vm-protocol",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx 0.8.6",
+ "tokio",
+ "tracing",
+ "uuid",
+ "windows-service",
+ "windows-sys 0.59.0",
+ "winreg 0.52.0",
+ "ziee-core",
+ "ziee-framework",
+]
+
+[[package]]
+name = "ziee-seed"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "linkme",
+ "serde",
+ "serde_json",
+ "serde_norway",
+ "sqlx 0.8.6",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "ziee-core",
+ "ziee-framework",
+]
+
+[[package]]
+name = "ziee-server-update"
+version = "0.0.0"
+dependencies = [
+ "schemars 0.9.0",
+ "serde",
+ "ziee-identity",
+]
+
+[[package]]
+name = "ziee-test-harness"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "jsonwebtoken",
+ "portpicker",
+ "reqwest 0.12.28",
+ "rsa",
+ "serde_json",
+ "sqlx 0.8.6",
+ "tempfile",
+ "testcontainers",
+ "tokio",
+ "tokio-stream",
+ "url",
+ "uuid",
+ "wiremock",
+ "ziee-build-support",
 ]
 
 [[package]]

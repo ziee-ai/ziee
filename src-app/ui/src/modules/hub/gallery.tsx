@@ -7,7 +7,7 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyBound, lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 const noop = () => {}
 

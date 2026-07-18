@@ -22,7 +22,7 @@ import {
   message,
   useForm,
   zodResolver,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
@@ -38,7 +38,7 @@ import {
   Download,
   Pencil,
 } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'

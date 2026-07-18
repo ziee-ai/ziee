@@ -9,7 +9,7 @@ import {
   Select,
   Switch,
   Text,
-} from '@/components/ui'
+} from '@ziee/kit'
 
 export function LlmModelLlamaCppSettingsSection() {
   const getFieldName = (field: string) => `engine_settings.llamacpp.${field}`

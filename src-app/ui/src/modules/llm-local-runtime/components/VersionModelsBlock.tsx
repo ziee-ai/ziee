@@ -10,9 +10,9 @@ import {
   Tag,
   Text,
   Tooltip,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ChevronDown, CirclePlay, Power, RotateCw, ChevronUp } from 'lucide-react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { RuntimeEngine } from '../types'
 import { LiveLogsPanel } from './LiveLogsPanel'
 

@@ -19,7 +19,7 @@ import {
   Select,
   Switch,
   Textarea,
-} from '@/components/ui'
+} from '@ziee/kit'
 import type { GalleryStory } from '../story'
 
 const noop = () => undefined

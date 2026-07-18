@@ -5,8 +5,8 @@ import {
   type VersionUsageResponse,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@/core/store-kit'
-import type { StoreSet } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
+import type { StoreSet } from '@ziee/framework/store-kit'
 import type { RuntimeEngine } from '../types'
 import { emitRuntimeModelUsageChanged } from '../events/emitters'
 

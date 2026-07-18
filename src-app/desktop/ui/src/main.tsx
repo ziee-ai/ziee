@@ -1,11 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from '@ziee/ui-core'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { loadDesktopModules } from '@ziee/desktop/modules/desktop-loader'
 import { registerDesktopOverrides } from '@ziee/desktop/modules/desktop-base/overrides'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
-import { Button } from '@/components/ui'
+import { Button } from '@ziee/kit'
 // Use the explicit `@ziee/desktop/*` alias — `@/*` resolves against
 // core UI per tsconfig `paths`, so a desktop-only file isn't reachable
 // via `@/core/...` at typecheck time even though Vite's

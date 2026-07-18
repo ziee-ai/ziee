@@ -6,10 +6,21 @@ mod modules;
 mod openapi;
 mod utils;
 
+// Core macros moved to `ziee-core` in Chunk B1; re-exported at the crate root
+// so existing `crate::sse_event_enum!` / `crate::impl_string_to_enum!` /
+// `crate::impl_json_from!` call sites resolve unchanged (decision N2).
+pub use ziee_core::{impl_json_from, impl_string_to_enum, sse_event_enum};
+
 /// Rust port of the former `ui/openapi/generate-endpoints.ts`. Re-exported so
 /// the desktop crate can emit its own `types.ts` from the combined OpenAPI spec
 /// without the Node/tsx codegen step.
-pub use openapi::emit_ts::generate_types_ts_from_json;
+pub use ziee_framework::openapi::emit_ts::generate_types_ts_from_json;
+
+/// Chunk B6: the app-agnostic OpenAPI emit TAIL (finish_api → openapi.json →
+/// emit_ts → types.ts, output paths parameterized), moved to `ziee-framework`.
+/// Re-exported at the crate root so the desktop crate can drive it with the
+/// combined (server + desktop) router + its own output paths.
+pub use ziee_framework::openapi::finish_and_emit;
 
 use module_api::ModuleContext;
 use std::net::SocketAddr;
@@ -18,6 +29,14 @@ use std::sync::Arc;
 // Re-export types for desktop/external use
 pub use core::config::{Config, CorsConfig, JwtConfig};
 pub use core::{Repos, EventBus, EventHandler, AppEvent};
+// Chunk BG-3: the desktop-consumer boot path (ziee-desktop's `ServerBoot` impl +
+// `ensure_desktop_admin`) threads the `BootHandle.pool` into repositories rather
+// than reaching the global `Repos`. `AppRepository` is the app-side owner-create
+// domain CRUD (kept app-side by BA); re-exported so the desktop crate can build
+// it from a threaded pool. `UserRepository` (owner read) lives in `ziee-auth` and
+// is consumed via the harness single-user strategy.
+pub use modules::app::AppRepository;
+pub use modules::user::UserRepository;
 // Re-exported so integration tests (which construct repositories directly
 // against the test DB pool) can initialise the same at-rest storage_key
 // that the spawned server process used. Without this, repo.get() in the
@@ -25,8 +44,16 @@ pub use core::{Repos, EventBus, EventHandler, AppEvent};
 // returns None. See common::secret::resolve_optional_secret.
 #[doc(hidden)]
 pub use core::secrets::{init_storage_key, storage_key};
+// Re-exported so integration tests can drive the declarative seed engine
+// directly against the spawned server's DB pool (idempotent re-run + reconcile
+// assertions in tests/seed/).
+#[doc(hidden)]
+pub use ziee_seed;
+#[doc(hidden)]
+pub use core::seed::{run as run_seed, seed_config, DEFAULT_SEED_YAML};
 pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, hash_password};
+pub use modules::auth::jwt::JwtSettings;
 pub use modules::auth::jwt_extractor::JwtAuth;
 pub use modules::auth::refresh_tokens;
 pub use modules::user::models::User;
@@ -437,8 +464,27 @@ async fn setup_server(
             .and_then(|s| s.storage_key.clone()),
     );
 
+    // Run the declarative config-as-code seed (ziee-seed engine). The schema
+    // exists (migrations ran in build/boot), repositories + the storage key are
+    // initialized, and the server does not serve yet — the required
+    // post-migration window. seed-if-empty adopts the migration-baked defaults
+    // into the seed_ledger and CREATEs any overlay-only rows; a bad requested
+    // overlay fails boot rather than serve a misconfigured deployment.
+    core::seed::run(&pool)
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+            format!("declarative seed failed: {e}").into()
+        })?;
+
     // Initialize modules
-    let module_context = ModuleContext::new(pool.clone(), Arc::new(config.clone()));
+    // The framework `ModuleContext` carries the app-agnostic `ServerConfig`;
+    // the full monolithic `Config` is injected through the opaque `app_config`
+    // slot (modules recover it via `module_api::app_config(ctx)`).
+    let module_context = ModuleContext::new(
+        pool.clone(),
+        Arc::new(config.server_config.clone()),
+        Arc::new(config.clone()),
+    );
     let mut modules = core::app_builder::create_modules();
 
     // Initialize all modules
@@ -549,8 +595,30 @@ async fn setup_server(
             axum::http::header::HeaderName::from_static("strict-transport-security"),
             axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
         ))
+        // Chunk BG: the per-request auth/user dependency handle — pool + the
+        // installed event/sync/outbound sinks — so those handlers no longer
+        // reach `Repos` / `EventBus` / `sync::publish` / `url_validator`.
+        .layer(axum::Extension(crate::core::events::build_auth_context(
+            pool.clone(),
+            event_bus.clone(),
+        )))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service.clone()))
+        // Chunk `ziee-file-http`: the per-request handle the mountable
+        // `ziee_file::http::file_routes` handlers pull from the extensions —
+        // the file store repository + ziee's `FileEvents` seam impl + the
+        // download-token signer — so those handlers no longer reach `Repos.file`
+        // / the file-module JWT global / `sync::publish`.
+        .layer(axum::Extension(crate::modules::file::ingest::build_file_context(
+            pool.clone(),
+            &config.jwt,
+        )))
+        // Chunk B3: the framework's permission extractors pull this injected
+        // resolver (backed by Repos + the JWT service above) from the request
+        // extensions to authenticate + authorize, so enforcement stays generic.
+        .layer(axum::Extension(Arc::new(
+            crate::modules::permissions::extractors::ZieeIdentityResolver,
+        )))
         .layer(cors);
 
     let addr = config.server_address();

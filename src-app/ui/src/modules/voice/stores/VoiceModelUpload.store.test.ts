@@ -31,11 +31,11 @@ const storesMock = vi.hoisted(() => ({
 }))
 
 vi.mock('@/api-client', () => ({ ApiClient: apiMock }))
-vi.mock('@/core/stores', () => ({
+vi.mock('@ziee/framework/stores', () => ({
   Stores: storesMock,
   createStoreProxy: () => ({}),
 }))
-vi.mock('@/core/events', () => ({
+vi.mock('@ziee/framework/events', () => ({
   useEventBusStore: {
     getState: () => ({
       on: () => () => {

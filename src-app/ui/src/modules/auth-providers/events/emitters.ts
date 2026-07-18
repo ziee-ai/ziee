@@ -1,4 +1,4 @@
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { AuthProviderResponse } from '@/api-client/types'
 
 export const emitAuthProviderCreated = async (

@@ -19,34 +19,36 @@ use uuid::Uuid;
 
 use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 
-pub mod backend;
-pub mod cgroup;
-pub mod config;
+// ── STAY (ziee server): DB/HTTP halves + the guest-agent staging bodies (their
+//    `include_bytes!` reads the SERVER `CARGO_MANIFEST_DIR`) + the provider impls.
 pub mod embedded;
 #[cfg(target_os = "windows")]
 pub mod wsl2_agent_embedded;
 pub mod handlers;
+pub mod providers;
 pub mod runtime_fetch;
 pub mod runtime_mount;
-pub mod models;
 pub mod mount_context_extension;
-pub mod mount_provider;
 pub mod permissions;
-pub mod probes;
 pub mod repository;
-pub mod resource_limits;
-pub mod resource_limits_cache;
-pub mod mcp_spawn;
 pub mod routes;
-pub mod sandbox;
 pub mod streaming;
 pub mod tools;
-pub mod types;
 pub mod version_back;
 pub mod version_handlers;
 pub mod version_install_tasks;
 pub mod version_manager;
-pub mod workflow_staging;
+
+// ── Engine carve: the build-DB-free sandbox ENGINE moved to
+//    `ziee_sandbox` (`sdk/crates/ziee-sandbox`). Re-export its modules as
+//    equivalence-preserving shims (the ziee-hardware precedent) so every
+//    retained `crate::modules::code_sandbox::{sandbox,types,config,…}::…` +
+//    `super::{sandbox,types,…}::…` path in the STAY halves resolves unchanged.
+#[allow(unused_imports)]
+pub use ziee_sandbox::{
+    backend, cgroup, config, mcp_spawn, models, mount_provider, probes, provider, registry,
+    resource_limits, resource_limits_cache, sandbox, sandbox_config, types, workflow_staging,
+};
 
 pub use repository::CodeSandboxRepository;
 
@@ -56,57 +58,18 @@ pub fn code_sandbox_server_id() -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_URL, b"code-sandbox.ziee.internal")
 }
 
-/// Resolve the host portion of the built-in code_sandbox MCP server's
-/// URL. **Always returns a loopback address** — never the operator's
-/// `server.host` config value.
-///
-/// SECURITY: an earlier implementation passed `server.host` through
-/// unchanged when it was a concrete address. That meant a config-set
-/// `server.host = attacker.com` would register the built-in MCP
-/// server's URL as `http://attacker.com:port/api/code-sandbox`, and
-/// the MCP client (`mcp/client/manager.rs:78-113`) would then ship
-/// every JWT-signed bearer + per-call context to attacker.com. This
-/// matters because config / env-var (e.g. `SERVER__HOST=...`) is
-/// often less guarded than DB credentials in container orchestration.
-///
-/// We pin to `127.0.0.1` because the loopback endpoint is the only
-/// place this server can route the call to (we're invoking ourselves
-/// through the local axum stack). The operator's `server.host` value
-/// controls what the server BINDS to externally — but a sandbox
-/// "loopback" must, by definition, dial `127.0.0.1`.
-pub fn loopback_host(_server_host: &str) -> &str {
-    "127.0.0.1"
-}
+// Chunk C1: `loopback_host` (the security-critical self-dial pin) moved to
+// `ziee_framework::mcp` and is re-exported here so every
+// `code_sandbox::loopback_host(...)` caller across the built-in MCP servers
+// (15 modules) resolves unchanged (decision N2 shim).
+pub use ziee_framework::mcp::loopback_host;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn loopback_host_always_127_0_0_1_for_wildcards() {
-        assert_eq!(loopback_host("0.0.0.0"), "127.0.0.1");
-        assert_eq!(loopback_host("::"), "127.0.0.1");
-        assert_eq!(loopback_host("[::]"), "127.0.0.1");
-        assert_eq!(loopback_host("0:0:0:0:0:0:0:0"), "127.0.0.1");
-        assert_eq!(loopback_host(""), "127.0.0.1");
-        assert_eq!(loopback_host("  "), "127.0.0.1");
-    }
-
-    #[test]
-    fn loopback_host_pins_to_loopback_regardless_of_server_host() {
-        // SECURITY regression test: the built-in MCP server's URL
-        // must NEVER be configurable to a non-loopback address. If
-        // server.host was `attacker.com`, an earlier implementation
-        // would have passed that through and the MCP client would
-        // ship JWT-signed bearer tokens to attacker.com per call.
-        assert_eq!(loopback_host("attacker.com"), "127.0.0.1");
-        assert_eq!(loopback_host("10.0.0.5"), "127.0.0.1");
-        assert_eq!(loopback_host("169.254.169.254"), "127.0.0.1"); // IMDS
-        assert_eq!(loopback_host("example.local"), "127.0.0.1");
-        assert_eq!(loopback_host("[2001:db8::1]"), "127.0.0.1");
-        // Even passing 127.0.0.1 itself yields the canonical form.
-        assert_eq!(loopback_host("127.0.0.1"), "127.0.0.1");
-    }
+    // The two `loopback_host` tests moved with the function to
+    // `ziee_framework::mcp` (Chunk C1).
 
     #[test]
     fn code_sandbox_server_id_is_stable() {
@@ -186,7 +149,10 @@ impl AppModule for CodeSandboxModule {
             }
         }
 
-        let cfg = ctx.config.code_sandbox.clone().unwrap_or_default();
+        let cfg = crate::module_api::app_config(ctx)
+            .code_sandbox
+            .clone()
+            .unwrap_or_default();
         if !cfg.enabled {
             config::set_init_status(config::SandboxAvailability::DisabledInConfig);
             tracing::info!(
@@ -273,12 +239,24 @@ impl AppModule for CodeSandboxModule {
             port = ctx.config.server.port,
         );
 
+        // Engine carve: the de-`pool`-ed engine state now carries the three
+        // injected provider seams (`crate::modules::code_sandbox::providers`),
+        // which hold the DB pool + boot-probed host caps + resolved config and
+        // delegate back to the retained `runtime_mount`/`runtime_fetch`/
+        // `repository`/`embedded` halves.
+        let pool = ctx.db_pool.clone();
         let state = types::CodeSandboxState {
             config: cfg.clone(),
             loopback_url: loopback_url.clone(),
             workspace_root: workspace_root.clone(),
-            host_caps,
-            pool: Some(ctx.db_pool.clone()),
+            host_caps: host_caps.clone(),
+            rootfs: Arc::new(providers::ZieeRootfsProvider {
+                pool: pool.clone(),
+                host_caps: host_caps.clone(),
+                config: cfg.clone(),
+            }),
+            limits: Arc::new(providers::ZieeResourceLimitsProvider { pool: pool.clone() }),
+            guest_agent: Arc::new(providers::ZieeGuestAgentProvider),
         };
         let _state_arc = config::init_state(state);
 

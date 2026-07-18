@@ -11,4 +11,4 @@ export * from './LlmModelDownload.store'
 export * from './LlmModelUpload.store'
 
 // Re-export for compatibility with Stores pattern
-export { Stores } from '@/core/stores'
+export { Stores } from '@ziee/framework/stores'

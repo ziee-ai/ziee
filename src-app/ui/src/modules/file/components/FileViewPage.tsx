@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
 import type { File as FileEntity } from '@/api-client/types'
-import { Button, Empty, Spin, Text } from '@/components/ui'
+import { Button, Empty, Spin, Text } from '@ziee/kit'
 import { FilePanel } from '@/modules/file/components/FilePanel'
 
 type LoadState =

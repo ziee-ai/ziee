@@ -1,4 +1,4 @@
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 // ===== Add Local Model Upload Drawer =====
 export const AddLocalLlmModelUploadDrawer = defineStore('AddLocalLlmModelUploadDrawer', {

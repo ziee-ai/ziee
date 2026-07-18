@@ -8,7 +8,7 @@
 // `Stores.ProjectFiles.files`, `Stores.ProjectFiles.loadFiles(...)`, and the new
 // `Stores.ProjectFiles.$.currentProjectId` for handler-side reads.
 
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 import { ApiClient } from '@/api-client'
 import type { File as ProjectFile } from '@/api-client/types'
 import {

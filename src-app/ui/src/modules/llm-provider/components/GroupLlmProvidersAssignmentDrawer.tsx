@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Flex, Spin, Switch, Tag, Text, Title, message } from '@/components/ui'
+import { Button, Card, Flex, Spin, Switch, Tag, Text, Title, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 
 /**
  * Drawer for assigning/removing LLM Providers to/from a group.

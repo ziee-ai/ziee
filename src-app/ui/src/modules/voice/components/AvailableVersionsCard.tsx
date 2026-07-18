@@ -12,8 +12,8 @@ import {
   Tag,
   Text,
   message,
-} from '@/components/ui'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import {
   Permissions,

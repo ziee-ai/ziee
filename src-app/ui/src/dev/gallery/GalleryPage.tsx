@@ -1,115 +1,23 @@
 /**
- * The component gallery — a dev-only canvas rendering every kit component across
- * its variants/states/tones/sizes plus a few composite scenes, under a
- * URL-driven theme × accent combo. The linchpin of the visual-testing system:
- * Layers A/B/C all run against this one stable surface.
+ * ziee's `GalleryPage` entry for the IN-APP `/dev/gallery` route (rendered inside
+ * the live, booted app shell — the actual ThemeProvider/tokens/accent apply).
  *
- * Dev-only: mounted at `/dev/gallery` (gated on `import.meta.env.DEV`) inside the
- * app shell, and served standalone (backend-free) at `/gallery.html`.
+ * The standalone `/gallery.html` entry calls `mountGallery(cfg)` (which sets the
+ * config, installs the mock API, seeds auth, and renders). This in-app route does
+ * NOT boot the standalone entry, so we set the framework config + assemble the
+ * discovered surfaces here (WITHOUT installing the mock — the in-app gallery
+ * renders against the running app), then re-export the package `GalleryPage`.
  */
-import { Flex, Select, Text, Title } from '@/components/ui'
-import { ACCENT_PRESETS } from '@/components/ThemeProvider/accentPresets'
-import { GALLERY_ALL_ACCENTS, GALLERY_DIRS, GALLERY_THEMES } from './matrix'
-import { StorySection } from './story'
-import { ALL_STORIES } from './stories'
-import { GalleryPages } from './pages'
-import { useGalleryTheme } from './useGalleryTheme'
+import {
+  GalleryPage as FrameworkGalleryPage,
+  initSurfaces,
+  setGalleryConfig,
+} from '@ziee/gallery'
+import { buildGalleryConfig } from './galleryConfig'
 
-const ctl = (name: string) => `gallery-control-${name}`
+const cfg = buildGalleryConfig()
+setGalleryConfig(cfg)
+initSurfaces(cfg.discoverGalleries())
 
-function ControlBar() {
-  const { params, setTheme, setAccent, setDir } = useGalleryTheme()
-  return (
-    <div
-      data-testid="gallery-controls"
-      className="sticky top-0 z-10 flex flex-wrap items-end gap-4 border-b border-border bg-background/95 px-6 py-3 backdrop-blur"
-    >
-      <Title level={2} className="mr-auto">
-        Component gallery
-      </Title>
-      <Flex direction="column" gap="xs">
-        <Text tone="muted" className="text-xs uppercase tracking-wide">
-          Theme
-        </Text>
-        <Select
-          data-testid={ctl('theme')}
-          aria-label="Theme"
-          value={params.theme}
-          onChange={v => setTheme(v as (typeof GALLERY_THEMES)[number])}
-          options={GALLERY_THEMES.map(t => ({ value: t, label: t }))}
-        />
-      </Flex>
-      <Flex direction="column" gap="xs">
-        <Text tone="muted" className="text-xs uppercase tracking-wide">
-          Accent
-        </Text>
-        <Select
-          data-testid={ctl('accent')}
-          aria-label="Accent"
-          value={params.accent}
-          onChange={v => setAccent(v as (typeof GALLERY_ALL_ACCENTS)[number])}
-          options={GALLERY_ALL_ACCENTS.map(a => ({
-            value: a,
-            label: ACCENT_PRESETS[a].label,
-          }))}
-        />
-      </Flex>
-      <Flex direction="column" gap="xs">
-        <Text tone="muted" className="text-xs uppercase tracking-wide">
-          Direction
-        </Text>
-        <Select
-          data-testid={ctl('dir')}
-          aria-label="Direction"
-          value={params.dir}
-          onChange={v => setDir(v as (typeof GALLERY_DIRS)[number])}
-          options={GALLERY_DIRS.map(d => ({ value: d, label: d.toUpperCase() }))}
-        />
-      </Flex>
-    </div>
-  )
-}
-
-export function GalleryPage({
-  surface,
-  state,
-}: {
-  surface?: string
-  state?: string
-} = {}) {
-  return (
-    <div
-      data-testid="gallery-root"
-      // A RUNTIME string marker (not a comment — minifiers strip comments) that
-      // `scripts/check-gallery-prod-exclusion.mjs` greps for in the prod bundle.
-      // Reachable only via the DEV-gated dev-gallery lazy import, so it is
-      // tree-shaken out of prod; if the gallery ever leaked, this attribute
-      // value (a used JSX string literal) survives minification and the check
-      // catches it. NOT a `data-test-*` attr (those are stripped in prod).
-      data-gallery-build-marker="ZIEE_GALLERY_SEED_MARKER"
-      // overflow-x-hidden: the canvas chrome must not itself scroll horizontally
-      // (a stress component overflowing its OWN box is still captured per-section
-      // by Layer A's childOverflow + the Layer B section screenshot).
-      className="min-h-full w-full overflow-x-hidden bg-background text-foreground"
-    >
-      <ControlBar />
-      <div className="flex flex-col gap-6 p-6">
-        {/* Single-surface state mode (?surface=&state=) renders ONE page in the
-            given data-state; the default browses every page loaded + the kit
-            component stories. */}
-        {surface ? (
-          <GalleryPages only={surface} state={state} />
-        ) : (
-          <>
-            <GalleryPages />
-            {ALL_STORIES.map(story => (
-              <StorySection key={story.id} story={story} />
-            ))}
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export default GalleryPage
+export const GalleryPage = FrameworkGalleryPage
+export default FrameworkGalleryPage

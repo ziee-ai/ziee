@@ -8,7 +8,7 @@ import {
   Text,
   Title,
   message,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import type { Group } from '@/api-client/types'
 

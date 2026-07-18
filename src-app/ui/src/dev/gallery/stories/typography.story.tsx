@@ -1,7 +1,7 @@
 /**
  * Stories for typography primitives.
  */
-import { Link, Paragraph, Text, Title } from '@/components/ui'
+import { Link, Paragraph, Text, Title } from '@ziee/kit'
 import type { GalleryStory } from '../story'
 
 const titleStory: GalleryStory = {

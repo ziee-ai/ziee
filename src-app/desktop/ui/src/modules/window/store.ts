@@ -2,7 +2,7 @@
  * Window Store — window state + Tauri window commands.
  */
 import { invoke } from '@tauri-apps/api/core'
-import { defineStore } from '@/core/store-kit'
+import { defineStore } from '@ziee/framework/store-kit'
 
 export const Window = defineStore('Window', {
   state: {

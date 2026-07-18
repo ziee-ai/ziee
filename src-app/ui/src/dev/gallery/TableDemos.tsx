@@ -6,8 +6,8 @@
  * Store-free — safe to render standalone.
  */
 import { useState } from 'react'
-import { Button, Table } from '@/components/ui'
-import type { TableColumn } from '@/components/ui'
+import { Button, Table } from '@ziee/kit'
+import type { TableColumn } from '@ziee/kit'
 import type { File as FileEntity } from '@/api-client/types'
 import { DelimitedTable } from '@/modules/file/viewers/tabular/DelimitedTable'
 import { DelimitedHeader } from '@/modules/file/viewers/tabular/header'

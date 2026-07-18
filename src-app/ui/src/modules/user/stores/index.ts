@@ -3,4 +3,4 @@ export { useUsersStore } from './Users.store'
 export { useUserGroupsStore } from './UserGroups.store'
 
 // Re-export for compatibility with Stores pattern
-export { Stores } from '@/core/stores'
+export { Stores } from '@ziee/framework/stores'

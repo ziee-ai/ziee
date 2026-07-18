@@ -12,11 +12,11 @@ import {
   dialog,
   menuRowClasses,
   MenuRowButton,
-} from '@/components/ui'
-import type { DropdownItem } from '@/components/ui'
+} from '@ziee/kit'
+import type { DropdownItem } from '@ziee/kit'
 import { MessageSquare, Trash2, MoreVertical, Columns2 } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'

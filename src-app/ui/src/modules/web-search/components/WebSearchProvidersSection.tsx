@@ -14,8 +14,8 @@ import {
   Text,
   Paragraph,
   message,
-} from '@/components/ui'
-import { Stores } from '@/core/stores'
+} from '@ziee/kit'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'

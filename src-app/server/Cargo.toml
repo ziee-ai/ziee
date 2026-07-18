@@ -14,6 +14,77 @@ workspace = true
 # Local proc-macro crates
 macros = { path = "./macros" }
 
+# SDK foundation crate (git submodule at sdk/). Holds AppError/ApiResult, the
+# core macros (sse_event_enum! etc.), and base app-state globals — consumed
+# here via equivalence-preserving re-export shims (decision N2).
+ziee-core = { path = "../../sdk/crates/ziee-core" }
+
+# SDK identity ABSTRACTIONS (Chunk B1b): the PermissionCheck/PermissionList
+# traits, the generic RBAC evaluator (check_permissions_array), and the
+# Principal + TokenVerifier interfaces — consumed here via equivalence-preserving
+# re-export shims + trait impls (decision N2). Concrete User/Group/JwtService
+# stay in ziee and implement the traits.
+ziee-identity = { path = "../../sdk/crates/ziee-identity" }
+
+# SDK module machinery (Chunk B2): AppModule / ModuleContext / ModuleEntry /
+# MODULE_ENTRIES (the linkme slice) + app_builder (create_modules /
+# build_api_router / CORS + rate-limit) + the domain-free EventHandler trait —
+# consumed here via equivalence-preserving re-export shims (decision N2). ziee's
+# monolithic Config composes ziee_core::ServerConfig; ModuleContext carries the
+# ServerConfig, with the full Config injected through the opaque app_config slot.
+ziee-framework = { path = "../../sdk/crates/ziee-framework" }
+
+# SDK declarative config-as-code seeding ENGINE (crate ziee-seed): the
+# SeedProvider seam + SEED_PROVIDERS distributed-slice, the layered YAML loader
+# + deep-merge, `${ENV_VAR}` secret templating, the idempotent `seed_ledger`
+# ownership ledger (+ its migration), reconcile/wipe directives, and the
+# `--dump-seed` serializer. Domain-neutral (names no app table): ziee registers
+# its OWN providers (modules/*/seed.rs + core/seed.rs) and supplies its embedded
+# default YAML (resources/seed/default.yaml). Booted from setup_server/main.
+ziee-seed = { path = "../../sdk/crates/ziee-seed" }
+
+# SDK default auth module (Chunk BA): owns the concrete User/Group/Session wire
+# types + (progressively) the auth queries/routes/migrations. Consumed here via
+# equivalence-preserving re-export shims (decision N2) — schemars keys types by
+# short ident, so moving the defining crate leaves the wire schemas unchanged.
+ziee-auth = { path = "../../sdk/crates/ziee-auth" }
+# Chunk C1: the DB-free control tool-dispatch core (OpenAPI→catalog ingest, the
+# reachability/mutation policy, the three control-tool descriptors). ziee's
+# `control_mcp` module re-exports `catalog`/`policy`/`tools` from here and keeps
+# the app-side handlers/routes/repository/chat_extension (decisions N1/N5).
+ziee-control-mcp = { path = "../../sdk/crates/ziee-control-mcp" }
+# Infra chunks (health/hardware/server-update/notification): four clean,
+# domain-agnostic modules lifted into their own SDK crates. ziee keeps each
+# module's `AppModule`/`MODULE_ENTRIES` registration + the aide/axum boundary
+# (handlers/routes that bind ziee's concrete permission resolver + `module_api`)
+# and re-exports the moved DB-free cores as equivalence-preserving shims.
+# `ziee-notification` additionally carries the module's own migrations (globbed
+# into the app's merged set from `sdk/crates/*/migrations/`).
+ziee-health = { path = "../../sdk/crates/ziee-health" }
+ziee-hardware = { path = "../../sdk/crates/ziee-hardware" }
+# Build-DB-free sandbox ENGINE (bwrap hardening core + backend seam + mount
+# registry + resource-limits types), injected back into the retained DB/HTTP
+# halves via the three provider seams. `code_sandbox_seccomp` forwards to the
+# engine's feature (which owns the `sandbox-seccomp` static link).
+ziee-sandbox = { path = "../../sdk/crates/ziee-sandbox" }
+ziee-server-update = { path = "../../sdk/crates/ziee-server-update" }
+# `routes` = the resolver-generic notification engine (repository/events seam/
+# aide+axum handlers/`notification_router::<R>()` + the NOTIFICATION_KINDS
+# registry). NOT `module`: ziee keeps its OWN thin `AppModule` bound to
+# `ZieeIdentityResolver`, so enabling the turnkey `module` (DefaultIdentityResolver)
+# would double-register the notification module. Mirrors ziee-auth/ziee-file.
+ziee-notification = { path = "../../sdk/crates/ziee-notification", features = ["routes"] }
+# `ziee-onboarding` — the generic guide/step completion tracker. Owns the
+# `user_onboarding` table migration (globbed into the merged set), the
+# `OnboardingProgress` wire type, AND the schema-bound repository (its own build
+# DB). ziee keeps the sync-coupled handlers/routes/registration + the FK migration.
+ziee-onboarding = { path = "../../sdk/crates/ziee-onboarding" }
+# `ziee-file` — the generic multi-derivative blob STORE (models/storage/
+# repository/types/utils/permissions/seams). Carries the base `files`/
+# `file_versions` migration (globbed into the merged set). ziee keeps the
+# domain processing/handlers/routes + re-export shim in `modules::file`.
+ziee-file = { path = "../../sdk/crates/ziee-file" }
+
 # Lexical search for the files MCP grep tool (already in the lockfile transitively).
 regex = "1"
 
@@ -128,12 +199,11 @@ calamine = "0.31.0"
 # (DOCX/XLSX/PPTX). See modules/file/utils/zipbomb. Closes 05-file F-05.
 zip = "6.0.0"
 
-# Hardware monitoring
+# Hardware monitoring (the retained aide/axum handlers still read sysinfo for
+# static CPU/mem info). The GPU-detection libs (nvml/opencl/ash/wgpu-hal) moved
+# with `detection.rs` into `ziee-hardware`, behind ITS `gpu-detect` feature,
+# which ziee's own `gpu-detect` feature forwards to (see [features] below).
 sysinfo = "0.37.2"
-nvml-wrapper = { version = "0.11.0", optional = true }
-opencl3 = { version = "0.12.0", optional = true }
-ash = { version = "0.38", optional = true }
-wgpu-hal = { version = "27.0.4", optional = true }
 
 # Auth providers
 jsonwebtoken = { version = "10.1.0", features = ["rust_crypto"] }
@@ -178,27 +248,14 @@ path = "tests/mcp/examples/mock_sampling_server.rs"
 # The seccomp policy itself lives in the shared `sandbox-seccomp` crate so
 # the in-VM guest agent applies an identical filter.
 default = ["gpu-detect", "code_sandbox_seccomp"]
-gpu-detect = ["nvml-wrapper", "opencl3", "ash", "wgpu-hal"]
-code_sandbox_seccomp = ["dep:sandbox-seccomp"]
-
-# Linux-only deps. `libseccomp` is `optional = true` so the feature
-# machinery (`dep:libseccomp`) above can still reference it; on
-# Mac/Windows, the dep is target-skipped and the feature flag
-# becomes inert (the seccomp module gates on `target_os = "linux"`
-# in addition to the feature).
-[target.'cfg(target_os = "linux")'.dependencies]
-sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
-
-# The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
-# in-guest agent over this shared control protocol. The protocol types are ALSO
-# compiled on Linux — `backend/vm_long_lived` is intentionally not platform-gated
-# (it needs to exist on Linux for a uniform `SandboxBackend` return signature),
-# and it imports `sandbox_vm_protocol` unconditionally. So the dep must resolve
-# on every supported OS, not just macOS/Windows. (This was a latent main bug:
-# no CI `cargo build`s the server on Linux, so the macOS/Windows-only
-# declaration never failed to compile.)
-[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
-sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
+gpu-detect = ["ziee-hardware/gpu-detect"]
+# The seccomp code moved to the `ziee-sandbox` engine with the carve, so the
+# server feature now FORWARDS to the engine's `code_sandbox_seccomp` (which owns
+# the Linux-gated optional `sandbox-seccomp` static link). Non-Linux builds
+# resolve it to an inert no-op exactly as before. `sandbox-seccomp` +
+# `sandbox-vm-protocol` are no longer named by any retained server file — the
+# engine depends on them directly, and the server gets them transitively.
+code_sandbox_seccomp = ["ziee-sandbox/code_sandbox_seccomp"]
 
 # Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
 # in-distro agent over the Hyper-V vsock instead of `127.0.0.1` — closing the
@@ -232,6 +289,11 @@ windows-service = "0.7"
 winreg = "0.52"
 
 [build-dependencies]
+# Chunk sdk-batteries (decision #11): the SDK's build.rs support — module-owned
+# migration composition + per-worktree build-DB keying/provisioning. Lean +
+# build-DB-free, so it's cheap as a build-dependency. Replaces the former inline
+# `compose_merged_migrations()` + `#[path]`-included `build_helper/worktree_db.rs`.
+ziee-build-support = { path = "../../sdk/crates/ziee-build-support" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 sqlx.workspace = true
 ureq = "3.1.4"
@@ -258,6 +320,13 @@ serde_json = "1"
 fs2 = "0.4"
 
 [dev-dependencies]
+# Chunk ziee-test-harness: the generic spawn/isolation/DB-clone/Drop engine of
+# the integration harness moved to the SDK's ziee-test-harness crate (it
+# re-exports ziee-build-support's worktree_db, so the per-worktree test-DB
+# suffix derivation stays identical to build.rs).
+# `fixtures` pulls the moved auth/sync mocks (chunk sdk-test-fixtures) that the
+# server integration tests use (oauth/ldap/apple + the SSE sync probe).
+ziee-test-harness = { path = "../../sdk/crates/ziee-test-harness", features = ["fixtures"] }
 mockall.workspace = true
 tempfile.workspace = true
 serial_test.workspace = true

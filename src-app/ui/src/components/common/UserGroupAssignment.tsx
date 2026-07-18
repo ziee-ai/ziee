@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Pencil, ChevronDown, ChevronRight } from 'lucide-react'
-import { message, Button, Card, Flex, Space, Spin, Switch, Tag, Text, Title } from '@/components/ui'
+import { message, Button, Card, Flex, Space, Spin, Switch, Tag, Text, Title } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 export interface UserGroupOption {

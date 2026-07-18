@@ -15,11 +15,11 @@ import {
   Tooltip,
   message,
   useWatch,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { McpToolCallsTab } from '@/modules/mcp/components/common/McpToolCallsTab'
 import { useEffect, useMemo, useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import {
   Permissions,

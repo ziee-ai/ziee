@@ -1,4 +1,4 @@
-import { Spin } from '@/components/ui'
+import { Spin } from '@ziee/kit'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { useResourceLinkContent } from '../../hooks/useResourceLinkContent'

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
-import { Stores } from '@/core'
+import { Stores } from '@ziee/framework/stores'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { ChatPaneProvider } from '@/modules/chat/core/pane/ChatPaneContext'

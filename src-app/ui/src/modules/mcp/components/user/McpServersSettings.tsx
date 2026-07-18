@@ -5,17 +5,17 @@ import {
   Select,
   Text,
   ErrorState,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { Search, Eraser } from 'lucide-react'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-import { message } from '@/components/ui'
+import { message } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 
 export function McpServersSettings() {

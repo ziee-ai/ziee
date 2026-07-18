@@ -1,5 +1,5 @@
 import { CircleCheck, CircleX, TriangleAlert } from 'lucide-react'
-import { Tag, Tooltip } from '@/components/ui'
+import { Tag, Tooltip } from '@ziee/kit'
 import type { BibliographyEntry } from '@/api-client/types'
 
 /**

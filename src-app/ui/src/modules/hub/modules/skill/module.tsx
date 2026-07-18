@@ -1,6 +1,6 @@
 import { BookOpen } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { useHubSkillsStore } from '@/modules/hub/modules/skill/stores/hub-skills-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/skill/types'

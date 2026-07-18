@@ -1,4 +1,4 @@
-import type { StoreProxy } from '@/core/stores'
+import type { StoreProxy } from '@ziee/framework/stores'
 import type { useUsersStore, useUserGroupsStore } from '@/modules/user/stores'
 import type { useUserGroupDrawerStore } from '@/modules/user/components/group/EditUserGroupDrawer.store'
 import type { useGroupMembersDrawerStore } from '@/modules/user/components/group/GroupMembersDrawer.store'
@@ -9,7 +9,7 @@ import type { useUserGroupsDrawerStore } from '@/modules/user/components/user/Us
 import type { useAssignGroupDrawerStore } from '@/modules/user/components/user/AssignGroupDrawer.store'
 
 // Augment the RegisteredStores interface to add Users and UserGroups stores
-declare module '@/core/stores' {
+declare module '@ziee/framework/stores' {
   interface RegisteredStores {
     Users: StoreProxy<ReturnType<typeof useUsersStore.getState>>
     UserGroups: StoreProxy<ReturnType<typeof useUserGroupsStore.getState>>

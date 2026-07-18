@@ -1,4 +1,4 @@
-import { Pagination } from '@/components/ui'
+import { Pagination } from '@ziee/kit'
 
 interface ListPaginationProps {
   current: number

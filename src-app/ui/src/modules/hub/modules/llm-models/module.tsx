@@ -1,5 +1,5 @@
 import { Server } from 'lucide-react'
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { Permissions } from '@/api-client/types'
 import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { useModelDetailsDrawerStore } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer.store'

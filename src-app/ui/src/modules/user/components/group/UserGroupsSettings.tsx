@@ -11,13 +11,13 @@ import {
   Tooltip,
   message,
   ErrorState,
-} from '@/components/ui'
+} from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { z } from 'zod'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type CreateGroupRequest, type Group } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'

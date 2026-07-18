@@ -1,6 +1,6 @@
 import { TimerReset } from 'lucide-react'
 import { Permissions } from '@/api-client/types'
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 import { useAuthProvidersStore } from '@/modules/auth/AuthProviders.store'
 import { useSessionSettingsStore } from '@/modules/auth/SessionSettings.store'

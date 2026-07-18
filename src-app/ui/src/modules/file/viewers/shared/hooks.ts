@@ -1,4 +1,4 @@
-import { Stores } from '@/core/stores'
+import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 
 /**

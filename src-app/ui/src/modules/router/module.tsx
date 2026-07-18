@@ -1,7 +1,7 @@
-import { createModule } from '@/core'
+import { createModule } from '@ziee/framework'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useRoutesStore } from '@/modules/router/stores'
-import type { AppModule } from '@/core/module-system/types'
+import type { AppModule } from '@ziee/framework/module-system/types'
 import '@/modules/router/types' // CRITICAL: Enable type merging for CreateModuleOptions
 import '@/modules/router/stores/types' // CRITICAL: Enable type merging for Stores
 

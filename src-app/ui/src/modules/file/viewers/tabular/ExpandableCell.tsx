@@ -1,4 +1,4 @@
-import { Button, Popover } from '@/components/ui'
+import { Button, Popover } from '@ziee/kit'
 
 /** Above this length a cell is treated as "clippable" and gets a click-to-expand
  *  popover in addition to the truncation + hover title (ITEM-16 / DEC-11). */
