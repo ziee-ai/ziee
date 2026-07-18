@@ -400,3 +400,16 @@ IMPORTANT: the baseline `regress_mcp_OFF.log` (457/40) was run WITHOUT the ANTHR
 - fail-ON/pass-OFF: `resources_test::resources_read_returns_binary_output_as_base64_blob` — **passes in isolation ON** (`--test-threads=1` → 1 passed) → a parallelism flake, NOT a flag-delta regression (the flag can't touch a resources test).
 - fail-OFF/pass-ON: `real_llm_test::real_llm_write_requires_approval` — model-flaky (flips both ways).
 **All fixed clusters PASS ON** (verified: none of approval_claim / the 5 sampling round-trip tests / control appear in the mcp:: ON failures). So sampling+journaling+approval fixes hold under the full parallel suite, and OFF's deterministic set is unchanged.
+
+### chat:: ON == OFF — `logs/regress2_chat_{ON,OFF}.log` — 161/10 vs 161/10, ZERO flag-delta
+`comm` of ON-vs-OFF failure sets is EMPTY both ways → the flag introduces NO behavioral change on chat::. The 10 OFF failures are the pre-existing `agentic_chat` StubChat set (fail on main) + real-LLM/sandbox model-flakes; the 1-vs-baseline delta (`sandbox_real_llm::llm_drives_a_tool`) is the model-flaky sandbox test (fails OFF≡ON). No new deterministic OFF failure.
+
+## FULL two-flag regression — FINAL VERDICT (proxy env, --test-threads=6)
+| Suite | OFF | ON | Flag-delta |
+|---|---|---|---|
+| `mcp::` | 490 pass / 8 fail | 490 pass / 8 fail | **0 real** (diff = 2 known flakes: resources_read_binary passes isolated, write_requires_approval model-flaky) |
+| `chat::` | 161 pass / 10 fail | 161 pass / 10 fail | **0** (ON-vs-OFF failure set byte-identical) |
+
+**Note on the "162/9 + 457/40" baseline:** those numbers came from a run WITHOUT the ANTHROPIC/OpenAI proxy env, so ~35 mcp + a few chat real-LLM tests were env-gated failures. THIS regression sets the proxy env (required to actually RUN the real-LLM tests the fixes address) → OFF is 490/8 + 161/10. The substance of the HARD GATE — *does the flag change behavior?* — is proven by **ON == OFF on both suites** (identical failure sets) + **no NEW deterministic OFF failure** (the only non-real-LLM OFF failures pre-date this branch, verified against the baseline logs). All fixed clusters (sampling, journaling, approval) PASS ON under the full parallel suite.
+
+### CLUSTERS: sampling ✅, journaling ✅, approval ✅ (deterministic gates) — all pass ON, OFF deterministic set unchanged. project ⚪ not-a-regression (model-flake both flags). Two-flag regression flag-delta-clean.
