@@ -378,3 +378,13 @@ Gate = `mcp::approval_claim_test::approved_tool_is_claimed_and_executes_exactly_
 
 ### ✅ SAMPLING straggler — classified as bridge-contention flake, NOT a flag-delta
 `test_sampling_lifecycle_event_order`: ON serial 3/3 pass; ON parallel 2/2 pass (`logs/sampling_ON_parallel_{1,2}.log`); OFF parallel pass (`logs/sampling_OFF_parallel.log`). The single earlier ON-parallel failure (fix_sampling_ON.log) was a transient bridge-contention flake (6 concurrent LLM calls: 2 tests x 3 round-trips), not reproduced. Sampling failure set is `{llm_response_content}` (model-empty-content) ON==OFF everywhere → 0 flag-delta. Real-LLM/sampling tests run serially per CLAUDE.md.
+
+### PROJECT re-injection — RECLASSIFIED: model-reflection flake on BOTH flags, NOT a flag-delta regression
+Traced the turn-2 request via the model-client seam: `has_beacon=true` on EVERY turn ON (the project instruction IS re-injected — injection code is correct). Real pass rates: **ON 5× = 2 pass / 3 fail** (beacon always injected); **OFF also flaky** (partial 5×: ok/FAIL/FAIL — the earlier "2/2 OFF-pass" was a 2-sample fluke). Both flags fail this test at similar rates → the local Qwen inconsistently EMITS the mandated `ZZZ_MAGIC_BEACON_42` token on turn 2 (weak-model instruction-following), NOT an agent-core injection bug. Per the deterministic-gate principle, this is NOT counted as a real regression. Logs: the 5× ON/OFF runs.
+
+## FINAL cluster verdict (this refactor)
+- ✅ SAMPLING — FIXED (5/5 flag-delta; ON==OFF failure set = {llm_response_content}).
+- ✅ JOURNALING — FIXED (control_mcp::discovers_capabilities ON 2/2 + OFF 2/2).
+- ✅ APPROVAL — FIXED (deterministic approval_claim ON 2/2 + OFF 2/2; L1 uniquify + L2 bare-name recovery).
+- ⚪ PROJECT — NOT a regression (injection deterministically correct; model-reflection flake on both flags).
+Remaining: the FULL two-flag regression (chat 162/9 + mcp 457/40) to confirm the SHARED call_mcp_tool changes kept OFF byte-identical.
