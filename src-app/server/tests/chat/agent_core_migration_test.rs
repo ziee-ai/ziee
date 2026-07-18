@@ -23,7 +23,7 @@ use crate::common::test_helpers;
 async fn agent_core_stub_chat_streams_and_persists() {
     // Route the chat send through the shared agent-core loop. The server subprocess
     // inherits this at spawn; run this test isolated so no sibling server sees it.
-    unsafe { std::env::set_var("ZIEE_CHAT_AGENT_CORE", "1") };
+    let _agent_core_flag = crate::common::AgentCoreFlag::on();
 
     let server = crate::common::TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(
@@ -79,6 +79,4 @@ async fn agent_core_stub_chat_streams_and_persists() {
         msgs.iter().any(|m| m["role"].as_str() == Some("user")),
         "user message not persisted on the agent-core path"
     );
-
-    unsafe { std::env::remove_var("ZIEE_CHAT_AGENT_CORE") };
 }

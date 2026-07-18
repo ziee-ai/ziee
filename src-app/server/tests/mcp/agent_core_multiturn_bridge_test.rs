@@ -68,7 +68,7 @@ async fn agent_core_multiturn_tool_call_and_followup() {
     };
     let key = std::env::var("ZIEE_TEST_LLM_KEY").unwrap_or_else(|_| "sk-local-audit".into());
     let model_name = std::env::var("ZIEE_TEST_LLM_MODEL").unwrap_or_else(|_| "qwen3.6-35b-a3b".into());
-    unsafe { std::env::set_var("ZIEE_CHAT_AGENT_CORE", "1") };
+    let _agent_core_flag = crate::common::AgentCoreFlag::on();
 
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "ac_multiturn", &["*"]).await;
@@ -126,14 +126,27 @@ async fn agent_core_multiturn_tool_call_and_followup() {
     let n2: Vec<&str> = t2.iter().map(|e| e.event.as_str()).collect();
     assert!(n2.iter().any(|n| *n == "complete"), "turn 2 must complete; events={n2:?}");
 
-    // Cross-turn persistence: the history holds both turns' assistant messages +
-    // the tool_result from turn 1 (the transcript survived across requests).
-    let history = crate::chat::helpers::get_conversation_history(&server, &user.token, conv_id).await;
-    let dump = history.to_string();
+    // Headline claim — turn 2 ANSWERS FROM PRIOR-TURN CONTEXT. Reconstruct ONLY
+    // turn-2's streamed assistant text (NOT the whole history, which trivially
+    // already holds `purple-turtle-42` from turn-1's tool_result) and assert the
+    // model recalled the value. This fails if cross-turn context recall is broken.
+    let turn2_text: String = t2
+        .iter()
+        .filter(|e| e.event == "content")
+        .filter_map(|e| e.data.get("content").and_then(|c| c.as_array()))
+        .flatten()
+        .filter_map(|b| b.get("delta").and_then(|d| d.as_str()))
+        .collect();
     assert!(
-        dump.contains("purple-turtle-42"),
-        "the tool result / echoed value must persist across turns in the transcript"
+        turn2_text.contains("purple-turtle-42"),
+        "turn 2's OWN response must recall the value from turn 1's tool call \
+         (cross-turn context); turn2_text={turn2_text:?}"
     );
 
-    unsafe { std::env::remove_var("ZIEE_CHAT_AGENT_CORE") };
+    // Belt-and-suspenders: the transcript also persisted both turns across requests.
+    let history = crate::chat::helpers::get_conversation_history(&server, &user.token, conv_id).await;
+    assert!(
+        history.to_string().contains("purple-turtle-42"),
+        "the tool result / echoed value must persist across turns in the transcript"
+    );
 }

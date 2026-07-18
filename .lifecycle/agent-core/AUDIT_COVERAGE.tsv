@@ -110,3 +110,4 @@ src-app/server/tests/workflow/agent_step_test.rs	1	100000	correctness,test-cover
 src-app/server/tests/workflow/mod.rs	1	100000	correctness,test-coverage,maintainability
 src-app/ui/tests/e2e/settings/agent-settings-negperm.spec.ts	1	100000	correctness,test-coverage,maintainability
 src-app/ui/tests/e2e/settings/agent-settings.spec.ts	1	100000	correctness,test-coverage,maintainability
+src-app/server/src/modules/chat/agent_host/uniquify.rs	1	100000	modularity,extensibility,maintainability,api,correctness,concurrency,perf

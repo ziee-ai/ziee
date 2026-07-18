@@ -12,7 +12,7 @@ use crate::common::test_helpers;
 
 #[tokio::test]
 async fn agent_core_chat_matches_sse_sequence_and_persistence() {
-    unsafe { std::env::set_var("ZIEE_CHAT_AGENT_CORE", "1") };
+    let _agent_core_flag = crate::common::AgentCoreFlag::on();
 
     let server = crate::common::TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(
@@ -80,6 +80,4 @@ async fn agent_core_chat_matches_sse_sequence_and_persistence() {
         msgs.iter().any(|m| m["role"].as_str() == Some("user")),
         "user message persisted"
     );
-
-    unsafe { std::env::remove_var("ZIEE_CHAT_AGENT_CORE") };
 }

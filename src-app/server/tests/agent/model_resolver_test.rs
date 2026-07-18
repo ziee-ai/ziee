@@ -1,15 +1,18 @@
-//! TEST-41 (F6) — the model-access RBAC the server `ModelResolver` enforces:
-//! resolving/using an ACCESSIBLE model succeeds, and a model the user's groups are
-//! NOT assigned to is DENIED (`user_has_access_to_provider` = false → error). The
-//! resolver's `resolve()` runs in-process on global `Repos`, so this exercises the
-//! SAME `create_provider_from_model_id` + access gate through the real chat-send
-//! path (a user sending with an inaccessible model must not start a turn).
+//! TEST-41 (F6) — the model-access RBAC enforced on the AGENT-CORE chat-send path:
+//! sending with an ACCESSIBLE model succeeds, and a model the user's groups are NOT
+//! assigned to is DENIED (`user_has_access_to_provider` = false → error). Runs under
+//! `ZIEE_CHAT_AGENT_CORE=1` so the send goes through the agent-core dispatcher (which
+//! resolves the provider via the SAME `create_provider_from_model_id` + access gate
+//! the `ChatModelResolver` also uses); a user sending with an inaccessible model must
+//! not start a turn on the new path. (The per-child/reviewer `ModelResolver::resolve`
+//! denial is additionally covered by the reviewer test.)
 
 use crate::chat::helpers;
 use crate::common::test_helpers;
 
 #[tokio::test]
 async fn model_access_is_granted_for_owner_and_denied_for_others() {
+    let _agent_core_flag = crate::common::AgentCoreFlag::on();
     let server = crate::common::TestServer::start().await;
 
     // user1 owns access to the stub model (create_stub_model grants it).

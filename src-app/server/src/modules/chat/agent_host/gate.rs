@@ -111,6 +111,12 @@ async fn resolve_bare_tool_server(user_id: Uuid, tool_name: &str) -> Option<Uuid
     )
     .await
     .ok()?;
+    // AMBIGUITY GUARD (parity with legacy `recover_server_id_for_bare_name`): a bare
+    // tool name advertised by MORE THAN ONE accessible server is UNRESOLVABLE — never
+    // guess, or a bare-name approval could persist the wrong server_id and the resume
+    // would execute the approved args against a different server than intended. Collect
+    // ALL matches; resolve ONLY when exactly one server advertises the name.
+    let mut matches: Vec<Uuid> = Vec::new();
     for s in servers {
         if !s.enabled {
             continue;
@@ -133,12 +139,15 @@ async fn resolve_bare_tool_server(user_id: Uuid, tool_name: &str) -> Option<Uuid
             };
             if let Ok(tools) = listed {
                 if tools.iter().any(|t| t.name == tool_name) {
-                    return Some(s.id);
+                    matches.push(s.id);
+                    if matches.len() > 1 {
+                        return None; // ambiguous → do not guess
+                    }
                 }
             }
         }
     }
-    None
+    matches.into_iter().next()
 }
 
 fn unattended_tool_allowed(allow: &serde_json::Value, server_str: &str, tool_name: &str) -> bool {

@@ -343,8 +343,19 @@ impl ToolProvider for McpToolProvider {
     fn is_trusted(&self, server: &str) -> bool {
         // The loop passes `call.server.unwrap_or(call.name)`; since the crate sets
         // `server = None`, `server` is the namespaced tool name — parse its prefix.
+        //
+        // SECURITY: resolve the NAME to a server_id and gate on the READ-ONLY
+        // approval-bypass set (`is_builtin_server_id`), which deliberately EXCLUDES
+        // the mutating built-ins `code_sandbox` + `control` — they MUST go through
+        // the reviewer/human gate. `builtin_server_id_by_name` alone INCLUDES
+        // code_sandbox/control, so trusting it here would auto-approve sandbox code
+        // execution in a `kind: agent` step (parity with the chat twin's guard in
+        // `resolver.rs::is_trusted`).
         let (server_name, _) = split_tool_name(server);
-        builtin_server_id_by_name(&server_name).is_some()
+        match builtin_server_id_by_name(&server_name) {
+            Some(id) => crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(id),
+            None => false,
+        }
     }
 }
 

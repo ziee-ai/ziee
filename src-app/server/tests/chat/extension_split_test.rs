@@ -56,7 +56,7 @@ async fn stub_model(server: &TestServer, user_id: &str, base_url: &str) -> Value
 
 #[tokio::test]
 async fn assistant_extension_injects_system_prompt_on_agent_core() {
-    unsafe { std::env::set_var("ZIEE_CHAT_AGENT_CORE", "1") };
+    let _agent_core_flag = crate::common::AgentCoreFlag::on();
 
     let stub = StubChat::start(StubPlan { text: "ok".into(), ..Default::default() }).await;
     let server = TestServer::start().await;
@@ -134,6 +134,4 @@ async fn assistant_extension_injects_system_prompt_on_agent_core() {
         matches!((sys_idx, user_idx), (Some(s), Some(u)) if s < u),
         "assistant system prompt (with marker) must precede the user message; roles={roles:?}"
     );
-
-    unsafe { std::env::remove_var("ZIEE_CHAT_AGENT_CORE") };
 }

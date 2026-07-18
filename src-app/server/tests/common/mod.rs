@@ -10,6 +10,30 @@ pub mod oai_capture_stub;
 pub mod stub_chat;
 pub mod stub_engine;
 
+/// Panic-safe RAII guard that sets `ZIEE_CHAT_AGENT_CORE=1` for a test and CLEARS
+/// it on drop — including on an assertion panic (a bare `set_var … remove_var` at
+/// the end leaks the flag ON to every later test in the same `integration_tests`
+/// binary, and under `--test-threads>1` flips concurrent chat tests onto the
+/// agent-core path). Hold it in a local binding for the test's scope:
+/// `let _flag = AgentCoreFlag::on();`
+#[must_use]
+pub struct AgentCoreFlag;
+
+impl AgentCoreFlag {
+    pub fn on() -> Self {
+        // SAFETY: the test harness is single-config; this matches the existing
+        // `unsafe set_var` sites it replaces.
+        unsafe { std::env::set_var("ZIEE_CHAT_AGENT_CORE", "1") };
+        AgentCoreFlag
+    }
+}
+
+impl Drop for AgentCoreFlag {
+    fn drop(&mut self) {
+        unsafe { std::env::remove_var("ZIEE_CHAT_AGENT_CORE") };
+    }
+}
+
 // Chunk sdk-test-fixtures: the 4 GENERIC auth/sync mocks moved into the SDK's
 // `ziee-test-harness` (feature `fixtures`) so a second app can drive the same
 // flows. Re-exported under their original module paths so every call site

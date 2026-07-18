@@ -73,7 +73,7 @@ async fn agent_core_bridge_tool_execute_and_respond() {
     let key = std::env::var("ZIEE_TEST_LLM_KEY").unwrap_or_else(|_| "sk-local-audit".into());
     let model_name =
         std::env::var("ZIEE_TEST_LLM_MODEL").unwrap_or_else(|_| "qwen3.6-35b-a3b".into());
-    unsafe { std::env::set_var("ZIEE_CHAT_AGENT_CORE", "1") };
+    let _agent_core_flag = crate::common::AgentCoreFlag::on();
 
     let server = TestServer::start().await;
     let user = create_user_with_permissions(&server, "ac_bridge_tool", &["*"]).await;
@@ -154,6 +154,4 @@ async fn agent_core_bridge_tool_execute_and_respond() {
         events.iter().any(|e| e.event == "complete"),
         "the turn should end on a complete frame; events={names:?}"
     );
-
-    unsafe { std::env::remove_var("ZIEE_CHAT_AGENT_CORE") };
 }

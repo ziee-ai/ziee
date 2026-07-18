@@ -291,6 +291,12 @@ impl ToolProvider for ChatToolProvider {
         Ok(tools)
     }
 
+    // NOTE: `idem` (the crate's per-call idempotency key) is intentionally NOT
+    // forwarded — `call_mcp_tool` only persists an idempotency key for `Workflow`
+    // source (chat rows key their journal by the real LLM `tool_use_id`, and chat
+    // has no durable workflow-run resume). Passing `Some(idem)` here was a silent
+    // no-op; we pass `None` to make that explicit rather than misleading.
+    #[allow(unused_variables)]
     async fn call(
         &self,
         run_id: Uuid,
@@ -329,7 +335,7 @@ impl ToolProvider for ChatToolProvider {
                 model_id: self.model_id,
             }),
             None,
-            Some(idem),
+            None, // idempotency_key: chat has no workflow-run resume (see call() note)
             crate::modules::mcp::tool_calls::models::McpToolCallSource::Chat,
         )
         .await;
