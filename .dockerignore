@@ -30,6 +30,13 @@
 **/target
 **/node_modules
 **/dist
+# EXCEPT the host-staged release binary the thin root Dockerfile COPYs in
+# (dist/ziee-amd64 / dist/ziee-arm64). The host-compile build model stages the
+# musl binary to dist/ before `docker buildx build`; without this exception the
+# COPY fails with "dist/ziee-amd64: not found".
+!/dist
+/dist/*
+!/dist/ziee-*
 **/build
 **/.next
 **/.nuxt

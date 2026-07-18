@@ -1,0 +1,75 @@
+# ziee-web (SDK, API-only) runtime config TEMPLATE.
+#
+# The SDK server ships NO config and reads NO env overrides — it loads exactly
+# one YAML at /etc/ziee/config.yaml. So secrets can't ride the environment the
+# way the old fat image did. Instead TeamCity (or `render-config.sh`) envsubst's
+# THIS template → config.yaml before `docker compose up`, then bind-mounts it.
+# Keeps secrets out of git and out of the image. Placeholders below come from
+# the deploy env: ZIEE_DB_PASSWORD, ZIEE_JWT_SECRET, ZIEE_STORAGE_KEY,
+# ZIEE_PUBLIC_BASE_URL, ZIEE_CORS_ALLOW_ORIGIN.
+
+app:
+  data_dir: "/var/lib/ziee/data"
+
+postgresql:
+  use_embedded: false
+  external:
+    host: "postgres"
+    port: 5432
+    username: "ziee"
+    password: "${ZIEE_DB_PASSWORD}"
+    database: "ziee"
+  pool:
+    max_connections: 50
+    min_connections: 5
+    acquire_timeout_secs: 10
+    idle_timeout_secs: 60
+    max_lifetime_secs: 1800
+
+server:
+  host: "0.0.0.0"
+  port: 9000
+  api_prefix: "/api"
+  # The SPA nginx sits in front and sets X-Forwarded-* (and strips inbound),
+  # so trust them for OAuth redirect_uri derivation.
+  trust_forwarded_headers: true
+  rate_limit:
+    enabled: true
+    per_second: 50
+    burst_size: 500
+  cors:
+    allow_origins: ["${ZIEE_CORS_ALLOW_ORIGIN}"]
+    allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers: ["Content-Type", "Authorization"]
+
+logging:
+  level: "info"
+  format: "json"
+
+jwt:
+  secret: "${ZIEE_JWT_SECRET}"
+  issuer: "ziee"
+  audience: "ziee-api"
+  access_token_expiry_hours: 24
+  refresh_token_expiry_days: 30
+
+# Code sandbox ON — the compose grants the container the minimal relaxation
+# (/dev/fuse + seccomp/systempaths=unconfined + SYS_ADMIN). bwrap still enforces
+# the real per-exec sandbox inside.
+code_sandbox:
+  enabled: true
+  rootfs_path: "/var/lib/ziee/sandbox-rootfs/current"
+  cgroup_parent: "/sys/fs/cgroup/ziee-sandbox.slice"
+  # REQUIRED for proxied deploys: get_resource_link / MCP artifact-save build
+  # ABSOLUTE signed download URLs from this. Unset → http://127.0.0.1:9000
+  # (unreachable from a browser) → broken file/artifact links.
+  public_base_url: "${ZIEE_PUBLIC_BASE_URL}"
+
+# At-rest encryption for stored credentials (llm_provider api_keys, repo tokens,
+# per-user keys). MUST be STABLE forever and MUST equal the value the source DB
+# was encrypted with — else migrated encrypted secrets won't decrypt.
+secrets:
+  storage_key: "${ZIEE_STORAGE_KEY}"
+
+update_check:
+  enabled: false

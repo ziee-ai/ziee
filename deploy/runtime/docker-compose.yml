@@ -1,0 +1,133 @@
+# ziee-web SDK runtime stack (replaces the old fat docker-compose*.yml + docker/web/*).
+#
+# Topology (the SDK split): the server is API-ONLY on :9000 and does NOT serve the
+# SPA, so this stack has FOUR services:
+#   postgres   — external pgvector pg18 (the SDK schema; migrations run by ziee-web at boot)
+#   ziee-web   — the thin host-compiled musl API binary, :9000 (internal only)
+#   web        — a SEPARATE nginx serving the built SPA + proxying /api → ziee-web:9000
+#   ziee-seed  — one-shot: applies deploy/seed/*.sql AFTER ziee-web is healthy
+#
+# Prereqs (host-compile model — see README.md):
+#   1. Build the API binary on the host + stage it:  just build-linux → dist/ziee-amd64
+#      docker buildx build --ulimit nofile=524288:524288 -t ziee-web:sdkmig .
+#   2. Render the ziee-web config from env:  ./deploy/runtime/render-config.sh
+#   3. Bring the stack up:  docker compose -f deploy/runtime/docker-compose.yml up -d --build
+#      Apply the seed:      docker compose -f deploy/runtime/docker-compose.yml run --rm ziee-seed
+#
+# Secrets arrive from the deploy env (${VAR:?} fails fast if unset). No secret
+# VALUES live in this file.
+name: ziee-web
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: ziee
+      POSTGRES_DB: ziee
+      # Must equal ZIEE_DB_PASSWORD (ziee-web authenticates with it, via config.yaml).
+      POSTGRES_PASSWORD: "${ZIEE_DB_PASSWORD:?set ZIEE_DB_PASSWORD}"
+    volumes:
+      # PG18 image stores data in a major-version subdir → mount at
+      # /var/lib/postgresql (NOT /var/lib/postgresql/data).
+      - pg-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ziee -d ziee"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  ziee-web:
+    # Pre-built out-of-band from the thin root Dockerfile + host-staged
+    # dist/ziee-${TARGETARCH}. Not built by compose (needs the buildx nofile
+    # ulimit + a staged binary). Override the tag with ZIEE_WEB_IMAGE.
+    image: "${ZIEE_WEB_IMAGE:-ziee-web:sdkmig}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ziee-data:/var/lib/ziee
+      # The env-rendered config (see render-config.sh). API-only, so no SPA here.
+      - "${ZIEE_CONFIG_FILE:-./config.yaml}:/etc/ziee/config.yaml:ro"
+    # Lets ziee reach host-published MCP servers at host.docker.internal:18xxx
+    # (biognosia / rcpa / dscc), same as the old deploy overlay.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # code_sandbox in-container relaxation (bwrap + FUSE). Each flag is required
+    # and empirically minimal; still NOT --privileged. bwrap enforces the real
+    # per-exec sandbox (own user/pid/net ns + seccomp + rlimits) inside.
+    # To run WITHOUT the sandbox, set code_sandbox.enabled:false in config and
+    # delete devices/security_opt/cap_add below.
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - seccomp=unconfined
+      - systempaths=unconfined
+    cap_add:
+      - SYS_ADMIN
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/runtime/web.Dockerfile
+    image: ziee-web-spa:sdkmig
+    depends_on:
+      ziee-web:
+        condition: service_healthy
+    ports:
+      # The public website. In-container 8080; host port configurable so it
+      # never collides. NEVER 8080 on this host — pick a free one.
+      - "${ZIEE_WEB_PORT:-8088}:8080"
+    restart: unless-stopped
+
+  # ── Deploy-time seed (one-shot) ──────────────────────────────────────────
+  # Applies deploy/seed/*.sql to postgres AFTER ziee-web is healthy (so every
+  # table/column the seed touches — the SDK schema — already exists). Talks to
+  # postgres directly. Idempotent; re-run each deploy with `run --rm ziee-seed`
+  # (restart:no means a plain `up` skips an already-exited one-shot).
+  ziee-seed:
+    image: pgvector/pgvector:pg18
+    depends_on:
+      ziee-web:
+        condition: service_healthy
+    entrypoint: ["bash", "-c"]
+    # $$VAR → compose emits literal $VAR so bash (not compose) expands from the
+    # container env at runtime — keeps secrets off the rendered command line.
+    command:
+      - |
+        exec psql -v ON_ERROR_STOP=1 \
+          -v storage_key="$$ZIEE_STORAGE_KEY" \
+          -v client_id="$$GOOGLE_CLIENT_ID" \
+          -v client_secret="$$GOOGLE_CLIENT_SECRET" \
+          -v admin_username="$$ZIEE_ADMIN_USERNAME" \
+          -v admin_email="$$ZIEE_ADMIN_EMAIL" \
+          -v admin_password="$$ZIEE_ADMIN_PASSWORD" \
+          -v rcpa_url="$$RCPA_MCP_URL" \
+          -v dscc_url="$$DSCC_MCP_URL" \
+          -v biognosia_url="$$BIOGNOSIA_MCP_URL" \
+          -f /seed/seed.sql \
+          -f /seed/local-provider.sql \
+          -f /seed/deploy2-biognosia.sql
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ziee
+      PGDATABASE: ziee
+      PGPASSWORD: "${ZIEE_DB_PASSWORD:?set ZIEE_DB_PASSWORD}"
+      ZIEE_STORAGE_KEY: "${ZIEE_STORAGE_KEY:?set ZIEE_STORAGE_KEY (>=32 chars, STABLE forever)}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      ZIEE_ADMIN_USERNAME: "${ZIEE_ADMIN_USERNAME:?set ZIEE_ADMIN_USERNAME}"
+      ZIEE_ADMIN_EMAIL: "${ZIEE_ADMIN_EMAIL:?set ZIEE_ADMIN_EMAIL}"
+      ZIEE_ADMIN_PASSWORD: "${ZIEE_ADMIN_PASSWORD:?set ZIEE_ADMIN_PASSWORD}"
+      RCPA_MCP_URL: "${RCPA_MCP_URL:-http://host.docker.internal:18120/mcp}"
+      DSCC_MCP_URL: "${DSCC_MCP_URL:-http://host.docker.internal:18122/mcp}"
+      BIOGNOSIA_MCP_URL: "${BIOGNOSIA_MCP_URL:-http://host.docker.internal:18100/mcp}"
+    volumes:
+      - ../../deploy/seed:/seed:ro
+    restart: "no"
+
+volumes:
+  pg-data:
+  ziee-data:
