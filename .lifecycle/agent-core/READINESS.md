@@ -81,7 +81,7 @@ do NOT gate the default flip (legacy already has them). Classified for the user/
 
 ## 2. Latent bugs / security
 
-### B2 — chat ON path skips conversation `disabled_servers` enforcement  · MED · open
+### B2 — chat ON path skips conversation `disabled_servers` enforcement  · MED · FIXED
 - **What:** `ChatToolProvider::call` passes `enforce_conversation_disabled = false`
   (DEC-17, "preserving chat's current non-enforcement") to `call_mcp_tool`, so the
   call-time check that blocks a server/tool the user DISABLED in the conversation
@@ -89,15 +89,16 @@ do NOT gate the default flip (legacy already has them). Classified for the user/
   filtering (the shared `before_llm_call`) is the primary defense, but a tool that
   reaches `call_mcp_tool` for a server disabled AFTER attach — or via bare-name
   recovery — is NOT blocked. Security audit flagged it as "ignore the user's disable."
-- **Fix plan (Phase B2):** pass `enforce_conversation_disabled = true` from the chat
-  host (behavior change: the ON path now honors the user's disable at call time, as
-  defense-in-depth on top of attach-time filtering). Add an integration test: disable
-  a server mid-conversation, drive a tool call at it, assert it is refused. Verify the
-  common path (built-ins / non-disabled servers) is unaffected. Flag-invariant risk is
-  low: only user-disabled servers are affected, and an attached (non-disabled) tool
-  passes the check.
+- **DONE:** `ChatToolProvider::call` now passes `enforce_conversation_disabled = true`
+  (`resolver.rs`). Discovery: there is NO attach-time filter for `disabled_servers` —
+  `agent_tool_call.rs:225` was the ONLY tool-call-time enforcement — so the ON path
+  had been ignoring the user's per-conversation disable ENTIRELY (a real gap, not just
+  defense-in-depth). Test `chat_agent_core_enforces_conversation_disabled_server_at_call_time`
+  (flag ON): disables the files_mcp `read_file` tool, asserts it is still ATTACHED
+  (so the refusal is call-time) yet REFUSED. Verified it FAILS with `false`, PASSES
+  with `true`.
 
-### B3a — `call_mcp_tool` parses server_name as UUID first  · LOW · accept→guard
+### B3a — `call_mcp_tool` parses server_name as UUID first  · LOW · FIXED (guarded)
 - **What:** a workflow tool step whose external server is NAMED a literal UUID takes
   the raw-id path instead of name resolution. Fails safe today (accessibility
   re-validation → forbidden/404; no cross-user reach). Currently `accept-with-rationale`
@@ -105,7 +106,7 @@ do NOT gate the default flip (legacy already has them). Classified for the user/
 - **Fix plan (Phase B3):** add a cheap guard so the raw-id branch is taken only when the
   caller intends an id (chat scheme), keeping workflow name resolution unambiguous.
 
-### B3b — redundant `manager::global()` lookup  · LOW · accept/fold
+### B3b — redundant `manager::global()` lookup  · LOW · accept (no clean fold)
 - **What:** `manager::global()` (a cheap process-global `OnceLock` read) is looked up in
   both `call_mcp_tool` and the provider methods. `accept-with-rationale` today.
 - **Fix plan (Phase B3):** fold where a single scope exists; otherwise keep the accept.
