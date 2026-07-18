@@ -267,3 +267,39 @@ was held at opt-in. They must be FIXED before any default flip.
 regressions). Remaining Tier-A (memory/summarization/agentic_chat) + all of Tier-B NOT yet run.
 The opt-in flag + held default remain correct; these two bugs are the concrete blockers to
 flipping it.
+
+## ✅ FULL flag-ON defect-surface sweep COMPLETE (Tier A + Tier B) — catalog for one-pass fix sizing
+
+Method: each group run flag ON then flag OFF vs the proxy; flag-delta = fail-ON ∩ pass-OFF;
+every real-LLM candidate re-run isolated (2–3×) to separate stable regressions from model flake.
+
+### CONFIRMED flag-ON regressions = **8**, in 3 root-cause clusters
+
+**APPROVAL (2)** — the RegistryBridge approval-resume path:
+- `mcp::approval_claim_test::approved_tool_is_claimed_and_executes_exactly_once` — deterministic; `tool_use_approvals` row NOT claimed/deleted after approval → tool re-executed / duplicate tool_result. ON: `logs/approval_claim_ON_isolated.log` · OFF pass: `logs/approval_claim_OFF.log`.
+- `control_mcp::real_llm_test::real_llm_write_requires_approval` — a mutating control invoke does NOT fire the approval prompt (no `mcpApprovalRequired`). 3/3 ON-fail, 2/2 OFF-pass. ON: `logs/tierB_confirm_confirm_ON.log`,`tierB_confirm_ON2.log` · OFF pass: `logs/tierB_confirm_confirm_OFF.log`.
+
+**SAMPLING (5)** — MCP server→host LLM sampling round-trips don't fire on the agent-core path (0 vs 2 expected):
+- `mcp::mcp_sampling_test::{test_sampling_exactly_two_llm_calls, test_sampling_lifecycle_event_order, test_sampling_response_structure_is_valid, test_sampling_with_image_content_does_not_crash, test_system_server_sampling_round_trip_unaffected_by_url_redaction}`. ON: `logs/tierA_approval_sampling_ON.log` · OFF pass: `logs/sampling_module_OFF.log` (9/10 pass OFF).
+  - (NOTE: `test_sampling_llm_response_content` fails BOTH ON+OFF — model returns empty content — so it is NOT flag-delta, excluded.)
+
+**TOOL-CALL JOURNALING (1)**:
+- `control_mcp::real_llm_test::real_llm_discovers_capabilities` — a `list_capabilities` control call is NOT recorded in `mcp_tool_calls` on the agent-core path. 3/3 ON-fail, 2/2 OFF-pass. Same logs as the control approval one.
+
+### SUSPECTED (flaky — NOT counted as confirmed)
+- `project::injection_test::project_instructions_persist_across_multiple_turns` — 2/3 ON-fail (passed the 3rd ON run), 2/2 OFF-pass. Possible multi-turn project-context re-injection gap but model-flaky; needs more runs to confirm. NOT in the confirmed count.
+
+### 0 flag-delta (fail identically ON+OFF, or pass both) — NOT regressions
+- **Tier A remaining**: `memory::{combined_real_llm,extraction,core_memory}` + `summarization::{after_llm_call,real_llm}` + `agentic_chat::` → ON 47/11 == OFF 47/11, **flag-delta 0** (`logs/tierA_rest_{ON,OFF}.log`). The 11 = 8 pre-existing `agentic_chat` StubChat (fail on main) + 2 `memory::core_memory` + 1 `summarization::real_llm`, all fail both.
+- **Tier B**: `skill/web_search/lit_search/citations/knowledge_base/bio_mcp/file` real-LLM → ON 32/21 vs OFF 34/19, and after de-flaking only the 3 clustered above are real (2 control_mcp confirmed + 1 project flaky). The rest are weak-local-model tool-calling / vision-capability failures that fail identically OFF (`logs/tierB_{ON,OFF}.log`, `tierB_flagdelta.txt`).
+- Earlier surfaces: `chat::` (0 delta), `mcp::` (0 real delta), workflow-LLM (0 delta), scheduler (0 delta).
+
+### Fix-sizing summary (by subsystem)
+| Cluster | Confirmed count | Likely root cause (one fix each) |
+|---|---|---|
+| Approval | 2 | RegistryBridge approval path: claim/delete the `tool_use_approvals` row + fire `mcpApprovalRequired` for mutating invokes on the agent-core loop |
+| Sampling | 5 | wire MCP server→host sampling round-trips into the agent-core model-call path (currently not invoked) |
+| Journaling | 1 | record control/tool calls into `mcp_tool_calls` on the agent-core path (session `McpCallContext` stamping) |
+| **Total** | **8** | ~3 root causes |
+
+Sweep done. Awaiting go on fixing.

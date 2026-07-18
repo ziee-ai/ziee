@@ -1,0 +1,3 @@
+control_mcp::real_llm_test::real_llm_discovers_capabilities
+control_mcp::real_llm_test::real_llm_write_requires_approval
+project::injection_test::project_instructions_persist_across_multiple_turns
