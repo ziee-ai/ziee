@@ -2030,6 +2030,25 @@ impl ChatExtension for McpChatExtension {
                     .collect()
             };
 
+            // files_mcp write/read split (B1): the files_mcp server auto-attaches
+            // whenever the model is tool-capable, but in an EMPTY conversation only
+            // its WRITE tools are useful (author the first file / create→edit in one
+            // turn) — the READ tools (list/read/grep/semantic_search over zero files)
+            // are dropped until files exist. `files_manifest_available` is the same
+            // file-presence signal the manifest injection uses, so the two never
+            // disagree.
+            let tools_to_add = if *server_id == crate::modules::files_mcp::files_mcp_server_id()
+                && !crate::modules::file::available_files::files_manifest_available(
+                    &context.metadata,
+                ) {
+                tools_to_add
+                    .into_iter()
+                    .filter(|t| crate::modules::files_mcp::is_write_tool(&t.name))
+                    .collect()
+            } else {
+                tools_to_add
+            };
+
             // Convert and add tools (using server_id for unique tool naming).
             // `convert_mcp_tool_to_ai_tool` returns None for tools whose
             // composed `<server_id>__<tool_name>` would fail Anthropic's

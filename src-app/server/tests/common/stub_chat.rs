@@ -184,9 +184,22 @@ async fn chat_completions(State(s): State<StubState>, body: axum::body::Bytes) -
         })
         .unwrap_or_default();
 
-    let had_tool_result = messages
+    // "This turn already produced a tool result" = a `role:"tool"` message appears
+    // AFTER the last user message (i.e. we are on a continuation iteration of the
+    // CURRENT turn). Scanning the whole history would wrongly report `true` on the
+    // FIRST iteration of a LATER turn whose PRIOR turns used tools — making the
+    // stub skip the new turn's tool call (breaks every multi-turn tool test).
+    let last_user_idx = messages
         .iter()
-        .any(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"));
+        .rposition(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"));
+    let had_tool_result = {
+        let tail = match last_user_idx {
+            Some(i) => &messages[i + 1..],
+            None => &messages[..],
+        };
+        tail.iter()
+            .any(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"))
+    };
 
     // System-block text (manifest detection + file-id parse). Concatenate every
     // system message's text.
@@ -277,6 +290,46 @@ fn script(
             }
             let echoed = last_tool_result_text(messages);
             (Some(format!("Matches: {echoed}")), None)
+        }
+        // files_mcp `read_file` BY NAME (`STUB_NAME`) — reads back a file the model
+        // authored earlier in the conversation. Pairs with `create_file` for the
+        // author-then-read-back flow.
+        "read_named" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "read_file"))
+            {
+                let name = parse_token(last_user, "STUB_NAME=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored.md".into());
+                return (None, Some((wire.to_string(), json!({ "name": name }))));
+            }
+            let echoed = last_tool_result_text(messages);
+            (Some(format!("You wrote: {echoed}")), None)
+        }
+        // files_mcp `create_file` — author a NEW file. Drives the "author the
+        // first file from an EMPTY conversation" flow (B1): the files_mcp WRITE
+        // tools attach even with no files present. `STUB_FILE` / `STUB_CONTENT`
+        // set the filename + body.
+        "create_file" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "create_file"))
+            {
+                let filename = parse_token(last_user, "STUB_FILE=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored.md".into());
+                let content = parse_token(last_user, "STUB_CONTENT=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored content".into());
+                return (
+                    None,
+                    Some((
+                        wire.to_string(),
+                        json!({ "filename": filename, "content": content }),
+                    )),
+                );
+            }
+            // Continuation: confirm creation (the test asserts "Created the file").
+            (Some("Created the file.".into()), None)
         }
         "remember" => {
             if let (false, Some(wire)) =
