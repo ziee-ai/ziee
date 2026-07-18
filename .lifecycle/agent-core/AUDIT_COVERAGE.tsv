@@ -111,3 +111,16 @@ src-app/server/tests/workflow/mod.rs	1	100000	correctness,test-coverage,maintain
 src-app/ui/tests/e2e/settings/agent-settings-negperm.spec.ts	1	100000	correctness,test-coverage,maintainability
 src-app/ui/tests/e2e/settings/agent-settings.spec.ts	1	100000	correctness,test-coverage,maintainability
 src-app/server/src/modules/chat/agent_host/uniquify.rs	1	100000	modularity,extensibility,maintainability,api,correctness,concurrency,perf
+src-app/server/src/modules/mcp/agent_tool_call.rs	1	440	correctness,modularity,security,concurrency
+src-app/server/src/modules/mcp/chat_extension/mcp.rs	326	326	correctness,maintainability,api-friendliness
+src-app/server/src/modules/mcp/mod.rs	1	1	modularity,correctness,maintainability
+src-app/server/src/modules/workflow/artifact_io.rs	256	263	security,correctness,maintainability
+src-app/server/src/modules/workflow/artifact_io.rs	276	286	security,correctness,maintainability
+src-app/server/src/modules/workflow/artifact_stream.rs	24	29	security,correctness,error-handling
+src-app/server/tests/chat/test_single_assistant_message_architecture.rs	357	367	tests-quality,correctness,maintainability
+src-app/server/tests/common/mod.rs	13	36	tests-quality,concurrency,correctness
+src-app/server/tests/mcp/elicitation_mcp_test.rs	235	237	tests-quality,correctness,maintainability
+src-app/server/tests/mcp/mcp_streaming_workflow_test.rs	747	751	tests-quality,correctness,maintainability
+src-app/server/tests/memory_mcp/mod.rs	252	266	tests-quality,correctness,security
+src-app/server/tests/memory_mcp/mod.rs	281	287	tests-quality,correctness,maintainability
+src-app/server/tests/path_resolution.rs	156	156	correctness,tests-quality,maintainability

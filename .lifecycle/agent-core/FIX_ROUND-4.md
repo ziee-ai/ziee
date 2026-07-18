@@ -22,17 +22,23 @@ re-exports the moved items (`pub(crate) use`) for its own internal callers.
 Verified: `grep` shows ZERO remaining chat→workflow imports for the chokepoint
 (only a doc-comment mentions the workflow twin).
 
-### A2. MAINTAINABILITY + LATENT BUG — de-dup adapters, reconcile `terminal`
+### A2. MAINTAINABILITY — de-dup adapters, reconcile `terminal` in NEW code
 `split_tool_name` + `mcp_to_agent_result` were copy-pasted in `chat/resolver.rs`
 and `workflow/agent_dispatch.rs` and had DIVERGED: chat computed `terminal` from
 the `audience:["user"]` annotation (correct MCP semantics, parity with the MCP
 extension's `execute_tool`); workflow **hardcoded `terminal: false`**.
 
 **Fix:** de-duplicated into ONE shared pair in `mcp/agent_tool_call.rs`, unified
-on the audience-computed `terminal`. **Workflow's `terminal:false` was a latent
-bug** — the workflow agent-step ignored the audience-terminal signal (a
-user-audience tool result should end the turn, not trigger another model round).
-Now both hosts honor it. Real bug fix, noted here.
+on the audience-computed `terminal`.
+
+**Correction to the earlier commit wording (`29325bd9c`):** both copies live in
+**NEW agent-core code** — `agent_dispatch.rs` and `resolver.rs` are absent on
+`main` (verified: `git cat-file -e main:…/agent_dispatch.rs` → not a valid
+object). So workflow's `terminal:false` was an inconsistency in **unshipped**
+code, and reconciling it **made the new code correct** (the new workflow
+agent-step now honors the `audience:["user"]` terminal signal like the chat
+twin) — it did **not** fix a bug that ever shipped on `main`. Not a
+shipped-bug fix.
 
 **OFF byte-identical:** the chat OFF path uses `execute_tool` (not
 `call_mcp_tool`), so the move can't affect it. The `terminal` reconciliation
