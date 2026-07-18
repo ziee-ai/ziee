@@ -124,3 +124,13 @@ src-app/server/tests/mcp/mcp_streaming_workflow_test.rs	747	751	tests-quality,co
 src-app/server/tests/memory_mcp/mod.rs	252	266	tests-quality,correctness,security
 src-app/server/tests/memory_mcp/mod.rs	281	287	tests-quality,correctness,maintainability
 src-app/server/tests/path_resolution.rs	156	156	correctness,tests-quality,maintainability
+scripts/manual-test-agent-core.sh	1	133	correctness,maintainability,error-handling
+src-app/server/src/modules/file/chat_extension/file.rs	126	133	correctness,modularity,maintainability
+src-app/server/src/modules/files_mcp/mod.rs	42	60	correctness,maintainability,modularity
+src-app/server/src/modules/mcp/chat_extension/mcp.rs	2033	2051	correctness,security,modularity
+src-app/server/tests/agentic_chat/mod.rs	1021	1023	tests-quality,correctness,maintainability
+src-app/server/tests/agentic_chat/mod.rs	1836	1910	tests-quality,security,correctness
+src-app/server/tests/common/stub_chat.rs	187	192	tests-quality,correctness,maintainability
+src-app/server/tests/common/stub_chat.rs	194	202	tests-quality,correctness,maintainability
+src-app/server/tests/common/stub_chat.rs	294	337	tests-quality,correctness,maintainability
+src-app/server/tests/common/stub_chat.rs	530	535	tests-quality,correctness,maintainability
