@@ -150,10 +150,13 @@ pub(crate) async fn call_mcp_tool(
 ) -> Result<(Uuid, crate::modules::mcp::client::traits::ToolResult), McpToolCallError> {
     // The namespaced prefix is either a server NAME (workflow's `McpToolProvider`
     // list) or a server ID uuid (chat's MCP extension namespaces tools as
-    // `<server_id>__<tool>`). Accept both: a parseable uuid is the id directly;
-    // otherwise resolve the name.
+    // `<server_id>__<tool>`). The two hosts use DISJOINT schemes: the chat host
+    // (`chat_ctx` present) always sends a server-id uuid; the workflow host always
+    // sends a server NAME. Take the raw-id path ONLY for the chat host, so a
+    // workflow server that happens to be NAMED a literal uuid is resolved by name
+    // (not misread as an id).
     let server_id = match uuid::Uuid::parse_str(server_name) {
-        Ok(id) => {
+        Ok(id) if chat_ctx.is_some() => {
             // SECURITY: re-validate the (model-supplied) server id against the acting
             // user's accessible set — a built-in (enabled) OR a server the user's
             // groups are assigned to. Without this the raw-uuid path would let a
@@ -194,7 +197,8 @@ pub(crate) async fn call_mcp_tool(
             }
             id
         }
-        Err(_) => match resolve_tool_server(scope.user_id, server_name).await {
+        // Workflow host (name scheme), OR a non-uuid server_name: resolve by name.
+        _ => match resolve_tool_server(scope.user_id, server_name).await {
             Ok(id) => id,
             Err(e) => return Err(McpToolCallError::Failed(e.to_string())),
         },
