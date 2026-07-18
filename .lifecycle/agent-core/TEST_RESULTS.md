@@ -305,3 +305,19 @@ every real-LLM candidate re-run isolated (2–3×) to separate stable regression
 | **Total** | **8** | ~3 root causes |
 
 Sweep done. Awaiting go on fixing.
+
+## STEP-2 fix investigation (root causes pinned; fixes are core-loop changes needing instrumented verification)
+
+**Approval cluster** — root cause traced to the claim path, but the exact delete-miss needs one instrumented run:
+- Chat builds the loop with `resume_executes_pending: false` (`dispatcher.rs:183`) → the loop never surfaces the pending `tool_use`, so `ChatApprovalPolicy::decide`'s claim (`gate.rs:307-321`) is never consulted on resume. The sole remaining claim site is `execute_approved_tools_sync` (`mcp.rs:761`, from `before_llm_call` STEP-1c `mcp.rs:1574`).
+- **Logs prove STEP 1 records + STEP 1c finds the approved row on BOTH paths** (`approval_claim_ON_isolated.log`: "Successfully approved … toolu_claim_once", "before_llm_call: Found 1 approved tools"). Yet the row SURVIVES on ON only → the `delete_tool_approval(row.tool_use_id, row.message_id)` claim inside `execute_approved_tools_sync` deletes 0 rows on the agent-core StreamContext (a `message_id`/row-count mismatch), where it deletes 1 on legacy.
+- **Fix options** (both touch the core loop → require the full two-flag regression after): (A) fork-recommended — flip `resume_executes_pending: true`, make `decide` the SINGLE claim site, and suppress the extension's approved-tool execution (collapses the RegistryBridge-vs-ports collision); (B) lower-blast-radius — fix the `execute_approved_tools_sync` delete key so it lands under the agent-core context. **(B) is safer but the message_id mismatch must be pinned with an instrumented run first.**
+- Also covers `control_mcp::real_llm_write_requires_approval` (mutating invoke must FIRST create the pending row + emit `mcpApprovalRequired` — same gate path).
+
+**Sampling cluster** — CLEAR root cause: `ChatToolProvider` (`resolver.rs:240`) opens sessions via `get_or_create_with_context(…)` which has **no sampling-handler param** — unlike the legacy MCP-extension path that uses `McpSession::new_with_sampling(server, ChatSamplingHandler)` (`mcp.rs:956/1873/2951`). So on agent-core the tool's session can't perform server→host sampling round-trips. Fix: construct a `ChatSamplingHandler` (model/provider-backed) and create the tool session WITH sampling in `ChatToolProvider`. Additive (OFF unaffected) but non-trivial threading.
+
+**Journaling cluster** — `ChatToolProvider.call` → `call_mcp_tool(Chat)` DOES journal (session carries the Chat `McpCallContext`); so `control_mcp::real_llm_discovers_capabilities` failing implies the control `list_capabilities` call is taking a DIFFERENT execution path on agent-core (likely the same sampling/approval session divergence) — to confirm alongside the sampling fix.
+
+**Project re-injection cluster** — the RegistryBridge runs `call_before_llm_call` each iteration + each request, so turn-2 SHOULD re-inject; the 3/5-ON-fail intermittency suggests the project system block is injected but not reliably ORDERED/retained in the request the model sees on resume turns — needs a trace of the turn-2 `ChatRequest` messages on agent-core.
+
+### Status: STEP 1 COMPLETE (project confirmed = 4th cluster, 9 regressions/4 clusters). STEP 2 root-caused; the fixes are delicate core-chat-loop changes (esp. approval + sampling) that I am NOT committing un-instrumented — pinning the approval delete-miss + the sampling handler threading needs careful instrumented runs to avoid breaking the OFF byte-identical baseline. Recommend confirming the fix approach (A vs B for approval) before I make core-loop edits.
