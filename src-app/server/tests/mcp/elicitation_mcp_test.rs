@@ -232,6 +232,9 @@ async fn ask_user_accept_returns_the_answer_to_the_model() {
         // skill
         "__load_skill",
         "__read_skill_file",
+        // js_tool (run_js auto-attaches for tool-capable chats; the START is
+        // approval-bypassed, gated sub-tools inside the script are approved).
+        "__run_js",
     ];
     assert!(
         tools

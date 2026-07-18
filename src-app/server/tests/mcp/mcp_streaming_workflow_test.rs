@@ -744,8 +744,11 @@ async fn test_tool_results_in_api_history() {
     assert_eq!(response.status(), 200, "Should get messages successfully");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
-    // API returns array directly
-    let messages = body.as_array().expect("Response should be an array of messages");
+    // `GET /conversations/{id}/messages` returns a `PaginatedMessages` object
+    // ({ messages, has_more_before, has_more_after }), not a bare array.
+    let messages = body["messages"]
+        .as_array()
+        .expect("PaginatedMessages.messages should be an array");
 
     eprintln!("\n=== Test: test_tool_results_in_api_history ===");
     eprintln!("API returned {} messages", messages.len());
