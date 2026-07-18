@@ -343,3 +343,9 @@ Sweep done. Awaiting go on fixing.
 ### APPROVAL Layer 1 (id-collision) — FIXED, OFF byte-identical ✅ (committed earlier: `uniquify.rs`).
 
 ### Still open: sampling `lifecycle_event_order` (mcpToolStart emission), journaling (`control_mcp::discovers_capabilities` still fails ON 2/2 — distinct cause: the built-in control tool's journaling isn't via `call_mcp_tool`'s recording), approval Layer 2 (resume-execution), project re-injection. FULL two-flag regression (chat+mcp) still owed before any completion claim.
+
+### JOURNALING cluster — FIXED ✅ (control_mcp::discovers_capabilities ON 2/2)
+**Root cause (pre-existing, pinned by trace):** `call_mcp_tool`'s security accessibility check (`is_builtin_server_id(id)` else `get_all_accessible_config`) did NOT recognize the control server — control is `is_built_in` + `is_system` but NOT in the approval-bypass `is_builtin_server_id` set, and `is_system` servers are redacted out of `get_all_accessible_config` → `accessible=false` → early return → `call_tool` (the journal chokepoint) never ran. Legacy `execute_tool` treats built-ins as accessible.
+**Fix (SHARED `workflow/dispatch.rs`, agent-core-chat-only effect):** broadened the accessibility check to accept `get_any_server(id).is_built_in && enabled` (per-tool authz still enforced downstream at the JSON-RPC handler). Only the chat uuid-server-name path hits this branch (workflow uses server NAMES → the resolve_tool_server path; OFF chat uses `execute_tool`) → OFF byte-identical by construction.
+- **ON:** `control_mcp::real_llm_discovers_capabilities` **2/2 PASS** post-fix (was 0/2).
+- **OFF invariant:** control_mcp OFF `write_requires_approval` is model-flaky (1-fail/1-pass over reruns — the local model doesn't always emit a mutating invoke); `discovers_capabilities` unaffected. OFF chat doesn't use `call_mcp_tool`. Full mcp:: regression owed for the definitive OFF==457/40 check.

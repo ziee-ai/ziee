@@ -1179,19 +1179,31 @@ pub(crate) async fn call_mcp_tool(
             // assigned to, executing with that server's admin-configured secret
             // headers (cross-group authz bypass). Mirrors the legacy accessible-set
             // check at `mcp.rs` (execute_approved_tools_sync).
-            let accessible = if crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(id) {
-                matches!(
-                    crate::core::Repos.mcp.get_any_server(id).await,
-                    Ok(Some(s)) if s.enabled
-                )
-            } else {
-                crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
+            let accessible = match crate::core::Repos.mcp.get_any_server(id).await {
+                // A BUILT-IN server (control/skill/workflow/memory/… — `is_built_in`,
+                // some also `is_system`) is accessible to any user when enabled; its
+                // per-tool authz is enforced downstream at the JSON-RPC handler
+                // (`control::use`, etc.). Some built-ins (control) are NOT in the
+                // approval-bypass `is_builtin_server_id` set AND are `is_system` (so
+                // redacted out of `get_all_accessible_config`), which previously made
+                // them unreachable on the agent-core chat path — the legacy
+                // `execute_tool` path treats built-ins as accessible, so match it.
+                Ok(Some(s))
+                    if s.enabled
+                        && (s.is_built_in
+                            || crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(id)) =>
+                {
+                    true
+                }
+                // External / user-registered server: require it in the user's
+                // accessible set (unchanged — the cross-group-authz-bypass guard).
+                _ => crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
                     crate::core::Repos.pool(),
                     scope.user_id,
                 )
                 .await
                 .map(|servers| servers.iter().any(|s| s.id == id && s.enabled))
-                .unwrap_or(false)
+                .unwrap_or(false),
             };
             if !accessible {
                 return Err(McpToolCallError::Failed(format!(
@@ -1281,11 +1293,23 @@ pub(crate) async fn call_mcp_tool(
     // parity). Workflow (chat_ctx = None) is unchanged — pooled, no chat context.
     let session: std::sync::Arc<tokio::sync::RwLock<crate::modules::mcp::client::session::McpSession>> =
         if let Some(cc) = &chat_ctx {
-            let server_row = match manager.resolve_server_for_session(server_id).await {
-                Ok(s) => s,
-                Err(e) => return Err(McpToolCallError::Failed(format!("tool: resolve server: {e}"))),
-            };
-            if server_row.supports_sampling {
+            // Lightweight lookup (works for built-in loopback servers too, unlike
+            // `resolve_server_for_session` which is for external un-redacted URLs)
+            // to decide the sampling-vs-pooled branch WITHOUT an early-return that
+            // would skip `call_tool` (and thus the journal recording) for built-ins.
+            let supports_sampling = crate::core::Repos
+                .mcp
+                .get_any_server(server_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|s| s.supports_sampling)
+                .unwrap_or(false);
+            if supports_sampling {
+                let server_row = match manager.resolve_server_for_session(server_id).await {
+                    Ok(s) => s,
+                    Err(e) => return Err(McpToolCallError::Failed(format!("tool: resolve server: {e}"))),
+                };
                 // Sampling server → fresh ephemeral session WITH the host-LLM
                 // handler (parity with legacy `execute_tool`). No pooled fallback:
                 // a pooled sampling session deadlocks the SSE round-trip.
