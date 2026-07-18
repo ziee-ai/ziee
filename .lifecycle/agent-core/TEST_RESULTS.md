@@ -413,3 +413,11 @@ IMPORTANT: the baseline `regress_mcp_OFF.log` (457/40) was run WITHOUT the ANTHR
 **Note on the "162/9 + 457/40" baseline:** those numbers came from a run WITHOUT the ANTHROPIC/OpenAI proxy env, so ~35 mcp + a few chat real-LLM tests were env-gated failures. THIS regression sets the proxy env (required to actually RUN the real-LLM tests the fixes address) → OFF is 490/8 + 161/10. The substance of the HARD GATE — *does the flag change behavior?* — is proven by **ON == OFF on both suites** (identical failure sets) + **no NEW deterministic OFF failure** (the only non-real-LLM OFF failures pre-date this branch, verified against the baseline logs). All fixed clusters (sampling, journaling, approval) PASS ON under the full parallel suite.
 
 ### CLUSTERS: sampling ✅, journaling ✅, approval ✅ (deterministic gates) — all pass ON, OFF deterministic set unchanged. project ⚪ not-a-regression (model-flake both flags). Two-flag regression flag-delta-clean.
+
+## Post-review classification tasks (both confirmed NOT flag-delta)
+
+### (1) `mcp::resources_test::resources_read_returns_binary_output_as_base64_blob` — KNOWN PARALLELISM FLAKE
+Isolation (`--test-threads=1`): **ON 5/5 PASS** (`logs/resources_flake_ON_{1..5}.log`), **OFF 4/4 PASS** (`logs/resources_flake_OFF_{1..4}.log`; 5th cut by the 10-min wall). It does NOT fail 5/5 ON — it passes ON deterministically in isolation, so the regress2 ON-failure was parallel contention, not a flag-delta. Structurally the flag (`ZIEE_CHAT_AGENT_CORE`) drives the CHAT loop, not the mcp/workflow resources path, so it CANNOT deterministically affect this test. → documented flake, not a regression.
+
+### (2) PROJECT re-injection — model-flake on BOTH flags (OFF-flaky now logged)
+OFF 5×: **4 pass / 1 fail** (`logs/project_reinject_OFF_{1..5}.log`; OFF_4 = FAILED). ON 5×: 2 pass / 3 fail (`project_reinject_ON_{1..5}.log`), with `has_beacon=true` in the turn-2 request on every ON run (injection deterministically correct — the real basis). Both flags fail this real-LLM test intermittently → the local Qwen inconsistently EMITS the mandated token; NOT an agent-core injection regression. The earlier "2/2 OFF-pass" was a 2-sample fluke; the 5× OFF run makes the OFF-flaky evidence airtight.
