@@ -1,0 +1,4 @@
+file	start	end	angles
+src-app/server/src/modules/mcp/chat_extension/helpers.rs	1	1000000	correctness,error-handling,api-contract,patterns-conformance,security,perms,concurrency,i18n,tests-quality,perf,state-management
+src-app/server/src/modules/mcp/chat_extension/mcp.rs	1	1000000	correctness,error-handling,api-contract,patterns-conformance,security,perms,concurrency,i18n,tests-quality,perf,state-management
+src-app/server/tests/mcp/mcp_extension_test.rs	1	1000000	correctness,error-handling,api-contract,patterns-conformance,security,perms,concurrency,i18n,tests-quality,perf,state-management

@@ -45,3 +45,4 @@ schema; the label + roster are runtime prompt assembly). No `openapi.json` /
 - **ITEM-2** — verdict: PASS — `server.is_built_in` + `server.name` both in scope at both call sites (mcp.rs:1848-1851 resolves `server`); `(!is_built_in).then(...)` is the gating idiom.
 - **ITEM-3** — verdict: PASS — pure string helper, mirrors `tool_system_guidance`; no I/O, directly unit-testable.
 - **ITEM-4** — verdict: PASS — appends to the existing iteration-1 System message; roster scoped to advertised (auto-mode) external servers so prefixes ↔ roster correspond. Always-mode exclusion recorded as DEC.
+- **ITEM-5** — verdict: PASS — pure `sanitize_prompt_field(&str, cap) -> String` (collapse control/whitespace + cap); no I/O, applied once per server for the label and at roster build; defends the system-prompt section structure. No behavior change for well-formed names/descriptions.

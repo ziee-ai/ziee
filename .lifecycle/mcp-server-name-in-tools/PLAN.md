@@ -36,6 +36,12 @@ tagged tool to its roster entry.
   in `mcp.rs` that renders the "## Connected MCP servers" markdown from
   `(name, description, advertised_tool_count)` tuples; `None`/empty description →
   `- <name> (N tools)`; returns `None` when the slice is empty.
+- **ITEM-5**: Sanitize the operator/user-set `server.name` and `server.description`
+  before they enter the model-visible prompt (the `[name]` label + the roster):
+  collapse control chars / newlines / whitespace runs to single spaces and cap
+  length, so a value containing newlines can't forge a markdown heading or
+  instructions inside the system message. (Added in the phase-7 fix round from the
+  blind security audit — the diff is the first place these fields reach the prompt.)
 - **ITEM-4**: In the advertising loop, accumulate the external-server roster
   (auto-mode servers only — the ones whose tools are advertised; each server's
   entry counts the tools actually pushed to `all_tools`), then on

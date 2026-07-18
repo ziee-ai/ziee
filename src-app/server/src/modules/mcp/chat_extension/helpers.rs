@@ -142,10 +142,12 @@ pub fn convert_mcp_tool_to_ai_tool(
     }
     // Tag the description (not the name) with the human server name so the model
     // can attribute the tool to its server. Built-in servers pass `None`.
-    let base_description = mcp_tool.description.clone().unwrap_or_default();
     let description = match server_label {
-        Some(label) => format!("[{label}] {base_description}"),
-        None => base_description,
+        Some(label) => format!(
+            "[{label}] {}",
+            mcp_tool.description.as_deref().unwrap_or_default()
+        ),
+        None => mcp_tool.description.clone().unwrap_or_default(),
     };
     Some(ai_providers::Tool::function(
         composed,
