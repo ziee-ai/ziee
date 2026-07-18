@@ -71,17 +71,24 @@ UPDATE assistants
 -- (Re)assert the biognosia system server (is_system=true → user_id=NULL, per
 -- CHECK system_server_must_have_no_owner). Reachable via the host gateway
 -- (extra_hosts host.docker.internal:host-gateway) at the host-published :8081.
+-- biognosia MCP URL: overridable with `-v biognosia_url='…'` (the deployed server
+-- runs biognosia at a different address than the local :8081). Defaults to the
+-- local-test URL when not supplied.
+\if :{?biognosia_url}
+\else
+\set biognosia_url 'http://host.docker.internal:8081/mcp'
+\endif
 -- Keyed on (name, is_system): create only when absent, then enforce fields.
 INSERT INTO mcp_servers (id, user_id, name, display_name, description,
         enabled, is_system, is_built_in, transport_type, url, usage_mode,
         supports_sampling, timeout_seconds)
 SELECT gen_random_uuid(), NULL, 'biognosia', 'Biognosia RAG',
         'Biomedical RAG over lightrag DBs',
-        true, true, false, 'http', 'http://host.docker.internal:8081/mcp', 'auto', true, 300
+        true, true, false, 'http', :'biognosia_url', 'auto', true, 300
 WHERE NOT EXISTS (SELECT 1 FROM mcp_servers WHERE name = 'biognosia' AND is_system);
 
 UPDATE mcp_servers
-   SET url = 'http://host.docker.internal:8081/mcp', enabled = true, usage_mode = 'auto',
+   SET url = :'biognosia_url', enabled = true, usage_mode = 'auto',
        display_name = 'Biognosia RAG', description = 'Biomedical RAG over lightrag DBs',
        supports_sampling = true, transport_type = 'http', timeout_seconds = 300,
        is_built_in = false, updated_at = NOW()
