@@ -298,7 +298,11 @@ fn script(
             if let (false, Some(wire)) =
                 (had_tool_result, resolve_wire_name(tool_names, "read_file"))
             {
+                // A filename is a single token — take only the first word after
+                // `STUB_NAME=` (the test appends trailing prose, and `parse_token`
+                // otherwise runs to end-of-line; read_file needs an EXACT name).
                 let name = parse_token(last_user, "STUB_NAME=")
+                    .and_then(|v| v.split_whitespace().next().map(str::to_string))
                     .filter(|c| !c.trim().is_empty())
                     .unwrap_or_else(|| "authored.md".into());
                 return (None, Some((wire.to_string(), json!({ "name": name }))));
@@ -523,7 +527,12 @@ fn script(
             if let (false, Some(wire)) =
                 (had_tool_result, resolve_wire_name(tool_names, "get_tool_result"))
             {
-                if let Some(id) = parse_token(last_user, "STUB_TOOLUSE=") {
+                // A tool_use_id is a single token — take only the first word after
+                // `STUB_TOOLUSE=` (the test appends trailing prose; `parse_token`
+                // otherwise runs to end-of-line and the id would never match).
+                if let Some(id) = parse_token(last_user, "STUB_TOOLUSE=")
+                    .and_then(|v| v.split_whitespace().next().map(str::to_string))
+                {
                     return (None, Some((wire.to_string(), json!({ "tool_use_id": id }))));
                 }
                 return (Some("No tool_use_id provided to recall.".into()), None);

@@ -1018,7 +1018,9 @@ async fn model_recalls_prior_result_via_get_tool_result() {
         .await
         .unwrap();
     let mut tool_use_id: Option<String> = None;
-    for m in msgs.as_array().unwrap() {
+    // `GET /conversations/{id}/messages` returns a `PaginatedMessages` object
+    // ({ messages, has_more_before, has_more_after }), not a bare array.
+    for m in msgs["messages"].as_array().unwrap() {
         for c in m["contents"].as_array().into_iter().flatten() {
             if c["content_type"] == "tool_result" {
                 if let Some(id) = c["content"]["tool_use_id"].as_str() {

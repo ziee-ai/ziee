@@ -40,6 +40,45 @@ Legend — severity: **HIGH** (blocks flip), **MED** (should fix before flip),
   flags — document each. Commit CLEARLY LABELED as a general/pre-existing fix,
   separable from agent-core at merge.
 
+### B1 — OUTCOME (fixed, flag-invariant)
+The first-file gate is fixed (write tools attach in an empty conversation) AND the
+author→read-back cycle works. Root causes fixed (all flag-invariant, OFF == ON):
+files_mcp write-tool attach decoupled from `manifest_available`; StubChat harness
+bugs it exposed (`had_tool_result` scanned the whole history → broke multi-turn
+tool calls; missing `create_file`/`read_named` arms; `parse_token` grabbed
+trailing prose for single-token `STUB_NAME`/`STUB_TOOLUSE`); and a stale
+`msgs.as_array()` (PaginatedMessages) parse in the get_tool_result test.
+**Effect: `agentic_chat` 15 → 20 pass on BOTH flags, 0 regressions.**
+
+`model_authored_file_ids` was investigated (per the read-back mandate) and found
+**correct** — it returned the authored file; the read-back failure was the stub's
+`STUB_NAME` parse, not the provenance query.
+
+#### Tracked flag-invariant "agentic-stack integration" items (the 3 still red — NOT flip-blockers)
+These fail identically on OFF and ON (pre-existing on main, `5567db300`), so they
+do NOT gate the default flip (legacy already has them). Classified for the user/Khoi:
+
+- **`files_mcp_and_memory_combine`** — **TEST-SEMANTICS bug (not a product bug).**
+  `assert_eq!(stub.requests_with_tool("remember"), 1)` counts requests where
+  `remember` was *attached*, not *called*. With memory enabled across BOTH turns,
+  `remember` attaches in every request (turn 1 + turn 2's 2 iterations = 3), so the
+  assertion can NEVER be 1. Fix = count actual `remember` *calls* (tool_use blocks /
+  `mcpToolStart`), not attachment. **Deliberately NOT rewritten** to go green (per
+  instruction) — it needs a real helper correction, documented here.
+- **`core_memory_block_is_injected`** — **real-bug candidate (severity MED).** Core
+  memory injects only when `assistant_id` is `Some` (`retriever.rs:80`). The test
+  creates an assistant + a `persona` core-memory block and sends with `assistant_id`,
+  but the marker never reaches the request → the send-body `assistant_id` may not
+  thread through to the retriever (or the assistant isn't linked to the conversation).
+  Fix sketch: verify how `assistant_id` flows into the memory chat-extension context
+  on the send path; ensure the request's assistant is used for `inject_core_memory_blocks`.
+- **`files_mcp_tool_call_is_recorded_as_built_in`** — **real-bug candidate (severity MED).**
+  An auto-approved built-in `read_file` produces no `mcp_tool_calls` row
+  (`server_name='files_mcp'`). The execution session at `mcp.rs:1025` IS stamped, so
+  either the auto-approved read path executes via a DIFFERENT (unstamped) session or
+  the fire-and-forget insert races the poll. Fix sketch: confirm the auto-approved
+  built-in read execution routes through a `set_call_context`-stamped `McpSession`.
+
 ## 2. Latent bugs / security
 
 ### B2 — chat ON path skips conversation `disabled_servers` enforcement  · MED · open
