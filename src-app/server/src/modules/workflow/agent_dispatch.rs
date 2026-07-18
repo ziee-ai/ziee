@@ -42,10 +42,13 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::workflow::dispatch::{
-    builtin_server_id_by_name, call_mcp_tool, resolve_prompt, McpCallScope, McpToolCallError,
-    StepDispatcher,
+// Shared MCP tool-call chokepoint now lives in `mcp::agent_tool_call` (§9 DAG:
+// shared infra, imported from `mcp/` by both this host and the chat host).
+use crate::modules::mcp::agent_tool_call::{
+    builtin_server_id_by_name, call_mcp_tool, mcp_to_agent_result, split_tool_name, McpCallScope,
+    McpToolCallError,
 };
+use crate::modules::workflow::dispatch::{resolve_prompt, StepDispatcher};
 use crate::modules::workflow::events::{
     ProgressEmitter, ProgressKind, ProgressTrack, SSEElicitationRequiredData, SSEStepProgressData,
     SSEWorkflowRunEvent,
@@ -197,43 +200,10 @@ struct McpToolProvider {
     classifications: Arc<Mutex<HashMap<String, String>>>,
 }
 
-/// Split a namespaced tool name `"<server>__<tool>"` (as emitted by
-/// [`McpToolProvider::list`]) back into `(server_name, tool_name)`. Splits on the
-/// FIRST `__` (mirrors the chat path's `server_id__name` scheme).
-fn split_tool_name(name: &str) -> (String, String) {
-    match name.find("__") {
-        Some(idx) => (name[..idx].to_string(), name[idx + 2..].to_string()),
-        None => (String::new(), name.to_string()),
-    }
-}
-
-/// Flatten an MCP `ToolResult` into an `agent_core::ToolResult`: concatenate its
-/// text blocks into one `Text` block (mirrors the workflow tool-step's
-/// `tool_result_text`), preserving `is_error` + `structured_content`.
-fn mcp_to_agent_result(r: crate::modules::mcp::client::traits::ToolResult) -> ToolResult {
-    let mut text = String::new();
-    for c in &r.content {
-        if c.content.get("type").and_then(|v| v.as_str()) == Some("text") {
-            if let Some(t) = c.content.get("text").and_then(|v| v.as_str()) {
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-                text.push_str(t);
-            }
-        }
-    }
-    // No text blocks (e.g. an image-only or structured-only result) → stringify
-    // the raw content so the model still sees something actionable.
-    if text.is_empty() && !r.content.is_empty() {
-        text = serde_json::to_string(&r.content).unwrap_or_default();
-    }
-    ToolResult {
-        content: vec![ContentBlock::Text { text }],
-        is_error: r.is_error,
-        structured_content: r.structured_content,
-        terminal: false,
-    }
-}
+// `split_tool_name` + `mcp_to_agent_result` now live in the shared
+// `mcp::agent_tool_call` (de-duplicated with the chat host; the workflow host's
+// previous `terminal: false` hardcode — a latent bug that ignored the
+// audience-terminal signal — is reconciled there onto the audience-computed value).
 
 #[async_trait]
 impl ToolProvider for McpToolProvider {

@@ -52,9 +52,12 @@ use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::workflow::dispatch::{
-    call_mcp_tool, resolve_tool_server, CancelSignal, McpCallScope,
-    McpToolCallError,
+// Shared MCP tool-call chokepoint lives in `mcp::agent_tool_call` (§9 DAG:
+// shared infra — the chat host imports it from `mcp/`, NOT laterally from the
+// workflow feature module).
+use crate::modules::mcp::agent_tool_call::{
+    call_mcp_tool, mcp_to_agent_result, resolve_tool_server, split_tool_name, CancelSignal,
+    ChatCallCtx, McpCallScope, McpToolCallError,
 };
 use crate::utils::cancellation::CancellationToken;
 
@@ -137,54 +140,9 @@ impl CancelSignal for ChatCancel {
 // Tool provider (chat flavor — mirrors McpToolProvider, DEC-17)
 // ============================================================
 
-/// Split a namespaced tool name `"<server>__<tool>"` (as emitted by
-/// [`ChatToolProvider::list`]) back into `(server_name, tool_name)`. Splits on the
-/// FIRST `__` (mirrors the chat/workflow `server_id__name` scheme).
-fn split_tool_name(name: &str) -> (String, String) {
-    match name.find("__") {
-        Some(idx) => (name[..idx].to_string(), name[idx + 2..].to_string()),
-        None => (String::new(), name.to_string()),
-    }
-}
-
-/// Flatten an MCP `ToolResult` into an `agent_core::ToolResult`: concatenate its
-/// text blocks into one `Text` block (mirrors the workflow twin's
-/// `mcp_to_agent_result`), preserving `is_error` + `structured_content`.
-fn mcp_to_agent_result(r: crate::modules::mcp::client::traits::ToolResult) -> ToolResult {
-    let mut text = String::new();
-    for c in &r.content {
-        if c.content.get("type").and_then(|v| v.as_str()) == Some("text") {
-            if let Some(t) = c.content.get("text").and_then(|v| v.as_str()) {
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-                text.push_str(t);
-            }
-        }
-    }
-    // No text blocks (e.g. an image-only or structured-only result) → stringify
-    // the raw content so the model still sees something actionable.
-    if text.is_empty() && !r.content.is_empty() {
-        text = serde_json::to_string(&r.content).unwrap_or_default();
-    }
-    // Audience-only bypass (parity with the MCP extension's `execute_tool`): if any
-    // content block is annotated `audience: ["user"]` EXACTLY, the tool's output is
-    // meant for the user, not the model — the turn ends with it (no continuation).
-    let terminal = r.content.iter().any(|c| {
-        c.content
-            .get("annotations")
-            .and_then(|a| a.get("audience"))
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.len() == 1 && arr[0].as_str() == Some("user"))
-            .unwrap_or(false)
-    });
-    ToolResult {
-        content: vec![ContentBlock::Text { text }],
-        is_error: r.is_error,
-        structured_content: r.structured_content,
-        terminal,
-    }
-}
+// `split_tool_name` + `mcp_to_agent_result` now live in the shared
+// `mcp::agent_tool_call` (de-duplicated with the workflow host; the shared
+// `mcp_to_agent_result` keeps this host's audience-computed `terminal`).
 
 /// The chat agent's tool surface — the conversation's attached servers (server
 /// NAMES on `ToolScope.servers`), resolved to MCP tools and routed through the
@@ -328,7 +286,7 @@ impl ToolProvider for ChatToolProvider {
             // Route through the shared chokepoint WITH the chat context so a
             // sampling server gets a `new_with_sampling` session + the journal row
             // carries branch/message/tool_use (parity with the legacy path).
-            Some(crate::modules::workflow::dispatch::ChatCallCtx {
+            Some(ChatCallCtx {
                 branch_id: self.branch_id,
                 message_id: self.message_id,
                 tool_use_id: call.id.clone(),

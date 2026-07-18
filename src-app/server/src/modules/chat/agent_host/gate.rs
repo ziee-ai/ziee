@@ -420,7 +420,7 @@ impl HumanGate for ChatHumanGate {
         // usable id; otherwise the resume path (`execute_approved_tools_sync`) hits
         // "No server_id in approval record" and never executes the approved tool.
         if server_id.is_none() && !server_str.is_empty() {
-            server_id = crate::modules::workflow::dispatch::resolve_tool_server(self.user_id, &server_str)
+            server_id = crate::modules::mcp::agent_tool_call::resolve_tool_server(self.user_id, &server_str)
                 .await
                 .ok();
         }

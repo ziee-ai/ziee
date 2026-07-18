@@ -39,7 +39,7 @@ use crate::common::AppError;
 use crate::modules::chat::agent_host::event_sink::ChatEventSink;
 use crate::modules::chat::agent_host::gate::ChatHumanGate;
 use crate::modules::chat::agent_host::resolver::{ChatCancel, ChatModelResolver, ChatToolProvider};
-use crate::modules::workflow::dispatch::CancelSignal;
+use crate::modules::mcp::agent_tool_call::CancelSignal;
 use crate::modules::chat::agent_host::transcript::ChatTranscriptStore;
 use crate::modules::chat::core::extension::{ExtensionRegistry, StreamContext};
 use crate::utils::cancellation::CancellationToken;
