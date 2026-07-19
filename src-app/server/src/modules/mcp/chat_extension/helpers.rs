@@ -101,6 +101,13 @@ fn is_anthropic_tool_name_charset(name: &str) -> bool {
 /// Convert MCP Tool to AI provider Tool format
 /// Uses server_id (UUID) to ensure uniqueness across users with same server names.
 ///
+/// `server_label` — when `Some(name)`, the tool DESCRIPTION is prefixed with
+/// `"[<name>] "` so the model can tell which named MCP server the tool belongs to
+/// (e.g. `[biognosia] Search the knowledge graph`). Pass `None` for built-in
+/// servers, whose tools stay unlabeled. The label is added to the DESCRIPTION only,
+/// never the wire name — the composed `<server_id>__<tool_name>` is unchanged, so
+/// dispatch on the return path and the Anthropic name guards below are unaffected.
+///
 /// Returns `None` when the composed `<server_id>__<tool_name>` would
 /// fail Anthropic's `^[a-zA-Z0-9_-]{1,128}$` constraint — either too
 /// long, or contains characters outside the safe charset. The caller
@@ -109,6 +116,7 @@ fn is_anthropic_tool_name_charset(name: &str) -> bool {
 pub fn convert_mcp_tool_to_ai_tool(
     server_id: Uuid,
     mcp_tool: &Tool,
+    server_label: Option<&str>,
 ) -> Option<ai_providers::Tool> {
     // Use double underscore separator for compatibility with Anthropic's naming rules
     // Anthropic requires: ^[a-zA-Z0-9_-]{1,128}$ (no colons allowed)
@@ -132,9 +140,18 @@ pub fn convert_mcp_tool_to_ai_tool(
         );
         return None;
     }
+    // Tag the description (not the name) with the human server name so the model
+    // can attribute the tool to its server. Built-in servers pass `None`.
+    let description = match server_label {
+        Some(label) => format!(
+            "[{label}] {}",
+            mcp_tool.description.as_deref().unwrap_or_default()
+        ),
+        None => mcp_tool.description.clone().unwrap_or_default(),
+    };
     Some(ai_providers::Tool::function(
         composed,
-        mcp_tool.description.clone().unwrap_or_default(),
+        description,
         mcp_tool.input_schema.clone(),
     ))
 }
@@ -1098,7 +1115,7 @@ mod tests {
     fn convert_mcp_tool_accepts_safe_name() {
         let server_id = Uuid::new_v4();
         let tool = make_mcp_tool("short_name-1");
-        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool, None);
         assert!(out.is_some(), "safe name should produce a tool");
     }
 
@@ -1110,7 +1127,7 @@ mod tests {
         // Pick > 90 to exceed 128.
         let big = "a".repeat(MAX_ANTHROPIC_TOOL_NAME_LEN);
         let tool = make_mcp_tool(&big);
-        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool, None);
         assert!(out.is_none(), "oversize composed name should be dropped");
     }
 
@@ -1121,10 +1138,67 @@ mod tests {
         // Colons + dots are common in non-conforming MCP servers and
         // fail Anthropic's regex.
         let tool = make_mcp_tool("category:subtool.v2");
-        let out = convert_mcp_tool_to_ai_tool(server_id, &tool);
+        let out = convert_mcp_tool_to_ai_tool(server_id, &tool, None);
         assert!(
             out.is_none(),
             "name with colons/dots should be dropped (charset rejection)"
+        );
+    }
+
+
+    // TEST-1: the server label prefixes the DESCRIPTION only; the wire NAME is
+    // the unchanged `<uuid>__<tool>` whether or not a label is supplied.
+    #[test]
+    fn convert_mcp_tool_labels_description_not_name() {
+        let server_id = Uuid::new_v4();
+        let tool = make_mcp_tool("search_bio"); // make_mcp_tool sets description "test"
+        let expected_name = format!("{server_id}__search_bio");
+
+        let labeled = convert_mcp_tool_to_ai_tool(server_id, &tool, Some("biognosia"))
+            .expect("safe name should produce a tool");
+        assert_eq!(labeled.function.name, expected_name, "label must NOT touch the name");
+        assert_eq!(
+            labeled.function.description.as_deref(),
+            Some("[biognosia] test"),
+            "labeled description must be `[<name>] <orig>`"
+        );
+
+        let unlabeled = convert_mcp_tool_to_ai_tool(server_id, &tool, None)
+            .expect("safe name should produce a tool");
+        assert_eq!(unlabeled.function.name, expected_name, "name identical with None label");
+        assert_eq!(
+            unlabeled.function.description.as_deref(),
+            Some("test"),
+            "None label must leave the description byte-identical"
+        );
+    }
+
+
+    // TEST-2: an empty/None tool description with a label yields `[<name>] ` (no
+    // orig text); the name guards ignore the label entirely.
+    #[test]
+    fn convert_mcp_tool_label_edge_cases() {
+        let server_id = Uuid::new_v4();
+
+        // Empty tool description + label → `[rcpa] ` (trailing space, no orig).
+        let mut no_desc = make_mcp_tool("do_thing");
+        no_desc.description = None;
+        let out = convert_mcp_tool_to_ai_tool(server_id, &no_desc, Some("rcpa"))
+            .expect("safe name should produce a tool");
+        assert_eq!(out.function.description.as_deref(), Some("[rcpa] "));
+
+        // Oversize name is still dropped WITH a label (guard checks the name).
+        let big = make_mcp_tool(&"a".repeat(MAX_ANTHROPIC_TOOL_NAME_LEN));
+        assert!(
+            convert_mcp_tool_to_ai_tool(server_id, &big, Some("rcpa")).is_none(),
+            "label must not rescue an oversize composed name"
+        );
+
+        // Bad-charset name is still dropped WITH a label.
+        let bad = make_mcp_tool("category:subtool.v2");
+        assert!(
+            convert_mcp_tool_to_ai_tool(server_id, &bad, Some("rcpa")).is_none(),
+            "label must not rescue a bad-charset name"
         );
     }
 

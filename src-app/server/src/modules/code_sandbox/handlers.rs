@@ -244,6 +244,23 @@ pub async fn jsonrpc_handler(
     }
 }
 
+/// Map a tool-invocation `AppError` onto the JSON-RPC error the client sees.
+///
+/// Client-class (4xx) errors surface their REAL message — via
+/// `from_app_error` → `invalid_params` / `method_not_found` — so the model gets
+/// an actionable reason (e.g. "not found; call list_files") instead of the
+/// opaque `-32603 "tool <name> failed"`. Anything that maps to `INTERNAL` (every
+/// 5xx, including the `io_err`s that embed host workspace paths) keeps the
+/// generic message, preserving the deliberate no-host-path-leak invariant.
+fn map_tool_error(tool_name: &str, app_err: &crate::common::AppError) -> JsonRpcError {
+    let mapped = JsonRpcError::from_app_error(app_err);
+    if mapped.code == JsonRpcError::INTERNAL {
+        JsonRpcError::internal(format!("tool {tool_name} failed"))
+    } else {
+        mapped
+    }
+}
+
 /// Dispatch the stateful methods (the stateless ones — `initialize`,
 /// `tools/list` — are handled in `jsonrpc_handler` before this is
 /// reached, so they don't need a SandboxContext).
@@ -265,16 +282,16 @@ async fn dispatch(
             let result = invoke_tool(ctx, &p.name, &p.arguments)
                 .await
                 .map_err(|app_err| {
-                    // Log the full error server-side; return a
-                    // generic envelope to the client to avoid
-                    // leaking host paths, DB error strings, or
-                    // internal field names via Debug formatting.
+                    // Log the full error server-side. To the client, surface a
+                    // real message ONLY for client-class (4xx) errors; 5xx keep
+                    // the generic envelope to avoid leaking host paths, DB error
+                    // strings, or internal field names via Debug formatting.
                     tracing::warn!(
                         tool = %p.name,
                         error = ?app_err,
                         "code_sandbox: tool invocation failed"
                     );
-                    JsonRpcError::internal(format!("tool {} failed", p.name))
+                    map_tool_error(&p.name, &app_err)
                 })?;
 
             // MCP spec: `content[]` is an array of typed content blocks
@@ -1391,6 +1408,53 @@ pub fn update_resource_limits_docs(
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    /// TEST-8 (ITEM-3): the tool-error mapper surfaces a real message for
+    /// client-class (4xx) errors so the model gets an actionable reason, while
+    /// 5xx errors keep the generic `"tool <name> failed"` (no inner message /
+    /// host-path leak).
+    #[test]
+    fn map_tool_error_surfaces_client_errors_and_hides_server_errors() {
+        // 404 → invalid_params carrying the real, actionable message.
+        let not_found = crate::common::AppError::new(
+            StatusCode::NOT_FOUND,
+            "FILE_NOT_FOUND",
+            "evaluation.json not found; call list_files to see available files",
+        );
+        let mapped = map_tool_error("read_file", &not_found);
+        assert_eq!(mapped.code, JsonRpcError::INVALID_PARAMS);
+        assert!(
+            mapped.message.contains("evaluation.json")
+                && mapped.message.contains("list_files"),
+            "client-class message must reach the model: {}",
+            mapped.message
+        );
+
+        // 400 (e.g. AMBIGUOUS_FILENAME / BINARY_FILE) also surfaces.
+        let ambiguous = crate::common::AppError::new(
+            StatusCode::BAD_REQUEST,
+            "AMBIGUOUS_FILENAME",
+            "dup.txt matches 2 tool-produced artifacts",
+        );
+        let mapped = map_tool_error("read_file", &ambiguous);
+        assert_eq!(mapped.code, JsonRpcError::INVALID_PARAMS);
+        assert!(mapped.message.contains("dup.txt"));
+
+        // 500 (a host-path-embedding io_err) stays generic — no leak.
+        let server = crate::common::AppError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "WORKSPACE_IO_ERROR",
+            "read /home/ziee/secret-host-path/foo: No such file or directory",
+        );
+        let mapped = map_tool_error("read_file", &server);
+        assert_eq!(mapped.code, JsonRpcError::INTERNAL);
+        assert_eq!(mapped.message, "tool read_file failed");
+        assert!(
+            !mapped.message.contains("secret-host-path"),
+            "5xx must not leak host paths: {}",
+            mapped.message
+        );
+    }
 
     /// Snapshot: the 7 tools' names + their required-arg sets.
     /// Bumping this is a deliberate signal that the public sandbox

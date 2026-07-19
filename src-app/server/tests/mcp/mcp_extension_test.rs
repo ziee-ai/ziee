@@ -10,6 +10,10 @@
 use serde_json::json;
 use uuid::Uuid;
 
+use super::fixtures::mock_mcp_server::{MockMcpServer, MockResponse};
+use crate::chat::helpers::{create_conversation, parse_uuid, send_body_and_collect_events};
+use crate::common::oai_capture_stub::{StubChat, StubPlan, StubToolCall};
+use crate::common::stub_chat::register_stub_model;
 use crate::common::test_helpers::{self, TestUser};
 use crate::common::TestServer;
 
@@ -789,5 +793,276 @@ async fn test_mcp_access_revocation_is_reevaluated_per_request() {
     assert!(
         !accessible_ids(&body).contains(&server_id.to_string()),
         "server must be DENIED immediately after the grant is revoked (no cached allow)"
+    );
+}
+
+// ============================================================================
+// Server name in the tool list — `[<name>]` label + "Connected MCP servers"
+// roster (feature: mcp-server-name-in-tools)
+// ============================================================================
+
+/// Register a user-owned HTTP MCP server (is_built_in = false, is_system = false)
+/// WITH a description column set — the external server the roster describes.
+async fn register_external_mcp(
+    server: &TestServer,
+    token: &str,
+    name: &str,
+    description: &str,
+    url: &str,
+) -> Uuid {
+    let res = reqwest::Client::new()
+        .post(server.api_url("/mcp/servers"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({
+            "name": name,
+            "display_name": name,
+            "description": description,
+            "transport_type": "http",
+            "url": url,
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    assert_eq!(status, 201, "register external mcp: {status}: {body}");
+    let row: serde_json::Value = serde_json::from_str(&body).unwrap();
+    Uuid::parse_str(row["id"].as_str().unwrap()).unwrap()
+}
+
+/// A mock advertising a single `search_bio` tool and answering `tools/call`.
+async fn start_bio_mock() -> MockMcpServer {
+    let mock = MockMcpServer::start().await;
+    for _ in 0..50 {
+        mock.on_method(
+            "tools/list",
+            MockResponse::JsonOk(json!({
+                "tools": [ {
+                    "name": "search_bio",
+                    "description": "Search the biology corpus",
+                    "inputSchema": { "type": "object", "properties": {}, "additionalProperties": true }
+                } ]
+            })),
+        );
+    }
+    for _ in 0..20 {
+        mock.on_method(
+            "tools/call",
+            MockResponse::JsonOk(json!({
+                "content": [ { "type": "text", "text": "bio-ok" } ],
+                "isError": false,
+            })),
+        );
+    }
+    mock
+}
+
+/// Concatenate the text of every system message in a captured OpenAI request body.
+fn system_text(body: &serde_json::Value) -> String {
+    body["messages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|m| m["role"].as_str() == Some("system"))
+        .map(|m| match &m["content"] {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(parts) => parts
+                .iter()
+                .filter_map(|p| p["text"].as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
+            _ => String::new(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// (wire_name, description) of every tool attached to a captured request body.
+fn tool_descs(body: &serde_json::Value) -> Vec<(String, String)> {
+    body["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|t| {
+            let f = t.get("function")?;
+            let name = f.get("name")?.as_str()?.to_string();
+            let desc = f
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some((name, desc))
+        })
+        .collect()
+}
+
+// TEST-4: an external server's tool descriptions carry `[<name>] …`, the always-on
+// built-in tools stay unlabeled, and the system prompt gains a "Connected MCP
+// servers" roster listing the external server (built-ins absent).
+#[tokio::test]
+async fn external_tools_labeled_and_rostered_builtins_untouched() {
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "roster", &["*"]).await;
+
+    let mock = start_bio_mock().await;
+    let mcp_id = register_external_mcp(
+        &server,
+        &user.token,
+        "biognosia",
+        "Bio-knowledge graph over PubMed",
+        &mock.base_url(),
+    )
+    .await;
+
+    // Plain text reply (no tool call): we only need to capture ONE request that the
+    // MCP extension has enriched with the tool list + the roster.
+    let stub = StubChat::start(StubPlan::text("hi")).await;
+    let model_id_s =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url(), true, None).await;
+    let model_id = Uuid::parse_str(&model_id_s).unwrap();
+
+    let conversation = create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = parse_uuid(&conversation["id"]);
+    let branch_id = parse_uuid(&conversation["active_branch_id"]);
+
+    send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        json!({
+            "content": "hello",
+            "model_id": model_id,
+            "branch_id": branch_id,
+            "enable_mcp": true,
+            "mcp_config": { "mcp_servers": [ { "server_id": mcp_id, "tools": [] } ] },
+        }),
+        &[],
+    )
+    .await;
+
+    // Pick the MCP-enriched request. `last_request()` is unreliable here because a
+    // background conversation-title generation call also hits the stub WITHOUT tools;
+    // select the request that actually carries the external tool.
+    let body = stub
+        .requests()
+        .into_iter()
+        .find(|b| {
+            tool_descs(b)
+                .iter()
+                .any(|(n, _)| n.ends_with("__search_bio"))
+        })
+        .expect("a captured request should carry the external MCP tool list");
+    let descs = tool_descs(&body);
+
+    // External tool: description prefixed `[biognosia] `.
+    let (_, bio_desc) = descs
+        .iter()
+        .find(|(n, _)| n.ends_with("__search_bio"))
+        .expect("external search_bio tool should be advertised");
+    assert!(
+        bio_desc.starts_with("[biognosia] "),
+        "external tool description must carry the server name; got {bio_desc:?}"
+    );
+
+    // Built-in control: the always-on `ask_user` / `get_tool_result` built-ins
+    // (attached for any tool-capable model) must NOT be labeled.
+    let builtin = descs
+        .iter()
+        .find(|(n, _)| n.ends_with("__ask_user") || n.ends_with("__get_tool_result"))
+        .expect("a built-in tool should be attached for a tool-capable model");
+    assert!(
+        !builtin.1.starts_with('['),
+        "built-in tool must stay unlabeled; got {builtin:?}"
+    );
+
+    // Roster: one line, for the external server only.
+    let sys = system_text(&body);
+    let heading = sys
+        .find("## Connected MCP servers")
+        .unwrap_or_else(|| panic!("system prompt missing roster; sys={sys}"));
+    // Bound the roster to its OWN section — other system notes (lit_search, skills)
+    // follow it and also use `- ` bullets, so slice up to the next `## ` heading.
+    let body_after = &sys[heading + "## Connected MCP servers".len()..];
+    let end = body_after
+        .find("\n## ")
+        .map(|i| heading + "## Connected MCP servers".len() + i)
+        .unwrap_or(sys.len());
+    let roster = &sys[heading..end];
+    assert_eq!(
+        roster.matches("\n- ").count(),
+        1,
+        "exactly one external server in the roster (built-ins excluded); roster={roster}"
+    );
+    assert!(
+        roster.contains("- biognosia — Bio-knowledge graph over PubMed (1 tools)"),
+        "roster must list the external server with its description + advertised count; roster={roster}"
+    );
+}
+
+// TEST-5: the description label does not disturb wire-name dispatch — the model's
+// `<uuid>__search_bio` call still routes to the external server and executes.
+#[tokio::test]
+async fn labeled_external_tool_still_dispatches() {
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "dispatch", &["*"]).await;
+
+    let mock = start_bio_mock().await;
+    let mcp_id =
+        register_external_mcp(&server, &user.token, "biognosia", "Bio corpus", &mock.base_url())
+            .await;
+
+    // Stub emits the FULL wire name the model saw (`<server_id>__search_bio`).
+    let plan = StubPlan {
+        text: String::new(),
+        tool_calls: vec![StubToolCall {
+            id: "tool_use".to_string(),
+            name: format!("{mcp_id}__search_bio"),
+            arguments: "{}".to_string(),
+        }],
+        ..Default::default()
+    };
+    let stub = StubChat::start(plan).await;
+    let model_id_s =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url(), true, None).await;
+    let model_id = Uuid::parse_str(&model_id_s).unwrap();
+
+    let conversation = create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = parse_uuid(&conversation["id"]);
+    let branch_id = parse_uuid(&conversation["active_branch_id"]);
+
+    // Auto-approve so the tool executes without a manual approval round-trip.
+    reqwest::Client::new()
+        .put(server.api_url(&format!("/conversations/{conversation_id}/mcp-settings")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "approval_mode": "auto_approve", "auto_approved_tools": [] }))
+        .send()
+        .await
+        .unwrap();
+
+    send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        json!({
+            "content": "search it",
+            "model_id": model_id,
+            "branch_id": branch_id,
+            "enable_mcp": true,
+            "mcp_config": { "mcp_servers": [ { "server_id": mcp_id, "tools": [] } ] },
+        }),
+        &[],
+    )
+    .await;
+
+    // The labeled tool still routed to the external server: the mock got a tools/call.
+    let calls = mock
+        .received()
+        .into_iter()
+        .filter(|r| r.method == "tools/call")
+        .count();
+    assert!(
+        calls >= 1,
+        "labeled external tool must still dispatch (mock should receive a tools/call)"
     );
 }
