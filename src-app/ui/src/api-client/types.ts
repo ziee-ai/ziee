@@ -21,8 +21,26 @@
 export interface AgentAdminSettings {
   default_max_steps: number
   default_sandbox_mode: string
+  /**
+   * Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates
+   *  with an explicit "capped at N" note. Threaded into the crate's
+   *  `SubagentLimits.max_children_per_call`.
+   */
+  fan_out_max_children_per_call: number
   fan_out_max_depth: number
   fan_out_max_threads: number
+  /**
+   * Goal-seeking evaluator model (ITEM-24 / DEC-61). NULL ⇒ fall back to the
+   *  goal-seeking run's OWN model (mirrors `reviewer_model_id`). Resolved under
+   *  the run owner's RBAC at evaluation time.
+   */
+  goal_eval_model_id?: string
+  /**
+   * Max turns a goal-seeking loop may fire before stopping 'incomplete'
+   *  (ITEM-24 / DEC-62). Default 10, range 1..=50; the `max_horizon_days`
+   *  backstop is the other ceiling.
+   */
+  goal_seek_max_turns: number
   per_run_token_cap: number
   per_step_token_cap: number
   reviewer_enabled: boolean
@@ -1072,6 +1090,20 @@ export interface CreateScheduledTask {
    */
   allowed_unattended_tools?: AllowedTool[]
   assistant_id?: string
+  /**
+   * ITEM-22 / DEC-46: bind a prompt-kind task to an EXISTING conversation (the
+   *  "schedule/loop THIS chat" affordance) so its firings append to that chat
+   *  instead of a fresh per-task conversation. Ownership is verified at create
+   *  time (a foreign id → 404); `None` keeps the create-a-conversation default.
+   */
+  bound_conversation_id?: string
+  /**
+   * ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+   *  A non-blank value makes this a goal-seeking task and (validated in the
+   *  handler) requires `schedule_kind = 'self_paced'` + `target_kind = 'prompt'`.
+   *  `None`/blank ⇒ an ordinary task.
+   */
+  completion_condition?: string
   cron_expr?: string
   inputs_json?: unknown
   model_id: string
@@ -2784,6 +2816,16 @@ export interface ListSystemServersQuery {
   per_page?: number
   search?: string
   status?: string
+}
+
+/**
+ * Query params for `GET /api/scheduled-tasks` (ITEM-23/DEC-47). An optional
+ *  `conversation_id` filters to the tasks BOUND to that conversation (the in-chat
+ *  "attached loops/schedules" list); omitting it returns all of the user's tasks
+ *  (back-compat).
+ */
+export interface ListTasksParams {
+  conversation_id?: string
 }
 
 /** Query params for the tool-call history list. */
@@ -5379,6 +5421,15 @@ export interface ScheduledTask {
   allowed_unattended_tools: unknown
   assistant_id?: string
   bound_conversation_id?: string
+  /**
+   * ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+   *  When set (on a `self_paced` prompt task), each fired turn's result is judged
+   *  by an isolated cheap-model evaluator against this natural-language condition;
+   *  'done' self-stops the loop, 'not_done' re-arms another turn until
+   *  `goal_seek_max_turns` / the `max_horizon_days` backstop → stop 'incomplete'.
+   *  NULL ⇒ an ordinary (non-goal-seeking) task.
+   */
+  completion_condition?: string
   consecutive_failures: number
   created_at: string
   cron_expr?: string
@@ -5444,6 +5495,12 @@ export interface ScheduledTaskRun {
 export interface SchedulerAdminSettings {
   max_active_tasks_per_user: number
   max_consecutive_failures: number
+  /**
+   * ITEM-21 / DEC-45: the absolute self-paced backstop (days). A self-paced
+   *  task's model-proposed delay is clamped to at most this, and the task
+   *  self-stops `max_horizon_days` after creation. Default 7, range 1..=365.
+   */
+  max_horizon_days: number
   min_interval_seconds: number
   notification_retention_days: number
   updated_at: string
@@ -6057,8 +6114,16 @@ export interface UnreadCount {
 export interface UpdateAgentAdminSettingsRequest {
   default_max_steps?: number
   default_sandbox_mode?: string
+  fan_out_max_children_per_call?: number
   fan_out_max_depth?: number
   fan_out_max_threads?: number
+  /**
+   * Goal-seeking evaluator model (DEC-61) — tri-state (null ⇒ clear back to
+   *  "use the run's own model").
+   */
+  goal_eval_model_id?: string
+  /** Max goal-seeking turns (DEC-62), 1..=50. */
+  goal_seek_max_turns?: number
   per_run_token_cap?: number
   per_step_token_cap?: number
   reviewer_enabled?: boolean
@@ -6429,6 +6494,7 @@ export interface UpdateScheduledTask {
 export interface UpdateSchedulerAdminSettings {
   max_active_tasks_per_user: number
   max_consecutive_failures: number
+  max_horizon_days: number
   min_interval_seconds: number
   notification_retention_days: number
 }
@@ -7114,6 +7180,13 @@ export interface WorkflowRun {
   final_output_json?: unknown
   id: string
   inputs_json: unknown
+  /**
+   * Orthogonal background-run discriminator (raw DB text; parse with
+   *  [`JobKind::from_db_str`]). `'workflow'` for the classic YAML-DAG run.
+   *  Kept as `String` (not the enum) so an unknown value from a newer server
+   *  round-trips without a deserialization failure — same posture as `status`.
+   */
+  job_kind: string
   model_id?: string
   pending_elicitation_json?: unknown
   run_kind: string
@@ -7132,7 +7205,12 @@ export interface WorkflowRun {
   total_tokens: number
   updated_at: string
   user_id: string
-  workflow_id: string
+  /**
+   * NULL for a generalized background run (`job_kind != 'workflow'`) — a
+   *  sub-agent turn / sandbox exec has no backing `workflows` bundle
+   *  (ITEM-14 / DEC-22). Always set for a classic `workflow`-kind run.
+   */
+  workflow_id?: string
 }
 
 export interface WorkflowRunListResponse {
@@ -8263,7 +8341,7 @@ export type ApiEndpointParameters = {
   'ScheduledTask.create': CreateScheduledTask
   'ScheduledTask.delete': { id: string }
   'ScheduledTask.get': { id: string }
-  'ScheduledTask.list': void
+  'ScheduledTask.list': { conversation_id?: string }
   'ScheduledTask.listRuns': { id: string } & PaginationQuery
   'ScheduledTask.runNow': { id: string }
   'ScheduledTask.testFire': TestFireRequest

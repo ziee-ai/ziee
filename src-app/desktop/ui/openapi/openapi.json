@@ -14389,6 +14389,447 @@
         ]
       }
     },
+    "/api/code-sandbox/resource-limits": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Read the singleton sandbox resource-limits configuration",
+        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
+        "operationId": "CodeSandbox.getResourceLimits",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the sandbox resource limits configuration.",
+                        "name": "CodeSandboxResourceLimitsRead",
+                        "value": "code_sandbox::resource_limits::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Update the singleton sandbox resource-limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
+        "operationId": "CodeSandbox.updateResourceLimits",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
+                        "name": "CodeSandboxResourceLimitsManage",
+                        "value": "code_sandbox::resource_limits::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/flavors": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List selectable sandbox rootfs flavors + host command allowlist",
+        "description": "Powers the MCP server form's sandbox flavor picker AND the MCP user-policy admin card's flavor select. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
+        "operationId": "CodeSandbox.listFlavors",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "REST response for the MCP-server form's sandbox flavor picker:\n the selectable rootfs flavors plus the host command allowlist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxFlavorsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List installed + available rootfs versions",
+        "description": "Returns the system-wide pin, every downloaded artifact, and (best-effort) the GitHub Releases catalog. The UI uses this single call to render the rootfs-versions admin page.",
+        "operationId": "CodeSandbox.listRootfsVersions",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/install": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Spawn a background install task for a rootfs artifact",
+        "description": "Spawns a background task to download the matching artifact from the GitHub release, sha256 + cosign verify it, and record the row in `code_sandbox_rootfs_artifacts`. Returns 202 Accepted immediately with the task's initial state; live progress is available via `GET .../install/subscribe` (SSE).",
+        "operationId": "CodeSandbox.installRootfsVersion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallTaskState"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/install/subscribe": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to rootfs install task progress (SSE)",
+        "description": "Server-Sent Events stream of `connected | taskStarted | progress | complete | failed | taskState` events for every install task. On connect the stream emits a `connected` event then replays the current registry (recent terminal states + in-flight tasks) so a fresh subscriber doesn't have to wait for the next tick.",
+        "operationId": "CodeSandbox.subscribeRootfsInstallProgress",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEInstallTaskEvent"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/set-pin": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Change the system-wide rootfs version pin",
+        "description": "Validates the target version exists on GitHub, updates the pin in `code_sandbox_settings`, then schedules a drain-then- evict task for every old-version mount. On a major version bump the workspace install-cache subdirs (`.local`, `.cache`, `.npm`, ...) are wiped across both per-conversation and per-MCP-server workspaces AFTER drain; minor + patch bumps preserve workspace state. Returns the swap outcome (draining-mount count + cache wipe policy) alongside the refreshed status snapshot.",
+        "operationId": "CodeSandbox.setRootfsPin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetPinResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/{id}": {
+      "delete": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Delete an installed rootfs artifact",
+        "description": "Deletes the DB row + the on-disk artifact + sidecars. Refused with 409 when the row is the currently-pinned version (change the pin first).",
+        "operationId": "CodeSandbox.deleteRootfsVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -15899,447 +16340,6 @@
         ]
       }
     },
-    "/api/code-sandbox/resource-limits": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Read the singleton sandbox resource-limits configuration",
-        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
-        "operationId": "CodeSandbox.getResourceLimits",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the sandbox resource limits configuration.",
-                        "name": "CodeSandboxResourceLimitsRead",
-                        "value": "code_sandbox::resource_limits::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Update the singleton sandbox resource-limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
-        "operationId": "CodeSandbox.updateResourceLimits",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
-                        "name": "CodeSandboxResourceLimitsManage",
-                        "value": "code_sandbox::resource_limits::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/flavors": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List selectable sandbox rootfs flavors + host command allowlist",
-        "description": "Powers the MCP server form's sandbox flavor picker AND the MCP user-policy admin card's flavor select. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
-        "operationId": "CodeSandbox.listFlavors",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List rootfs versions and watch install progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "REST response for the MCP-server form's sandbox flavor picker:\n the selectable rootfs flavors plus the host command allowlist.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SandboxFlavorsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List installed + available rootfs versions",
-        "description": "Returns the system-wide pin, every downloaded artifact, and (best-effort) the GitHub Releases catalog. The UI uses this single call to render the rootfs-versions admin page.",
-        "operationId": "CodeSandbox.listRootfsVersions",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List rootfs versions and watch install progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VersionStatus"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/install": {
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Spawn a background install task for a rootfs artifact",
-        "description": "Spawns a background task to download the matching artifact from the GitHub release, sha256 + cosign verify it, and record the row in `code_sandbox_rootfs_artifacts`. Returns 202 Accepted immediately with the task's initial state; live progress is available via `GET .../install/subscribe` (SSE).",
-        "operationId": "CodeSandbox.installRootfsVersion",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InstallVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "202": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstallTaskState"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/install/subscribe": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Subscribe to rootfs install task progress (SSE)",
-        "description": "Server-Sent Events stream of `connected | taskStarted | progress | complete | failed | taskState` events for every install task. On connect the stream emits a `connected` event then replays the current registry (recent terminal states + in-flight tasks) so a fresh subscriber doesn't have to wait for the next tick.",
-        "operationId": "CodeSandbox.subscribeRootfsInstallProgress",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List rootfs versions and watch install progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SSEInstallTaskEvent"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/set-pin": {
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Change the system-wide rootfs version pin",
-        "description": "Validates the target version exists on GitHub, updates the pin in `code_sandbox_settings`, then schedules a drain-then- evict task for every old-version mount. On a major version bump the workspace install-cache subdirs (`.local`, `.cache`, `.npm`, ...) are wiped across both per-conversation and per-MCP-server workspaces AFTER drain; minor + patch bumps preserve workspace state. Returns the swap outcome (draining-mount count + cache wipe policy) alongside the refreshed status snapshot.",
-        "operationId": "CodeSandbox.setRootfsPin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetPinRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetPinResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/{id}": {
-      "delete": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Delete an installed rootfs artifact",
-        "description": "Deletes the DB row + the on-disk artifact + sidecars. Refused with 409 when the row is the currently-pinned version (change the pin first).",
-        "operationId": "CodeSandbox.deleteRootfsVersion",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VersionStatus"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/hardware": {
       "get": {
         "tags": [
@@ -16461,233 +16461,6 @@
             }
           }
         }
-      }
-    },
-    "/api/summarization/settings": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Read deployment-wide summarization settings",
-        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
-        "operationId": "SummarizationAdmin.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
-                        "name": "SummarizationSettingsRead",
-                        "value": "summarization::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Update deployment-wide summarization settings",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
-        "operationId": "SummarizationAdmin.update",
-        "requestBody": {
-          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/conversations/{id}/summary": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Get the active-branch summary for a conversation (null if none)",
-        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
-        "operationId": "Summarization.getConversationSummary",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConversationSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/_test/summarization/refresh": {
-      "post": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
-        "operationId": "SummarizationTest.refresh",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRefreshRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
       }
     },
     "/api/memories": {
@@ -17760,6 +17533,233 @@
           },
           "400": {
             "description": "Validation failed (out-of-range token cap / max-steps / fan-out, unknown sandbox/approval mode, or oversized reviewer_policy)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
           }
         },
         "security": [
@@ -19005,6 +19005,162 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
           }
         },
         "security": [
@@ -20748,162 +20904,6 @@
         ]
       }
     },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/health": {
       "get": {
         "tags": [
@@ -21513,64 +21513,6 @@
         ]
       }
     },
-    "/api/app/setup/status": {
-      "get": {
-        "tags": [
-          "app"
-        ],
-        "description": "Check if initial admin setup is required",
-        "operationId": "App.getSetupStatus",
-        "responses": {
-          "200": {
-            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/app/setup/admin": {
-      "post": {
-        "tags": [
-          "app"
-        ],
-        "description": "Create the first administrator account",
-        "operationId": "App.setupAdmin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupAdminRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "no content"
-          }
-        }
-      }
-    },
     "/api/js-tool/settings": {
       "get": {
         "tags": [
@@ -21694,6 +21636,21 @@
         "summary": "List your scheduled tasks",
         "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
         "operationId": "ScheduledTask.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -22316,6 +22273,64 @@
             "bearerAuth": []
           }
         ]
+      }
+    },
+    "/api/app/setup/status": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "description": "Check if initial admin setup is required",
+        "operationId": "App.getSetupStatus",
+        "responses": {
+          "200": {
+            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/app/setup/admin": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "description": "Create the first administrator account",
+        "operationId": "App.setupAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "no content"
+          }
+        }
       }
     },
     "/api/server-update/status": {
@@ -24591,6 +24606,1021 @@
           }
         ]
       }
+    },
+    "/api/desktop/backend/status": {
+      "get": {
+        "tags": [
+          "desktop-backend"
+        ],
+        "description": "Get backend server status",
+        "operationId": "DesktopBackend.status",
+        "responses": {
+          "200": {
+            "description": "Backend status response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/settings": {
+      "get": {
+        "tags": [
+          "desktop-settings"
+        ],
+        "description": "Get all desktop settings",
+        "operationId": "DesktopSettings.getAll",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllSettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/settings/{key}": {
+      "get": {
+        "tags": [
+          "desktop-settings"
+        ],
+        "description": "Get a specific desktop setting by key",
+        "operationId": "DesktopSettings.get",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "desktop-settings"
+        ],
+        "description": "Set a desktop setting value",
+        "operationId": "DesktopSettings.set",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSettingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "desktop-settings"
+        ],
+        "description": "Delete a desktop setting",
+        "operationId": "DesktopSettings.delete",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/updater/check": {
+      "post": {
+        "tags": [
+          "updater"
+        ],
+        "description": "Check for an available application update.",
+        "operationId": "Updater.check",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/updater/download": {
+      "post": {
+        "tags": [
+          "updater"
+        ],
+        "description": "Start downloading the available update (progress via /status).",
+        "operationId": "Updater.download",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/updater/install": {
+      "post": {
+        "tags": [
+          "updater"
+        ],
+        "description": "Install the downloaded update and restart the app.",
+        "operationId": "Updater.install",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimpleResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/updater/status": {
+      "get": {
+        "tags": [
+          "updater"
+        ],
+        "description": "Get the current update status (checking/downloading/progress).",
+        "operationId": "Updater.status",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatusResponse2"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/remote-access/status": {
+      "get": {
+        "tags": [
+          "remote-access"
+        ],
+        "summary": "Get the combined remote-access status (settings + live tunnel state).",
+        "description": "\n\n**Required Permission:** `remote_access::read`\n\nRead remote-access settings, tunnel status, and current public URL.",
+        "operationId": "RemoteAccess.getStatus",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read remote-access settings, tunnel status, and current public URL.",
+                        "name": "RemoteAccessRead",
+                        "value": "remote_access::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: remote_access::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "GET /api/remote-access/status — combined status surface for the\n admin page. Aggregates settings + live tunnel state + password\n rotation status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteAccessStatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/remote-access/settings": {
+      "get": {
+        "tags": [
+          "remote-access"
+        ],
+        "summary": "Get the remote-access settings (never echoes the ngrok auth token).",
+        "description": "\n\n**Required Permission:** `remote_access::read`\n\nRead remote-access settings, tunnel status, and current public URL.",
+        "operationId": "RemoteAccess.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read remote-access settings, tunnel status, and current public URL.",
+                        "name": "RemoteAccessRead",
+                        "value": "remote_access::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: remote_access::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "GET /api/remote-access/settings response. Token is NEVER included\n in the response body — only the `auth_token_set` boolean. The\n domain IS included because it becomes public the moment the tunnel\n connects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteAccessSettingsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "remote-access"
+        ],
+        "summary": "Update remote-access settings (ngrok token, domain, auto-start, password-auth).",
+        "description": "Three-state semantics per field: missing key = preserve, null = clear, value = set. Token plaintext is encrypted at rest and never echoed back.",
+        "operationId": "RemoteAccess.updateSettings",
+        "requestBody": {
+          "description": "PUT /api/remote-access/settings request body. Each field uses\n three-state semantics:\n   - missing key → don't touch (keep DB value)\n   - null → clear (set to NULL / FALSE)\n   - value → set\n\n Implemented via `Option<Option<T>>` + a custom serde fn that\n distinguishes \"absent\" from \"null\". The frontend matches by\n only sending fields it actually wants to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRemoteAccessSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
+                        "name": "RemoteAccessManage",
+                        "value": "remote_access::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: remote_access::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "GET /api/remote-access/settings response. Token is NEVER included\n in the response body — only the `auth_token_set` boolean. The\n domain IS included because it becomes public the moment the tunnel\n connects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoteAccessSettingsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/remote-access/tunnel/start": {
+      "post": {
+        "tags": [
+          "remote-access"
+        ],
+        "summary": "Start the ngrok tunnel using the saved auth token + optional domain.",
+        "description": "\n\n**Required Permission:** `remote_access::manage`\n\nSave the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
+        "operationId": "RemoteAccess.startTunnel",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
+                        "name": "RemoteAccessManage",
+                        "value": "remote_access::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: remote_access::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "POST /api/remote-access/tunnel/start response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TunnelStartResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tunnel already running"
+          },
+          "422": {
+            "description": "No auth token configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/remote-access/tunnel/stop": {
+      "post": {
+        "tags": [
+          "remote-access"
+        ],
+        "summary": "Stop the active ngrok tunnel. Idempotent.",
+        "description": "\n\n**Required Permission:** `remote_access::manage`\n\nSave the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
+        "operationId": "RemoteAccess.stopTunnel",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
+                        "name": "RemoteAccessManage",
+                        "value": "remote_access::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: remote_access::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/remote-access/admin-password": {
+      "post": {
+        "tags": [
+          "remote-access"
+        ],
+        "summary": "Set the desktop admin password (no current-password required; localhost-gated).",
+        "description": "Replaces the admin user's password without requiring the current one. Safe because the localhost-Host middleware that wraps every /api/remote-access/* route already gates this to callers with shell-level access to the desktop machine. The standard /api/users/me/password endpoint with current-password verification remains available for multi-user web deployments.",
+        "operationId": "RemoteAccess.setAdminPassword",
+        "requestBody": {
+          "description": "POST /api/remote-access/admin-password request.\n\n No `current_password` field — physical presence at the desktop\n (proven by the localhost-Host middleware) IS the auth proof.\n The standard `/api/users/me/password` flow that requires the\n current password is still available for multi-user web deployments;\n this endpoint exists specifically for the single-admin desktop\n case where the bootstrap default is a published string and\n requiring it would be friction without security benefit.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAdminPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
+                        "name": "RemoteAccessManage",
+                        "value": "remote_access::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: remote_access::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "New password fails strength check"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/auth/magic-link/issue": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Mint a one-time magic-link token (admin-only, localhost-gated).",
+        "description": "Returns the plaintext token ONCE. The token is single-use, has a 5-minute TTL, and authenticates as the admin user when redeemed via POST /api/auth/magic-link/exchange. Only reachable from localhost (i.e. the desktop UI); rejected when called via the public tunnel.",
+        "operationId": "Auth.magicLinkIssue",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.",
+                        "name": "RemoteAccessManage",
+                        "value": "remote_access::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: remote_access::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response of POST /api/auth/magic-link/issue.\n\n `token` is the plaintext — returned ONCE and never persisted.\n The desktop UI encodes it into the QR URL\n `https://<tunnel>/auth/magic/<token>`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MagicLinkIssueResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/auth/magic-link/exchange": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Exchange a magic-link token for a JWT pair (unauth, single-use).",
+        "operationId": "Auth.magicLinkExchange",
+        "requestBody": {
+          "description": "Body of POST /api/auth/magic-link/exchange.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MagicLinkExchangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token is invalid, expired, or already used"
+          }
+        }
+      }
+    },
+    "/api/auth/config": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Public auth config that drives the login page (no auth required).",
+        "description": "Returns flags describing what login UI to render for this request. Tunneled requests (Host header is not localhost) get hide_username=true and password_auth_enabled mirrors the admin's Remote Access toggle. Localhost requests always get the full multi-user UI behavior.",
+        "operationId": "Auth.getConfig",
+        "responses": {
+          "200": {
+            "description": "Public, unauthenticated config that drives how the login page\n renders for a given request. Returned by `GET /api/auth/config`.\n\n Computed from the `remote_access_settings` singleton + the\n inbound request's `Host` header. Tunneled requests (Host is not\n localhost) get `hide_username: true` and only see the password\n form when `password_auth_enabled: true`. Localhost requests get\n the full multi-user UI behavior the web bundle would normally use.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login-password-only": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Password-only login for the single-admin desktop deployment.",
+        "description": "Authenticates as the admin user using only a password. Rejected with 403 when called from a tunneled request and the admin has not enabled password authentication via the Remote Access settings.",
+        "operationId": "Auth.loginPasswordOnly",
+        "requestBody": {
+          "description": "Body of `POST /api/auth/login-password-only`. Authenticates as the\n single admin user using just a password (no username). Used by\n the remote-served login page when `hide_username: true`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordOnlyLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid password"
+          },
+          "403": {
+            "description": "Password login is disabled for tunneled requests"
+          }
+        }
+      }
+    },
+    "/api/users/me/password": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Change the authenticated user's password.",
+        "description": "Requires the current password as proof. On success, bumps `users.password_changed_at` (used by the Remote Access module to gate enabling password authentication).",
+        "operationId": "Users.changeOwnPassword",
+        "requestBody": {
+          "description": "Body of `POST /api/users/me/password`. Current + new password.\n The endpoint sets `users.password_changed_at` so the Remote\n Access module can allow enabling password authentication.\n\n This handler lives in the desktop crate because its sole consumer\n is the Remote Access flow — only the desktop installs the\n migration that adds `password_changed_at`, and only the desktop\n gates password-auth toggling on it.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "no content"
+          },
+          "401": {
+            "description": "Current password incorrect"
+          },
+          "400": {
+            "description": "New password fails strength check"
+          }
+        }
+      }
+    },
+    "/api/host-mounts/policy": {
+      "get": {
+        "tags": [
+          "host-mount"
+        ],
+        "summary": "Get the deployment host-mount policy (enabled / allowed prefixes / RW opt-in).",
+        "description": "\n\n**Required Permission:** `host_mount::read`\n\nRead host-folder mount configuration and policy.",
+        "operationId": "HostMount.getPolicy",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read host-folder mount configuration and policy.",
+                        "name": "HostMountRead",
+                        "value": "host_mount::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: host_mount::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment policy (singleton) — GET response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostMountPolicyResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "host-mount"
+        ],
+        "summary": "Update the deployment host-mount policy.",
+        "description": "\n\n**Required Permission:** `host_mount::manage`\n\nConfigure host-folder mounts on projects/conversations and the host-mount policy.",
+        "operationId": "HostMount.updatePolicy",
+        "requestBody": {
+          "description": "Deployment policy — PUT body (tri-state-free: omitted field = unchanged).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateHostMountPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Configure host-folder mounts on projects/conversations and the host-mount policy.",
+                        "name": "HostMountManage",
+                        "value": "host_mount::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: host_mount::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment policy (singleton) — GET response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostMountPolicyResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/host-mounts/conversation/{conversation_id}": {
+      "get": {
+        "tags": [
+          "host-mount"
+        ],
+        "summary": "List the host folders mounted on a conversation.",
+        "description": "\n\n**Required Permission:** `host_mount::read`\n\nRead host-folder mount configuration and policy.",
+        "operationId": "HostMount.getConversationMounts",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read host-folder mount configuration and policy.",
+                        "name": "HostMountRead",
+                        "value": "host_mount::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: host_mount::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "GET response / PUT body for a scope's (conversation or project) mount list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostMountsBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "host-mount"
+        ],
+        "summary": "Replace the host folders mounted on a conversation.",
+        "description": "\n\n**Required Permission:** `host_mount::manage`\n\nConfigure host-folder mounts on projects/conversations and the host-mount policy.",
+        "operationId": "HostMount.putConversationMounts",
+        "requestBody": {
+          "description": "GET response / PUT body for a scope's (conversation or project) mount list.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostMountsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Configure host-folder mounts on projects/conversations and the host-mount policy.",
+                        "name": "HostMountManage",
+                        "value": "host_mount::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: host_mount::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "GET response / PUT body for a scope's (conversation or project) mount list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostMountsBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/host-mounts/project/{project_id}": {
+      "get": {
+        "tags": [
+          "host-mount"
+        ],
+        "summary": "List the host folders mounted on a project.",
+        "description": "\n\n**Required Permission:** `host_mount::read`\n\nRead host-folder mount configuration and policy.",
+        "operationId": "HostMount.getProjectMounts",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read host-folder mount configuration and policy.",
+                        "name": "HostMountRead",
+                        "value": "host_mount::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: host_mount::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "GET response / PUT body for a scope's (conversation or project) mount list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostMountsBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "host-mount"
+        ],
+        "summary": "Replace the host folders mounted on a project.",
+        "description": "\n\n**Required Permission:** `host_mount::manage`\n\nConfigure host-folder mounts on projects/conversations and the host-mount policy.",
+        "operationId": "HostMount.putProjectMounts",
+        "requestBody": {
+          "description": "GET response / PUT body for a scope's (conversation or project) mount list.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostMountsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Configure host-folder mounts on projects/conversations and the host-mount policy.",
+                        "name": "HostMountManage",
+                        "value": "host_mount::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: host_mount::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "GET response / PUT body for a scope's (conversation or project) mount list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostMountsBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -24614,11 +25644,29 @@
           "default_sandbox_mode": {
             "type": "string"
           },
+          "fan_out_max_children_per_call": {
+            "description": "Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates\n with an explicit \"capped at N\" note. Threaded into the crate's\n `SubagentLimits.max_children_per_call`.",
+            "type": "integer",
+            "format": "int32"
+          },
           "fan_out_max_depth": {
             "type": "integer",
             "format": "int32"
           },
           "fan_out_max_threads": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "goal_eval_model_id": {
+            "description": "Goal-seeking evaluator model (ITEM-24 / DEC-61). NULL ⇒ fall back to the\n goal-seeking run's OWN model (mirrors `reviewer_model_id`). Resolved under\n the run owner's RBAC at evaluation time.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "goal_seek_max_turns": {
+            "description": "Max turns a goal-seeking loop may fire before stopping 'incomplete'\n (ITEM-24 / DEC-62). Default 10, range 1..=50; the `max_horizon_days`\n backstop is the other ceiling.",
             "type": "integer",
             "format": "int32"
           },
@@ -24665,7 +25713,23 @@
           "default_max_steps",
           "fan_out_max_threads",
           "fan_out_max_depth",
+          "fan_out_max_children_per_call",
+          "goal_seek_max_turns",
           "updated_at"
+        ]
+      },
+      "AllSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingItem"
+            }
+          }
+        },
+        "required": [
+          "settings"
         ]
       },
       "AllowedTool": {
@@ -24922,6 +25986,26 @@
         },
         "required": [
           "file_id"
+        ]
+      },
+      "AuthConfigResponse": {
+        "description": "Public, unauthenticated config that drives how the login page\n renders for a given request. Returned by `GET /api/auth/config`.\n\n Computed from the `remote_access_settings` singleton + the\n inbound request's `Host` header. Tunneled requests (Host is not\n localhost) get `hide_username: true` and only see the password\n form when `password_auth_enabled: true`. Localhost requests get\n the full multi-user UI behavior the web bundle would normally use.",
+        "type": "object",
+        "properties": {
+          "hide_username": {
+            "type": "boolean"
+          },
+          "magic_link_enabled": {
+            "type": "boolean"
+          },
+          "password_auth_enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "password_auth_enabled",
+          "magic_link_enabled",
+          "hide_username"
         ]
       },
       "AuthProviderResponse": {
@@ -25277,6 +26361,26 @@
           "prerelease"
         ]
       },
+      "BackendStatusResponse": {
+        "description": "Backend status response",
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "running",
+          "ready",
+          "version"
+        ]
+      },
       "BatchReport": {
         "description": "The per-item batch report returned by import / verify.",
         "type": "object",
@@ -25569,6 +26673,22 @@
       },
       "ChangePasswordRequest": {
         "description": "Self-service password change for the authenticated user. Requires\n the current password as proof. Only valid for local-password\n accounts (`password_hash IS NOT NULL`).",
+        "type": "object",
+        "properties": {
+          "current_password": {
+            "type": "string"
+          },
+          "new_password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ]
+      },
+      "ChangePasswordRequest2": {
+        "description": "Body of `POST /api/users/me/password`. Current + new password.\n The endpoint sets `users.password_changed_at` so the Remote\n Access module can allow enabling password authentication.\n\n This handler lives in the desktop crate because its sole consumer\n is the Remote Access flow — only the desktop installs the\n migration that adds `password_changed_at`, and only the desktop\n gates password-auth toggling on it.",
         "type": "object",
         "properties": {
           "current_password": {
@@ -27295,6 +28415,23 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "bound_conversation_id": {
+            "description": "ITEM-22 / DEC-46: bind a prompt-kind task to an EXISTING conversation (the\n \"schedule/loop THIS chat\" affordance) so its firings append to that chat\n instead of a fresh per-task conversation. Ownership is verified at create\n time (a foreign id → 404); `None` keeps the create-a-conversation default.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "completion_condition": {
+            "description": "ITEM-24 / DEC-61/62/63: the goal-seeking \"done when…\" completion condition.\n A non-blank value makes this a goal-seeking task and (validated in the\n handler) requires `schedule_kind = 'self_paced'` + `target_kind = 'prompt'`.\n `None`/blank ⇒ an ordinary task.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           },
           "cron_expr": {
             "type": [
@@ -29932,6 +31069,44 @@
           "h"
         ]
       },
+      "HostMountPolicyResponse": {
+        "description": "Deployment policy (singleton) — GET response.",
+        "type": "object",
+        "properties": {
+          "allow_readwrite": {
+            "type": "boolean"
+          },
+          "allowed_prefixes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "allowed_prefixes",
+          "allow_readwrite"
+        ]
+      },
+      "HostMountsBody": {
+        "description": "GET response / PUT body for a scope's (conversation or project) mount list.",
+        "type": "object",
+        "properties": {
+          "mounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MountEntry"
+            }
+          }
+        },
+        "required": [
+          "mounts"
+        ]
+      },
       "HubAssistant": {
         "description": "Hub assistant entry.\n\n Like HubModel, the identity envelope is reverse-DNS via `name`. The\n body has a single `dependencies[]` list instead of separate\n `recommended_models` / `recommended_mcp_servers` / `use_cases` /\n `example_prompts` / `popularity_score` fields.",
         "type": "object",
@@ -31917,6 +33092,20 @@
           }
         }
       },
+      "ListTasksParams": {
+        "description": "Query params for `GET /api/scheduled-tasks` (ITEM-23/DEC-47). An optional\n `conversation_id` filters to the tasks BOUND to that conversation (the in-chat\n \"attached loops/schedules\" list); omitting it returns all of the user's tasks\n (back-compat).",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          }
+        }
+      },
       "ListToolCallsQuery": {
         "description": "Query params for the tool-call history list.",
         "type": "object",
@@ -32764,6 +33953,35 @@
             }
           }
         }
+      },
+      "MagicLinkExchangeRequest": {
+        "description": "Body of POST /api/auth/magic-link/exchange.",
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "MagicLinkIssueResponse": {
+        "description": "Response of POST /api/auth/magic-link/issue.\n\n `token` is the plaintext — returned ONCE and never persisted.\n The desktop UI encodes it into the QR URL\n `https://<tunnel>/auth/magic/<token>`.",
+        "type": "object",
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at"
+        ]
       },
       "McpArgument": {
         "description": "Discriminated argument under `McpPackage.runtime_arguments` /\n `package_arguments`. The official schema is union-shaped\n `{ type: \"positional\" | \"named\", ... }`; this struct flattens both\n arms (the `name` field is present only for `\"named\"` args) so a\n single shape can deserialize either.",
@@ -35237,6 +36455,24 @@
           "pinned"
         ]
       },
+      "MountEntry": {
+        "description": "One mounted host folder (stored as a JSONB array element on `host_mounts`).",
+        "type": "object",
+        "properties": {
+          "host_path": {
+            "description": "Absolute path on the user's machine (the desktop host).",
+            "type": "string"
+          },
+          "read_only": {
+            "description": "Read-only by default; read-write additionally requires the policy's\n `allow_readwrite`.",
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "host_path"
+        ]
+      },
       "MutationResponse": {
         "description": "Generic mutation acknowledgement.",
         "type": "object",
@@ -35568,6 +36804,18 @@
             "default": null
           }
         }
+      },
+      "PasswordOnlyLoginRequest": {
+        "description": "Body of `POST /api/auth/login-password-only`. Authenticates as the\n single admin user using just a password (no username). Used by\n the remote-served login page when `hide_username: true`.",
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ]
       },
       "PendingApprovalsResponse": {
         "type": "object",
@@ -36479,6 +37727,95 @@
           "username",
           "email",
           "password"
+        ]
+      },
+      "RemoteAccessSettingsResponse": {
+        "description": "GET /api/remote-access/settings response. Token is NEVER included\n in the response body — only the `auth_token_set` boolean. The\n domain IS included because it becomes public the moment the tunnel\n connects.",
+        "type": "object",
+        "properties": {
+          "auth_token_set": {
+            "type": "boolean"
+          },
+          "auto_start_tunnel": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ngrok_domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password_auth_enabled": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "auth_token_set",
+          "auto_start_tunnel",
+          "password_auth_enabled",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "RemoteAccessStatusResponse": {
+        "description": "GET /api/remote-access/status — combined status surface for the\n admin page. Aggregates settings + live tunnel state + password\n rotation status.",
+        "type": "object",
+        "properties": {
+          "auth_token_set": {
+            "type": "boolean"
+          },
+          "auto_start_tunnel": {
+            "type": "boolean"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ngrok_domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password_auth_enabled": {
+            "type": "boolean"
+          },
+          "password_rotated": {
+            "type": "boolean"
+          },
+          "public_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "tunnel_state": {
+            "$ref": "#/components/schemas/TunnelStateKind"
+          }
+        },
+        "required": [
+          "password_rotated",
+          "password_auth_enabled",
+          "auth_token_set",
+          "auto_start_tunnel",
+          "tunnel_state"
         ]
       },
       "RepositoryAuthConfig": {
@@ -39048,6 +40385,13 @@
             ],
             "format": "uuid"
           },
+          "completion_condition": {
+            "description": "ITEM-24 / DEC-61/62/63: the goal-seeking \"done when…\" completion condition.\n When set (on a `self_paced` prompt task), each fired turn's result is judged\n by an isolated cheap-model evaluator against this natural-language condition;\n 'done' self-stops the loop, 'not_done' re-arms another turn until\n `goal_seek_max_turns` / the `max_horizon_days` backstop → stop 'incomplete'.\n NULL ⇒ an ordinary (non-goal-seeking) task.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "consecutive_failures": {
             "type": "integer",
             "format": "int32"
@@ -39277,6 +40621,11 @@
             "type": "integer",
             "format": "int32"
           },
+          "max_horizon_days": {
+            "description": "ITEM-21 / DEC-45: the absolute self-paced backstop (days). A self-paced\n task's model-proposed delay is clamped to at most this, and the task\n self-stops `max_horizon_days` after creation. Default 7, range 1..=365.",
+            "type": "integer",
+            "format": "int32"
+          },
           "min_interval_seconds": {
             "type": "integer",
             "format": "int32"
@@ -39295,6 +40644,7 @@
           "min_interval_seconds",
           "max_consecutive_failures",
           "notification_retention_days",
+          "max_horizon_days",
           "updated_at"
         ]
       },
@@ -39455,6 +40805,18 @@
           "updated_at"
         ]
       },
+      "SetAdminPasswordRequest": {
+        "description": "POST /api/remote-access/admin-password request.\n\n No `current_password` field — physical presence at the desktop\n (proven by the localhost-Host middleware) IS the auth proof.\n The standard `/api/users/me/password` flow that requires the\n current password is still available for multi-user web deployments;\n this endpoint exists specifically for the single-admin desktop\n case where the bootstrap default is a published string and\n requiring it would be friction without security benefit.",
+        "type": "object",
+        "properties": {
+          "new_password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_password"
+        ]
+      },
       "SetMcpServerOAuthConfigRequest": {
         "description": "Request to set (create or replace) a server's OAuth config.",
         "type": "object",
@@ -39511,6 +40873,17 @@
           "status"
         ]
       },
+      "SetSettingRequest": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      },
       "SetSubscriptionRequest": {
         "description": "Body of `PUT /api/chat/stream/subscription`: the conversation whose live\n tokens this connection wants (or `null` to receive nothing).",
         "type": "object",
@@ -39536,6 +40909,38 @@
         },
         "required": [
           "timeout_secs"
+        ]
+      },
+      "SettingItem": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ]
+      },
+      "SettingResponse": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key"
         ]
       },
       "SetupAdminRequest": {
@@ -39573,6 +40978,21 @@
         },
         "required": [
           "needs_setup"
+        ]
+      },
+      "SimpleResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "message"
         ]
       },
       "Skill": {
@@ -39853,6 +41273,21 @@
         },
         "required": [
           "styles"
+        ]
+      },
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "message"
         ]
       },
       "SummarizationAdminSettings": {
@@ -41016,6 +42451,32 @@
           "status"
         ]
       },
+      "TunnelStartResponse": {
+        "description": "POST /api/remote-access/tunnel/start response.",
+        "type": "object",
+        "properties": {
+          "public_url": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "public_url",
+          "started_at"
+        ]
+      },
+      "TunnelStateKind": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "starting",
+          "connected",
+          "error"
+        ]
+      },
       "UnattendedToolGrant": {
         "description": "One pre-authorized (server, tool?) grant for an unattended run. `tool_name`\n `None` allow-lists the whole server. Structurally identical to the\n scheduler's `AllowedTool` (deserialized from the same JSON), kept here so\n mcp has no scheduler dependency.",
         "type": "object",
@@ -41066,6 +42527,13 @@
               "null"
             ]
           },
+          "fan_out_max_children_per_call": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "fan_out_max_depth": {
             "type": [
               "integer",
@@ -41074,6 +42542,23 @@
             "format": "int32"
           },
           "fan_out_max_threads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "goal_eval_model_id": {
+            "description": "Goal-seeking evaluator model (DEC-61) — tri-state (null ⇒ clear back to\n \"use the run's own model\").",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "goal_seek_max_turns": {
+            "description": "Max goal-seeking turns (DEC-62), 1..=50.",
             "type": [
               "integer",
               "null"
@@ -41202,6 +42687,29 @@
             "default": null
           }
         }
+      },
+      "UpdateCheckResponse": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "available"
+        ]
       },
       "UpdateCodeSandboxResourceLimits": {
         "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
@@ -41596,6 +43104,33 @@
         "required": [
           "workflow_ids"
         ]
+      },
+      "UpdateHostMountPolicyRequest": {
+        "description": "Deployment policy — PUT body (tri-state-free: omitted field = unchanged).",
+        "type": "object",
+        "properties": {
+          "allow_readwrite": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "allowed_prefixes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
       },
       "UpdateJsToolSettings": {
         "description": "Admin PUT payload. All fields optional; absent fields preserve their existing\n value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.",
@@ -42246,6 +43781,39 @@
           }
         }
       },
+      "UpdateRemoteAccessSettingsRequest": {
+        "description": "PUT /api/remote-access/settings request body. Each field uses\n three-state semantics:\n   - missing key → don't touch (keep DB value)\n   - null → clear (set to NULL / FALSE)\n   - value → set\n\n Implemented via `Option<Option<T>>` + a custom serde fn that\n distinguishes \"absent\" from \"null\". The frontend matches by\n only sending fields it actually wants to change.",
+        "type": "object",
+        "properties": {
+          "auto_start_tunnel": {
+            "description": "Booleans don't need null semantics — absent means \"don't touch\".",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "ngrok_auth_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "ngrok_domain": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "password_auth_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateRuntimeSettingsRequest": {
         "type": "object",
         "properties": {
@@ -42370,6 +43938,10 @@
             "type": "integer",
             "format": "int32"
           },
+          "max_horizon_days": {
+            "type": "integer",
+            "format": "int32"
+          },
           "min_interval_seconds": {
             "type": "integer",
             "format": "int32"
@@ -42383,7 +43955,8 @@
           "max_active_tasks_per_user",
           "min_interval_seconds",
           "max_consecutive_failures",
-          "notification_retention_days"
+          "notification_retention_days",
+          "max_horizon_days"
         ]
       },
       "UpdateSessionSettingsRequest": {
@@ -42438,6 +44011,54 @@
           }
         }
       },
+      "UpdateState": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "checking": {
+            "type": "boolean"
+          },
+          "downloading": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "ready_to_install": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "checking",
+          "available",
+          "downloading",
+          "ready_to_install"
+        ]
+      },
       "UpdateStatusResponse": {
         "description": "Cached server update-availability status (admin endpoint).",
         "type": "object",
@@ -42487,6 +44108,17 @@
           "current_version",
           "update_available",
           "enabled"
+        ]
+      },
+      "UpdateStatusResponse2": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/UpdateState"
+          }
+        },
+        "required": [
+          "status"
         ]
       },
       "UpdateSummarizationAdminSettingsRequest": {
@@ -44388,6 +46020,10 @@
             "format": "uuid"
           },
           "inputs_json": true,
+          "job_kind": {
+            "description": "Orthogonal background-run discriminator (raw DB text; parse with\n [`JobKind::from_db_str`]). `'workflow'` for the classic YAML-DAG run.\n Kept as `String` (not the enum) so an unknown value from a newer server\n round-trips without a deserialization failure — same posture as `status`.",
+            "type": "string"
+          },
           "model_id": {
             "type": [
               "string",
@@ -44428,13 +46064,17 @@
             "format": "uuid"
           },
           "workflow_id": {
-            "type": "string",
+            "description": "NULL for a generalized background run (`job_kind != 'workflow'`) — a\n sub-agent turn / sandbox exec has no backing `workflows` bundle\n (ITEM-14 / DEC-22). Always set for a classic `workflow`-kind run.",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           }
         },
         "required": [
           "id",
-          "workflow_id",
+          "job_kind",
           "user_id",
           "run_kind",
           "inputs_json",

@@ -21,8 +21,26 @@
 export interface AgentAdminSettings {
   default_max_steps: number
   default_sandbox_mode: string
+  /**
+   * Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates
+   *  with an explicit "capped at N" note. Threaded into the crate's
+   *  `SubagentLimits.max_children_per_call`.
+   */
+  fan_out_max_children_per_call: number
   fan_out_max_depth: number
   fan_out_max_threads: number
+  /**
+   * Goal-seeking evaluator model (ITEM-24 / DEC-61). NULL ⇒ fall back to the
+   *  goal-seeking run's OWN model (mirrors `reviewer_model_id`). Resolved under
+   *  the run owner's RBAC at evaluation time.
+   */
+  goal_eval_model_id?: string
+  /**
+   * Max turns a goal-seeking loop may fire before stopping 'incomplete'
+   *  (ITEM-24 / DEC-62). Default 10, range 1..=50; the `max_horizon_days`
+   *  backstop is the other ceiling.
+   */
+  goal_seek_max_turns: number
   per_run_token_cap: number
   per_step_token_cap: number
   reviewer_enabled: boolean
@@ -31,6 +49,10 @@ export interface AgentAdminSettings {
   reviewer_risk_thresholds: unknown
   unattended_approval_policy: string
   updated_at: string
+}
+
+export interface AllSettingsResponse {
+  settings: SettingItem[]
 }
 
 /**
@@ -127,6 +149,22 @@ export interface AttachDocumentsResult {
 /** Request body for attach-by-ID (`POST /api/projects/{id}/files`). */
 export interface AttachFileRequest {
   file_id: string
+}
+
+/**
+ * Public, unauthenticated config that drives how the login page
+ *  renders for a given request. Returned by `GET /api/auth/config`.
+ *
+ *  Computed from the `remote_access_settings` singleton + the
+ *  inbound request's `Host` header. Tunneled requests (Host is not
+ *  localhost) get `hide_username: true` and only see the password
+ *  form when `password_auth_enabled: true`. Localhost requests get
+ *  the full multi-user UI behavior the web bundle would normally use.
+ */
+export interface AuthConfigResponse {
+  hide_username: boolean
+  magic_link_enabled: boolean
+  password_auth_enabled: boolean
 }
 
 /**
@@ -284,6 +322,13 @@ export interface AvailableVersion2 {
   version: string
 }
 
+/** Backend status response */
+export interface BackendStatusResponse {
+  ready: boolean
+  running: boolean
+  version: string
+}
+
 /** The per-item batch report returned by import / verify. */
 export interface BatchReport {
   results: CitationItemResult[]
@@ -369,6 +414,21 @@ export type CatalogProvenance = 'seed' | 'pages'
  *  accounts (`password_hash IS NOT NULL`).
  */
 export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
+/**
+ * Body of `POST /api/users/me/password`. Current + new password.
+ *  The endpoint sets `users.password_changed_at` so the Remote
+ *  Access module can allow enabling password authentication.
+ *
+ *  This handler lives in the desktop crate because its sole consumer
+ *  is the Remote Access flow — only the desktop installs the
+ *  migration that adds `password_changed_at`, and only the desktop
+ *  gates password-auth toggling on it.
+ */
+export interface ChangePasswordRequest2 {
   current_password: string
   new_password: string
 }
@@ -1072,6 +1132,20 @@ export interface CreateScheduledTask {
    */
   allowed_unattended_tools?: AllowedTool[]
   assistant_id?: string
+  /**
+   * ITEM-22 / DEC-46: bind a prompt-kind task to an EXISTING conversation (the
+   *  "schedule/loop THIS chat" affordance) so its firings append to that chat
+   *  instead of a fresh per-task conversation. Ownership is verified at create
+   *  time (a foreign id → 404); `None` keeps the create-a-conversation default.
+   */
+  bound_conversation_id?: string
+  /**
+   * ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+   *  A non-blank value makes this a goal-seeking task and (validated in the
+   *  handler) requires `schedule_kind = 'self_paced'` + `target_kind = 'prompt'`.
+   *  `None`/blank ⇒ an ordinary task.
+   */
+  completion_condition?: string
   cron_expr?: string
   inputs_json?: unknown
   model_id: string
@@ -1971,6 +2045,18 @@ export interface HighlightRect {
   y: number
 }
 
+/** Deployment policy (singleton) — GET response. */
+export interface HostMountPolicyResponse {
+  allow_readwrite: boolean
+  allowed_prefixes: string[]
+  enabled: boolean
+}
+
+/** GET response / PUT body for a scope's (conversation or project) mount list. */
+export interface HostMountsBody {
+  mounts: MountEntry[]
+}
+
 /**
  * Hub assistant entry.
  *
@@ -2786,6 +2872,16 @@ export interface ListSystemServersQuery {
   status?: string
 }
 
+/**
+ * Query params for `GET /api/scheduled-tasks` (ITEM-23/DEC-47). An optional
+ *  `conversation_id` filters to the tasks BOUND to that conversation (the in-chat
+ *  "attached loops/schedules" list); omitting it returns all of the user's tasks
+ *  (back-compat).
+ */
+export interface ListTasksParams {
+  conversation_id?: string
+}
+
 /** Query params for the tool-call history list. */
 export interface ListToolCallsQuery {
   /** Filter to a single conversation. */
@@ -3033,6 +3129,23 @@ export interface LoopSettings {
   stop_when_no_tool_calling?: boolean
   /** Stop when any of these specific tools are called */
   stop_when_tools_called?: ToolIdentifier[]
+}
+
+/** Body of POST /api/auth/magic-link/exchange. */
+export interface MagicLinkExchangeRequest {
+  token: string
+}
+
+/**
+ * Response of POST /api/auth/magic-link/issue.
+ *
+ *  `token` is the plaintext — returned ONCE and never persisted.
+ *  The desktop UI encodes it into the QR URL
+ *  `https://<tunnel>/auth/magic/<token>`.
+ */
+export interface MagicLinkIssueResponse {
+  expires_at: string
+  token: string
 }
 
 /**
@@ -4041,6 +4154,17 @@ export interface ModelUsageInfo {
   running: boolean
 }
 
+/** One mounted host folder (stored as a JSONB array element on `host_mounts`). */
+export interface MountEntry {
+  /** Absolute path on the user's machine (the desktop host). */
+  host_path: string
+  /**
+   * Read-only by default; read-write additionally requires the policy's
+   *  `allow_readwrite`.
+   */
+  read_only?: boolean
+}
+
 /** Generic mutation acknowledgement. */
 export interface MutationResponse {
   count?: number
@@ -4186,6 +4310,15 @@ export interface PaginationQuery5 {
    *  fall back to `recent`.
    */
   sort?: string
+}
+
+/**
+ * Body of `POST /api/auth/login-password-only`. Authenticates as the
+ *  single admin user using just a password (no username). Used by
+ *  the remote-served login page when `hide_username: true`.
+ */
+export interface PasswordOnlyLoginRequest {
+  password: string
 }
 
 export interface PendingApprovalsResponse {
@@ -4560,6 +4693,38 @@ export interface RegisterRequest {
   email: string
   password: string
   username: string
+}
+
+/**
+ * GET /api/remote-access/settings response. Token is NEVER included
+ *  in the response body — only the `auth_token_set` boolean. The
+ *  domain IS included because it becomes public the moment the tunnel
+ *  connects.
+ */
+export interface RemoteAccessSettingsResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  created_at: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  updated_at: string
+}
+
+/**
+ * GET /api/remote-access/status — combined status surface for the
+ *  admin page. Aggregates settings + live tunnel state + password
+ *  rotation status.
+ */
+export interface RemoteAccessStatusResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  last_error?: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  password_rotated: boolean
+  public_url?: string
+  started_at?: string
+  tunnel_state: TunnelStateKind
 }
 
 /**
@@ -5379,6 +5544,15 @@ export interface ScheduledTask {
   allowed_unattended_tools: unknown
   assistant_id?: string
   bound_conversation_id?: string
+  /**
+   * ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+   *  When set (on a `self_paced` prompt task), each fired turn's result is judged
+   *  by an isolated cheap-model evaluator against this natural-language condition;
+   *  'done' self-stops the loop, 'not_done' re-arms another turn until
+   *  `goal_seek_max_turns` / the `max_horizon_days` backstop → stop 'incomplete'.
+   *  NULL ⇒ an ordinary (non-goal-seeking) task.
+   */
+  completion_condition?: string
   consecutive_failures: number
   created_at: string
   cron_expr?: string
@@ -5444,6 +5618,12 @@ export interface ScheduledTaskRun {
 export interface SchedulerAdminSettings {
   max_active_tasks_per_user: number
   max_consecutive_failures: number
+  /**
+   * ITEM-21 / DEC-45: the absolute self-paced backstop (days). A self-paced
+   *  task's model-proposed delay is clamped to at most this, and the task
+   *  self-stops `max_horizon_days` after creation. Default 7, range 1..=365.
+   */
+  max_horizon_days: number
   min_interval_seconds: number
   notification_retention_days: number
   updated_at: string
@@ -5534,6 +5714,21 @@ export interface SessionSettings {
   updated_at: string
 }
 
+/**
+ * POST /api/remote-access/admin-password request.
+ *
+ *  No `current_password` field — physical presence at the desktop
+ *  (proven by the localhost-Host middleware) IS the auth proof.
+ *  The standard `/api/users/me/password` flow that requires the
+ *  current password is still available for multi-user web deployments;
+ *  this endpoint exists specifically for the single-admin desktop
+ *  case where the bootstrap default is a published string and
+ *  requiring it would be friction without security benefit.
+ */
+export interface SetAdminPasswordRequest {
+  new_password: string
+}
+
 /** Request to set (create or replace) a server's OAuth config. */
 export interface SetMcpServerOAuthConfigRequest {
   client_id: string
@@ -5551,6 +5746,10 @@ export interface SetPinResponse {
   swap: SwapOutcome
 }
 
+export interface SetSettingRequest {
+  value: string
+}
+
 /**
  * Body of `PUT /api/chat/stream/subscription`: the conversation whose live
  *  tokens this connection wants (or `null` to receive nothing).
@@ -5565,6 +5764,16 @@ export interface SetTimeoutRequest {
    *  match the `timeout_secs` used across the rest of the timeout surface.
    */
   timeout_secs: number
+}
+
+export interface SettingItem {
+  key: string
+  value: string
+}
+
+export interface SettingResponse {
+  key: string
+  value?: string
 }
 
 export interface SetupAdminRequest {
@@ -5586,6 +5795,11 @@ export interface SetupAdminRequest {
  */
 export interface SetupStatusResponse {
   needs_setup: boolean
+}
+
+export interface SimpleResponse {
+  message: string
+  success: boolean
 }
 
 /**
@@ -5699,6 +5913,11 @@ export interface StreamError {
 
 export interface StylesResponse {
   styles: string[]
+}
+
+export interface SuccessResponse {
+  message: string
+  success: boolean
 }
 
 /**
@@ -6031,6 +6250,14 @@ export interface TriggerResponse {
   status: string
 }
 
+/** POST /api/remote-access/tunnel/start response. */
+export interface TunnelStartResponse {
+  public_url: string
+  started_at: string
+}
+
+export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
+
 /**
  * One pre-authorized (server, tool?) grant for an unattended run. `tool_name`
  *  `None` allow-lists the whole server. Structurally identical to the
@@ -6057,8 +6284,16 @@ export interface UnreadCount {
 export interface UpdateAgentAdminSettingsRequest {
   default_max_steps?: number
   default_sandbox_mode?: string
+  fan_out_max_children_per_call?: number
   fan_out_max_depth?: number
   fan_out_max_threads?: number
+  /**
+   * Goal-seeking evaluator model (DEC-61) — tri-state (null ⇒ clear back to
+   *  "use the run's own model").
+   */
+  goal_eval_model_id?: string
+  /** Max goal-seeking turns (DEC-62), 1..=50. */
+  goal_seek_max_turns?: number
   per_run_token_cap?: number
   per_step_token_cap?: number
   reviewer_enabled?: boolean
@@ -6096,6 +6331,12 @@ export interface UpdateAuthProviderRequest {
   config?: unknown
   enabled?: boolean
   name?: string
+}
+
+export interface UpdateCheckResponse {
+  available: boolean
+  notes?: string
+  version?: string
 }
 
 /**
@@ -6212,6 +6453,13 @@ export interface UpdateGroupSystemSkillsRequest {
  */
 export interface UpdateGroupSystemWorkflowsRequest {
   workflow_ids: string[]
+}
+
+/** Deployment policy — PUT body (tri-state-free: omitted field = unchanged). */
+export interface UpdateHostMountPolicyRequest {
+  allow_readwrite?: boolean
+  allowed_prefixes?: string[]
+  enabled?: boolean
 }
 
 /**
@@ -6401,6 +6649,25 @@ export interface UpdateProviderRequest {
   config?: unknown
 }
 
+/**
+ * PUT /api/remote-access/settings request body. Each field uses
+ *  three-state semantics:
+ *    - missing key → don't touch (keep DB value)
+ *    - null → clear (set to NULL / FALSE)
+ *    - value → set
+ *
+ *  Implemented via `Option<Option<T>>` + a custom serde fn that
+ *  distinguishes "absent" from "null". The frontend matches by
+ *  only sending fields it actually wants to change.
+ */
+export interface UpdateRemoteAccessSettingsRequest {
+  /** Booleans don't need null semantics — absent means "don't touch". */
+  auto_start_tunnel?: boolean
+  ngrok_auth_token?: string
+  ngrok_domain?: string
+  password_auth_enabled?: boolean
+}
+
 export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
@@ -6429,6 +6696,7 @@ export interface UpdateScheduledTask {
 export interface UpdateSchedulerAdminSettings {
   max_active_tasks_per_user: number
   max_consecutive_failures: number
+  max_horizon_days: number
   min_interval_seconds: number
   notification_retention_days: number
 }
@@ -6445,6 +6713,17 @@ export interface UpdateSkill {
   enabled?: boolean
   tags?: unknown
   when_to_use?: string
+}
+
+export interface UpdateState {
+  available: boolean
+  checking: boolean
+  downloading: boolean
+  error?: string
+  notes?: string
+  progress?: number
+  ready_to_install: boolean
+  version?: string
 }
 
 /** Cached server update-availability status (admin endpoint). */
@@ -6466,6 +6745,10 @@ export interface UpdateStatusResponse {
   release_url?: string
   /** True when `latest_version` is newer than `current_version`. */
   update_available: boolean
+}
+
+export interface UpdateStatusResponse2 {
+  status: UpdateState
 }
 
 /**
@@ -7114,6 +7397,13 @@ export interface WorkflowRun {
   final_output_json?: unknown
   id: string
   inputs_json: unknown
+  /**
+   * Orthogonal background-run discriminator (raw DB text; parse with
+   *  [`JobKind::from_db_str`]). `'workflow'` for the classic YAML-DAG run.
+   *  Kept as `String` (not the enum) so an unknown value from a newer server
+   *  round-trips without a deserialization failure — same posture as `status`.
+   */
+  job_kind: string
   model_id?: string
   pending_elicitation_json?: unknown
   run_kind: string
@@ -7132,7 +7422,12 @@ export interface WorkflowRun {
   total_tokens: number
   updated_at: string
   user_id: string
-  workflow_id: string
+  /**
+   * NULL for a generalized background run (`job_kind != 'workflow'`) — a
+   *  sub-agent turn / sandbox exec has no backing `workflows` bundle
+   *  (ITEM-14 / DEC-22). Always set for a classic `workflow`-kind run.
+   */
+  workflow_id?: string
 }
 
 export interface WorkflowRunListResponse {
@@ -7260,6 +7555,8 @@ export enum Permissions {
   GroupsRead = 'groups::read',
   HardwareMonitor = 'hardware::monitor',
   HardwareRead = 'hardware::read',
+  HostMountManage = 'host_mount::manage',
+  HostMountRead = 'host_mount::read',
   HubAssistantsCreate = 'hub::assistants::create',
   HubAssistantsRead = 'hub::assistants::read',
   HubAssistantsRefresh = 'hub::assistants::refresh',
@@ -7323,6 +7620,8 @@ export enum Permissions {
   ProjectsDelete = 'projects::delete',
   ProjectsEdit = 'projects::edit',
   ProjectsRead = 'projects::read',
+  RemoteAccessManage = 'remote_access::manage',
+  RemoteAccessRead = 'remote_access::read',
   RuntimeSettingsManage = 'llm_local_runtime::settings_manage',
   RuntimeSettingsRead = 'llm_local_runtime::settings_read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
@@ -7404,6 +7703,8 @@ export const PermissionDescriptions: Record<string, string> = {
   GroupsRead: 'View groups and group information',
   HardwareMonitor: 'Monitor real-time hardware usage',
   HardwareRead: 'View hardware information',
+  HostMountManage: 'Configure host-folder mounts on projects/conversations and the host-mount policy.',
+  HostMountRead: 'Read host-folder mount configuration and policy.',
   HubAssistantsCreate: 'Create assistants from hub',
   HubAssistantsRead: 'View hub assistants',
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
@@ -7467,6 +7768,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsDelete: 'Delete chat projects',
   ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
   ProjectsRead: 'Read chat projects',
+  RemoteAccessManage: 'Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.',
+  RemoteAccessRead: 'Read remote-access settings, tunnel status, and current public URL.',
   RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain)',
   RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
   RuntimeVersionCreate: 'Download and register new runtime versions',
@@ -7529,11 +7832,15 @@ export const ApiEndpoints = {
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
   'Auth.changePassword': 'POST /api/auth/password',
+  'Auth.getConfig': 'GET /api/auth/config',
   'Auth.getSessionSettings': 'GET /api/auth/session-settings',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
+  'Auth.loginPasswordOnly': 'POST /api/auth/login-password-only',
   'Auth.logout': 'POST /api/auth/logout',
+  'Auth.magicLinkExchange': 'POST /api/auth/magic-link/exchange',
+  'Auth.magicLinkIssue': 'POST /api/auth/magic-link/issue',
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
@@ -7584,6 +7891,11 @@ export const ApiEndpoints = {
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
   'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
   'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
+  'DesktopBackend.status': 'GET /api/desktop/backend/status',
+  'DesktopSettings.delete': 'DELETE /api/desktop/settings/{key}',
+  'DesktopSettings.get': 'GET /api/desktop/settings/{key}',
+  'DesktopSettings.getAll': 'GET /api/desktop/settings',
+  'DesktopSettings.set': 'PUT /api/desktop/settings/{key}',
   'File.appendVersion': 'POST /api/files/{file_id}/versions',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
@@ -7623,6 +7935,12 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'HostMount.getConversationMounts': 'GET /api/host-mounts/conversation/{conversation_id}',
+  'HostMount.getPolicy': 'GET /api/host-mounts/policy',
+  'HostMount.getProjectMounts': 'GET /api/host-mounts/project/{project_id}',
+  'HostMount.putConversationMounts': 'PUT /api/host-mounts/conversation/{conversation_id}',
+  'HostMount.putProjectMounts': 'PUT /api/host-mounts/project/{project_id}',
+  'HostMount.updatePolicy': 'PUT /api/host-mounts/policy',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
   'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
@@ -7814,6 +8132,12 @@ export const ApiEndpoints = {
   'Project.update': 'PUT /api/projects/{id}',
   'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
   'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
+  'RemoteAccess.getSettings': 'GET /api/remote-access/settings',
+  'RemoteAccess.getStatus': 'GET /api/remote-access/status',
+  'RemoteAccess.setAdminPassword': 'POST /api/remote-access/admin-password',
+  'RemoteAccess.startTunnel': 'POST /api/remote-access/tunnel/start',
+  'RemoteAccess.stopTunnel': 'POST /api/remote-access/tunnel/stop',
+  'RemoteAccess.updateSettings': 'PUT /api/remote-access/settings',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -7860,6 +8184,10 @@ export const ApiEndpoints = {
   'SummarizationAdmin.update': 'PUT /api/summarization/settings',
   'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
   'Sync.subscribe': 'GET /api/sync/subscribe',
+  'Updater.check': 'POST /api/desktop/updater/check',
+  'Updater.download': 'POST /api/desktop/updater/download',
+  'Updater.install': 'POST /api/desktop/updater/install',
+  'Updater.status': 'GET /api/desktop/updater/status',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -7875,6 +8203,7 @@ export const ApiEndpoints = {
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
   'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Users.changeOwnPassword': 'POST /api/users/me/password',
   'Voice.activateModel': 'POST /api/voice/models/{id}/activate',
   'Voice.cancelModelDownload': 'POST /api/voice/models/downloads/{key}/cancel',
   'Voice.capability': 'GET /api/voice/capability',
@@ -7962,11 +8291,15 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
   'Auth.changePassword': ChangePasswordRequest
+  'Auth.getConfig': void
   'Auth.getSessionSettings': void
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
+  'Auth.loginPasswordOnly': PasswordOnlyLoginRequest
   'Auth.logout': void
+  'Auth.magicLinkExchange': MagicLinkExchangeRequest
+  'Auth.magicLinkIssue': void
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
@@ -8017,6 +8350,11 @@ export type ApiEndpointParameters = {
   'CoreMemory.delete': { assistant_id: string; block_label: string }
   'CoreMemory.list': { assistant_id: string }
   'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
+  'DesktopBackend.status': void
+  'DesktopSettings.delete': { key: string }
+  'DesktopSettings.get': { key: string }
+  'DesktopSettings.getAll': void
+  'DesktopSettings.set': { key: string } & SetSettingRequest
   'File.appendVersion': { file_id: string } & AppendVersionRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
@@ -8056,6 +8394,12 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'HostMount.getConversationMounts': { conversation_id: string }
+  'HostMount.getPolicy': void
+  'HostMount.getProjectMounts': { project_id: string }
+  'HostMount.putConversationMounts': { conversation_id: string } & HostMountsBody
+  'HostMount.putProjectMounts': { project_id: string } & HostMountsBody
+  'HostMount.updatePolicy': UpdateHostMountPolicyRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
   'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
@@ -8247,6 +8591,12 @@ export type ApiEndpointParameters = {
   'Project.update': { id: string } & UpdateProjectRequest
   'Project.updateMcpSettings': { id: string } & ProjectMcpSettingsRequest
   'Project.uploadAndAttachFile': { id: string } & FormData
+  'RemoteAccess.getSettings': void
+  'RemoteAccess.getStatus': void
+  'RemoteAccess.setAdminPassword': SetAdminPasswordRequest
+  'RemoteAccess.startTunnel': void
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': UpdateRemoteAccessSettingsRequest
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -8263,7 +8613,7 @@ export type ApiEndpointParameters = {
   'ScheduledTask.create': CreateScheduledTask
   'ScheduledTask.delete': { id: string }
   'ScheduledTask.get': { id: string }
-  'ScheduledTask.list': void
+  'ScheduledTask.list': { conversation_id?: string }
   'ScheduledTask.listRuns': { id: string } & PaginationQuery
   'ScheduledTask.runNow': { id: string }
   'ScheduledTask.testFire': TestFireRequest
@@ -8293,6 +8643,10 @@ export type ApiEndpointParameters = {
   'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
   'SummarizationTest.refresh': TestRefreshRequest
   'Sync.subscribe': void
+  'Updater.check': void
+  'Updater.download': void
+  'Updater.install': void
+  'Updater.status': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -8308,6 +8662,7 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'Users.changeOwnPassword': ChangePasswordRequest2
   'Voice.activateModel': { id: string }
   'Voice.cancelModelDownload': { key: string }
   'Voice.capability': void
@@ -8395,11 +8750,15 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
   'Auth.changePassword': void
+  'Auth.getConfig': AuthConfigResponse
   'Auth.getSessionSettings': SessionSettings
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
+  'Auth.loginPasswordOnly': AuthResponse
   'Auth.logout': void
+  'Auth.magicLinkExchange': AuthResponse
+  'Auth.magicLinkIssue': MagicLinkIssueResponse
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
@@ -8450,6 +8809,11 @@ export type ApiEndpointResponses = {
   'CoreMemory.delete': void
   'CoreMemory.list': CoreMemoryBlock[]
   'CoreMemory.upsert': CoreMemoryBlock
+  'DesktopBackend.status': BackendStatusResponse
+  'DesktopSettings.delete': SuccessResponse
+  'DesktopSettings.get': SettingResponse
+  'DesktopSettings.getAll': AllSettingsResponse
+  'DesktopSettings.set': SuccessResponse
   'File.appendVersion': any
   'File.delete': void
   'File.download': Blob
@@ -8489,6 +8853,12 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'HostMount.getConversationMounts': HostMountsBody
+  'HostMount.getPolicy': HostMountPolicyResponse
+  'HostMount.getProjectMounts': HostMountsBody
+  'HostMount.putConversationMounts': HostMountsBody
+  'HostMount.putProjectMounts': HostMountsBody
+  'HostMount.updatePolicy': HostMountPolicyResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
   'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
@@ -8680,6 +9050,12 @@ export type ApiEndpointResponses = {
   'Project.update': Project
   'Project.updateMcpSettings': ProjectMcpSettingsResponse
   'Project.uploadAndAttachFile': File
+  'RemoteAccess.getSettings': RemoteAccessSettingsResponse
+  'RemoteAccess.getStatus': RemoteAccessStatusResponse
+  'RemoteAccess.setAdminPassword': void
+  'RemoteAccess.startTunnel': TunnelStartResponse
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': RemoteAccessSettingsResponse
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionStartedResponse
@@ -8726,6 +9102,10 @@ export type ApiEndpointResponses = {
   'SummarizationAdmin.update': SummarizationAdminSettings
   'SummarizationTest.refresh': unknown
   'Sync.subscribe': SyncSseEvent
+  'Updater.check': UpdateCheckResponse
+  'Updater.download': SimpleResponse
+  'Updater.install': SimpleResponse
+  'Updater.status': UpdateStatusResponse2
   'User.create': User
   'User.delete': void
   'User.get': User
@@ -8741,6 +9121,7 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'Users.changeOwnPassword': void
   'Voice.activateModel': VoiceModel
   'Voice.cancelModelDownload': any
   'Voice.capability': VoiceCapability
