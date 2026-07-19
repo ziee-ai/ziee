@@ -16,7 +16,8 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 1 | agent-core foundation | 56(order), 38, 32 | `cargo check -p agent-core` PASS + 48/48 lib tests | b36c0d24e | ✅ VERIFIED |
 | 2 | scheduler backend | 21, 22, 23 | `cargo check -p ziee` PASS (integrates T1) | 2b8e8b406 | ✅ VERIFIED |
 | 3 | Group A delegate (agent-core) | 1, 3 (2 host-gate deferred) | `cargo check -p agent-core` +60/60 tests; `cargo check -p ziee` PASS | f3a9c9a85 | ✅ VERIFIED |
-| 4 | Group G task-list (agent-core) | 34, 35, 36, 37 (server store impl deferred) | pending | — | 🔄 in progress |
+| 4 | Group G task-list (agent-core) | 34, 35, 36, 37 (server store impl deferred) | `cargo check -p agent-core` +68/68; `cargo check -p ziee` PASS (4 fan-in patches) | (committed) | ✅ VERIFIED |
+| 5 | Backbone D core (workflow) | 14, 17, 29 (MCP tools deferred) | pending | — | 🔄 in progress |
 
 ## Accumulated drifts (reconcile into DRIFT-N.md at Phase-5 close)
 - **DRIFT (T1, impl-wins):** `Reviewer::new` kept backward-compatible + `new_with_thresholds` added (rather than changing the one server caller from another module). Server wiring TODO: `agent_dispatch.rs:787` → `new_with_thresholds(inner, policy, RiskThresholds::from_json(&settings.reviewer_risk_thresholds))`.
