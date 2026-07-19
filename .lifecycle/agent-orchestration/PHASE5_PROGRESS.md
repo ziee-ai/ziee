@@ -21,7 +21,15 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 6 | Group I compaction (agent-core) | 57, 58, 61, 63 (56-unify + server wiring deferred) | `cargo check -p agent-core` +76/76; `cargo check -p ziee` PASS (Compactor fan-in, consts deleted) | (committed) | ✅ VERIFIED |
 | 7 | Server wiring consolidation | 38-srv, 61-srv(window), fan_out_max_children col, 34/35-srv store | `cargo clean+check -p ziee` PASS | (committed) | ✅ VERIFIED |
 | 8 | Group H reviewer/policy security core | 39, 42, 47 (41-persist, 40, 43-46 follow-ups) | pending | — | 🔄 in progress |
-| 9 | Group F goal-seeking backend (scheduler) | 24 (FE done-when deferred) | pending | — | 🔄 in progress (parallel) |
+| 8 | Group H reviewer/policy security core | 39, 42, 47 (41-persist, 40, 43-46 follow-ups) | `cargo check -p agent-core` +85/85; `cargo check -p ziee` PASS (agent_dispatch fan-in) | 5ebb1f0a8 | ✅ VERIFIED |
+| 9 | Group F goal-seeking backend (scheduler) | 24 (FE done-when deferred) | `cargo check -p ziee` PASS | aa981b56e | ✅ VERIFIED (agent hit weekly limit during its OWN verify; impl was complete) |
+
+## ⚠️ Weekly API limit hit 2026-07-19 (resets Jul 24 8pm America/Detroit)
+Sub-agents share the account-wide weekly quota, so further sub-agent tranches will fail until reset.
+9 tranches (~21 items) are landed + verified + committed. Remaining work is tracked below and in the
+"Remaining tranche plan". Resume sub-agent driving after the reset (or continue via direct edits if the
+main-loop retains quota). openapi-regen fan-in batched at this checkpoint (WorkflowRun, scheduler
+self-paced/bound/max_horizon, fan_out_max_children, goal-seeking condition/eval fields).
 
 ## Accumulated drifts (reconcile into DRIFT-N.md at Phase-5 close)
 - **DRIFT (T1, impl-wins):** `Reviewer::new` kept backward-compatible + `new_with_thresholds` added (rather than changing the one server caller from another module). Server wiring TODO: `agent_dispatch.rs:787` → `new_with_thresholds(inner, policy, RiskThresholds::from_json(&settings.reviewer_risk_thresholds))`.
