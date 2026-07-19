@@ -80,6 +80,7 @@ export function WorkflowInputsEditor({ store }: WorkflowInputsEditorProps) {
               <div className="flex items-center gap-2">
                 <Switch
                   data-testid={`wf-builder-input-required-${i}`}
+                  aria-label={`Mark input ${input.name || i + 1} as required`}
                   checked={input.required ?? false}
                   onChange={v => patchAt(i, { required: v })}
                   size="sm"
