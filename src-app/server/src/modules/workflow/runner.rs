@@ -244,7 +244,7 @@ pub async fn preflight(
     })
 }
 
-async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), AppError> {
+pub(crate) async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), AppError> {
     use std::fs;
     tokio::task::block_in_place(|| -> Result<(), AppError> {
         fs::create_dir_all(dst).map_err(|e| {

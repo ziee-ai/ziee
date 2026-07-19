@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { StepDef, WorkflowDef } from '@/api-client/types'
+import type { StepDef } from '@/api-client/types'
 
 // ---------------------------------------------------------------------------
 // Pure, unit-testable module backing the workflow builder's per-kind step forms.
@@ -13,16 +13,19 @@ import type { StepDef, WorkflowDef } from '@/api-client/types'
 // intersect: an intersection with a union distributes, giving a discriminated
 // union of steps that each carry the base fields AND their kind's config.
 //
-// Soundness (see the store's `toWorkflowDef`/`toBuilderDef`):
-//  - builder → wire: `StepBase & StepDef` IS assignable to `StepDef`, so
-//    emitting a `BuilderStep[]` as `WorkflowDef.steps` needs NO cast.
-//  - wire → builder: `StepDef` is NOT assignable to `BuilderStep` (the base
-//    fields are absent from the type, though present on the wire), so that
-//    direction takes a single honest `as BuilderStep[]` narrowing.
-// The `AssertBuilderStepIsWireStep` guard below is a COMPILE-TIME check of the
-// sound (builder → wire) direction: if the backend adds a `StepDef` field that
-// `BuilderStep` can't satisfy, this file fails to compile until the change is
-// reconciled — instead of a silent drop behind an `as unknown as` double-cast.
+// Drift-safety — why there is NO compile-time guard here:
+//  A type-level `BuilderStep extends StepDef` assertion is a TAUTOLOGY and
+//  guards nothing: `BuilderStep = StepBase & StepDef` and the wire step element
+//  resolves to the same imported `StepDef`, so `(StepBase & StepDef) extends
+//  StepDef` is unconditionally true. A genuine compile-time drift check is
+//  impossible while the generated `StepDef` is itself flatten-lossy — both the
+//  builder and wire sides derive from the same lossy type, so neither can catch
+//  a base-field change the codegen already dropped. The runtime WIRE is
+//  nevertheless correct because serde-flatten emits + accepts every field
+//  (base + config). Drift is caught by the backend def→bundle round-trip
+//  INTEGRATION test, not a compile-time check; the real fix — a non-lossy
+//  `emit_ts` generator that keeps the flattened base fields on `StepDef` — is
+//  the tracked follow-up.
 // ---------------------------------------------------------------------------
 
 export const STEP_KINDS = [
@@ -46,25 +49,6 @@ export interface StepBase {
 }
 
 export type BuilderStep = StepBase & StepDef
-
-/** One step as the wire type sees it (`WorkflowDef.steps` element). */
-type WireStep = NonNullable<WorkflowDef['steps']>[number]
-
-/** Type-level assertion helper: `Expect<false>` is a compile error. */
-type Expect<T extends true> = T
-/**
- * COMPILE-TIME drift guard (FIX-G). `BuilderStep` must stay assignable to the
- * wire `WireStep`, so `toWorkflowDef` can hand `BuilderStep[]` to the API with
- * no cast. If a future backend regen adds a `StepDef` field that `BuilderStep`
- * cannot satisfy, `BuilderStep extends WireStep` resolves to `false` and this
- * alias stops compiling — surfacing the drift instead of losing data silently.
- *
- * Exported only so `noUnusedLocals` treats it as used; it is a type-level
- * assertion, not an API (there is nothing to import at runtime).
- */
-export type AssertBuilderStepIsWireStep = Expect<
-  BuilderStep extends WireStep ? true : false
->
 
 /** Domain-language label per kind. The agent kind is deliberately named in
  *  plain terms ("AI assistant task") rather than tool jargon. */

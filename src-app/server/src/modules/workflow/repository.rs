@@ -4,6 +4,7 @@
 //! step metadata, etc.).
 
 
+use axum::http::StatusCode;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -188,7 +189,20 @@ pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, 
     )
     .fetch_one(pool)
     .await
-    .map_err(AppError::database_error)?;
+    .map_err(|err| match &err {
+        // FIX-2: a concurrent create/import with the same (name, version, owner)
+        // trips the partial unique index `uniq_workflows_user_name_version_owner`
+        // (or `uniq_workflows_system_name_version`) — the TOCTOU backstop for two
+        // requests that both passed the application-level pre-check. Surface the
+        // SAME typed 409 the create handler's pre-check returns, instead of a
+        // generic 500. SQLSTATE 23505 = unique_violation.
+        sqlx::Error::Database(db) if db.is_unique_violation() => AppError::new(
+            StatusCode::CONFLICT,
+            "WORKFLOW_NAME_EXISTS",
+            "a workflow with this name already exists — choose a different name",
+        ),
+        _ => AppError::database_error(err),
+    })?;
     Ok(row)
 }
 

@@ -47,8 +47,8 @@ function toBuilderDef(def: WorkflowDef): BuilderDef {
     // base fields `id`/`description`/`message`/`depends_on` that serde flatten
     // still emits + sends on the wire), so `StepDef` is not assignable to
     // `BuilderStep` at the type level. A SINGLE honest narrowing re-adds those
-    // wire-present fields; `stepForms.ts`'s `_AssertBuilderStepIsWireStep`
-    // guards the reverse (builder → wire) direction at compile time.
+    // wire-present fields. (No compile-time drift guard is possible here — both
+    // sides derive from the same lossy `StepDef`; see the note in `stepForms.ts`.)
     steps: (def.steps ?? []) as BuilderStep[],
   }
 }
@@ -61,8 +61,8 @@ function toWorkflowDef(def: BuilderDef): WorkflowDef {
       : {}),
     inputs: def.inputs,
     // builder → wire needs NO cast: `BuilderStep` (= StepBase & StepDef) is
-    // assignable to the wire `StepDef`. This is the type-checked boundary the
-    // compile-time guard in `stepForms.ts` protects.
+    // assignable to the wire `StepDef`. Runtime drift-safety is provided by the
+    // backend def→bundle round-trip integration test (see `stepForms.ts`).
     steps: def.steps,
   }
 }

@@ -456,16 +456,28 @@ pub fn create_user_workflow_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// `PUT /api/workflows/{id}/definition` — replace a user-scope workflow's
-/// steps / inputs IN PLACE from a posted `WorkflowDef`, preserving the workflow
-/// id (so run-history FKs survive). Owner-scoped (403 non-owner, 404 missing),
-/// mirroring `update_user_workflow`. Validation runs FIRST against the existing,
-/// still-intact `extracted_path` (so asset/`prompt_file:` refs resolve and no
-/// destructive op precedes a valid def); only then is `workflow.yaml`
-/// overwritten IN PLACE, preserving every sibling asset (`scripts/`, prompt
-/// files, `tests/`). sha/size/file_count are recomputed from the updated dir
-/// with the install path's derivation, the IR recompiled, and the row updated
-/// via `repository::update_definition` (NOT delete+insert — that would change
-/// the id).
+/// steps / inputs from a posted `WorkflowDef`, preserving the workflow id (so
+/// run-history FKs survive). Owner-scoped (403 non-owner, 404 missing),
+/// mirroring `update_user_workflow`.
+///
+/// FIX-1 (atomic update): the LIVE bundle at `extracted_path` is NEVER mutated
+/// until every step has succeeded, so a failed write / measure / compile / DB
+/// commit can't leave the on-disk `workflow.yaml` new while the row keeps the
+/// old sha/size/compiled_ir (the runner re-parses the on-disk yaml every run,
+/// so an in-place overwrite that then failed downstream would corrupt the
+/// workflow with no rollback). The flow is:
+///   1. Validate FIRST against the existing, still-intact `extracted_path` (so
+///      asset/`prompt_file:` refs resolve and no destructive op precedes a valid
+///      def).
+///   2. Copy the live bundle into a unique sibling staging dir (preserving every
+///      sibling asset — `scripts/`, prompt files, `tests/`) and overwrite ONLY
+///      `workflow.yaml` in the staging copy.
+///   3. Measure the staging dir + compile the IR. Any failure in 2–3 removes the
+///      staging dir and returns — the live bundle + row are untouched.
+///   4. Commit the new metadata via `repository::update_definition` (NOT
+///      delete+insert — that would change the id). On failure, remove staging;
+///      the live bundle is untouched.
+///   5. Atomically swap the staging dir into place (same-filesystem renames).
 pub async fn update_user_workflow_definition(
     auth: RequirePermissions<(WorkflowsManage,)>,
     AxumPath(id): AxumPath<Uuid>,
@@ -487,37 +499,58 @@ pub async fn update_user_workflow_definition(
 
     let bundle_root = std::path::PathBuf::from(&existing.extracted_path);
 
-    // FIX-1: validate FIRST, against the EXISTING (still-intact) bundle root, so
+    // Step 1: validate FIRST, against the EXISTING (still-intact) bundle root, so
     // `prompt_file:` / sibling-asset refs still resolve — and, crucially, so NO
-    // destructive filesystem op happens before validation succeeds. On error the
-    // bundle AND the DB row are left untouched. is_dev=true so a builder-authored
-    // def parses under the same relaxed rules as import.
+    // filesystem op happens before validation succeeds. On error the live bundle
+    // AND the DB row are left untouched. is_dev=true so a builder-authored def
+    // parses under the same relaxed rules as import.
     if let Err(e) = validate::validate_for_install(&def, &bundle_root, true) {
         return Err::<_, (StatusCode, AppError)>(e.into());
     }
 
-    // Only now (valid): overwrite ONLY workflow.yaml in place — preserving every
-    // sibling asset (`scripts/`, prompt files, `tests/`), which the old
-    // pack-just-workflow.yaml + re-extract path silently destroyed. Same
-    // serializer `def_to_bundle_bytes` uses (`serde_norway`).
+    // Serialize the new workflow.yaml (same serializer `def_to_bundle_bytes`
+    // uses — `serde_norway`). Purely in-memory; the live bundle is untouched.
     let yaml = serde_norway::to_string(&def).map_err(|e| {
         AppError::bad_request(
             "WORKFLOW_SERIALIZE_FAILED",
             format!("failed to serialize workflow.yaml: {e}"),
         )
     })?;
-    let wf_path = bundle_root.join(&existing.entry_point);
-    tokio::fs::write(&wf_path, yaml.as_bytes()).await.map_err(|e| {
-        AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
-    })?;
 
-    // Recompute bundle_sha256 / bundle_size_bytes / file_count from the updated
-    // dir, reusing the install path's derivation (sha256 of the packed tar.gz +
-    // decompressed byte total + regular-file count) — no re-extract, no wipe.
-    let measure = crate::modules::hub::bundle::pack_workspace_dir_measured(&bundle_root)?;
+    // Step 2+3: build the new bundle in a UNIQUE SIBLING staging dir — copy the
+    // live bundle (preserving `scripts/`, prompt files, `tests/`), overwrite ONLY
+    // `workflow.yaml` in the copy, then measure + compile from the staging dir.
+    // The live bundle is never mutated here, so ANY failure below just removes
+    // staging and returns with the live bundle + row intact.
+    let staging = sibling_with_suffix(&bundle_root, &format!(".staging-{}", Uuid::new_v4()));
+    let build = async {
+        crate::modules::workflow::runner::copy_dir_recursive(&bundle_root, &staging).await?;
+        let staged_wf = staging.join(&existing.entry_point);
+        tokio::fs::write(&staged_wf, yaml.as_bytes()).await.map_err(|e| {
+            AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
+        })?;
+        // Recompute bundle_sha256 / bundle_size_bytes / file_count from the staged
+        // dir, reusing the install path's derivation (sha256 of the packed tar.gz +
+        // decompressed byte total + regular-file count). Paths are root-relative,
+        // so the metadata is identical whether measured on staging or the final
+        // location.
+        let measure = crate::modules::hub::bundle::pack_workspace_dir_measured(&staging)?;
+        let compiled = crate::modules::workflow::compiled::compile_to_json(&def);
+        Ok::<_, AppError>((measure, compiled))
+    }
+    .await;
+    let (measure, compiled) = match build {
+        Ok(v) => v,
+        Err(e) => {
+            // Pre-commit failure: clean up staging; live bundle + row untouched.
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            return Err::<_, (StatusCode, AppError)>(e.into());
+        }
+    };
 
-    let compiled = crate::modules::workflow::compiled::compile_to_json(&def);
-    let updated = repository::update_definition(
+    // Step 4: commit the new metadata (DB). Still no mutation of the live bundle;
+    // on failure remove staging and return — live bundle + row untouched.
+    let updated = match repository::update_definition(
         Repos.pool(),
         id,
         &existing.extracted_path,
@@ -526,7 +559,51 @@ pub async fn update_user_workflow_definition(
         measure.file_count as i32,
         compiled,
     )
-    .await?;
+    .await
+    {
+        Ok(u) => u,
+        Err(e) => {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            return Err::<_, (StatusCode, AppError)>(e.into());
+        }
+    };
+
+    // Step 5: atomic swap. Move the live bundle aside, move staging into place,
+    // then best-effort remove the old dir. Same-filesystem (sibling) renames are
+    // atomic. A rename failure here is a rare post-commit crash window: the DB
+    // already carries the new metadata, so we log with full context (rather than
+    // failing the request) and, if we managed to move the live bundle aside but
+    // not restore, put it back so the workflow is never left with a missing dir.
+    let old = sibling_with_suffix(&bundle_root, &format!(".old-{}", Uuid::new_v4()));
+    if let Err(e) = tokio::fs::rename(&bundle_root, &old).await {
+        tracing::error!(
+            workflow_id = %id,
+            live = %bundle_root.display(),
+            staging = %staging.display(),
+            error = %e,
+            "workflow definition update: could not move live bundle aside after DB commit; \
+             on-disk workflow.yaml still carries the OLD definition while the row holds the new \
+             metadata (rare crash window). Removing the staged copy."
+        );
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+    } else if let Err(e) = tokio::fs::rename(&staging, &bundle_root).await {
+        // Live moved to `old` but staging couldn't take its place — restore the
+        // live bundle so `extracted_path` is never left missing.
+        let _ = tokio::fs::rename(&old, &bundle_root).await;
+        tracing::error!(
+            workflow_id = %id,
+            live = %bundle_root.display(),
+            staging = %staging.display(),
+            error = %e,
+            "workflow definition update: could not move staged bundle into place after DB commit; \
+             restored the previous bundle (on-disk workflow.yaml carries the OLD definition while \
+             the row holds the new metadata, rare crash window). Removing the staged copy."
+        );
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+    } else {
+        // Success: the live bundle now holds the new def. Drop the old copy.
+        let _ = tokio::fs::remove_dir_all(&old).await;
+    }
 
     crate::modules::workflow::events::emit_user_workflow(
         SyncAction::Update,
@@ -535,6 +612,22 @@ pub async fn update_user_workflow_definition(
         origin.0,
     );
     Ok((StatusCode::OK, Json(updated)))
+}
+
+/// Build a UNIQUE sibling path next to `dir` by appending `suffix` to its final
+/// component (e.g. `<extracted_path>.staging-<uuid>`). A sibling shares `dir`'s
+/// parent, so it lives on the SAME filesystem — the guarantee that makes the
+/// atomic-swap renames in `update_user_workflow_definition` atomic.
+fn sibling_with_suffix(dir: &std::path::Path, suffix: &str) -> std::path::PathBuf {
+    let file_name = dir
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let sibling_name = format!("{file_name}{suffix}");
+    match dir.parent() {
+        Some(parent) => parent.join(sibling_name),
+        None => std::path::PathBuf::from(sibling_name),
+    }
 }
 
 pub fn update_user_workflow_definition_docs(op: TransformOperation) -> TransformOperation {
