@@ -6,7 +6,6 @@ import {
   configErrors,
 } from './stepForms'
 import { LabeledControl, PromptField } from './builderFields'
-import { CapabilityMultiSelect } from './capabilities'
 
 type LlmMapStep = Extract<BuilderStep, { kind: 'llm_map' }>
 
@@ -128,16 +127,10 @@ export function LlmMapStepForm({ store, step }: Props) {
         />
       </LabeledControl>
 
-      <LabeledControl
-        label="Tools"
-        description="Optional tools the model may call for each item."
-      >
-        <CapabilityMultiSelect
-          value={step.tools ?? []}
-          onChange={v => patch({ tools: v })}
-          testid="wf-builder-map-tools"
-        />
-      </LabeledControl>
+      {/* No tools picker here: the backend `validate-def` (E6,
+          WORKFLOW_DEAD_TOOLS_FIELD) rejects a non-empty `tools` on an
+          llm/llm_map step. Tool use belongs to the `tool` step kind and to the
+          agent step's `servers` (capabilities). */}
     </div>
   )
 }

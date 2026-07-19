@@ -1,18 +1,28 @@
 import { z } from 'zod'
-import type { StepDef } from '@/api-client/types'
+import type { StepDef, WorkflowDef } from '@/api-client/types'
 
 // ---------------------------------------------------------------------------
 // Pure, unit-testable module backing the workflow builder's per-kind step forms.
 //
 // The generated `StepDef` is a FLAT tagged union discriminated by `kind` (the
 // backend `#[serde(flatten)]`s `StepConfig` onto `StepDef`, so the wire shape
-// carries `kind` + the config fields directly on the step). The generator drops
-// the shared base fields (`id`, `description`, `message`, `depends_on`, …) from
-// the TS type, so we re-add them here as `StepBase` and intersect: an
-// intersection with a union distributes, giving a discriminated union of steps
-// that each carry the base fields AND their kind's config. `StepBase & StepDef`
-// is assignable back to `StepDef`, so a `BuilderStep[]` round-trips into a
-// `WorkflowDef.steps` payload with no unsafe cast at the API boundary.
+// carries `kind` + the config fields directly on the step). The generator is
+// FLATTEN-LOSSY: it drops the shared base fields (`id`, `description`,
+// `message`, `depends_on`, …) from the TS type even though serde flatten still
+// emits + accepts them on the wire. We re-add them here as `StepBase` and
+// intersect: an intersection with a union distributes, giving a discriminated
+// union of steps that each carry the base fields AND their kind's config.
+//
+// Soundness (see the store's `toWorkflowDef`/`toBuilderDef`):
+//  - builder → wire: `StepBase & StepDef` IS assignable to `StepDef`, so
+//    emitting a `BuilderStep[]` as `WorkflowDef.steps` needs NO cast.
+//  - wire → builder: `StepDef` is NOT assignable to `BuilderStep` (the base
+//    fields are absent from the type, though present on the wire), so that
+//    direction takes a single honest `as BuilderStep[]` narrowing.
+// The `AssertBuilderStepIsWireStep` guard below is a COMPILE-TIME check of the
+// sound (builder → wire) direction: if the backend adds a `StepDef` field that
+// `BuilderStep` can't satisfy, this file fails to compile until the change is
+// reconciled — instead of a silent drop behind an `as unknown as` double-cast.
 // ---------------------------------------------------------------------------
 
 export const STEP_KINDS = [
@@ -36,6 +46,25 @@ export interface StepBase {
 }
 
 export type BuilderStep = StepBase & StepDef
+
+/** One step as the wire type sees it (`WorkflowDef.steps` element). */
+type WireStep = NonNullable<WorkflowDef['steps']>[number]
+
+/** Type-level assertion helper: `Expect<false>` is a compile error. */
+type Expect<T extends true> = T
+/**
+ * COMPILE-TIME drift guard (FIX-G). `BuilderStep` must stay assignable to the
+ * wire `WireStep`, so `toWorkflowDef` can hand `BuilderStep[]` to the API with
+ * no cast. If a future backend regen adds a `StepDef` field that `BuilderStep`
+ * cannot satisfy, `BuilderStep extends WireStep` resolves to `false` and this
+ * alias stops compiling — surfacing the drift instead of losing data silently.
+ *
+ * Exported only so `noUnusedLocals` treats it as used; it is a type-level
+ * assertion, not an API (there is nothing to import at runtime).
+ */
+export type AssertBuilderStepIsWireStep = Expect<
+  BuilderStep extends WireStep ? true : false
+>
 
 /** Domain-language label per kind. The agent kind is deliberately named in
  *  plain terms ("AI assistant task") rather than tool jargon. */
@@ -94,14 +123,17 @@ export function createStep(kind: StepKind, existingIds: string[]): BuilderStep {
         output_format: 'text',
       }
     case 'llm':
+      // No `tools`: the backend rejects a non-empty `tools` on an llm step
+      // (validate.rs E6, WORKFLOW_DEAD_TOOLS_FIELD). Omitted here so the field
+      // stays absent from the wire payload.
       return {
         ...base,
         kind: 'llm',
         prompt: '',
         output_format: 'text',
-        tools: [],
       }
     case 'llm_map':
+      // No `tools` — same reason as the `llm` kind above.
       return {
         ...base,
         kind: 'llm_map',
@@ -112,7 +144,6 @@ export function createStep(kind: StepKind, existingIds: string[]): BuilderStep {
         max_parallel: DEFAULT_MAX_PARALLEL,
         max_retries: 0,
         on_error: 'fail',
-        tools: [],
       }
     case 'sandbox':
       return {

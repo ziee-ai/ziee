@@ -43,9 +43,13 @@ function toBuilderDef(def: WorkflowDef): BuilderDef {
     $schema: def.$schema,
     max_runtime_secs: def.max_runtime_secs,
     inputs: def.inputs ?? [],
-    // The wire steps already carry `id` + base fields at runtime (the backend
-    // sends them); only the generated TS type is lossy, so this cast is sound.
-    steps: (def.steps ?? []) as unknown as BuilderStep[],
+    // wire → builder: the generated `StepDef` is flatten-lossy (it omits the
+    // base fields `id`/`description`/`message`/`depends_on` that serde flatten
+    // still emits + sends on the wire), so `StepDef` is not assignable to
+    // `BuilderStep` at the type level. A SINGLE honest narrowing re-adds those
+    // wire-present fields; `stepForms.ts`'s `_AssertBuilderStepIsWireStep`
+    // guards the reverse (builder → wire) direction at compile time.
+    steps: (def.steps ?? []) as BuilderStep[],
   }
 }
 
@@ -56,7 +60,10 @@ function toWorkflowDef(def: BuilderDef): WorkflowDef {
       ? { max_runtime_secs: def.max_runtime_secs }
       : {}),
     inputs: def.inputs,
-    steps: def.steps as unknown as WorkflowDef['steps'],
+    // builder → wire needs NO cast: `BuilderStep` (= StepBase & StepDef) is
+    // assignable to the wire `StepDef`. This is the type-checked boundary the
+    // compile-time guard in `stepForms.ts` protects.
+    steps: def.steps,
   }
 }
 
@@ -163,8 +170,20 @@ export const WorkflowBuilderStoreDef = defineLocalStore({
         try {
           const def = await ApiClient.Workflow.getDefinition({ id })
           const builderDef = toBuilderDef(def)
+          // Capture the friendly name so a recreate-after-external-delete
+          // (save → POST) can send it back — the definition endpoint omits the
+          // name, and once the row is deleted it can't be re-read. Best-effort:
+          // a failure here must not block loading the definition.
+          let displayName = ''
+          try {
+            const wf = await ApiClient.Workflow.get({ id })
+            displayName = wf.display_name ?? ''
+          } catch {
+            // Leave the name empty; recreate falls back to a default slug.
+          }
           set(d => {
             d.workflowId = id
+            d.name = displayName
             d.def = builderDef
             d.dirty = false
             d.loading = false
@@ -265,11 +284,20 @@ export const WorkflowBuilderStoreDef = defineLocalStore({
        *  delete detection); refreshes the def when there are no local edits. */
       detectExternalChanges,
 
-      /** Persist: POST on create, PUT-in-place on edit (id preserved). Returns
-       *  the saved workflow. Throws on failure (callers show a toast). */
+      /** Persist. PUT-in-place when we own a live row; otherwise POST to
+       *  create — this covers both the first save AND recreating a workflow
+       *  that was deleted on another device (a PUT to the dead id would 404).
+       *  Returns the saved workflow; throws a friendly Error on failure. */
       save: async (): Promise<Workflow> => {
-        const { workflowId, name, def } = get()
-        if (!workflowId && !name.trim()) {
+        const { workflowId, name, def, deletedExternally } = get()
+        // Recreate (deleted elsewhere) OR first-save both POST. Only a live,
+        // still-existing row updates in place.
+        const willUpdate = !!workflowId && !deletedExternally
+        const trimmedName = name.trim()
+        // A fresh create (create mode) requires a name — that's the one flow
+        // with a visible name field. A recreate has no name input, so it falls
+        // back to the captured display name (or a backend default slug).
+        if (!workflowId && !trimmedName) {
           const msg = 'Give the workflow a name before saving'
           set(d => {
             d.error = msg
@@ -283,30 +311,45 @@ export const WorkflowBuilderStoreDef = defineLocalStore({
         try {
           const payload = toWorkflowDef(def)
           let workflow: Workflow
-          if (workflowId) {
+          if (willUpdate) {
             workflow = await ApiClient.Workflow.updateDefinition({
               id: workflowId,
               ...payload,
             })
           } else {
             workflow = await ApiClient.Workflow.create({
-              name: name.trim(),
+              ...(trimmedName ? { name: trimmedName } : {}),
               ...payload,
             })
           }
           set(d => {
+            // Adopt the (possibly new) id and drop the stale-delete flag so the
+            // next save updates the freshly-created row in place.
             d.workflowId = workflow.id
             d.dirty = false
             d.saving = false
+            d.deletedExternally = false
           })
           return workflow
         } catch (error) {
+          const errObj =
+            error && typeof error === 'object'
+              ? (error as { error_code?: string; status?: number })
+              : {}
+          const isNameCollision =
+            errObj.error_code === 'WORKFLOW_NAME_EXISTS' || errObj.status === 409
+          const msg = isNameCollision
+            ? `A workflow named '${trimmedName || 'this'}' already exists — choose a different name`
+            : error instanceof Error
+              ? error.message
+              : 'Failed to save workflow'
           set(d => {
             d.saving = false
-            d.error =
-              error instanceof Error ? error.message : 'Failed to save workflow'
+            d.error = msg
           })
-          throw error
+          // Re-throw a friendly Error so the page toast shows the actionable
+          // message (the page surfaces `e.message`).
+          throw new Error(msg)
         }
       },
     }

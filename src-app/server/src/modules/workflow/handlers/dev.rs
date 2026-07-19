@@ -90,11 +90,13 @@ pub async fn validate_workflow(
 
     // Layer 2 + 3 — validate, collecting ALL errors. `is_dev = true` so a
     // dev author's `mock:` fields don't trip the no-mock check at validate
-    // time (validate is a dev affordance). prompt_file resolution uses a
-    // throwaway temp dir — since we don't have the bundle here, any
-    // `prompt_file:` is reported as a (soft) missing-file error; that's
-    // acceptable for the YAML-only validate surface.
-    let tmp = std::env::temp_dir();
+    // time (validate is a dev affordance). FIX-4: prompt_file resolution uses a
+    // guaranteed-nonexistent unique path (never created) instead of the shared
+    // `/tmp` root, so a `WorkflowsInstall` caller can't probe real /tmp
+    // contents. Since we don't have the bundle here, any `prompt_file:` is
+    // reported as a (soft) missing-file error — acceptable for the YAML-only
+    // validate surface.
+    let tmp = std::env::temp_dir().join(format!("ziee-wf-validate-{}", Uuid::new_v4()));
     let raw = validate::validate_collecting(&parsed, &tmp, true);
     // Split findings by severity: errors gate `valid`; warnings (the
     // type-aware ref-check escape hatch for under-specified workflows) are
@@ -401,6 +403,38 @@ pub async fn create_user_workflow(
     origin: SyncOrigin,
     Json(def): Json<validate::WorkflowDef>,
 ) -> ApiResult<Json<Workflow>> {
+    // FIX-2: reject a name collision up front. `install_workflow_from_bytes`'s
+    // re-import path does delete+insert on a matching name+version, which would
+    // silently delete a prior user workflow and orphan its `workflow_runs`.
+    // Editing an existing workflow is the PUT /definition path — the create path
+    // must never overwrite. Mirror the name/version/owner derivation
+    // `install_workflow_from_bytes` performs for a user-scope import.
+    let slug = q
+        .name
+        .clone()
+        .map(|s| sanitize_slug(&s))
+        .unwrap_or_else(|| "imported-workflow".to_string());
+    let name = format!("local.dev.{}/{}", auth.user.id, slug);
+    let version = "0.0.0-dev".to_string();
+    if repository::find_by_name_version_owner(
+        Repos.pool(),
+        &name,
+        Some(&version),
+        Some(auth.user.id),
+    )
+    .await?
+    .is_some()
+    {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::new(
+                StatusCode::CONFLICT,
+                "WORKFLOW_NAME_EXISTS",
+                format!("a workflow named '{slug}' already exists — choose a different name"),
+            )
+            .into(),
+        );
+    }
+
     let bytes = def_to_bundle_bytes(&def).await?;
     let iq = ImportQuery {
         name: q.name,
@@ -418,17 +452,20 @@ pub fn create_user_workflow_docs(op: TransformOperation) -> TransformOperation {
         .response::<201, Json<Workflow>>()
         .response_with::<400, (), _>(|r| r.description("Invalid definition"))
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<409, (), _>(|r| r.description("A workflow with this name already exists"))
 }
 
 /// `PUT /api/workflows/{id}/definition` — replace a user-scope workflow's
 /// steps / inputs IN PLACE from a posted `WorkflowDef`, preserving the workflow
 /// id (so run-history FKs survive). Owner-scoped (403 non-owner, 404 missing),
-/// mirroring `update_user_workflow`. Re-materializes the on-disk bundle at the
-/// row's `extracted_path` (the old bundle contents are replaced/cleaned by
-/// `extract_tarball_bytes`, which removes the target dir before the atomic
-/// rename), recomputes sha/size/file_count, re-validates, recompiles the IR,
-/// and updates the row via `repository::update_definition` (NOT delete+insert —
-/// that would change the id).
+/// mirroring `update_user_workflow`. Validation runs FIRST against the existing,
+/// still-intact `extracted_path` (so asset/`prompt_file:` refs resolve and no
+/// destructive op precedes a valid def); only then is `workflow.yaml`
+/// overwritten IN PLACE, preserving every sibling asset (`scripts/`, prompt
+/// files, `tests/`). sha/size/file_count are recomputed from the updated dir
+/// with the install path's derivation, the IR recompiled, and the row updated
+/// via `repository::update_definition` (NOT delete+insert — that would change
+/// the id).
 pub async fn update_user_workflow_definition(
     auth: RequirePermissions<(WorkflowsManage,)>,
     AxumPath(id): AxumPath<Uuid>,
@@ -448,34 +485,45 @@ pub async fn update_user_workflow_definition(
         );
     }
 
-    // Re-materialize the bundle in place. `extract_tarball_bytes` extracts to a
-    // sibling `.staging` dir, removes the existing target dir, then renames —
-    // so the OLD bundle contents we replace are cleaned as part of the swap.
-    let bytes = def_to_bundle_bytes(&def).await?;
-    let target = std::path::PathBuf::from(&existing.extracted_path);
-    let extraction = crate::modules::hub::bundle::extract_tarball_bytes(
-        &bytes,
-        &target,
-        crate::modules::hub::bundle::BundleKind::Workflow,
-    )
-    .await?;
+    let bundle_root = std::path::PathBuf::from(&existing.extracted_path);
 
-    // Re-validate against the freshly-materialized bundle root. is_dev=true so a
-    // builder-authored def parses under the same relaxed rules as import.
-    if let Err(e) =
-        validate::validate_for_install(&def, &extraction.extracted_path, true)
-    {
+    // FIX-1: validate FIRST, against the EXISTING (still-intact) bundle root, so
+    // `prompt_file:` / sibling-asset refs still resolve — and, crucially, so NO
+    // destructive filesystem op happens before validation succeeds. On error the
+    // bundle AND the DB row are left untouched. is_dev=true so a builder-authored
+    // def parses under the same relaxed rules as import.
+    if let Err(e) = validate::validate_for_install(&def, &bundle_root, true) {
         return Err::<_, (StatusCode, AppError)>(e.into());
     }
+
+    // Only now (valid): overwrite ONLY workflow.yaml in place — preserving every
+    // sibling asset (`scripts/`, prompt files, `tests/`), which the old
+    // pack-just-workflow.yaml + re-extract path silently destroyed. Same
+    // serializer `def_to_bundle_bytes` uses (`serde_norway`).
+    let yaml = serde_norway::to_string(&def).map_err(|e| {
+        AppError::bad_request(
+            "WORKFLOW_SERIALIZE_FAILED",
+            format!("failed to serialize workflow.yaml: {e}"),
+        )
+    })?;
+    let wf_path = bundle_root.join(&existing.entry_point);
+    tokio::fs::write(&wf_path, yaml.as_bytes()).await.map_err(|e| {
+        AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
+    })?;
+
+    // Recompute bundle_sha256 / bundle_size_bytes / file_count from the updated
+    // dir, reusing the install path's derivation (sha256 of the packed tar.gz +
+    // decompressed byte total + regular-file count) — no re-extract, no wipe.
+    let measure = crate::modules::hub::bundle::pack_workspace_dir_measured(&bundle_root)?;
 
     let compiled = crate::modules::workflow::compiled::compile_to_json(&def);
     let updated = repository::update_definition(
         Repos.pool(),
         id,
-        &extraction.extracted_path.display().to_string(),
-        &extraction.sha256_hex,
-        extraction.total_bytes as i64,
-        extraction.file_count as i32,
+        &existing.extracted_path,
+        &measure.sha256_hex,
+        measure.total_bytes as i64,
+        measure.file_count as i32,
         compiled,
     )
     .await?;
@@ -515,7 +563,10 @@ pub async fn validate_workflow_def(
     _auth: RequirePermissions<(WorkflowsRead,)>,
     Json(def): Json<validate::WorkflowDef>,
 ) -> ApiResult<Json<crate::modules::workflow::models::ValidateDefResponse>> {
-    let tmp = std::env::temp_dir();
+    // FIX-4: a guaranteed-nonexistent unique path (never created) as the bundle
+    // root, so `prompt_file:` resolution can't stat real shared-/tmp contents
+    // (a `WorkflowsRead` caller must not be able to probe path existence).
+    let tmp = std::env::temp_dir().join(format!("ziee-wf-validate-{}", Uuid::new_v4()));
     let raw = validate::validate_collecting(&def, &tmp, true);
     let mut errors = Vec::new();
     let mut warnings = Vec::new();

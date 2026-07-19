@@ -1,5 +1,6 @@
+import { useRef } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import { Button, Empty, Input, Switch, Text } from '@ziee/kit'
+import { Button, Empty, Input, SectionHeader, Switch, Text } from '@ziee/kit'
 import type { InputDef } from '@/api-client/types'
 import type { WorkflowBuilderStore } from '../../stores/WorkflowBuilder.store'
 import { LabeledControl } from './builderFields'
@@ -13,26 +14,49 @@ interface WorkflowInputsEditorProps {
 export function WorkflowInputsEditor({ store }: WorkflowInputsEditorProps) {
   const inputs = store.def.inputs
 
+  // `InputDef` carries no id, so keep a client-side stable id per row (React key)
+  // rather than the array index. Add/remove keep this list in lockstep with
+  // `inputs`; the tail back-fill covers initial load / a cross-device replace.
+  const idSeq = useRef(0)
+  const rowIds = useRef<string[]>([])
+  while (rowIds.current.length < inputs.length) {
+    idSeq.current += 1
+    rowIds.current.push(`wf-input-${idSeq.current}`)
+  }
+  if (rowIds.current.length > inputs.length) {
+    rowIds.current.length = inputs.length
+  }
+
   const update = (next: InputDef[]) => store.updateInputs(next)
   const patchAt = (i: number, patch: Partial<InputDef>) =>
     update(inputs.map((input, idx) => (idx === i ? { ...input, ...patch } : input)))
+  const addRow = () => {
+    idSeq.current += 1
+    rowIds.current.push(`wf-input-${idSeq.current}`)
+    update([...inputs, { name: '', description: '', required: false }])
+  }
+  const removeAt = (i: number) => {
+    rowIds.current.splice(i, 1)
+    update(inputs.filter((_, idx) => idx !== i))
+  }
 
   return (
     <div className="flex flex-col gap-3" data-testid="wf-builder-inputs-editor">
-      <div className="flex items-center justify-between gap-2">
-        <Text strong>Inputs</Text>
-        <Button
-          type="button"
-          variant="outline"
-          icon={<Plus />}
-          data-testid="wf-builder-input-add"
-          onClick={() =>
-            update([...inputs, { name: '', description: '', required: false }])
-          }
-        >
-          Add input
-        </Button>
-      </div>
+      <SectionHeader
+        title="Inputs"
+        data-testid="wf-builder-inputs-header"
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            icon={<Plus />}
+            data-testid="wf-builder-input-add"
+            onClick={addRow}
+          >
+            Add input
+          </Button>
+        }
+      />
 
       {inputs.length === 0 ? (
         <Empty
@@ -43,11 +67,15 @@ export function WorkflowInputsEditor({ store }: WorkflowInputsEditorProps) {
         <div className="flex flex-col gap-3">
           {inputs.map((input, i) => (
             <div
-              key={i}
+              key={rowIds.current[i]}
               className="flex flex-col gap-2 rounded-md border border-border p-3"
               data-testid={`wf-builder-input-row-${i}`}
             >
-              <div className="flex items-start gap-2">
+              {/* items-end aligns the remove button with the BOTTOM of the Name
+                  field (its input), so it stays aligned even when the label
+                  wraps to two lines on a narrow (≤390px) viewport — no `mt-6`
+                  magic offset that assumes a single-line label. */}
+              <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <LabeledControl label="Name" required>
                     <Input
@@ -65,8 +93,7 @@ export function WorkflowInputsEditor({ store }: WorkflowInputsEditorProps) {
                   icon={<Trash2 />}
                   aria-label="Remove input"
                   data-testid={`wf-builder-input-remove-${i}`}
-                  className="mt-6"
-                  onClick={() => update(inputs.filter((_, idx) => idx !== i))}
+                  onClick={() => removeAt(i)}
                 />
               </div>
               <LabeledControl label="Description">

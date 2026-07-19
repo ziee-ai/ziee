@@ -1,4 +1,10 @@
-import type { ReactNode } from 'react'
+import {
+  type ReactElement,
+  type ReactNode,
+  cloneElement,
+  isValidElement,
+  useId,
+} from 'react'
 import { Text, Textarea } from '@ziee/kit'
 import type { WorkflowBuilderStore } from '../../stores/WorkflowBuilder.store'
 import { RefInsertMenu } from './RefInsertMenu'
@@ -30,16 +36,32 @@ export function LabeledControl({
   action,
   children,
 }: LabeledControlProps) {
+  // Associate the label with its control so every control rendered through
+  // LabeledControl — including the bare `InputNumber`s (agent max-steps,
+  // sandbox/elicit timeout, llm_map parallel/retries) that carry no aria-label
+  // of their own — has an accessible NAME. We inject a generated id onto the
+  // single child (kit controls forward `id`/`...props` to the underlying DOM
+  // control) and point the label's `htmlFor` at it. An explicit `htmlFor` prop
+  // still wins; a child that already sets its own `id` is left untouched.
+  const generatedId = useId()
+  const controlId = htmlFor ?? generatedId
+  const control =
+    isValidElement(children) &&
+    (children.props as { id?: string }).id == null
+      ? cloneElement(children as ReactElement<{ id?: string }>, {
+          id: controlId,
+        })
+      : children
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2 min-h-6">
-        <label htmlFor={htmlFor} className="text-xs font-medium">
+        <label htmlFor={controlId} className="text-xs font-medium">
           {label}
           {required && <span className="text-destructive"> *</span>}
         </label>
         {action}
       </div>
-      {children}
+      {control}
       {description && (
         <Text type="secondary" className="text-xs">
           {description}

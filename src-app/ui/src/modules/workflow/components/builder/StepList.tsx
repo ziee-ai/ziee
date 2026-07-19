@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { ChevronDown, ChevronUp, GripVertical, Trash2 } from 'lucide-react'
-import { Button, Empty, Tag, Text } from '@ziee/kit'
+import { Button, Empty, SectionHeader, Tag, Text } from '@ziee/kit'
 import type { WorkflowBuilderStore } from '../../stores/WorkflowBuilder.store'
 import { AddStepMenu } from './AddStepMenu'
 import { STEP_KIND_LABELS, type StepKind } from './stepForms'
@@ -29,10 +29,11 @@ export function StepList({ store }: StepListProps) {
 
   return (
     <div className="flex flex-col gap-3" data-testid="wf-builder-step-list">
-      <div className="flex items-center justify-between gap-2">
-        <Text strong>Steps</Text>
-        <AddStepMenu store={store} />
-      </div>
+      <SectionHeader
+        title="Steps"
+        data-testid="wf-builder-steps-header"
+        actions={<AddStepMenu store={store} />}
+      />
 
       {steps.length === 0 ? (
         <Empty
@@ -77,7 +78,7 @@ export function StepList({ store }: StepListProps) {
                   <Tag
                     variant="outline"
                     tone="info"
-                    className="text-xs !m-0 self-start"
+                    className="text-xs self-start"
                     data-testid={`wf-builder-step-kind-${step.id}`}
                   >
                     {STEP_KIND_LABELS[step.kind as StepKind] ?? step.kind}

@@ -672,7 +672,11 @@ pub const AGENT_ACTIVITY_MAX_ENTRIES: i64 = 500;
 /// stdout/stderr log map under the bare `<step_id>` key). The whole append +
 /// trim-to-`AGENT_ACTIVITY_MAX_ENTRIES` runs in ONE atomic UPDATE statement so
 /// fire-and-forget concurrent appends can't lose or duplicate entries. The
-/// most-recent `AGENT_ACTIVITY_MAX_ENTRIES` are retained in chronological order.
+/// retained window is the `AGENT_ACTIVITY_MAX_ENTRIES` HIGHEST-`seq` entries
+/// (NOT the last-N-inserted): appends commit in row-lock order, which can differ
+/// from `seq` order, so trimming by insertion ordinal could drop a higher-`seq`
+/// entry and keep a lower one. The kept entries are re-emitted in ascending
+/// `seq` order.
 pub async fn append_agent_activity(
     pool: &PgPool,
     run_id: Uuid,
@@ -687,14 +691,14 @@ pub async fn append_agent_activity(
                 coalesce(step_logs_json, '{}'::jsonb),
                 ARRAY[$2::text],
                 coalesce((
-                    SELECT jsonb_agg(elem ORDER BY ord)
+                    SELECT jsonb_agg(elem ORDER BY (elem ->> 'seq')::numeric)
                     FROM (
-                        SELECT elem, ord
+                        SELECT elem
                         FROM jsonb_array_elements(
                             coalesce(step_logs_json -> $2, '[]'::jsonb)
                                 || jsonb_build_array($3::jsonb)
-                        ) WITH ORDINALITY AS t(elem, ord)
-                        ORDER BY ord DESC
+                        ) AS t(elem)
+                        ORDER BY (elem ->> 'seq')::numeric DESC NULLS LAST
                         LIMIT $4
                     ) recent
                 ), '[]'::jsonb),

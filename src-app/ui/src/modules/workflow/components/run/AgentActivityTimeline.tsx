@@ -62,7 +62,13 @@ function ActivityRow({
         {/* Title + pill share one wrapping row: the pill is pushed to the end
             with `ms-auto` and drops UNDER the title (never off-screen) at 390px. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Text className="min-w-0 text-sm">{line}</Text>
+          {/* `min-w-0` lets the flex child shrink; `break-words` +
+              overflow-wrap:anywhere break a long unbroken token (a fetched
+              URL/DOI in a backend title) so it wraps inside the row instead of
+              forcing horizontal page scroll at 390px. */}
+          <Text className="min-w-0 break-words [overflow-wrap:anywhere] text-sm">
+            {line}
+          </Text>
           <Badge
             data-testid={`wf-activity-status-${stepId}-${entry.seq}`}
             tone={view.tone}
@@ -138,8 +144,10 @@ export function AgentActivityTimeline({
 }: AgentActivityTimelineProps) {
   const [showAll, setShowAll] = useState(false)
 
-  // Store already keeps these seq-ordered; sort defensively (cheap, idempotent).
-  const ordered = [...entries].sort((a, b) => a.seq - b.seq)
+  // The store (WorkflowRun.store `mergeAgentActivity`) already keeps this array
+  // seq-ordered, so we trust that invariant and skip the per-render copy+sort
+  // that otherwise ran on every SSE frame (FIX-3).
+  const ordered = entries
   const overflow = ordered.length - MAX_VISIBLE
   const visible = showAll || overflow <= 0 ? ordered : ordered.slice(-MAX_VISIBLE)
 

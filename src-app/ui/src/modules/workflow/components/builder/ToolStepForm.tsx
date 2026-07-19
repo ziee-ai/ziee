@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button, Input } from '@ziee/kit'
 import type { WorkflowBuilderStore } from '../../stores/WorkflowBuilder.store'
@@ -20,20 +20,47 @@ interface ArgRow {
 }
 
 /** Stringify a loaded argument value for the key/value editor (objects/arrays
- *  are shown as JSON; primitives as their text). */
+ *  are shown as JSON; primitives — number/boolean — as their text so they stay
+ *  editable and re-parse back to the same type on commit). */
 function toText(v: unknown): string {
-  if (v == null) return ''
+  if (v === undefined) return ''
   if (typeof v === 'string') return v
+  // `null`→"null", number→"10", boolean→"true", object/array→JSON — each
+  // re-parses back to the same typed value in `parseValue`.
   return JSON.stringify(v)
 }
 
-function argsToRows(args: unknown): ArgRow[] {
+/** Turn a text field back into a typed value: parse it as JSON (so `10`→number,
+ *  `true`→boolean, `null`, `[…]`, `{…}` round-trip as themselves); fall back to
+ *  the raw string when it isn't valid JSON (covers plain text + `{{ refs }}`). */
+function parseValue(raw: string): unknown {
+  const trimmed = raw.trim()
+  if (trimmed === '') return ''
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return raw
+  }
+}
+
+function argsToRows(args: unknown, nextRowId: () => number): ArgRow[] {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return []
-  return Object.entries(args as Record<string, unknown>).map(([key, value], i) => ({
-    rowId: i,
+  return Object.entries(args as Record<string, unknown>).map(([key, value]) => ({
+    rowId: nextRowId(),
     key,
     value: toText(value),
   }))
+}
+
+/** Serialize rows to the arguments object the same way `commit` does — used to
+ *  compare our own last push against the store so a cross-device refetch (not
+ *  our own edit) is what triggers a buffer resync. */
+function rowsToArgs(rows: ArgRow[]): Record<string, unknown> {
+  const obj: Record<string, unknown> = {}
+  for (const r of rows) {
+    if (r.key.trim()) obj[r.key.trim()] = parseValue(r.value)
+  }
+  return obj
 }
 
 /** Call one specific tool on a server. Arguments use a key/value editor (each
@@ -43,21 +70,43 @@ export function ToolStepForm({ store, step }: Props) {
   const errors = configErrors(step)
   const patch = (p: Record<string, unknown>) => store.updateStep(step.id, p)
 
-  const [rows, setRows] = useState<ArgRow[]>(() => argsToRows(step.arguments))
-  const nextId = useState(() => ({ v: rows.length }))[0]
+  // Stable monotonic row-id source (replaces the `useState(()=>({v}))[0]`
+  // mutable-object anti-pattern). Rows are keyed by this id, never the index.
+  const rowIdSeq = useRef(0)
+  const nextRowId = () => {
+    rowIdSeq.current += 1
+    return rowIdSeq.current
+  }
+
+  const [rows, setRows] = useState<ArgRow[]>(() =>
+    argsToRows(step.arguments, nextRowId),
+  )
+
+  // Serialized snapshot of the store's `arguments` as we last saw it, so we can
+  // tell an external change (a sync refetch replacing `step.arguments`) apart
+  // from our own commit and only resync the buffer for the former (FIX-F).
+  const argsSnapshot = (a: unknown) =>
+    JSON.stringify(a && typeof a === 'object' && !Array.isArray(a) ? a : {})
+  const lastPushed = useRef<string>(argsSnapshot(step.arguments))
+
+  useEffect(() => {
+    const incoming = argsSnapshot(step.arguments)
+    if (incoming !== lastPushed.current) {
+      lastPushed.current = incoming
+      setRows(argsToRows(step.arguments, nextRowId))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.arguments])
 
   const commit = (next: ArgRow[]) => {
     setRows(next)
-    const obj: Record<string, string> = {}
-    for (const r of next) {
-      if (r.key.trim()) obj[r.key.trim()] = r.value
-    }
+    const obj = rowsToArgs(next)
+    lastPushed.current = JSON.stringify(obj)
     patch({ arguments: obj })
   }
 
   const addRow = () => {
-    nextId.v += 1
-    setRows([...rows, { rowId: nextId.v, key: '', value: '' }])
+    setRows([...rows, { rowId: nextRowId(), key: '', value: '' }])
   }
 
   return (

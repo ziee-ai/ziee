@@ -64,7 +64,7 @@ export function StepConfigPanel({ store }: StepConfigPanelProps) {
         <Tag
           variant="outline"
           tone="info"
-          className="text-xs !m-0"
+          className="text-xs"
           data-testid="wf-builder-step-config-kind"
         >
           {STEP_KIND_LABELS[step.kind as StepKind] ?? step.kind}

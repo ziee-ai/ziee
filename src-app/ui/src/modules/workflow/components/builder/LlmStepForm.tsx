@@ -2,7 +2,6 @@ import { Segmented } from '@ziee/kit'
 import type { WorkflowBuilderStore } from '../../stores/WorkflowBuilder.store'
 import { type BuilderStep, configErrors } from './stepForms'
 import { LabeledControl, PromptField } from './builderFields'
-import { CapabilityMultiSelect } from './capabilities'
 
 type LlmStep = Extract<BuilderStep, { kind: 'llm' }>
 
@@ -47,16 +46,10 @@ export function LlmStepForm({ store, step }: Props) {
         />
       </LabeledControl>
 
-      <LabeledControl
-        label="Tools"
-        description="Optional tools the model may call for this prompt."
-      >
-        <CapabilityMultiSelect
-          value={step.tools ?? []}
-          onChange={v => patch({ tools: v })}
-          testid="wf-builder-llm-tools"
-        />
-      </LabeledControl>
+      {/* No tools picker here: the backend `validate-def` (E6,
+          WORKFLOW_DEAD_TOOLS_FIELD) rejects a non-empty `tools` on an
+          llm/llm_map step. Tool use belongs to the `tool` step kind (a single
+          named tool) and to the agent step's `servers` (capabilities). */}
     </div>
   )
 }
