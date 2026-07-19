@@ -21,28 +21,90 @@ use crate::types::{
     AgentEvent, AgentTurnRequest, SubagentSpec, SubagentSummary, ToolScope, TurnSeed,
 };
 
+/// How [`AgentCore::fan_out_inner`] treats a child that fails (model-resolution
+/// error, a child-run error, or a panicked task).
+///
+/// - [`FailureMode::FailFast`] — the strict [`AgentCore::fan_out`] contract: the
+///   first failure aborts the whole fan-out with that `Err`.
+/// - [`FailureMode::ErrorSummary`] — DEC-9, the `delegate` path: a failed child
+///   contributes an error-summary IN PLACE and the surviving children still
+///   return, so one bad child never fails the parent turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FailureMode {
+    FailFast,
+    ErrorSummary,
+}
+
+/// A child's outcome BEFORE the join barrier: an immediately-ready summary (its
+/// model resolution failed under [`FailureMode::ErrorSummary`], so no task was
+/// spawned) or a spawned task handle to await.
+enum ChildOutcome {
+    Ready(SubagentSummary),
+    Spawned(tokio::task::JoinHandle<Result<SubagentSummary, AppError>>),
+}
+
+/// Build an error-summary placeholder for a failed child (DEC-9). The
+/// `[subagent error: …]` shape is a stable, greppable marker the parent (and
+/// tests) can recognize; it is neutralized alongside real summaries before the
+/// parent reads it.
+fn error_summary(detail: &str) -> SubagentSummary {
+    SubagentSummary {
+        summary: format!("[subagent error: {detail}]"),
+    }
+}
+
 impl AgentCore {
     /// Spawn N isolated child cores concurrently, bounded by
     /// `SubagentLimits.max_threads`. Each child resolves its `model_id` (when
     /// set) via the `ModelResolver`; a rejected id fails the whole fan-out.
     /// Returns only summaries (P9). `user_id` binds RBAC for model resolution.
+    ///
+    /// This is the STRICT, all-or-nothing contract ([`FailureMode::FailFast`]);
+    /// the model-facing `delegate` tool uses the relaxed [`FailureMode::ErrorSummary`]
+    /// path via [`AgentCore::fan_out_inner`] (DEC-9).
     pub async fn fan_out(
         &self,
         user_id: Uuid,
         children: Vec<SubagentSpec>,
         cancel: CancelToken,
     ) -> Result<Vec<SubagentSummary>, AppError> {
+        self.fan_out_inner(user_id, children, cancel, FailureMode::FailFast)
+            .await
+    }
+
+    /// The shared fan-out engine. `mode` selects the child-failure contract
+    /// (see [`FailureMode`]). Concurrency is bounded by `max_threads` (a
+    /// `Semaphore`); every child runs with `allow_delegate = false`
+    /// (structural `max_depth = 1`); summaries are neutralized (ITEM-32/DEC-80)
+    /// before return.
+    pub(crate) async fn fan_out_inner(
+        &self,
+        user_id: Uuid,
+        children: Vec<SubagentSpec>,
+        cancel: CancelToken,
+        mode: FailureMode,
+    ) -> Result<Vec<SubagentSummary>, AppError> {
         let permits = self.limits.max_threads.max(1) as usize;
         let sem = Arc::new(Semaphore::new(permits));
-        let mut handles = Vec::new();
+        let mut outcomes: Vec<ChildOutcome> = Vec::new();
 
         for spec in children {
-            // Resolve the per-child model (RBAC-bound); a rejected id errors out.
+            // Resolve the per-child model (RBAC-bound). Under FailFast a rejected
+            // id aborts the fan-out; under ErrorSummary it becomes this child's
+            // error-summary and the others still run (DEC-9).
             let model_client = match spec.model_id {
-                Some(model_id) => {
-                    let provider = self.models.resolve(model_id, user_id).await?;
-                    self.model_factory.for_provider(provider)
-                }
+                Some(model_id) => match self.models.resolve(model_id, user_id).await {
+                    Ok(provider) => self.model_factory.for_provider(provider),
+                    Err(e) => match mode {
+                        FailureMode::FailFast => return Err(e),
+                        FailureMode::ErrorSummary => {
+                            outcomes.push(ChildOutcome::Ready(error_summary(&format!(
+                                "model resolution failed: {e}"
+                            ))));
+                            continue;
+                        }
+                    },
+                },
                 None => self.model.clone(),
             };
 
@@ -65,26 +127,42 @@ impl AgentCore {
 
             let sem = sem.clone();
             let cancel = cancel.clone();
-            handles.push(tokio::spawn(async move {
+            outcomes.push(ChildOutcome::Spawned(tokio::spawn(async move {
                 let _permit = sem
                     .acquire_owned()
                     .await
                     .map_err(|e| AppError::internal_error(format!("semaphore closed: {e}")))?;
                 let events = child.run(child_req, cancel).await?;
                 Ok::<SubagentSummary, AppError>(summary_from_events(&events))
-            }));
+            })));
         }
 
         let mut out = Vec::new();
-        for handle in handles {
-            match handle.await {
-                Ok(Ok(summary)) => out.push(summary),
-                Ok(Err(e)) => return Err(e),
-                Err(e) => {
-                    return Err(AppError::internal_error(format!(
-                        "subagent task panicked: {e}"
-                    )))
-                }
+        for outcome in outcomes {
+            match outcome {
+                ChildOutcome::Ready(summary) => out.push(summary),
+                ChildOutcome::Spawned(handle) => match handle.await {
+                    Ok(Ok(summary)) => out.push(summary),
+                    // A child RUN error (fanout.rs join barrier): abort under
+                    // FailFast; contribute an error-summary under ErrorSummary
+                    // (DEC-9 — survivors still return).
+                    Ok(Err(e)) => match mode {
+                        FailureMode::FailFast => return Err(e),
+                        FailureMode::ErrorSummary => {
+                            out.push(error_summary(&format!("sub-agent failed: {e}")))
+                        }
+                    },
+                    Err(e) => match mode {
+                        FailureMode::FailFast => {
+                            return Err(AppError::internal_error(format!(
+                                "subagent task panicked: {e}"
+                            )))
+                        }
+                        FailureMode::ErrorSummary => {
+                            out.push(error_summary(&format!("sub-agent task panicked: {e}")))
+                        }
+                    },
+                },
             }
         }
 
@@ -161,6 +239,7 @@ mod tests {
             limits: SubagentLimits {
                 max_depth: 1,
                 max_threads,
+                max_children_per_call: 8,
             },
             sandbox: SandboxMode::WorkspaceWrite { network: false },
             model_name: "test".into(),
@@ -293,5 +372,87 @@ mod tests {
             .fan_out(Uuid::new_v4(), vec![spec(Some(bad), "a")], CancelToken::new())
             .await;
         assert!(err.is_err());
+    }
+
+    /// A model whose call always errors — drives a child-RUN failure through the
+    /// fan-out join barrier.
+    struct FailingModel;
+    #[async_trait::async_trait]
+    impl ModelClient for FailingModel {
+        async fn call(
+            &self,
+            _req: ai_providers::ChatRequest,
+        ) -> Result<(ChatMessage, crate::types::Usage), AppError> {
+            Err(AppError::internal_error("model boom"))
+        }
+    }
+
+    /// DEC-9: under `ErrorSummary`, a failed child yields an error-summary while
+    /// the surviving children still return — one bad child never fails the parent.
+    #[tokio::test]
+    async fn failing_child_yields_error_summary_survivors_return() {
+        // Child A (model_id set) resolves to the FAILING model via the factory;
+        // child B (model_id None) uses the parent's healthy model.
+        let core = fanout_core(
+            Arc::new(ScriptedModel::final_text("survivor ok")),
+            Arc::new(FakeResolver::default()),
+            Arc::new(FakeFactory {
+                inner: Arc::new(FailingModel),
+            }),
+            6,
+        );
+        let summaries = core
+            .fan_out_inner(
+                Uuid::new_v4(),
+                vec![spec(Some(Uuid::new_v4()), "will fail"), spec(None, "will survive")],
+                CancelToken::new(),
+                FailureMode::ErrorSummary,
+            )
+            .await
+            .expect("relaxed fan-out must not error on a single failed child");
+
+        assert_eq!(summaries.len(), 2, "both children accounted for");
+        assert!(
+            summaries.iter().any(|s| s.summary.contains("survivor ok")),
+            "the healthy child's summary survives"
+        );
+        assert!(
+            summaries
+                .iter()
+                .any(|s| s.summary.contains("subagent error") && s.summary.contains("boom")),
+            "the failed child becomes an error-summary (not a hard error)"
+        );
+    }
+
+    /// DEC-9 (resolution branch): a child whose model can't be RESOLVED becomes an
+    /// error-summary under `ErrorSummary`, while the strict `fan_out` still errors.
+    #[tokio::test]
+    async fn unresolvable_child_is_error_summary_under_relaxed_mode() {
+        let bad = Uuid::new_v4();
+        let core = fanout_core(
+            Arc::new(ScriptedModel::final_text("survivor ok")),
+            Arc::new(FakeResolver {
+                asked: Default::default(),
+                reject: Some(bad),
+            }),
+            Arc::new(FakeFactory {
+                inner: Arc::new(ScriptedModel::final_text("unused")),
+            }),
+            6,
+        );
+        let summaries = core
+            .fan_out_inner(
+                Uuid::new_v4(),
+                vec![spec(Some(bad), "rejected"), spec(None, "survivor")],
+                CancelToken::new(),
+                FailureMode::ErrorSummary,
+            )
+            .await
+            .unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert!(summaries.iter().any(|s| s.summary.contains("survivor ok")));
+        assert!(summaries
+            .iter()
+            .any(|s| s.summary.contains("subagent error")));
     }
 }

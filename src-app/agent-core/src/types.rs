@@ -129,6 +129,11 @@ pub enum GateOutcome {
 pub struct SubagentLimits {
     pub max_depth: u8,
     pub max_threads: u8,
+    /// Max children accepted in ONE `delegate` call (DEC-1). `max_threads` bounds
+    /// concurrency; this bounds the COUNT — over-cap truncates with an explicit
+    /// "capped at N" note (never a silent drop). Taken as data (the crate is
+    /// domain-free); the host threads it from `agent_admin_settings`.
+    pub max_children_per_call: u16,
 }
 
 impl Default for SubagentLimits {
@@ -136,6 +141,7 @@ impl Default for SubagentLimits {
         Self {
             max_depth: 1,
             max_threads: 6,
+            max_children_per_call: 8,
         }
     }
 }
@@ -237,6 +243,7 @@ mod tests {
         let l = SubagentLimits::default();
         assert_eq!(l.max_depth, 1);
         assert_eq!(l.max_threads, 6);
+        assert_eq!(l.max_children_per_call, 8);
     }
 
     #[test]

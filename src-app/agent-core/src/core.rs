@@ -26,6 +26,7 @@ use futures_util::StreamExt;
 use ziee_core::AppError;
 
 use crate::budget::Budget;
+use crate::core_tools::CoreTool;
 use crate::extension::{
     run_before_model, run_contribute, sorted_extensions, AgentExtension, Flow, TurnContext,
 };
@@ -335,7 +336,11 @@ impl AgentCore {
             run_contribute(&extensions, &mut tctx).await?;
 
             let history = self.transcript.load(req.run_id).await?;
-            let tools = self.tools.list(&tctx.tool_scope).await?;
+            // The MCP/built-in tools for this turn, plus any core-injected meta-tools
+            // (e.g. `delegate` when `allow_delegate`) — the model sees them as one
+            // flat list; core tools are intercepted in-loop below (ITEM-1).
+            let mut tools = self.tools.list(&tctx.tool_scope).await?;
+            tools.extend(crate::core_tools::core_tool_defs(&tctx.tool_scope));
             let mut chat_req = ChatRequest {
                 model: self.model_name.clone(),
                 messages: assemble_messages(&tctx.system, &history),
@@ -494,6 +499,42 @@ impl AgentCore {
             let mut executed = 0usize;
             let mut terminal_count = 0usize;
             for (ordinal, call) in tool_calls.iter().enumerate() {
+                // Core meta-tool interception (the reusable seam — ITEM-1, and
+                // later Group G's `task_*` tools). These are NOT MCP tools, so they
+                // are handled in-process BEFORE the approval gate and BEFORE
+                // `ToolProvider::call`, then appended to the transcript like any
+                // executed tool (no orphan `tool_use`). See `crate::core_tools`.
+                if let Some(core_tool) = CoreTool::from_name(&call.name) {
+                    let result = self
+                        .handle_core_tool(
+                            core_tool,
+                            call,
+                            &tctx.tool_scope,
+                            req.user_id,
+                            &cancel,
+                        )
+                        .await;
+                    executed += 1;
+                    if result.terminal {
+                        terminal_count += 1;
+                    }
+                    let idem = format!("{}:{}:{}", req.run_id, iteration, ordinal);
+                    self.transcript
+                        .journal_tool_call(
+                            req.run_id,
+                            ToolCallRecord {
+                                key: idem,
+                                call: call.clone(),
+                                result: result.clone(),
+                            },
+                        )
+                        .await?;
+                    let msg = tool_result_message(call, &result);
+                    self.transcript.append(req.run_id, msg.clone()).await?;
+                    self.push_emit(&mut events, AgentEvent::Message(msg)).await;
+                    continue;
+                }
+
                 let server_key = call
                     .server
                     .clone()
@@ -654,7 +695,7 @@ fn extract_tool_calls(msg: &ChatMessage) -> Vec<ToolCall> {
         .collect()
 }
 
-fn error_tool_result(message: impl Into<String>) -> ToolResult {
+pub(crate) fn error_tool_result(message: impl Into<String>) -> ToolResult {
     ToolResult {
         content: vec![ContentBlock::Text {
             text: message.into(),

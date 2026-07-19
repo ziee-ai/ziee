@@ -17,6 +17,7 @@
 pub mod budget;
 pub mod compaction;
 pub mod core;
+pub mod core_tools;
 pub mod extension;
 pub mod fanout;
 pub mod guard;
@@ -34,6 +35,10 @@ pub use compaction::{CompactionExtension, CompactionResult, Compactor};
 pub use core::{
     AgentCore, CancelToken, DeltaSink, ModelClient, ModelClientFactory, NoopDeltaSink,
     ProviderModelClient, ProviderModelClientFactory,
+};
+pub use core_tools::{
+    core_tool_defs, prepare_child_specs, CoreTool, DelegateChildSpec, DelegateInput,
+    DelegateToolScope, DELEGATE_TOOL,
 };
 pub use extension::{sorted_extensions, AgentExtension, Flow, TurnContext};
 pub use guard::neutralize_untrusted;

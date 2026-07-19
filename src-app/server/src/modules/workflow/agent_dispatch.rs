@@ -710,6 +710,7 @@ impl StepDispatcher for AgentDispatcher {
             .map(|s| SubagentLimits {
                 max_depth: s.fan_out_max_depth.clamp(1, 255) as u8,
                 max_threads: s.fan_out_max_threads.clamp(1, 255) as u8,
+                ..Default::default()
             })
             .unwrap_or_default();
 
