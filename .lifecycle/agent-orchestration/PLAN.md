@@ -16,11 +16,17 @@
 > **SOTA research is done** (human asked for it before locking scope) — see
 > **[`RESEARCH_SOTA.md`](./RESEARCH_SOTA.md)** (5 primary-source research passes over
 > Claude Code / Codex / Cursor / Goose / DBOS / LangGraph / Mastra / …). Two headline
-> results now folded into this plan: (a) the 5-group spine is **on the right track**,
-> with **~5 completeness gaps + a durability/hardening set** added below as **Group F**;
+> results folded into this plan: (a) the 5-group spine is **on the right track**,
+> with **completeness gaps + a durability/hardening set** added below as **Group F**;
 > (b) the backbone recommendation is **REVISED** to a hybrid — *A-substrate + B-facade +
-> C-as-a-kind* (see § Architecture options). The human chose **full scope (A–E)**;
-> Group F items are the research-surfaced candidates to fold in.
+> C-as-a-kind* (see § Architecture options).
+>
+> **✅ SCOPE NOW LOCKED (human-selected, see § Locked scope):** full **A–E**; backbone =
+> **hybrid (reuse `workflow_runs` + `JobKind` registry)**; **all four** completeness
+> capabilities in (goal-seeking ITEM-24, steer ITEM-25, unified inbox ITEM-26, event
+> triggers ITEM-27); **hardening ITEM-29–32 in as baseline**; build order **A + E first →
+> backbone → B + C**. Still **Phase 1** — this refines the menu into the agreed scope;
+> nothing implemented, nothing pushed. Ready for Phase 2 (plan-audit) on the human's go.
 
 ---
 
@@ -252,14 +258,19 @@ Goose's sub-agent caps: ≤25 turns / 5 min / ~10 concurrent / no recursion).
 
 ---
 
-## Open scope decisions for the human (the menu picks — resolve in chat before Phase 2)
+## Locked scope (human-selected)
 
-1. **Scope breadth** — human chose **full (A–E)**. Remaining: **how much of Group F** rides along? (My rec: fold in the *hardening* items 29–32 wherever B/C/A ship — they're corrections, not extras — and treat the *completeness gaps* 24–27 as their own prioritized round, led by **ITEM-24 goal-seeking** and **ITEM-26 unified inbox**.)
-2. **Extensibility backbone** — the research **revised** this to **A-substrate + B-facade + C-as-a-kind** (reuse `workflow_runs` + a `JobKind` trait registry; NO separate table). Confirm this direction, or prefer a clean separate `background_jobs` table anyway (the divergence the field is unwinding).
-3. **Sequencing** — the backbone (D, item 14/15/17 revised) is the substrate B/C sit on. Ship order: A + E first (surface existing engines) → backbone → B + C on it? Or backbone-first?
-4. **Goal-seeking (ITEM-24)** — in scope as its own axis (the highest-value completeness gap), and does it live *inside* the merged Group-E dialog ("done when…") or as its own affordance?
-5. **`/loop` `/schedule` entry** — composer slot-button only, slash-command parser only, or both (ITEM-18 vs ITEM-19)? (SOTA is NL-first; a slash parser is optional sugar.)
-6. **Self-paced loop mode** (ITEM-21) — confirmed on-SOTA (Claude Code bare `/loop`); include the mirror mechanics (show next-delay + reason, self-stop, 7-day max-horizon backstop)?
-7. **Bind-to-current-conversation** (ITEM-22) — loops/schedules created in a chat post back into THAT chat, or into the scheduler's per-task bound conversation (current behavior)?
-8. **Unified inbox (ITEM-26)** — build the one consolidated dashboard now (connective tissue), or ship per-surface status first and add the inbox as a fast-follow?
-9. **Event-driven triggers (ITEM-27)** — in the first round, or defer behind cron+once + goal-seeking?
+Resolved via option pickers on 2026-07-19. These are the agreed decisions the Phase-2
+plan-audit + Phase-3 tests will be written against.
+
+- **LOCK-1 — Breadth:** full **A–E**, plus **all four** Group-F completeness capabilities: **ITEM-24 goal-seeking**, **ITEM-25 steer-running-agent**, **ITEM-26 unified inbox/dashboard** (ITEM-28 live-TODO rides here as a stretch), **ITEM-27 event-driven triggers**.
+- **LOCK-2 — Backbone:** the **hybrid** — *A-substrate + B-facade + C-as-a-kind*: generalize `workflow_runs` with a `kind` discriminator; expose a uniform `spawn_background / check_status / collect_result` + a decentralized **`JobKind` trait registry**; `JobKind::SubAgent` is C. **No separate `background_jobs` table.** (Supersedes the A/B/C options above — those remain as recorded rationale.)
+- **LOCK-3 — Hardening baseline:** **ITEM-29–32 are in scope, not optional** — persisted task state machine + boot orphan-reclaim + `needs_input` reply state (29); sandbox output backpressure/ring-buffer (30); sandbox lifetime policy + cgroup-kill + terminal-state reaping (31); untrusted-output scanning of child summaries (32). Fold each in wherever its group (B/C/A) ships.
+- **LOCK-4 — Sequencing:** **A + E first** (surface the existing `fan_out` + `scheduler` engines) → **backbone** (D) → **B + C** on it. Group-F items attach to their host group in that order (untrusted-scan 32 with A; goal-seeking 24 with E; state-machine 29 + steer 25 + inbox 26 + triggers 27 with the backbone/B; sandbox hardening 30–31 with C).
+
+### Still-open (smaller — resolvable by convention at Phase 2/4, non-blocking)
+
+- **ITEM-33** (Group-A ergonomics stretch: named agent defs / cumulative spawn budget / streaming child progress / per-child sandbox mode) — kept as a **[stretch]**; not selected. Revisit after A ships.
+- **ITEM-18 vs ITEM-19** — `/loop`+`/schedule` entry: composer "+"-menu button vs a slash-command parser vs both. SOTA is NL-first, so the button + NL is the default; a slash parser is optional sugar. Resolve at Phase 4.
+- **ITEM-21** self-paced mechanics — include the mirror set (show next-delay + reason, self-stop, ~7-day max-horizon backstop). On-SOTA; default yes.
+- **ITEM-22** bind-to-current-conversation — post loop/schedule results into the current chat (vs the scheduler's per-task bound conversation). Default yes for the in-chat entry; confirm at Phase 4.
