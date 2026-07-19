@@ -51,7 +51,8 @@ pub use ports::{
     TranscriptStore,
 };
 pub use reviewer::{
-    map_risk, ModelRiskClassifier, Reviewer, Risk, RiskClassifier, RiskThresholds,
+    apply_authorization, map_risk, Authorization, ModelRiskClassifier, Reviewer, Risk,
+    RiskAssessment, RiskCategory, RiskClassifier, RiskThresholds,
 };
 pub use tasklist::{
     task_tool_defs, TaskListExtension, TASK_CREATE_TOOL, TASK_GET_TOOL, TASK_LIST_ORDER,

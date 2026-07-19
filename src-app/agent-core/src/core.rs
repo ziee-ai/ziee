@@ -554,7 +554,17 @@ impl AgentCore {
                 let mut decision = self.policy.decide(call, trusted, &self.sandbox).await;
                 if decision == Decision::Review {
                     decision = match &self.reviewer {
-                        Some(rev) => rev.review(call).await,
+                        // DEC-104 (ITEM-47) — external veto-only. The reviewer may
+                        // only DOWNGRADE a non-trusted call; it can never GRANT
+                        // `Auto`. This closes the live hole where an untrusted
+                        // external call under `OnRequest` → `Review` → reviewer
+                        // `Risk::Low` → `Auto` reached Auto with NO human allowlist
+                        // entry. (An allowlisted external call is already `Auto`
+                        // from the ApprovalPolicy BEFORE `Review`, so it never
+                        // reaches the reviewer — the reviewer only ever sees
+                        // non-allowlisted external calls. Trusted/built-in calls are
+                        // `Auto` from the policy too and likewise skip `Review`.)
+                        Some(rev) => clamp_reviewer_decision(trusted, rev.review(call).await),
                         // No reviewer wired → escalate to a human (safe default).
                         None => Decision::Prompt,
                     };
@@ -656,6 +666,20 @@ impl AgentCore {
         }
 
         Ok(events)
+    }
+}
+
+/// DEC-104 (ITEM-47) — external veto-only clamp. For a NON-trusted server the
+/// reviewer's output may only tighten toward ask/deny; a reviewer `Auto` is
+/// clamped up to `Prompt` (a human must still confirm, since a non-trusted call
+/// has no host allowlist entry — those are `Auto` from the policy BEFORE the
+/// reviewer runs). A trusted/built-in call (which normally doesn't reach the
+/// reviewer at all) keeps whatever the reviewer decided.
+fn clamp_reviewer_decision(trusted: bool, reviewed: Decision) -> Decision {
+    if !trusted && reviewed == Decision::Auto {
+        Decision::Prompt
+    } else {
+        reviewed
     }
 }
 
@@ -944,5 +968,72 @@ mod tests {
         assert_eq!(last_stop(&events), StopReason::Halted);
         // The model was never called.
         assert_eq!(*harness.model.calls.lock().unwrap(), 0);
+    }
+
+    // -------- TEST-176/177: DEC-104 external veto-only clamp --------
+    #[test]
+    fn clamp_reviewer_decision_external_veto_only() {
+        // TEST-176: a non-trusted (external) reviewer `Auto` is clamped to `Prompt`
+        // (the reviewer can only ever downgrade a non-trusted call).
+        assert_eq!(clamp_reviewer_decision(false, Decision::Auto), Decision::Prompt);
+        // Downgrades / denials on a non-trusted call pass through unchanged.
+        assert_eq!(clamp_reviewer_decision(false, Decision::Prompt), Decision::Prompt);
+        assert_eq!(clamp_reviewer_decision(false, Decision::Deny), Decision::Deny);
+        // TEST-177: a trusted/built-in reviewer `Auto` stays `Auto`.
+        assert_eq!(clamp_reviewer_decision(true, Decision::Auto), Decision::Auto);
+        assert_eq!(clamp_reviewer_decision(true, Decision::Deny), Decision::Deny);
+    }
+
+    #[tokio::test]
+    async fn external_low_reviewer_routes_to_human_not_auto() {
+        // End-to-end through the loop: an external (non-trusted) call under
+        // `OnRequest` → `Review` → the reviewer classifies Low + high-authz
+        // (which would resolve to `Auto`) → the veto clamp forces the human gate
+        // instead of auto-executing (closes the DEC-104 hole).
+        use crate::reviewer::{Authorization, Reviewer, Risk, RiskAssessment, RiskClassifier};
+
+        struct FixedAssessment(RiskAssessment);
+        #[async_trait]
+        impl RiskClassifier for FixedAssessment {
+            async fn classify(
+                &self,
+                _c: &ToolCall,
+                _p: &str,
+            ) -> Result<RiskAssessment, AppError> {
+                Ok(self.0.clone())
+            }
+        }
+
+        let model = Arc::new(ScriptedModel::always_tool("t", "mutate"));
+        let mut harness = core_with(
+            model,
+            false, // non-trusted / external server
+            GateBehavior::Suspend,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
+        // A reviewer that would grant Auto (Low band, well-authorized).
+        harness.core.reviewer = Some(Reviewer::new(
+            Arc::new(FixedAssessment(RiskAssessment::new(
+                Risk::Low,
+                Authorization::High,
+            ))),
+            "policy",
+        ));
+        let events = harness
+            .core
+            .run(new_req(), CancelToken::new())
+            .await
+            .unwrap();
+
+        // The reviewer said Auto, but for an external call the clamp forces Prompt
+        // → the human gate opened and the tool never auto-executed.
+        assert!(
+            events.iter().any(|e| matches!(e, AgentEvent::GateOpened(_))),
+            "external reviewer-Auto must route to the human gate, not auto-execute"
+        );
+        assert!(
+            harness.tools.calls.lock().unwrap().is_empty(),
+            "the external call must NOT auto-execute on a reviewer Auto"
+        );
     }
 }

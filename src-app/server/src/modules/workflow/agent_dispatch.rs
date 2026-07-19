@@ -30,7 +30,7 @@ use agent_core::{
     AgentCore, AgentEvent, AgentTurnRequest, ApprovalMode, ApprovalPolicy, Budget, CancelToken,
     CompactionExtension, Compactor, Decision, EventSink, GateAsk, GateOutcome, GateTicket,
     HumanGate, IdempotencyKey, ModelClient, ModelClientFactory, ModelResolver,
-    ModelRiskClassifier, ProviderModelClient, ProviderModelClientFactory, Reviewer, Risk,
+    ModelRiskClassifier, ProviderModelClient, ProviderModelClientFactory, Reviewer, Risk, RiskAssessment,
     RiskClassifier, SandboxMode, StopReason, SubagentLimits, ToolCall, ToolProvider, ToolResult,
     ToolScope, TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
 };
@@ -144,8 +144,8 @@ struct ForcedRiskClassifier {
 
 #[async_trait]
 impl RiskClassifier for ForcedRiskClassifier {
-    async fn classify(&self, _call: &ToolCall, _policy: &str) -> Result<Risk, AppError> {
-        Ok(self.risk)
+    async fn classify(&self, _call: &ToolCall, _policy: &str) -> Result<RiskAssessment, AppError> {
+        Ok(RiskAssessment::band(self.risk))
     }
 }
 
@@ -166,9 +166,9 @@ fn forced_risk_classifier() -> Option<Arc<dyn RiskClassifier>> {
 
 #[async_trait]
 impl RiskClassifier for RecordingRiskClassifier {
-    async fn classify(&self, call: &ToolCall, policy: &str) -> Result<Risk, AppError> {
-        let risk = self.inner.classify(call, policy).await?;
-        let label = match risk {
+    async fn classify(&self, call: &ToolCall, policy: &str) -> Result<RiskAssessment, AppError> {
+        let assessment = self.inner.classify(call, policy).await?;
+        let label = match assessment.band {
             Risk::Low => "low",
             Risk::High => "high",
             Risk::Critical => "critical",
@@ -176,7 +176,7 @@ impl RiskClassifier for RecordingRiskClassifier {
         if let Ok(mut g) = self.map.lock() {
             g.insert(call.id.clone(), label.to_string());
         }
-        Ok(risk)
+        Ok(assessment)
     }
 }
 
