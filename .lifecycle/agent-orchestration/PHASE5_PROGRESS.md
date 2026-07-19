@@ -18,7 +18,8 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 3 | Group A delegate (agent-core) | 1, 3 (2 host-gate deferred) | `cargo check -p agent-core` +60/60 tests; `cargo check -p ziee` PASS | f3a9c9a85 | ✅ VERIFIED |
 | 4 | Group G task-list (agent-core) | 34, 35, 36, 37 (server store impl deferred) | `cargo check -p agent-core` +68/68; `cargo check -p ziee` PASS (4 fan-in patches) | (committed) | ✅ VERIFIED |
 | 5 | Backbone D core (workflow) | 14, 17, 29 (MCP tools deferred) | `cargo clean+check -p ziee` PASS (migration 202607190700; agent fixed 2 workflow_mcp fan-ins) | (committed) | ✅ VERIFIED |
-| 6 | Group I compaction (agent-core) | 57, 58, 61, 63 (56-unify + server wiring deferred) | pending | — | 🔄 in progress |
+| 6 | Group I compaction (agent-core) | 57, 58, 61, 63 (56-unify + server wiring deferred) | `cargo check -p agent-core` +76/76; `cargo check -p ziee` PASS (Compactor fan-in, consts deleted) | (committed) | ✅ VERIFIED |
+| 7 | Server wiring consolidation | 38-srv, 61-srv(window), fan_out_max_children col, 34/35-srv store | pending | — | 🔄 in progress |
 
 ## Accumulated drifts (reconcile into DRIFT-N.md at Phase-5 close)
 - **DRIFT (T1, impl-wins):** `Reviewer::new` kept backward-compatible + `new_with_thresholds` added (rather than changing the one server caller from another module). Server wiring TODO: `agent_dispatch.rs:787` → `new_with_thresholds(inner, policy, RiskThresholds::from_json(&settings.reviewer_risk_thresholds))`.
