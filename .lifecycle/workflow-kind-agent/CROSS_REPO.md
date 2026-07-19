@@ -32,3 +32,13 @@ conflict with the live SDK-extraction work.
 ## Not cross-repo (committed normally on this branch)
 - OpenAPI regen (both binaries: `ui/` + `desktop/ui/` openapi.json + api-client/types.ts) — committed.
 - App-level source, tests, and the `agent_dispatch.rs`/`dev.rs`/`repository.rs` backend — committed.
+
+## 3. Stacked-branch lifecycle base — invoke with `--base feat/agent-core`
+This branch is STACKED on `feat/agent-core`, so the feature's real diff is
+`feat/agent-core...HEAD`. lifecycle-check / merge-gate default to `origin/main`, which pulls in ALL of
+agent-core's hunks (100+ files: the agent-core crate, chat/agent_host, the agent module + its tests —
+covered in **agent-core's OWN lifecycle**, NOT this feature). ALWAYS run with `--base feat/agent-core`
+(recorded in BASE.md + `.claude/app.config` `LIFECYCLE_BASE`). Against that base, phase 6 coverage is
+green on this feature's real hunks. A one-line agent-kit follow-up (have lifecycle-check read
+`APP.LIFECYCLE_BASE` as the default base) would make a bare invocation correct — deferred because
+`.claude/lifecycle` is a symlink into the agent-kit submodule (a cross-repo change, human-coordinated).
