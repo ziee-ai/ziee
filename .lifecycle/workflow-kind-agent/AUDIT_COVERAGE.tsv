@@ -173,3 +173,12 @@ src-app/server/src/modules/workflow/runner.rs	250	285	correctness,security,resou
 src-app/ui/src/modules/workflow/components/builder/WorkflowBuilderPage.tsx	1	173	correctness,rules-of-hooks,store-discipline,api-contract,design-in-context,maintainability
 src-app/ui/tests/e2e/workflows/builder-restricted.spec.ts	1	60	test-quality,correctness,no-mock-real-path
 src-app/server/tests/workflow/builder_crud_test.rs	1	404	test-quality,correctness,no-mock-real-path
+src-app/ui/src/dev/gallery/coverage.ts	1	99999	gallery-registry-reconciliation,precedent-fidelity,maintainability
+src-app/ui/src/dev/gallery/galleryCoverage.generated.ts	1	99999	gallery-registry-reconciliation,precedent-fidelity,maintainability
+src-app/ui/src/dev/gallery/overlay-allowlist.json	1	99999	gallery-registry-reconciliation,precedent-fidelity,maintainability
+src-app/ui/src/dev/gallery/overlay-registry.generated.json	1	99999	gallery-registry-reconciliation,precedent-fidelity,maintainability
+src-app/ui/src/dev/gallery/stateCoverage.ts	1	99999	gallery-registry-reconciliation,precedent-fidelity,maintainability
+src-app/ui/src/dev/gallery/stateMatrix.generated.ts	1	99999	gallery-registry-reconciliation,precedent-fidelity,maintainability
+src-app/ui/src/dev/gallery/STATE_MATRIX.md	1	99999	gallery-registry-reconciliation,precedent-fidelity,maintainability
+src-app/ui/src/core/overrides/OVERRIDE_MANIFEST.md	1	99999	gallery-registry-reconciliation,precedent-fidelity,maintainability
+sdk	1	99999	cross-repo-carry-along,config,maintainability
