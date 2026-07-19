@@ -7,12 +7,17 @@
 //! See plan §3 (REST surface) + §4.5 (dry-run) + §7 (test fixtures).
 
 
+use std::sync::Arc;
+
 use aide::transform::TransformOperation;
 use axum::extract::{Multipart, Path as AxumPath, Query};
 use axum::http::StatusCode;
 use axum::Json;
+use dashmap::DashMap;
+use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::common::{ApiResult, AppError};
@@ -461,15 +466,21 @@ pub fn create_user_workflow_docs(op: TransformOperation) -> TransformOperation {
 /// mirroring `update_user_workflow`.
 ///
 /// Concurrency + atomicity: the whole operation is serialized per workflow id by
-/// a Postgres session advisory lock (FIX-1), and the LIVE bundle at
-/// `extracted_path` is only ever mutated by an atomic same-filesystem rename, so a
-/// failed write / measure / compile / swap / DB commit can never leave the on-disk
-/// `workflow.yaml` and the row's sha/size/compiled_ir describing different defs.
+/// an IN-PROCESS per-id async mutex (FIX-1 — see `WORKFLOW_DEF_LOCKS`), and the
+/// LIVE bundle at `extracted_path` is only ever mutated by an atomic
+/// same-filesystem rename, so a failed write / measure / compile / swap / DB commit
+/// can never leave the on-disk `workflow.yaml` and the row's sha/size/compiled_ir
+/// describing different defs. (An in-process lock is the RIGHT boundary here: the
+/// bundle it protects lives on NODE-LOCAL disk — `extracted_path` — so cross-node
+/// DB locking would be wrong anyway.)
 /// The flow (disk is the runner's source of truth, so it is swapped FIRST and the
 /// DB metadata follows LAST — FIX-2):
-///   1. Acquire the per-id advisory lock, then RE-READ the row under it.
+///   1. Acquire the per-id async mutex guard (held for the whole critical section;
+///      auto-released on drop — success, error, future-drop, OR panic), then
+///      RE-READ the row under it.
 ///   2. Best-effort sweep this workflow's own orphaned `.staging-*`/`.old-*`
-///      siblings (FIX-5).
+///      siblings, RECOVERING the live bundle from a `.old-*` if a prior update
+///      crashed mid-swap (FIX-5 / FIX-2 recovery).
 ///   3. Validate FIRST against the existing, still-intact `extracted_path` (so
 ///      asset/`prompt_file:` refs resolve and no destructive op precedes a valid
 ///      def).
@@ -483,46 +494,29 @@ pub fn create_user_workflow_docs(op: TransformOperation) -> TransformOperation {
 ///   6. Commit the new metadata via `repository::update_definition` (NOT
 ///      delete+insert — that would change the id) LAST. A DB failure here returns a
 ///      500 (the on-disk def is already the new source of truth; a retry is safe).
-///   7. Release the advisory lock on every path.
+///   7. The guard drops on every path; the map entry is pruned when no waiter holds it.
 pub async fn update_user_workflow_definition(
     auth: RequirePermissions<(WorkflowsManage,)>,
     AxumPath(id): AxumPath<Uuid>,
     origin: SyncOrigin,
     Json(def): Json<validate::WorkflowDef>,
 ) -> ApiResult<Json<Workflow>> {
-    // FIX-1: serialize concurrent `PUT /definition` on the SAME workflow id via a
-    // Postgres SESSION advisory lock taken on a DEDICATED pooled connection. All of
-    // re-read → validate → stage → measure → compile → swap → update_definition
-    // runs while the lock is held, so two racers can't interleave stage/commit/swap
-    // and leave the row's metadata describing one def while on-disk workflow.yaml
-    // holds the other. The lock is released on EVERY path (success + every
-    // early-return / error) by the explicit `pg_advisory_unlock` below the captured
-    // `result`; a pg session advisory lock also releases when its connection closes,
-    // the backstop if this task is aborted before the unlock runs.
-    let mut lock_conn = Repos.pool().acquire().await.map_err(|e| {
-        <(StatusCode, AppError)>::from(AppError::internal_error(format!(
-            "workflow definition update: could not acquire advisory-lock connection: {e}"
-        )))
-    })?;
-    // Key = hashtextextended('wf-def-update:<id>', 0) computed in SQL (stable, and
-    // namespaced by the literal prefix so it can't collide with another subsystem's
-    // per-uuid advisory key).
-    let lock_arg = format!("wf-def-update:{id}");
-    if let Err(e) = sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 0))")
-        .bind(&lock_arg)
-        .execute(&mut *lock_conn)
-        .await
-    {
-        return Err::<_, (StatusCode, AppError)>(
-            AppError::internal_error(format!(
-                "workflow definition update: advisory lock failed: {e}"
-            ))
-            .into(),
-        );
-    }
+    // FIX-1: serialize concurrent `PUT /definition` on the SAME workflow id via an
+    // IN-PROCESS per-id async mutex. All of re-read → validate → stage → measure →
+    // compile → swap → update_definition runs while the guard is held, so two racers
+    // can't interleave stage/commit/swap and leave the row's metadata describing one
+    // def while on-disk workflow.yaml holds the other. The guard auto-releases on
+    // Drop — success, every early-return / error, future-drop (client disconnect),
+    // OR panic — so it can NEVER leak (unlike the previous pooled-connection Postgres
+    // session advisory lock, whose manual unlock was skipped on future-drop/panic,
+    // deadlocking every later update of this id until process restart). An in-process
+    // lock is also the correct boundary: the bundle it guards lives on node-local
+    // disk (`extracted_path`), so a cross-node DB lock would be wrong anyway.
+    let lock_arc = workflow_def_lock(id);
+    let _def_guard = lock_arc.lock().await;
 
-    // Everything under the lock lives in this block so the single explicit unlock
-    // below runs on ALL of its early-returns.
+    // Everything under the guard lives in this block; the guard held above covers all
+    // of its early-returns.
     let result: ApiResult<Json<Workflow>> = async {
         // Re-read `existing` AFTER acquiring the lock so we operate on a consistent
         // snapshot (a racer that just committed is fully applied before we read).
@@ -720,26 +714,53 @@ pub async fn update_user_workflow_definition(
     }
     .await;
 
-    // FIX-1: release the per-workflow advisory lock on ALL paths (success + error).
-    // (Session advisory locks would otherwise persist on the pooled connection when
-    // it returns to the pool — the connection close is only the abort backstop.)
-    let _ = sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 0))")
-        .bind(&lock_arg)
-        .execute(&mut *lock_conn)
-        .await;
-    drop(lock_conn);
+    // FIX-1: release the per-workflow lock (drop the guard) and then deterministically
+    // prune the map entry so `WORKFLOW_DEF_LOCKS` can't grow unbounded (the
+    // shared-concurrency-map rule). Drop our own `Arc` clone FIRST so the only
+    // remaining strong ref is the map's own — then `remove_if` removes the entry iff
+    // `strong_count == 1` (no other waiter still holds it). `remove_if` evaluates the
+    // predicate while holding the DashMap shard lock, and a concurrent acquirer also
+    // takes that shard lock via `entry(..)`, so the check-then-remove can't race a
+    // waiter in: a waiter that already cloned keeps `strong_count >= 2` → entry kept.
+    drop(_def_guard);
+    drop(lock_arc);
+    WORKFLOW_DEF_LOCKS.remove_if(&id, |_, arc| Arc::strong_count(arc) == 1);
 
     result
 }
 
-/// FIX-5: best-effort sweep of orphaned `.staging-*` / `.old-*` sibling dirs left
-/// behind by a previously-crashed update of the workflow whose bundle is
-/// `bundle_root`. SCOPED to that workflow's own bundle-name prefix — other
-/// workflows share the parent (`workflows/`) dir and a concurrent update of one of
-/// THEM may hold a live sibling, which must never be touched. The per-workflow
-/// advisory lock guarantees no live op for THIS workflow is running, so any sibling
-/// matching this workflow's prefix is a dead orphan. Never returns an error (a
-/// failed prune only logs) — it must not fail the update.
+/// FIX-1: in-process per-workflow-id async locks serializing `PUT /definition`.
+/// The bundle each guards lives on node-local disk (`extracted_path`), so this
+/// process-local lock — not a cross-node DB lock — is the correct boundary. Each
+/// `Arc<Mutex<()>>` is tiny (~16 B); the map is bounded by the deterministic
+/// `remove_if` prune at the end of `update_user_workflow_definition`. Mirrors the
+/// `CONVERSATION_LOCKS` / `FETCH_LOCKS` keyed-lock pattern in `code_sandbox`.
+static WORKFLOW_DEF_LOCKS: Lazy<DashMap<Uuid, Arc<Mutex<()>>>> = Lazy::new(DashMap::new);
+
+fn workflow_def_lock(id: Uuid) -> Arc<Mutex<()>> {
+    WORKFLOW_DEF_LOCKS
+        .entry(id)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+/// FIX-5 + FIX-2 recovery: reconcile this workflow's orphaned `.staging-*` /
+/// `.old-*` sibling dirs left behind by a previously-crashed update of the workflow
+/// whose bundle is `bundle_root`. SCOPED to that workflow's own bundle-name prefix —
+/// other workflows share the parent (`workflows/`) dir and a concurrent update of one
+/// of THEM may hold a live sibling, which must never be touched. This runs under the
+/// per-workflow in-process lock, so no live op for THIS workflow is running and any
+/// sibling matching this workflow's prefix is a dead orphan. Never returns an error
+/// (a failed prune only logs) — it must not fail the update.
+///
+/// CRITICAL (FIX-2): a `.old-<uuid>` sibling is the ONLY surviving copy of the live
+/// bundle if a prior update crashed BETWEEN the two swap renames (`live→.old` done,
+/// `staging→live` NOT → `bundle_root` is missing and `.old-` holds the real bundle).
+/// There is no boot reconciliation, so the sweep must RECOVER, never destroy: if
+/// `bundle_root` is missing while a `.old-*` survives, PROMOTE the newest `.old-*`
+/// back to `bundle_root` FIRST. Only once `bundle_root` exists (present all along or
+/// just restored) may the remaining `.old-*` / `.staging-*` orphans be removed —
+/// `bundle_root` is never left missing while a `.old-*` exists.
 async fn sweep_orphan_siblings(bundle_root: &std::path::Path) {
     let (Some(parent), Some(base)) = (bundle_root.parent(), bundle_root.file_name()) else {
         return;
@@ -758,25 +779,23 @@ async fn sweep_orphan_siblings(bundle_root: &std::path::Path) {
             return;
         }
     };
+
+    // Collect the matching siblings first (so recovery can consider ALL `.old-*`
+    // before anything is deleted). `.old-*` entries carry their mtime so the newest
+    // (the most-recent interrupted swap) can be picked — the `<uuid>` suffix is random,
+    // not time-ordered.
+    let mut staging_dirs: Vec<std::path::PathBuf> = Vec::new();
+    let mut old_dirs: Vec<(std::path::PathBuf, Option<std::time::SystemTime>)> = Vec::new();
     loop {
         match rd.next_entry().await {
             Ok(Some(entry)) => {
                 let name = entry.file_name();
                 let name = name.to_string_lossy();
-                if name.starts_with(&*staging_prefix) || name.starts_with(&*old_prefix) {
-                    let path = entry.path();
-                    if let Err(e) = tokio::fs::remove_dir_all(&path).await {
-                        tracing::warn!(
-                            orphan = %path.display(),
-                            error = %e,
-                            "workflow definition update: could not remove orphan staging/old dir"
-                        );
-                    } else {
-                        tracing::info!(
-                            orphan = %path.display(),
-                            "workflow definition update: removed orphan staging/old dir"
-                        );
-                    }
+                if name.starts_with(&*staging_prefix) {
+                    staging_dirs.push(entry.path());
+                } else if name.starts_with(&*old_prefix) {
+                    let mtime = entry.metadata().await.ok().and_then(|m| m.modified().ok());
+                    old_dirs.push((entry.path(), mtime));
                 }
             }
             Ok(None) => break,
@@ -788,6 +807,74 @@ async fn sweep_orphan_siblings(bundle_root: &std::path::Path) {
                 break;
             }
         }
+    }
+
+    // FIX-2: if the live bundle is MISSING but a `.old-*` survives, a prior update
+    // crashed mid-swap and the newest `.old-*` is the sole surviving copy — restore it
+    // BEFORE deleting anything.
+    let live_missing = !tokio::fs::try_exists(bundle_root).await.unwrap_or(false);
+    if live_missing && !old_dirs.is_empty() {
+        // Newest by mtime (`None` sorts oldest, so a dir with a real mtime wins).
+        if let Some(idx) = old_dirs
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, (_, mtime))| *mtime)
+            .map(|(i, _)| i)
+        {
+            let (recovered, _) = old_dirs.remove(idx);
+            match tokio::fs::rename(&recovered, bundle_root).await {
+                Ok(()) => {
+                    tracing::warn!(
+                        recovered = %recovered.display(),
+                        live = %bundle_root.display(),
+                        "workflow definition update: recovered an interrupted update — \
+                         promoted a surviving .old- bundle back to the live path"
+                    );
+                }
+                Err(e) => {
+                    // Restore failed → bundle_root is STILL missing. Do NOT delete any
+                    // `.old-*` (they may hold the only copy). Staging dirs are never the
+                    // live bundle, so they remain safe to prune.
+                    tracing::warn!(
+                        recovered = %recovered.display(),
+                        live = %bundle_root.display(),
+                        error = %e,
+                        "workflow definition update: could not recover interrupted update; \
+                         leaving .old- siblings in place (live bundle still missing)"
+                    );
+                    for path in staging_dirs {
+                        remove_orphan_dir(&path).await;
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    // bundle_root now exists (present all along or just restored). Safe to remove the
+    // remaining orphan `.staging-*` + `.old-*` siblings.
+    for path in staging_dirs
+        .into_iter()
+        .chain(old_dirs.into_iter().map(|(p, _)| p))
+    {
+        remove_orphan_dir(&path).await;
+    }
+}
+
+/// Best-effort `remove_dir_all` of a single orphan sibling dir, logging either way.
+/// Never fails the caller.
+async fn remove_orphan_dir(path: &std::path::Path) {
+    if let Err(e) = tokio::fs::remove_dir_all(path).await {
+        tracing::warn!(
+            orphan = %path.display(),
+            error = %e,
+            "workflow definition update: could not remove orphan staging/old dir"
+        );
+    } else {
+        tracing::info!(
+            orphan = %path.display(),
+            "workflow definition update: removed orphan staging/old dir"
+        );
     }
 }
 
