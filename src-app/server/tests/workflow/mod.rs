@@ -27,6 +27,9 @@ use crate::hub::mock_release_server::spawn_mock_hub;
 
 
 mod access_and_durability;
+mod builder_agent_activity_test;
+mod builder_crud_test;
+mod builder_validate_def_test;
 mod elicit;
 mod elicit_data_seeding;
 mod install_from_hub;

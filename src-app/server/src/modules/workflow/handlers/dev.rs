@@ -389,12 +389,23 @@ pub(crate) async fn def_to_bundle_bytes(
     result
 }
 
-/// Optional query for the builder create endpoint.
-#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
-pub struct CreateWorkflowDefQuery {
+/// Body for the builder create endpoint: the posted `WorkflowDef` PLUS an
+/// optional `name` slug override, flattened into ONE JSON object.
+///
+/// The name MUST ride in the body (not a query param): the generated api-client
+/// serializes query params only on GET requests — on a POST every non-path arg
+/// goes into the JSON body — so a `name` query param on this POST route is
+/// physically unreachable from the frontend (the builder's typed name was
+/// silently dropped and every created workflow fell back to the
+/// `imported-workflow` default, colliding on the second save). Flattening the
+/// def keeps the wire shape `{ name?, ...WorkflowDef }` the client already sends.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateWorkflowDefBody {
     /// Optional slug override; `local.dev.<owner>/<slug>` becomes the row name.
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(flatten)]
+    pub def: validate::WorkflowDef,
 }
 
 /// `POST /api/workflows` — create a user-scope workflow from a posted
@@ -404,18 +415,20 @@ pub struct CreateWorkflowDefQuery {
 /// forced to `user` (never escalates to system through this route).
 pub async fn create_user_workflow(
     auth: RequirePermissions<(WorkflowsInstall,)>,
-    Query(q): Query<CreateWorkflowDefQuery>,
     origin: SyncOrigin,
-    Json(def): Json<validate::WorkflowDef>,
+    Json(body): Json<CreateWorkflowDefBody>,
 ) -> ApiResult<Json<Workflow>> {
+    let CreateWorkflowDefBody {
+        name: name_override,
+        def,
+    } = body;
     // FIX-2: reject a name collision up front. `install_workflow_from_bytes`'s
     // re-import path does delete+insert on a matching name+version, which would
     // silently delete a prior user workflow and orphan its `workflow_runs`.
     // Editing an existing workflow is the PUT /definition path — the create path
     // must never overwrite. Mirror the name/version/owner derivation
     // `install_workflow_from_bytes` performs for a user-scope import.
-    let slug = q
-        .name
+    let slug = name_override
         .clone()
         .map(|s| sanitize_slug(&s))
         .unwrap_or_else(|| "imported-workflow".to_string());
@@ -442,7 +455,7 @@ pub async fn create_user_workflow(
 
     let bytes = def_to_bundle_bytes(&def).await?;
     let iq = ImportQuery {
-        name: q.name,
+        name: name_override,
         scope: Some("user".to_string()),
     };
     install_workflow_from_bytes(&auth.user, &auth.groups, iq, origin, bytes).await
@@ -1635,4 +1648,53 @@ pub fn workspace_export_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<200, (), _>(|r| r.description("The workflow bundle (application/gzip)"))
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
         .response_with::<400, (), _>(|r| r.description("Invalid dir or bundle"))
+}
+
+// TEST-4 — `def_to_bundle_bytes` materialize fidelity: a posted `WorkflowDef`
+// serialized to a one-file bundle survives the SAME extract→reparse pipeline the
+// install core runs, byte-for-byte equal (WorkflowDef has no `PartialEq`, so we
+// compare canonical JSON).
+#[cfg(test)]
+mod def_bundle_tests {
+    use super::*;
+    use crate::modules::hub::bundle::{extract_tarball_bytes, BundleKind};
+    use crate::modules::workflow::validate::parse_workflow_yaml;
+
+    const SAMPLE_YAML: &str = r#"inputs:
+  - name: topic
+    required: true
+steps:
+  - id: gen
+    kind: llm
+    prompt: "say something about {{ inputs.topic }}"
+outputs:
+  - name: result
+    from: "{{ gen.output }}"
+"#;
+
+    #[tokio::test]
+    async fn def_to_bundle_bytes_materializes_a_faithful_roundtrip() {
+        let def = parse_workflow_yaml(SAMPLE_YAML).expect("parse sample def");
+        let bytes = def_to_bundle_bytes(&def).await.expect("materialize bundle bytes");
+
+        // Unpack via the real install extract path (not a hand-rolled tar reader).
+        let target = std::env::temp_dir().join(format!("ziee-wf-def-test-{}", Uuid::new_v4()));
+        let extraction = extract_tarball_bytes(&bytes, &target, BundleKind::Workflow)
+            .await
+            .expect("unpack materialized bundle");
+        assert_eq!(extraction.file_count, 1, "one-file (workflow.yaml) bundle");
+
+        let yaml = tokio::fs::read_to_string(extraction.extracted_path.join("workflow.yaml"))
+            .await
+            .expect("read materialized workflow.yaml");
+        let reparsed = parse_workflow_yaml(&yaml).expect("reparse materialized yaml");
+
+        assert_eq!(
+            serde_json::to_value(&def).expect("def to json"),
+            serde_json::to_value(&reparsed).expect("reparsed to json"),
+            "WorkflowDef survives materialize → unpack → reparse unchanged"
+        );
+
+        let _ = tokio::fs::remove_dir_all(&target).await;
+    }
 }

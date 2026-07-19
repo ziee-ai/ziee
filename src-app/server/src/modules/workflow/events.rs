@@ -405,3 +405,51 @@ impl ProgressEmitter for CapturingEmitter {
         self.events.lock().unwrap().push(ev);
     }
 }
+
+// TEST-6 — `ProgressKind::AgentActivity` serde round-trips under the
+// `type:"agent_activity"` tag (the new `kind: agent` progress variant), and the
+// pre-existing variants still round-trip unchanged.
+#[cfg(test)]
+mod agent_activity_serde_tests {
+    use super::*;
+
+    #[test]
+    fn agent_activity_round_trips_under_type_tag() {
+        let ev = ProgressKind::AgentActivity {
+            seq: 7,
+            kind: AgentActivityKind::ToolCall,
+            tool: Some("web_search".into()),
+            title: "calling web_search".into(),
+            detail: Some("query=rust".into()),
+            status: AgentActivityStatus::Running,
+        };
+        let v = serde_json::to_value(&ev).expect("serialize AgentActivity");
+        // Internally-tagged under `type` (rename_all = snake_case).
+        assert_eq!(v["type"], "agent_activity", "tagged discriminant: {v}");
+        assert_eq!(v["seq"], 7, "seq carried: {v}");
+        assert_eq!(v["kind"], "tool_call", "kind snake_case: {v}");
+        assert_eq!(v["status"], "running", "status snake_case: {v}");
+        assert_eq!(v["tool"], "web_search", "tool carried: {v}");
+        let back: ProgressKind =
+            serde_json::from_value(v).expect("deserialize AgentActivity");
+        assert_eq!(back, ev, "AgentActivity round-trips to an equal value");
+    }
+
+    #[test]
+    fn existing_variants_still_round_trip() {
+        for ev in [
+            ProgressKind::Status { message: "hi".into() },
+            ProgressKind::Bar { fraction: 0.4 },
+            ProgressKind::Counter { current: 2.0, total: 5.0, unit: Some("files".into()) },
+            ProgressKind::Log { line: "log line".into() },
+            ProgressKind::Phase { name: "compile".into(), index: Some(1), total: Some(3) },
+        ] {
+            let v = serde_json::to_value(&ev).expect("serialize variant");
+            let back: ProgressKind =
+                serde_json::from_value(v.clone()).expect("deserialize variant");
+            assert_eq!(back, ev, "variant round-trips unchanged: {v}");
+            // The new variant must not have displaced the existing tags.
+            assert_ne!(v["type"], "agent_activity", "existing variant keeps its tag: {v}");
+        }
+    }
+}

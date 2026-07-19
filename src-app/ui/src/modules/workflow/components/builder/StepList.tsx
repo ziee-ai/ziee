@@ -84,7 +84,7 @@ export function StepList({ store }: StepListProps) {
                     {STEP_KIND_LABELS[step.kind as StepKind] ?? step.kind}
                   </Tag>
                 </div>
-                <div className="flex shrink-0 items-center">
+                <div className="flex shrink-0 items-center gap-1">
                   <Button
                     type="button"
                     variant="ghost"

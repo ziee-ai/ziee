@@ -34,11 +34,11 @@ export interface BuilderDef {
   max_runtime_secs?: number
 }
 
-function emptyDef(): BuilderDef {
+export function emptyDef(): BuilderDef {
   return { inputs: [], steps: [] }
 }
 
-function toBuilderDef(def: WorkflowDef): BuilderDef {
+export function toBuilderDef(def: WorkflowDef): BuilderDef {
   return {
     $schema: def.$schema,
     max_runtime_secs: def.max_runtime_secs,
@@ -53,7 +53,7 @@ function toBuilderDef(def: WorkflowDef): BuilderDef {
   }
 }
 
-function toWorkflowDef(def: BuilderDef): WorkflowDef {
+export function toWorkflowDef(def: BuilderDef): WorkflowDef {
   return {
     ...(def.$schema ? { $schema: def.$schema } : {}),
     ...(def.max_runtime_secs != null

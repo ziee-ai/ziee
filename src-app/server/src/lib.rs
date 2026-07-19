@@ -307,6 +307,7 @@ pub mod workflow {
     pub use crate::modules::workflow::models::WorkflowRunStatus;
     pub use crate::modules::workflow::repository::{
         cancel_cas, heartbeat, insert_run, mark_running, mark_status, persist_step_meta,
+        append_agent_activity, AGENT_ACTIVITY_MAX_ENTRIES,
     };
     pub use crate::modules::workflow::models::CreateWorkflowRun;
     // The run staging root, so a test can delete a run's on-disk logs to

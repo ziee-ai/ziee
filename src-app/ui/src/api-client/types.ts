@@ -1132,10 +1132,35 @@ export interface CreateUserRequest {
   username: string
 }
 
-/** Optional query for the builder create endpoint. */
-export interface CreateWorkflowDefQuery {
+/**
+ * Body for the builder create endpoint: the posted `WorkflowDef` PLUS an
+ *  optional `name` slug override, flattened into ONE JSON object.
+ *
+ *  The name MUST ride in the body (not a query param): the generated api-client
+ *  serializes query params only on GET requests — on a POST every non-path arg
+ *  goes into the JSON body — so a `name` query param on this POST route is
+ *  physically unreachable from the frontend (the builder's typed name was
+ *  silently dropped and every created workflow fell back to the
+ *  `imported-workflow` default, colliding on the second save). Flattening the
+ *  def keeps the wire shape `{ name?, ...WorkflowDef }` the client already sends.
+ */
+export interface CreateWorkflowDefBody {
+  $schema?: string
+  expose_logs?: ExposeLogs
+  inputs?: InputDef[]
+  /**
+   * Workflow-declared wall-clock cap in seconds. `None` → the engine default
+   *  (`RUN_WALL_CLOCK`). `Some(0)` → UNBOUNDED (no wall-clock — for long runs on
+   *  a user-owned machine). The effective value is live-adjustable per run via
+   *  `PUT /workflow-runs/{id}/timeout`. The per-run token + output-byte caps stay
+   *  as the resource backstops regardless.
+   */
+  max_runtime_secs?: number
   /** Optional slug override; `local.dev.<owner>/<slug>` becomes the row name. */
   name?: string
+  outputs?: OutputDef[]
+  sandbox?: SandboxDecl
+  steps?: StepDef[]
 }
 
 export interface CreateWorkflowFromHubRequest {
@@ -8502,7 +8527,7 @@ export type ApiEndpointParameters = {
   'WebSearch.updateProvider': { provider: string } & UpdateProviderRequest
   'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
-  'Workflow.create': { name?: string } & WorkflowDef
+  'Workflow.create': CreateWorkflowDefBody
   'Workflow.delete': { id: string }
   'Workflow.deleteRun': { run_id: string }
   'Workflow.deleteSystem': { id: string }

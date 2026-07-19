@@ -1147,3 +1147,164 @@ impl StepDispatcher for AgentDispatcher {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Capturing `ProgressEmitter` — records every emitted event into a shared
+    /// `Vec` so a test can assert on the exact SSE frames the sink produced.
+    struct CapturingEmitter {
+        events: Arc<Mutex<Vec<SSEWorkflowRunEvent>>>,
+    }
+
+    impl ProgressEmitter for CapturingEmitter {
+        fn emit(&self, ev: SSEWorkflowRunEvent) {
+            self.events.lock().unwrap().push(ev);
+        }
+    }
+
+    /// Extract the single track from a captured `StepProgress` event (panics on
+    /// any other variant, so a wrong shape fails loudly).
+    fn track_of(ev: &SSEWorkflowRunEvent) -> ProgressTrack {
+        match ev {
+            SSEWorkflowRunEvent::StepProgress(d) => {
+                assert_eq!(d.tracks.len(), 1, "each push emits exactly one track");
+                d.tracks[0].clone()
+            }
+            other => panic!("expected StepProgress, got {other:?}"),
+        }
+    }
+
+    /// TEST-7 — the ITEM-5 anti-collapse guarantee: `WorkflowEventSink` maps each
+    /// activity to a DISTINCT, monotonically-increasing `seq` on its own
+    /// `agent-<seq>` track (never one collapsing id), and byte-caps oversize
+    /// title/detail on a UTF-8 char boundary.
+    #[tokio::test]
+    async fn test_7_event_sink_distinct_monotonic_seq_and_truncation() {
+        let captured: Arc<Mutex<Vec<SSEWorkflowRunEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let emitter: Arc<dyn ProgressEmitter> = Arc::new(CapturingEmitter {
+            events: captured.clone(),
+        });
+
+        let run_id = Uuid::new_v4();
+        let step_id = "step-agent".to_string();
+
+        // Lazy pool: the durable append is fire-and-forget; `connect_lazy` never
+        // opens a socket here, so the test does NOT touch Postgres. The spawned
+        // task may log a background warning — that's expected and harmless.
+        let pool = PgPool::connect_lazy("postgres://localhost/none")
+            .expect("connect_lazy builds a pool without connecting");
+
+        let sink = WorkflowEventSink {
+            emit: emitter,
+            run_id,
+            step_id: step_id.clone(),
+            pool,
+            seq: AtomicU64::new(0),
+        };
+
+        // Three distinct activities with different kind/status.
+        sink.push_activity(
+            AgentActivityKind::Thinking,
+            None,
+            "thinking".to_string(),
+            Some("full thought".to_string()),
+            AgentActivityStatus::Ok,
+        );
+        sink.push_activity(
+            AgentActivityKind::ToolCall,
+            Some("mytool".to_string()),
+            "→ mytool".to_string(),
+            Some("{\"x\":1}".to_string()),
+            AgentActivityStatus::Running,
+        );
+        sink.push_activity(
+            AgentActivityKind::Gate,
+            None,
+            "awaiting human input".to_string(),
+            None,
+            AgentActivityStatus::Error,
+        );
+
+        let events = captured.lock().unwrap().clone();
+        assert_eq!(events.len(), 3, "exactly 3 StepProgress events captured");
+
+        // Expected (kind, status) per seq.
+        let expected = [
+            (AgentActivityKind::Thinking, AgentActivityStatus::Ok),
+            (AgentActivityKind::ToolCall, AgentActivityStatus::Running),
+            (AgentActivityKind::Gate, AgentActivityStatus::Error),
+        ];
+
+        for (i, ev) in events.iter().enumerate() {
+            let track = track_of(ev);
+            // Distinct, monotonic track id — NOT a single collapsing id.
+            assert_eq!(
+                track.id,
+                format!("agent-{i}"),
+                "track id must be agent-{i} (distinct per seq)"
+            );
+            match track.kind {
+                ProgressKind::AgentActivity {
+                    seq, kind, status, ..
+                } => {
+                    assert_eq!(seq, i as u64, "seq monotonic 0,1,2");
+                    assert_eq!(kind, expected[i].0, "kind matches");
+                    assert_eq!(status, expected[i].1, "status matches");
+                }
+                other => panic!("expected AgentActivity kind, got {other:?}"),
+            }
+        }
+
+        // All three track ids are distinct (anti-collapse).
+        let ids: HashSet<String> = events.iter().map(|e| track_of(e).id).collect();
+        assert_eq!(ids.len(), 3, "three distinct track ids, none collapsed");
+
+        // ---- Truncation case (boundary-safe byte cap) ----
+        // "€" is 3 bytes; a max landing mid-char must step DOWN to a boundary.
+        let big_title = "€".repeat(300); // 900 bytes > 512
+        let big_detail = "€".repeat(6000); // 18000 bytes > 16 KiB
+        assert!(big_title.len() > AGENT_ACTIVITY_TITLE_MAX_BYTES);
+        assert!(big_detail.len() > AGENT_ACTIVITY_DETAIL_MAX_BYTES);
+
+        sink.push_activity(
+            AgentActivityKind::Message,
+            None,
+            big_title,
+            Some(big_detail),
+            AgentActivityStatus::Ok,
+        );
+
+        let events = captured.lock().unwrap().clone();
+        assert_eq!(events.len(), 4, "the truncation push adds a 4th event");
+        let track = track_of(&events[3]);
+        assert_eq!(track.id, "agent-3", "seq keeps advancing past truncation");
+        match track.kind {
+            ProgressKind::AgentActivity {
+                seq, title, detail, ..
+            } => {
+                assert_eq!(seq, 3);
+                assert!(
+                    title.len() <= AGENT_ACTIVITY_TITLE_MAX_BYTES,
+                    "title byte-capped: {} <= {}",
+                    title.len(),
+                    AGENT_ACTIVITY_TITLE_MAX_BYTES
+                );
+                // Boundary-safe: 512 is mid-char for 3-byte "€", so it steps to 510.
+                assert_eq!(title.len() % 3, 0, "cut on a €-char boundary");
+                assert!(title.chars().all(|c| c == '€'), "still valid UTF-8");
+                let detail = detail.expect("detail present");
+                assert!(
+                    detail.len() <= AGENT_ACTIVITY_DETAIL_MAX_BYTES,
+                    "detail byte-capped: {} <= {}",
+                    detail.len(),
+                    AGENT_ACTIVITY_DETAIL_MAX_BYTES
+                );
+                assert_eq!(detail.len() % 3, 0, "detail cut on a €-char boundary");
+                assert!(detail.chars().all(|c| c == '€'), "detail still valid UTF-8");
+            }
+            other => panic!("expected AgentActivity kind, got {other:?}"),
+        }
+    }
+}

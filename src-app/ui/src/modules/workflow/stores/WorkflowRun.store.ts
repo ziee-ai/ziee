@@ -16,7 +16,7 @@ import type { AgentActivityEntry } from '@/modules/workflow/components/run/activ
  *  store. Mirrors the backend `AGENT_ACTIVITY_MAX_ENTRIES` (repository.rs) so a
  *  long run can't grow this array without bound. When exceeded we drop the
  *  lowest-`seq` (oldest) rows, matching the backend's chronological trim. */
-const AGENT_ACTIVITY_MAX_ENTRIES = 500
+export const AGENT_ACTIVITY_MAX_ENTRIES = 500
 
 /** Trim the (ascending-by-seq) list in place to the most-recent
  *  `AGENT_ACTIVITY_MAX_ENTRIES`, dropping the lowest-seq head. Bounded work
@@ -35,7 +35,7 @@ function trimActivity(list: AgentActivityEntry[]) {
  *  so the common cases (new tail / tail status-upgrade) are constant time; only
  *  a genuinely out-of-order straggler pays an O(n) scan. The stored array is
  *  then capped so memory can't grow unbounded over a long run. */
-function mergeAgentActivity(list: AgentActivityEntry[], entry: AgentActivityEntry) {
+export function mergeAgentActivity(list: AgentActivityEntry[], entry: AgentActivityEntry) {
   const n = list.length
   if (n === 0) {
     list.push(entry)
@@ -63,7 +63,7 @@ function mergeAgentActivity(list: AgentActivityEntry[], entry: AgentActivityEntr
  *  map, in-place replace for existing seqs, append + a single sort for the new
  *  ones — instead of an O(n²) per-element `findIndex`. Used by snapshot
  *  rehydrate, where the persisted array can be large. */
-function mergeAgentActivityBatch(
+export function mergeAgentActivityBatch(
   list: AgentActivityEntry[],
   incoming: AgentActivityEntry[],
 ) {
