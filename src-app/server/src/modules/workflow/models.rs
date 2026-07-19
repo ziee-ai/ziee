@@ -149,6 +149,67 @@ impl WorkflowRunStatus {
     }
 }
 
+/// Orthogonal discriminator on a `workflow_runs` row (ITEM-14 / DEC-22/23,
+/// LOCK-2 hybrid): WHICH background-run substrate produced the row. Distinct
+/// from `run_kind` (normal/test/dry_run) and `invocation_source`
+/// (manual/conversation/agent/...) — a background run can be any combination.
+///
+/// - `Workflow` — the classic YAML-DAG run: has a backing `workflows` row and an
+///   on-disk `workflow.yaml`; `workflow_id` is non-NULL.
+/// - `SandboxExec` — a fire-and-forget background command (no bundle).
+/// - `SubAgent` — a detached agent-core turn (Option C); resumes via transcript
+///   replay.
+///
+/// The generalized background kinds (`SandboxExec`, `SubAgent`) reuse the
+/// runner's spawn / heartbeat / `RunHandle` / startup-sweep machinery with
+/// `workflow_id = NULL` and no bundle. Each kind's sweep / flap / retention
+/// policy lives in the decentralized [`super::job_kind`] registry, never a
+/// central `match`.
+// Seam (ITEM-17): the model-facing check_status/collect_result MCP trio + the
+// sub-agent/sandbox background drivers (a later tranche) construct + parse
+// `JobKind`; the backbone wires it into production today only as `job_kind` text
+// + the sweep policy registry. Allowed until that tranche adds a live caller.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JobKind {
+    Workflow,
+    SandboxExec,
+    SubAgent,
+}
+
+// `from_db_str` / `is_background` are the parse seam the model-facing
+// check_status/collect_result MCP trio uses in a later tranche; `as_str` is used
+// by the create path. Allowed until that tranche lands a live caller.
+#[allow(dead_code)]
+impl JobKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            JobKind::Workflow => "workflow",
+            JobKind::SandboxExec => "sandbox_exec",
+            JobKind::SubAgent => "subagent",
+        }
+    }
+
+    /// Parse the DB `job_kind` text. Returns `None` for an unrecognized value
+    /// (forward-compat: a newer server may persist a kind an older binary can't
+    /// name; the caller treats an unknown kind conservatively rather than
+    /// panicking — mirrors [`WorkflowRunStatus::from_db_str`]).
+    pub fn from_db_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "workflow" => JobKind::Workflow,
+            "sandbox_exec" => JobKind::SandboxExec,
+            "subagent" => JobKind::SubAgent,
+            _ => return None,
+        })
+    }
+
+    /// A non-`workflow` background kind (no bundle, `workflow_id = NULL`).
+    pub fn is_background(&self) -> bool {
+        !matches!(self, JobKind::Workflow)
+    }
+}
+
 /// Database row in `workflow_runs`. Heavy fields (step outputs, logs,
 /// artifacts, final output) live as JSONB metadata blobs — actual
 /// content (multi-MiB step output, artifact bytes) is on disk under
@@ -156,7 +217,15 @@ impl WorkflowRunStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
 pub struct WorkflowRun {
     pub id: Uuid,
-    pub workflow_id: Uuid,
+    /// NULL for a generalized background run (`job_kind != 'workflow'`) — a
+    /// sub-agent turn / sandbox exec has no backing `workflows` bundle
+    /// (ITEM-14 / DEC-22). Always set for a classic `workflow`-kind run.
+    pub workflow_id: Option<Uuid>,
+    /// Orthogonal background-run discriminator (raw DB text; parse with
+    /// [`JobKind::from_db_str`]). `'workflow'` for the classic YAML-DAG run.
+    /// Kept as `String` (not the enum) so an unknown value from a newer server
+    /// round-trips without a deserialization failure — same posture as `status`.
+    pub job_kind: String,
     pub conversation_id: Option<Uuid>,
     pub user_id: Uuid,
     pub model_id: Option<Uuid>,
@@ -195,6 +264,30 @@ pub struct CreateWorkflowRun {
     pub inputs_json: serde_json::Value,
 }
 
+/// Create payload for a generalized BACKGROUND run (ITEM-14 / ITEM-17): a
+/// non-`workflow` `JobKind` row with `workflow_id = NULL`. The row starts
+/// `pending`; [`super::runner::spawn_background_run`] registers a `RunHandle`,
+/// `mark_running`s it, and drives it to terminal reusing the same guards as the
+/// workflow runner. `run_kind` is fixed to `'normal'` (a background run is never
+/// a test/dry-run of a workflow).
+// Seam (ITEM-17): constructed by the background drivers / MCP `spawn_background`
+// in a later tranche; the backbone ships the create path + tests.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct CreateBackgroundRun {
+    /// MUST be a background kind (`SandboxExec` / `SubAgent`); a `Workflow` kind
+    /// goes through [`CreateWorkflowRun`] + `insert_run` (it has a bundle).
+    pub job_kind: JobKind,
+    pub conversation_id: Option<Uuid>,
+    pub user_id: Uuid,
+    pub model_id: Option<Uuid>,
+    pub sandbox_flavor: Option<String>,
+    /// One of the `workflow_runs_invocation_source_check` values
+    /// (`conversation` / `agent` / ...). Names the trigger for the history view.
+    pub invocation_source: String,
+    pub inputs_json: serde_json::Value,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +313,89 @@ mod tests {
         assert!(WorkflowRunStatus::Cancelled.is_terminal());
         assert!(!WorkflowRunStatus::Pending.is_terminal());
         assert!(!WorkflowRunStatus::Running.is_terminal());
+    }
+
+    // TEST-48 (ITEM-14): `job_kind` parses / round-trips and is ORTHOGONAL to
+    // `run_kind` + `invocation_source` — none of the three vocabularies overlap,
+    // so a background run can freely combine them.
+    #[test]
+    fn job_kind_parses_round_trips_and_is_orthogonal() {
+        // Round-trip every kind through as_str <-> from_db_str.
+        for k in [JobKind::Workflow, JobKind::SandboxExec, JobKind::SubAgent] {
+            assert_eq!(JobKind::from_db_str(k.as_str()), Some(k));
+        }
+        assert_eq!(JobKind::from_db_str("workflow"), Some(JobKind::Workflow));
+        assert_eq!(
+            JobKind::from_db_str("sandbox_exec"),
+            Some(JobKind::SandboxExec)
+        );
+        assert_eq!(JobKind::from_db_str("subagent"), Some(JobKind::SubAgent));
+        // Forward-compat: an unknown kind is `None`, never a panic (TEST-132 twin).
+        assert_eq!(JobKind::from_db_str("future_kind"), None);
+        assert_eq!(JobKind::from_db_str(""), None);
+
+        // Background classification.
+        assert!(!JobKind::Workflow.is_background());
+        assert!(JobKind::SandboxExec.is_background());
+        assert!(JobKind::SubAgent.is_background());
+
+        // Orthogonality: the `job_kind` vocabulary is DISJOINT from the
+        // `run_kind` and `invocation_source` vocabularies (migration CHECKs) —
+        // proving `job_kind` is a genuinely new axis, not an overload of either.
+        let run_kinds = ["normal", "test", "dry_run"];
+        let invocation_sources = ["manual", "conversation", "agent", "mcp_tool", "scheduled"];
+        for k in [JobKind::Workflow, JobKind::SandboxExec, JobKind::SubAgent] {
+            let s = k.as_str();
+            assert!(
+                !run_kinds.contains(&s),
+                "job_kind '{s}' must not collide with a run_kind value"
+            );
+            assert!(
+                !invocation_sources.contains(&s),
+                "job_kind '{s}' must not collide with an invocation_source value"
+            );
+        }
+        // JSON (serde) form matches the DB text (snake_case rename) so the wire /
+        // OpenAPI representation and the persisted value are the same token.
+        assert_eq!(
+            serde_json::to_value(JobKind::SandboxExec).unwrap(),
+            serde_json::json!("sandbox_exec")
+        );
+        assert_eq!(
+            serde_json::from_value::<JobKind>(serde_json::json!("subagent")).unwrap(),
+            JobKind::SubAgent
+        );
+    }
+
+    // TEST-132 (ITEM-29): a background run's status obeys the SAME terminal
+    // classification as a workflow run (the backbone is one status model), and
+    // `from_db_str` is `None` for an unknown value (forward-compat). The
+    // late-terminal-write CAS no-op is exercised end-to-end in the DB-gated
+    // repository test `mark_status`; here we pin the pure classification the CAS
+    // predicate keys on (a terminal run must never be resurrected).
+    #[test]
+    fn status_terminal_classification_and_unknown_parse() {
+        // Unknown DB status → None (in-flight, per the doc contract).
+        assert_eq!(WorkflowRunStatus::from_db_str("no_such_status"), None);
+        assert_eq!(WorkflowRunStatus::from_db_str("queued"), None);
+        // Terminal trio the CAS guard (`status NOT IN ('cancelled','completed',
+        // 'failed')`) refuses to overwrite.
+        for s in [
+            WorkflowRunStatus::Completed,
+            WorkflowRunStatus::Failed,
+            WorkflowRunStatus::Cancelled,
+        ] {
+            assert!(s.is_terminal(), "{} must be terminal", s.as_str());
+            assert!(matches!(s.as_str(), "completed" | "failed" | "cancelled"));
+        }
+        // Non-terminal states the guard permits transitioning.
+        for s in [
+            WorkflowRunStatus::Pending,
+            WorkflowRunStatus::Running,
+            WorkflowRunStatus::Waiting,
+            WorkflowRunStatus::Resumable,
+        ] {
+            assert!(!s.is_terminal(), "{} must be non-terminal", s.as_str());
+        }
     }
 }

@@ -7,7 +7,10 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::models::{CreateWorkflow, CreateWorkflowRun, Workflow, WorkflowRun, WorkflowRunStatus};
+use super::models::{
+    CreateBackgroundRun, CreateWorkflow, CreateWorkflowRun, JobKind, Workflow, WorkflowRun,
+    WorkflowRunStatus,
+};
 use super::types::WorkflowRunSummary;
 use crate::common::AppError;
 
@@ -406,6 +409,7 @@ pub async fn insert_run(
         RETURNING
             id,
             workflow_id,
+            job_kind,
             conversation_id,
             user_id,
             model_id,
@@ -439,6 +443,93 @@ pub async fn insert_run(
     .await
     .map_err(AppError::database_error)?;
     Ok(row)
+}
+
+/// Insert a generalized BACKGROUND run (ITEM-14 / ITEM-17): a non-`workflow`
+/// `JobKind` row with `workflow_id = NULL` — a detached sub-agent turn or a
+/// fire-and-forget sandbox exec that reuses the runner's heartbeat +
+/// `mark_running`/`mark_status` guards + `RunHandle` registry but has NO backing
+/// `workflows` bundle. The row starts `pending`; the caller (typically
+/// [`super::runner::spawn_background_run`]) registers a handle + drives it. We do
+/// NOT synthesize a fake ephemeral workflow row (DEC-22).
+///
+/// `run_kind` is fixed to `'normal'` (a background run is never a workflow
+/// test/dry-run). Rejects a `Workflow` kind: that path has a bundle and MUST go
+/// through [`insert_run`] with a real `workflow_id` (the DB coherence CHECK
+/// `workflow_runs_job_kind_workflow_id_check` is the backstop).
+// Seam (ITEM-17): called by `spawn_background_run` / the background drivers in a
+// later tranche; the backbone ships + tests the create path now.
+#[allow(dead_code)]
+pub async fn insert_background_run(
+    pool: &PgPool,
+    request: CreateBackgroundRun,
+) -> Result<WorkflowRun, AppError> {
+    if matches!(request.job_kind, JobKind::Workflow) {
+        return Err(AppError::internal_error(
+            "insert_background_run: 'workflow' kind requires a bundle — use insert_run",
+        ));
+    }
+    let row = sqlx::query_as!(
+        WorkflowRun,
+        r#"
+        INSERT INTO workflow_runs (
+            workflow_id, job_kind, conversation_id, user_id, model_id,
+            sandbox_flavor, run_kind, invocation_source, inputs_json
+        )
+        VALUES (NULL, $1, $2, $3, $4, $5, 'normal', $6, $7)
+        RETURNING
+            id,
+            workflow_id,
+            job_kind,
+            conversation_id,
+            user_id,
+            model_id,
+            sandbox_flavor,
+            run_kind,
+            inputs_json as "inputs_json: _",
+            step_outputs_json as "step_outputs_json: _",
+            step_item_progress_json as "step_item_progress_json: _",
+            step_logs_json as "step_logs_json: _",
+            step_artifacts_json as "step_artifacts_json: _",
+            pending_elicitation_json as "pending_elicitation_json: _",
+            final_output_json as "final_output_json: _",
+            step_progress_json as "step_progress_json: _",
+            status,
+            current_step,
+            error_message,
+            total_tokens,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        "#,
+        request.job_kind.as_str(),
+        request.conversation_id,
+        request.user_id,
+        request.model_id,
+        request.sandbox_flavor,
+        request.invocation_source,
+        request.inputs_json,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row)
+}
+
+/// Owner-scoped run fetch for the background read seam (`check_status` /
+/// `collect_result` — the model-facing MCP trio is a later tranche). Returns the
+/// row (status + `job_kind` + `final_output_json`) ONLY when it belongs to
+/// `user_id`; a foreign or missing id yields `None` so the caller returns 404 —
+/// never leaking another user's run (DEC-36 / CODING_GUIDELINES §1). Works for
+/// every `job_kind`, including background runs with a NULL `workflow_id`.
+// Seam (ITEM-17): the read side of the model-facing check_status/collect_result
+// MCP trio (later tranche); the backbone ships + tests the owner-scoped read.
+#[allow(dead_code)]
+pub async fn find_run_for_owner(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<WorkflowRun>, AppError> {
+    Ok(find_run(pool, run_id).await?.filter(|r| r.user_id == user_id))
 }
 
 /// Terminal-status write (H3). Guards against clobbering an already
@@ -865,16 +956,26 @@ pub async fn cancel_cas(
 }
 
 /// Startup sweep: flip every still-pending/running row created BEFORE
-/// `cutoff` to `failed`. M-3: the `created_at < cutoff` bound prevents the
-/// sweep (spawned detached at module init) from racing — and clobbering — a
-/// run legitimately started in the boot window after `cutoff` was captured.
+/// `cutoff` to `failed`, EXCEPT the kinds whose per-`JobKind` policy spares them
+/// (DEC-76). M-3: the `created_at < cutoff` bound prevents the sweep (spawned
+/// detached at module init) from racing — and clobbering — a run legitimately
+/// started in the boot window after `cutoff` was captured.
+///
+/// Disposition order (each step only touches rows still `pending`/`running`):
+///  1. `resumable_agent = TRUE` → `resumable` (a crash inside an `agent` step,
+///     ANY kind — re-driven from `agent_transcript_json`).
+///  2. any `JobKind` whose registered `orphan_sweep` is `Resumable` (subagent)
+///     → `resumable` — decentralized: iterate the policy registry, no hardcoded
+///     kind list, so a new replayable kind auto-participates (ITEM-17/DEC-76).
+///  3. everything else (`workflow`, `sandbox_exec`, any `Fail`-policy or
+///     unknown kind — fail-closed) → `failed`.
 pub async fn fail_orphaned_runs(
     pool: &PgPool,
     cutoff: time::OffsetDateTime,
 ) -> Result<u64, AppError> {
-    // ITEM-17: FIRST spare crashed `running` agent runs — a run that crashed
-    // while inside an agent step (`resumable_agent = true`) becomes `resumable`
-    // (NOT `failed`) so the boot path re-drives it from its persisted
+    // Step 1 — ITEM-17: FIRST spare crashed `running` agent runs — a run that
+    // crashed while inside an agent step (`resumable_agent = true`) becomes
+    // `resumable` (NOT `failed`) so the boot path re-drives it from its persisted
     // `agent_transcript_json`. This runs before the fail-sweep below, so those
     // rows are no longer `running` and the fail-sweep skips them.
     sqlx::query!(
@@ -892,7 +993,33 @@ pub async fn fail_orphaned_runs(
     .await
     .map_err(AppError::database_error)?;
 
-    // Sweep in bounded batches rather than one mass UPDATE: a single
+    // Step 2 — DEC-76 per-JobKind policy: spare every orphaned run whose kind
+    // declares a `Resumable` orphan-sweep (a sub-agent's work replays from its
+    // durable transcript). Decentralized: walk the registered policies rather
+    // than naming a kind, so a future replayable kind is swept correctly with no
+    // edit here. A `Fail`-policy kind (workflow / sandbox_exec) is left for the
+    // fail-sweep below; an UNKNOWN kind is fail-closed (never spared here).
+    for policy in super::job_kind::JOB_KIND_POLICIES.iter() {
+        if policy.orphan_sweep == super::job_kind::OrphanSweepPolicy::Resumable {
+            sqlx::query!(
+                r#"
+                UPDATE workflow_runs
+                SET status = 'resumable',
+                    updated_at = NOW()
+                WHERE status IN ('pending', 'running')
+                  AND job_kind = $1
+                  AND created_at < $2
+                "#,
+                policy.job_kind,
+                cutoff,
+            )
+            .execute(pool)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+    }
+
+    // Step 3 — sweep in bounded batches rather than one mass UPDATE: a single
     // statement would take row locks on every matching orphan at once,
     // which on a large backlog holds a long write-lock span and bloats the
     // WAL in one transaction. Each batch commits independently (LIMIT via a
@@ -952,6 +1079,7 @@ pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>
         SELECT
             id,
             workflow_id,
+            job_kind,
             conversation_id,
             user_id,
             model_id,
@@ -1249,7 +1377,12 @@ pub async fn list_runs_for_workflow(
     let rows = sqlx::query_as!(
         WorkflowRunSummary,
         r#"
-        SELECT id, workflow_id, status, invocation_source,
+        SELECT id,
+               -- workflow_id is now nullable (background runs), but this query
+               -- filters WHERE workflow_id = $1, so every returned row has it
+               -- set — force non-null so the summary DTO stays a plain Uuid.
+               workflow_id as "workflow_id!",
+               status, invocation_source,
                conversation_id, model_id, total_tokens,
                created_at as "created_at: _"
         FROM workflow_runs
@@ -1308,6 +1441,7 @@ pub async fn list_runs_for_user(
         SELECT
             id,
             workflow_id,
+            job_kind,
             conversation_id,
             user_id,
             model_id,
@@ -1339,4 +1473,249 @@ pub async fn list_runs_for_user(
     .await
     .map_err(AppError::database_error)?;
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    // DB-gated in-source tests (backbone / ITEM-14/17/29). They SOFT-SKIP when
+    // `DATABASE_URL` is unset / unreachable (mirroring the suite's env-gated
+    // real-stack tests, e.g. `web_search::repository`), so `cargo test --lib`
+    // without Postgres stays green; they run for real wherever `DATABASE_URL`
+    // points at a migrated DB (which includes migration 202607190700).
+    async fn connect() -> Option<PgPool> {
+        let url = std::env::var("DATABASE_URL").ok()?;
+        let pool = match PgPoolOptions::new().max_connections(2).connect(&url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return None;
+            }
+        };
+        // Probe: soft-skip if the ambient DB predates migration 202607190700
+        // (an un-migrated `postgres` DB), so these never HARD-fail — they only
+        // run against a DB where the backbone columns exist.
+        let migrated: Option<String> = sqlx::query_scalar(
+            "SELECT column_name FROM information_schema.columns \
+             WHERE table_schema='public' AND table_name='workflow_runs' \
+               AND column_name='job_kind'",
+        )
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten();
+        if migrated.is_none() {
+            eprintln!("skip: workflow_runs.job_kind absent — DB not migrated to 202607190700");
+            return None;
+        }
+        Some(pool)
+    }
+
+    /// Insert a throwaway user (the `workflow_runs.user_id` FK target, SDK-owned
+    /// `users` table). Uses a UUID-derived unique username/email so parallel
+    /// in-source tests never collide. Deleting this user CASCADE-removes its runs
+    /// (`workflow_runs_user_id_fkey ON DELETE CASCADE`) — the sole cleanup.
+    async fn make_user(pool: &PgPool) -> Uuid {
+        let uid = Uuid::new_v4();
+        // Runtime (unchecked) query: keeps the test decoupled from the exact
+        // SDK users schema (only username + email are required NOT-NULL columns).
+        sqlx::query("INSERT INTO users (id, username, email) VALUES ($1, $2, $3)")
+            .bind(uid)
+            .bind(format!("bgtest_{}", uid.simple()))
+            .bind(format!("bgtest_{}@example.invalid", uid.simple()))
+            .execute(pool)
+            .await
+            .expect("insert throwaway user");
+        uid
+    }
+
+    async fn cleanup_user(pool: &PgPool, user_id: Uuid) {
+        let _ = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(pool)
+            .await;
+    }
+
+    fn bg_req(user_id: Uuid, kind: JobKind) -> CreateBackgroundRun {
+        CreateBackgroundRun {
+            job_kind: kind,
+            conversation_id: None,
+            user_id,
+            model_id: None,
+            sandbox_flavor: None,
+            invocation_source: "conversation".into(),
+            inputs_json: serde_json::json!({}),
+        }
+    }
+
+    // TEST-47 (ITEM-14): a `job_kind='sandbox_exec'` + NULL `workflow_id` row
+    // persists / round-trips, its heartbeat bumps `updated_at`, and it reaches a
+    // terminal state — all WITHOUT ever loading a `workflow.yaml`. The late
+    // terminal write is a CAS no-op (TEST-132 end-to-end).
+    #[tokio::test]
+    async fn background_run_round_trips_and_heartbeats_without_workflow_yaml() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+
+        // Persist a bundle-less background run.
+        let row = insert_background_run(&pool, bg_req(user_id, JobKind::SandboxExec))
+            .await
+            .expect("insert background run");
+        assert!(row.workflow_id.is_none(), "background run has NULL workflow_id");
+        assert_eq!(row.job_kind, "sandbox_exec");
+        assert_eq!(JobKind::from_db_str(&row.job_kind), Some(JobKind::SandboxExec));
+        assert_eq!(row.status, "pending");
+        let run_id = row.id;
+
+        // pending → running via the guarded transition.
+        mark_running(&pool, run_id).await.expect("mark_running");
+        let running = find_run(&pool, run_id).await.unwrap().unwrap();
+        assert_eq!(running.status, "running");
+        let before = running.updated_at;
+
+        // Heartbeat bumps updated_at (the no-progress liveness signal) without
+        // changing status.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        heartbeat(&pool, run_id).await.expect("heartbeat");
+        let beat = find_run(&pool, run_id).await.unwrap().unwrap();
+        assert!(
+            beat.updated_at > before,
+            "heartbeat must advance updated_at ({:?} !> {:?})",
+            beat.updated_at,
+            before
+        );
+        assert_eq!(beat.status, "running", "heartbeat must not change status");
+
+        // Reach a terminal state; no workflow bundle was ever loaded.
+        set_final_output(&pool, run_id, serde_json::json!({"exit_code": 0}))
+            .await
+            .unwrap();
+        mark_status(&pool, run_id, WorkflowRunStatus::Completed, None)
+            .await
+            .expect("mark completed");
+        let done = find_run(&pool, run_id).await.unwrap().unwrap();
+        assert_eq!(done.status, "completed");
+        assert!(WorkflowRunStatus::from_db_str(&done.status).unwrap().is_terminal());
+        assert_eq!(done.final_output_json, Some(serde_json::json!({"exit_code": 0})));
+
+        // TEST-132: a LATE terminal write is a CAS no-op — the completed row is
+        // never resurrected to failed.
+        mark_status(&pool, run_id, WorkflowRunStatus::Failed, Some("late"))
+            .await
+            .unwrap();
+        let still = find_run(&pool, run_id).await.unwrap().unwrap();
+        assert_eq!(still.status, "completed", "terminal CAS must be a no-op");
+
+        // Owner-scoped read seam: owner sees it, a stranger gets None (→ 404).
+        assert!(find_run_for_owner(&pool, run_id, user_id).await.unwrap().is_some());
+        assert!(
+            find_run_for_owner(&pool, run_id, Uuid::new_v4())
+                .await
+                .unwrap()
+                .is_none(),
+            "cross-user fetch must be None (404), never leak the row"
+        );
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    // TEST-47 (spawn seam): `runner::spawn_background_run` fire-and-forgets a
+    // background run reusing mark_running + the heartbeat + the guarded terminal
+    // `mark_status`, reaching `completed` with the driver's final output — with no
+    // workflow.yaml.
+    #[tokio::test]
+    async fn spawn_background_run_drives_to_terminal() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+
+        let run_id = crate::modules::workflow::runner::spawn_background_run(
+            &pool,
+            bg_req(user_id, JobKind::SubAgent),
+            |_pool, _run_id, _handle| async move {
+                crate::modules::workflow::runner::BackgroundOutcome::Completed {
+                    final_output: Some(serde_json::json!({"answer": 42})),
+                }
+            },
+        )
+        .await
+        .expect("spawn background run");
+
+        // Poll for terminal (the driver completes immediately; allow slack for
+        // the detached task + terminal write).
+        let mut terminal = None;
+        for _ in 0..100 {
+            let run = find_run(&pool, run_id).await.unwrap().unwrap();
+            if WorkflowRunStatus::from_db_str(&run.status)
+                .is_some_and(|s| s.is_terminal())
+            {
+                terminal = Some(run);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let run = terminal.expect("background run should reach terminal");
+        assert_eq!(run.status, "completed");
+        assert!(run.workflow_id.is_none());
+        assert_eq!(run.job_kind, "subagent");
+        assert_eq!(run.final_output_json, Some(serde_json::json!({"answer": 42})));
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    // TEST-42 / TEST-133 (ITEM-29 / DEC-76): the boot orphan-sweep applies a
+    // PER-JobKind policy — a crashed `subagent` orphan is SPARED as `resumable`
+    // (replayable), a `sandbox_exec` orphan is `failed` (a killed subprocess
+    // can't replay). Both rows are aged past the cutoff so ONLY they are swept
+    // (the sweep is global; other tests' fresh rows are newer than the cutoff).
+    #[tokio::test]
+    async fn boot_sweep_is_per_job_kind() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+
+        let sub = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .unwrap();
+        let sand = insert_background_run(&pool, bg_req(user_id, JobKind::SandboxExec))
+            .await
+            .unwrap();
+        // Simulate crashed in-flight orphans aged 2 days (older than the cutoff).
+        for id in [sub.id, sand.id] {
+            sqlx::query(
+                "UPDATE workflow_runs SET status='running', created_at = now() - interval '2 days' WHERE id = $1",
+            )
+            .bind(id)
+            .execute(&pool)
+            .await
+            .expect("age the orphan row");
+        }
+
+        // Cutoff 1 day ago: sweeps ONLY rows older than that (our 2-day rows),
+        // never a concurrently-running test's ~now rows.
+        let cutoff = time::OffsetDateTime::now_utc() - time::Duration::days(1);
+        fail_orphaned_runs(&pool, cutoff).await.expect("sweep");
+
+        let sub_after = find_run(&pool, sub.id).await.unwrap().unwrap();
+        let sand_after = find_run(&pool, sand.id).await.unwrap().unwrap();
+        assert_eq!(
+            sub_after.status, "resumable",
+            "subagent orphan must be spared as resumable (transcript replay)"
+        );
+        assert_eq!(
+            sand_after.status, "failed",
+            "sandbox_exec orphan must fail (subprocess gone)"
+        );
+
+        cleanup_user(&pool, user_id).await;
+    }
 }

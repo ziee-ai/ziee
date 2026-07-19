@@ -40,7 +40,7 @@ use crate::modules::workflow::events::{
 };
 use crate::modules::workflow::file_io;
 use crate::modules::workflow::log_io::{self, StepTrace};
-use crate::modules::workflow::models::WorkflowRunStatus;
+use crate::modules::workflow::models::{CreateBackgroundRun, JobKind, WorkflowRunStatus};
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{
@@ -1296,6 +1296,159 @@ pub async fn spawn_run(
     Ok(row.id)
 }
 
+/// Terminal disposition a background driver reports (ITEM-17). Mirrors the
+/// workflow runner's `RunInnerOutcome`, reduced to what a bundle-less background
+/// kind needs: the [`spawn_background_run`] wrapper applies the guarded terminal
+/// `mark_status` (+ `final_output`) write from it.
+// Seam (ITEM-17): reported by the background drivers (sub-agent loop / sandbox
+// exec) in a later tranche; the backbone ships + tests `spawn_background_run`.
+#[allow(dead_code)]
+pub enum BackgroundOutcome {
+    /// Success. `final_output` (if any) is persisted to `final_output_json` and
+    /// read back by the `collect_result` seam.
+    Completed { final_output: Option<Value> },
+    /// Failure. `error` is written to `error_message`.
+    Failed { error: String },
+    /// Cancelled by the owner (the driver observed the `RunHandle` cancel).
+    Cancelled,
+    /// Parked on a durable needs-input gate (DEC-77): the driver ALREADY set the
+    /// row to `waiting` + `pending_elicitation_json` (reusing the existing
+    /// elicit gate — NOT a new status). The wrapper keeps the handle for SSE
+    /// subscribers, clears the runner-resident flag, and returns WITHOUT marking
+    /// terminal or unregistering — exactly like the workflow runner's
+    /// `Suspended` arm.
+    Suspended,
+}
+
+/// Fire-and-forget spawn of a generalized BACKGROUND run (ITEM-14 / ITEM-17): a
+/// non-`workflow` `JobKind` reusing the SAME durable machinery as the workflow
+/// runner — a `workflow_runs` row (`workflow_id = NULL`), a `RunHandle` in the
+/// registry, the guarded `mark_running`/`mark_status` transitions, and the
+/// liveness heartbeat (+ `AbortOnDrop` guard). It does NOT load a `workflow.yaml`
+/// and does NOT synthesize a fake workflow row (DEC-22).
+///
+/// `driver` does the kind-specific work (a sub-agent loop / a sandbox exec —
+/// those land in later tranches) and reports a [`BackgroundOutcome`]; the wrapper
+/// applies the terminal write + owner-scoped `SyncEntity::WorkflowRun` notify +
+/// registry unregister. Returns the run_id immediately; a caller that needs the
+/// result polls [`repository::find_run_for_owner`] (the `check_status` /
+/// `collect_result` read seam).
+///
+/// The MODEL-FACING `spawn_background` / `check_status` / `collect_result` MCP
+/// tools are a LATER tranche (they need the built-in-MCP checklist: a perm, both
+/// `mcp.rs` edits, an untrusted-content guard, a real-LLM test). This is only the
+/// Rust seam they will call.
+// Seam (ITEM-17): the fire-and-forget spawn the background drivers + MCP
+// `spawn_background` call in a later tranche; the backbone ships + tests it now.
+#[allow(dead_code)]
+pub async fn spawn_background_run<F, Fut>(
+    pool: &PgPool,
+    request: CreateBackgroundRun,
+    driver: F,
+) -> Result<Uuid, AppError>
+where
+    F: FnOnce(PgPool, Uuid, Arc<registry::RunHandle>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = BackgroundOutcome> + Send + 'static,
+{
+    if matches!(request.job_kind, JobKind::Workflow) {
+        return Err(AppError::internal_error(
+            "spawn_background_run: 'workflow' kind has a bundle — use spawn_run",
+        ));
+    }
+
+    // Insert the durable row (workflow_id = NULL), register the handle, and flip
+    // `pending → running` through the SAME guarded transitions the workflow
+    // runner uses (a fast owner-cancel that landed first makes `mark_running` a
+    // no-op — the driver observes cancel via the handle).
+    let row = repository::insert_background_run(pool, request).await?;
+    let run_id = row.id;
+    let user_id = row.user_id;
+    let handle = registry::register(run_id);
+    repository::mark_running(pool, run_id).await?;
+
+    let pool_task = pool.clone();
+    tokio::spawn(async move {
+        // Liveness heartbeat: identical cadence + AbortOnDrop guard as
+        // `run_workflow`, so the no-progress (crashed-runner) guard sees a live
+        // background runner even during a long single unit of work.
+        let hb_pool = pool_task.clone();
+        let heartbeat = tokio::spawn(async move {
+            let mut tick = tokio::time::interval(HEARTBEAT_INTERVAL);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            tick.tick().await; // skip the immediate first tick (mark_running set updated_at)
+            loop {
+                tick.tick().await;
+                // A transient DB error must NOT stop the heartbeat; the
+                // AbortOnDrop guard is what stops the loop on driver exit.
+                let _ = repository::heartbeat(&hb_pool, run_id).await;
+            }
+        });
+        struct AbortOnDrop(tokio::task::JoinHandle<()>);
+        impl Drop for AbortOnDrop {
+            fn drop(&mut self) {
+                self.0.abort();
+            }
+        }
+        let _heartbeat_guard = AbortOnDrop(heartbeat);
+
+        let outcome = driver(pool_task.clone(), run_id, handle.clone()).await;
+
+        match outcome {
+            BackgroundOutcome::Suspended => {
+                // Durable needs-input gate (DEC-77). Do NOT mark terminal /
+                // unregister — keep the handle so subscribers stay attached and a
+                // later resume re-adopts it; just drop the runner-resident flag.
+                registry::set_no_runner(run_id);
+                crate::modules::workflow::events::emit_workflow_run(
+                    crate::modules::sync::SyncAction::Update,
+                    run_id,
+                    user_id,
+                    None,
+                );
+                return; // heartbeat guard aborts on return
+            }
+            BackgroundOutcome::Completed { final_output } => {
+                if let Some(v) = final_output {
+                    let _ = repository::set_final_output(&pool_task, run_id, v).await;
+                }
+                let _ =
+                    repository::mark_status(&pool_task, run_id, WorkflowRunStatus::Completed, None)
+                        .await;
+            }
+            BackgroundOutcome::Failed { error } => {
+                let _ = repository::mark_status(
+                    &pool_task,
+                    run_id,
+                    WorkflowRunStatus::Failed,
+                    Some(&error),
+                )
+                .await;
+            }
+            BackgroundOutcome::Cancelled => {
+                let _ = repository::mark_status(
+                    &pool_task,
+                    run_id,
+                    WorkflowRunStatus::Cancelled,
+                    Some("cancelled by user"),
+                )
+                .await;
+            }
+        }
+
+        // Terminal: owner-scoped sync notify (detached task → origin None) then
+        // release the registry handle.
+        crate::modules::workflow::events::emit_workflow_run(
+            crate::modules::sync::SyncAction::Update,
+            run_id,
+            user_id,
+            None,
+        );
+        registry::unregister(run_id);
+    });
+
+    Ok(run_id)
+}
+
 /// Durable resume (Change B): re-spawn a runner for a `waiting` run parked on an
 /// indefinite (`timeout_ms: 0`) elicit gate. Reuses the existing `workflow_runs`
 /// row (no new row), rehydrates completed-step outputs + the token/byte caps
@@ -1325,6 +1478,23 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
     if run.status != "waiting" && run.status != "resumable" {
         return Ok(());
     }
+
+    // ITEM-14: a generalized BACKGROUND run (`job_kind != 'workflow'`, no bundle)
+    // has no `workflow.yaml` to reload. Its dedicated resume path (a sub-agent
+    // transcript replay) lands with the background runner in a later tranche; the
+    // boot sweep re-drive loop still calls this for every `resumable` row, so we
+    // gracefully NO-OP a non-workflow kind here — leaving it parked in its swept
+    // state rather than crashing on a NULL `workflow_id`. Guard BEFORE the
+    // resumable→running promotion so a background run isn't flipped to `running`.
+    let Some(workflow_id) = run.workflow_id else {
+        tracing::debug!(
+            run_id = %run_id,
+            job_kind = %run.job_kind,
+            "workflow: resume_run no-op for non-workflow background run (no bundle yet)"
+        );
+        return Ok(());
+    };
+
     // ITEM-17: a crash-resumed run has no gate to consume — promote it back to
     // `running` so the liveness heartbeat + no-progress guard cover it (the
     // `waiting` path keeps its status until the gate is consumed downstream).
@@ -1332,7 +1502,7 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
         repository::mark_status(pool, run_id, WorkflowRunStatus::Running, None).await?;
     }
 
-    let workflow = repository::find_by_id(pool, run.workflow_id)
+    let workflow = repository::find_by_id(pool, workflow_id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
 

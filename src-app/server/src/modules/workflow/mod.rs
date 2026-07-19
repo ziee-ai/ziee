@@ -24,6 +24,7 @@ pub mod events;
 pub mod file_io;
 pub mod file_runs;
 pub mod handlers;
+pub mod job_kind;
 pub mod log_io;
 pub mod log_stream;
 pub mod models;
