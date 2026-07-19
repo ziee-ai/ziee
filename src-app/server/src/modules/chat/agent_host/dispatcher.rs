@@ -44,10 +44,6 @@ use crate::modules::chat::agent_host::transcript::ChatTranscriptStore;
 use crate::modules::chat::core::extension::{ExtensionRegistry, StreamContext};
 use crate::utils::cancellation::CancellationToken;
 
-/// Window-relative soft limit above which the core compaction extension fires.
-/// High so a normal chat turn never summarizes (chat's own summarization extension
-/// owns real compaction); the machinery is wired for parity with the workflow host.
-const CHAT_COMPACTION_SOFT_LIMIT_TOKENS: usize = 200_000;
 
 /// Failsafe iteration cap (chat's `SAFETY_MAX_ITERATIONS`); real per-turn limits
 /// come from MCP settings / the approval gate.
@@ -158,7 +154,7 @@ impl ChatAgentTurn {
             Compactor::new(
                 model_client.clone(),
                 self.model_name.clone(),
-                CHAT_COMPACTION_SOFT_LIMIT_TOKENS,
+                agent_core::CompactionConfig::chat(),
             ),
             transcript.clone(),
             sink.clone(),

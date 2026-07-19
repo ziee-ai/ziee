@@ -32,7 +32,9 @@ pub mod types;
 mod test_fakes;
 
 pub use budget::Budget;
-pub use compaction::{CompactionExtension, CompactionResult, Compactor};
+pub use compaction::{
+    CompactionConfig, CompactionExtension, CompactionResult, Compactor, TokenCounter,
+};
 pub use core::{
     AgentCore, CancelToken, DeltaSink, ModelClient, ModelClientFactory, NoopDeltaSink,
     ProviderModelClient, ProviderModelClientFactory,

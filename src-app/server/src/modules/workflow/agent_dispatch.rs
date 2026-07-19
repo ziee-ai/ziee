@@ -60,10 +60,6 @@ use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{ParsedAs, RunContext, StepKindTag, StepResult};
 use crate::modules::workflow::validate::{OutputFormat, StepConfig, StepDef};
 
-/// Window-relative soft limit (tokens) above which the core compaction extension
-/// fires. Deliberately high so v1 agent steps rarely summarize (the per-step
-/// token cap is the real ceiling); the machinery is wired regardless (ITEM-6).
-const AGENT_COMPACTION_SOFT_LIMIT_TOKENS: usize = 100_000;
 
 // ============================================================
 // Approved-for-session allow-rules (ITEM-13 / DEC-2)
@@ -818,7 +814,7 @@ impl StepDispatcher for AgentDispatcher {
                 Compactor::new(
                     model_client.clone(),
                     ctx.model_name.clone(),
-                    AGENT_COMPACTION_SOFT_LIMIT_TOKENS,
+                    agent_core::CompactionConfig::agent(),
                 ),
                 transcript.clone(),
                 sink.clone(),
