@@ -1,8 +1,15 @@
 # TEST_RESULTS — workflow-kind-agent (Phase 8)
 
-All 23 enumerated tests were WRITTEN and RUN against the real stack (real backend + real DB for
+All 24 enumerated tests were WRITTEN and RUN against the real stack (real backend + real DB for
 integration; real backend-through-UI for e2e; real LLM via the LiteLLM bridge for the agent-run
 timeline). No `#[ignore]`, no `page.route` mocking, no weakened assertions.
+
+**A10 (frontend-hidden proof):** the feature reuses an existing permission (`workflows::manage`/
+`install`) for a NEW surface (the builder), so the mechanical A10 gate does not fire — but reusing a
+perm for a new surface still needs the proof, so TEST-24 (a `[negative-perm]` e2e) was added and it
+surfaced a real gap (the builder route was reachable by direct URL — `route.permission` is advisory);
+now fixed with a content-level `usePermission` guard. Backend deny (A9): TEST-3 asserts non-owner → 403
+on the definition endpoints.
 
 ## Per-TEST results
 - **TEST-1**: PASS — `tests/workflow/builder_crud_test::get_definition_owner_ok_foreign_404_unauth_401` — GET /workflows/{id}/definition returns the editable WorkflowDef for the owner; foreign id → 404; unauth → 401.
@@ -28,6 +35,7 @@ timeline). No `#[ignore]`, no `page.route` mocking, no weakened assertions.
 - **TEST-21**: PASS — `openapi::tests::types_ts_parity` + `types_ts_parity_desktop` — the golden emit_ts parity holds for BOTH binaries after the CreateWorkflowDefBody regen; WorkflowDef/StepDef/StepConfig/ValidateDefResponse/AgentActivity present in types.ts.
 - **TEST-22**: PASS — the `ziee-desktop` crate compiled during `just openapi-regen` (desktop binary ran) and the desktop api-client regen is parity-clean (types_ts_parity_desktop green); workflows ship on desktop via the shared ui/ modules (no desktop mirror).
 - **TEST-23**: PASS — `gate:ui` 193/193 surfaces runtime-clean, 0 gating HIGH (builder empty/populated/390px/validation-error, agent friendly form, run timeline running/gate/completed).
+- **TEST-24** (tier: e2e) [negative-perm]: PASS — `tests/e2e/workflows/builder-restricted.spec.ts` — a user LACKING workflows::install/manage (read+execute only) sees NO builder UI: the "New workflow" + Import affordances are absent (`<Can>`), and navigating the builder-create + edit routes leaves the builder surface ABSENT (`wf-builder-page-title`/`wf-builder-add-step-btn` count 0). **Finding fixed while adding this:** `route.permission` is advisory (no app `permissionGate` is registered — the framework ignores it), so the builder was reachable by direct URL. Added a content-level `usePermission` guard in `WorkflowBuilderPage` (install for create, manage for edit → renders a 403 `Result`), so the builder is gated at the CONTENT layer regardless of route enforcement. Walks slot → route → `<Can>` → usePermission.
 
 ## Run commands (representative)
 - Backend unit: `cargo test --lib -p ziee agent_dispatch:: def_bundle agent_activity_serde types_ts_parity` → green.

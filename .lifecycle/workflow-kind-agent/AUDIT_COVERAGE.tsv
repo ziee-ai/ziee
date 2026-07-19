@@ -170,3 +170,4 @@ src-app/ui/tests/e2e/workflows/builder-ref-insert.spec.ts	1	54	test-quality,corr
 src-app/ui/tests/e2e/workflows/builder-step-kinds.spec.ts	1	112	test-quality,correctness,no-mock-real-path
 src-app/ui/tests/e2e/workflows/helpers/builder-helpers.ts	1	94	test-quality,correctness,no-mock-real-path
 src-app/server/src/modules/workflow/runner.rs	250	285	correctness,security,resource-cleanup,maintainability
+src-app/ui/src/modules/workflow/components/builder/WorkflowBuilderPage.tsx	1	173	correctness,rules-of-hooks,store-discipline,api-contract,design-in-context,maintainability

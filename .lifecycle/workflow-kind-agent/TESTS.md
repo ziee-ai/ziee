@@ -41,8 +41,10 @@ is introduced (reuses `workflows::install/manage/execute`), so **no `[negative-p
 - **TEST-22** (tier: integration) [covers: ITEM-15] file: `src-app/desktop/tauri/tests/build_smoke.rs` — asserts: the desktop-embedded server crate compiles with the new endpoints/types (workflows ship on desktop unchanged), and the desktop `api-client` regen is parity-clean (committed == fresh regen). [Build/compile verification; run in Phase 8.]
 - **TEST-23** (tier: e2e) [covers: ITEM-16] file: `src-app/ui/tests/e2e/workflows/builder-gallery.spec.ts` — asserts: via the gallery/gate:ui surfaces, the builder (empty / populated 4-step incl. agent / **390px** / validation-error), the agent friendly form, and the run timeline (running / gate-open / completed) each render crash-free (0 gating runtime-health HIGH) for the design-critic + Layer-A/axe passes.
 
+- **TEST-24** (tier: e2e) [negative-perm] [covers: ITEM-7] file: `src-app/ui/tests/e2e/workflows/builder-restricted.spec.ts` — asserts: a user LACKING workflows::install/manage (holding only read+execute) sees NO builder UI — the "New workflow" + Import affordances are absent (`<Can>`), and the builder-create (`/settings/workflows/builder`) + edit (`/:id/edit`) routes render the settings 403 result, never the builder page (route gate). Walks slot → route → `<Can>` → usePermission; not just a 403-on-save.
+
 ## Coverage summary (bipartite check)
 ITEM-1→T1 · ITEM-2→T2,T4 · ITEM-3→T3,T4 · ITEM-4→T5 · ITEM-5→T6,T7,T8 · ITEM-6→T9,T10 · ITEM-7→T10,T11 ·
 ITEM-8→T12,T13 · ITEM-9→T14,T15 · ITEM-10→T16,T17 · ITEM-11→T18 · ITEM-12→T20 · ITEM-13→T19,T20 ·
-ITEM-14→T21 · ITEM-15→T22 · ITEM-16→T23. Every ITEM covered; every UI item (7,8,9,10,12,16) has a
-`tier: e2e`.
+ITEM-14→T21 · ITEM-15→T22 · ITEM-16→T23 · ITEM-7→T24 [negative-perm]. Every ITEM covered; every UI
+item (7,8,9,10,12,16) has a `tier: e2e`; ITEM-7 also has the restricted-user e2e (T24).

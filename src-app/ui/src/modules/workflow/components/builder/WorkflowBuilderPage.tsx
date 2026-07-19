@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
-import { Alert, Button, ErrorState, Input, Spin, Text, message } from '@ziee/kit'
+import { Alert, Button, ErrorState, Input, Result, Spin, Text, message } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { WorkflowBuilderStoreDef } from '../../stores/WorkflowBuilder.store'
 import { StepList } from './StepList'
@@ -24,13 +26,22 @@ export function WorkflowBuilderPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const store = WorkflowBuilderStoreDef.use()
+  const isEdit = !!id
+
+  // Permission gate (A10): route.permission is advisory only (no app permissionGate
+  // is registered), so a direct URL to the builder would otherwise render ungated.
+  // Create needs workflows::install; edit needs workflows::manage.
+  const canAccess = usePermission(
+    isEdit ? Permissions.WorkflowsManage : Permissions.WorkflowsInstall,
+  )
 
   // Load an existing definition (edit) or start blank (create) on mount / id change.
   useEffect(() => {
+    if (!canAccess) return
     if (id) void store.load(id)
     else store.initEmpty()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  }, [id, canAccess])
 
   const {
     name,
@@ -44,7 +55,6 @@ export function WorkflowBuilderPage() {
     deletedExternally,
   } = store
 
-  const isEdit = !!id
   const hasErrors = (validation?.errors?.length ?? 0) > 0
   const stepCount = def.steps.length
 
@@ -70,6 +80,20 @@ export function WorkflowBuilderPage() {
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to save workflow')
     }
+  }
+
+  // A10 content gate: deny direct-URL access when the user lacks the perm.
+  // Rendered WITHOUT the builder's SettingsPageContainer, so `wf-builder-page-title`
+  // is absent for an unpermitted user (mirrors the settings section-forbidden result).
+  if (!canAccess) {
+    return (
+      <Result
+        data-testid="settings-forbidden-result"
+        status="403"
+        title="Not authorized"
+        subtitle="You don't have permission to author workflows."
+      />
+    )
   }
 
   return (
