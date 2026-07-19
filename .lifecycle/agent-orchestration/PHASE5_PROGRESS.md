@@ -15,7 +15,8 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 |---|---|---|---|---|---|
 | 1 | agent-core foundation | 56(order), 38, 32 | `cargo check -p agent-core` PASS + 48/48 lib tests | b36c0d24e | ✅ VERIFIED |
 | 2 | scheduler backend | 21, 22, 23 | `cargo check -p ziee` PASS (integrates T1) | 2b8e8b406 | ✅ VERIFIED |
-| 3 | Group A delegate (agent-core) | 1, 3 (2 host-gate deferred) | pending | — | 🔄 in progress |
+| 3 | Group A delegate (agent-core) | 1, 3 (2 host-gate deferred) | `cargo check -p agent-core` +60/60 tests; `cargo check -p ziee` PASS | f3a9c9a85 | ✅ VERIFIED |
+| 4 | Group G task-list (agent-core) | 34, 35, 36, 37 (server store impl deferred) | pending | — | 🔄 in progress |
 
 ## Accumulated drifts (reconcile into DRIFT-N.md at Phase-5 close)
 - **DRIFT (T1, impl-wins):** `Reviewer::new` kept backward-compatible + `new_with_thresholds` added (rather than changing the one server caller from another module). Server wiring TODO: `agent_dispatch.rs:787` → `new_with_thresholds(inner, policy, RiskThresholds::from_json(&settings.reviewer_risk_thresholds))`.
@@ -25,6 +26,8 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 ## Deferred / TODO wiring (later tranches, tracked so nothing is silently dropped)
 - **Server reviewer-thresholds wiring** (from T1 drift) — flip `agent_dispatch.rs` to `new_with_thresholds`; also wire the chat reviewer (LOCK-5, behind `ZIEE_CHAT_AGENT_CORE`).
 - **Model-facing `schedule_next{delay,reason,stop}` tool** (DEC-42) that produces the self-paced proposal — the clamp + arm/write-back path is done + tested; only the read-proposal-off-the-turn wiring remains.
+- **`agent_admin_settings.fan_out_max_children_per_call` column + wiring** — T3 added `SubagentLimits.max_children_per_call` (default 8) and the server literal now uses `..Default::default()`; a later tranche adds the admin column + threads it (like `fan_out_max_threads`).
+- **Group G server-side durable `TaskListStore` impl** — T4 does the agent-core side (tools via the seam + port trait + re-injection extension) with a fake store; server table + migration + port impl is a follow-up.
 - **openapi-regen fan-in** — after the backend-type tranches (scheduler already added `bound_conversation_id`/`?conversation_id`/`schedule_kind:self_paced`/`max_horizon_days`), run `just openapi-regen` BOTH workspaces before the FE tranches consume the types.
 
 ## Remaining tranche plan (dependency-ordered)
