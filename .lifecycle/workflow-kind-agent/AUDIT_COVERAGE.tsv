@@ -172,3 +172,4 @@ src-app/ui/tests/e2e/workflows/helpers/builder-helpers.ts	1	94	test-quality,corr
 src-app/server/src/modules/workflow/runner.rs	250	285	correctness,security,resource-cleanup,maintainability
 src-app/ui/src/modules/workflow/components/builder/WorkflowBuilderPage.tsx	1	173	correctness,rules-of-hooks,store-discipline,api-contract,design-in-context,maintainability
 src-app/ui/tests/e2e/workflows/builder-restricted.spec.ts	1	60	test-quality,correctness,no-mock-real-path
+src-app/server/tests/workflow/builder_crud_test.rs	1	404	test-quality,correctness,no-mock-real-path

@@ -1,6 +1,6 @@
 # TEST_RESULTS — workflow-kind-agent (Phase 8)
 
-All 24 enumerated tests were WRITTEN and RUN against the real stack (real backend + real DB for
+All 25 enumerated tests were WRITTEN and RUN against the real stack (real backend + real DB for
 integration; real backend-through-UI for e2e; real LLM via the LiteLLM bridge for the agent-run
 timeline). No `#[ignore]`, no `page.route` mocking, no weakened assertions.
 
@@ -15,6 +15,7 @@ on the definition endpoints.
 - **TEST-1**: PASS — `tests/workflow/builder_crud_test::get_definition_owner_ok_foreign_404_unauth_401` — GET /workflows/{id}/definition returns the editable WorkflowDef for the owner; foreign id → 404; unauth → 401.
 - **TEST-2**: PASS — `builder_crud_test::create_from_def_lists_dupe_409_invalid_rejected_no_row` — POST /workflows creates from a WorkflowDef; **the builder-sent name round-trips to display_name** (regression guard for the name-drop bug fixed this phase — sent in the BODY, not a query); duplicate name → 409 WORKFLOW_NAME_EXISTS; dead-`tools` def → rejected, no row.
 - **TEST-3**: PASS — `builder_crud_test::put_definition_edits_in_place_preserving_id` — PUT /definition edits in place (id unchanged, IR step_count 1→2, refetch reflects edit); non-owner → 403; missing → 404.
+- **TEST-25**: PASS — `builder_crud_test::put_invalid_definition_preserves_existing_bundle` — DATA-LOSS regression guard for the HIGH fix: PUTting an INVALID def (dead-`tools` llm) → 400/422, and the previous definition is INTACT (refetch still returns the original `gen` step; stored compiled IR unchanged). `cargo test --test integration_tests put_invalid_definition_preserves_existing_bundle` → 1 passed.
 - **TEST-4**: PASS — `handlers/dev.rs::def_bundle_tests` (in-source unit) — def_to_bundle_bytes → extract → parse_workflow_yaml round-trips an equal WorkflowDef.
 - **TEST-5**: PASS — `builder_validate_def_test::validate_def_valid_and_invalid_both_200` — validate-def returns {errors,warnings,cost_estimate} 200 for both a valid def (empty errors, est_calls=1) and a dead-`tools` def (non-empty errors incl. WORKFLOW_DEAD_TOOLS_FIELD, still 200).
 - **TEST-6**: PASS — `events.rs::agent_activity_serde_tests` (in-source unit) — ProgressKind::AgentActivity serde round-trips under `type:"agent_activity"`; existing variants unaffected.

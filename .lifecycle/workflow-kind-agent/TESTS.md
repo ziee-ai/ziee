@@ -15,6 +15,7 @@ is introduced (reuses `workflows::install/manage/execute`), so **no `[negative-p
 - **TEST-5** (tier: integration) [covers: ITEM-4] file: `src-app/server/tests/workflow/validate_def_test.rs` — asserts: `POST /api/workflows/validate-def` returns `{errors:[], warnings, cost_estimate}` for a valid def; a def with a bad step-ref/kind → non-empty `errors` (200, not a hard fail); an over-cap/invalid field → the matching structured finding.
 - **TEST-6** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/workflow/events.rs` — asserts: `ProgressKind::AgentActivity{seq,kind,tool,title,detail,status}` serde round-trips under the `#[serde(tag="type")]` discriminator (`type:"agent_activity"`), and every existing `ProgressKind` variant still round-trips (no regression).
 - **TEST-7** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/workflow/agent_dispatch.rs` — asserts: the `WorkflowEventSink` maps each `AgentEvent` (tool-use → `tool_call`, assistant text → `message`, gate → `gate`, compaction → `compaction`) to a distinct `AgentActivity` with a **monotonically increasing `seq`** (no collapse to one entry) and a domain-safe `title`.
+- **TEST-25** (tier: integration) [covers: ITEM-3] file: `src-app/server/tests/workflow/builder_crud_test.rs` — asserts: a DATA-LOSS regression guard — PUTting an INVALID `WorkflowDef` (dead-`tools` llm) to an existing workflow returns a validation error (400/422) AND leaves the PREVIOUS definition fully intact (a refetch still returns the original `gen` step; the stored compiled IR is unchanged) — an invalid update never wipes/corrupts the existing bundle.
 - **TEST-8** (tier: integration) [covers: ITEM-5] file: `src-app/server/tests/workflow/agent_activity_test.rs` — asserts: running a `kind:agent` step persists an **append-style** history to `step_logs_json` (≥N entries, seq-ordered), and re-fetching the run (snapshot) **replays the full history**, not just the last line; the durable stream survives a simulated resume.
 
 ## Frontend — builder
@@ -46,5 +47,5 @@ is introduced (reuses `workflows::install/manage/execute`), so **no `[negative-p
 ## Coverage summary (bipartite check)
 ITEM-1→T1 · ITEM-2→T2,T4 · ITEM-3→T3,T4 · ITEM-4→T5 · ITEM-5→T6,T7,T8 · ITEM-6→T9,T10 · ITEM-7→T10,T11 ·
 ITEM-8→T12,T13 · ITEM-9→T14,T15 · ITEM-10→T16,T17 · ITEM-11→T18 · ITEM-12→T20 · ITEM-13→T19,T20 ·
-ITEM-14→T21 · ITEM-15→T22 · ITEM-16→T23 · ITEM-7→T24 [negative-perm]. Every ITEM covered; every UI
+ITEM-14→T21 · ITEM-15→T22 · ITEM-16→T23 · ITEM-7→T24 [negative-perm] · ITEM-3→T25 [data-loss regression]. Every ITEM covered; every UI
 item (7,8,9,10,12,16) has a `tier: e2e`; ITEM-7 also has the restricted-user e2e (T24).

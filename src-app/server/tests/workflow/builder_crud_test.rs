@@ -295,3 +295,110 @@ async fn put_definition_edits_in_place_preserving_id() {
         .expect("put missing id");
     assert_eq!(resp.status(), 404, "editing a missing workflow → 404");
 }
+
+// ── TEST-25 — an INVALID PUT /definition must NOT destroy the existing bundle ──
+// Regression guard for the DATA-LOSS HIGH: `update_user_workflow_definition`
+// validates the posted def against the intact live bundle (and stages the new
+// bundle in a sibling dir) BEFORE any destructive filesystem op, so a REJECTED
+// update leaves the previous definition fully intact — it must never corrupt or
+// wipe the existing workflow.
+#[tokio::test]
+async fn put_invalid_definition_preserves_existing_bundle() {
+    let server = plain_server().await;
+    let owner = workflow_user(&server, "wf_putdef_invalid").await;
+    let client = reqwest::Client::new();
+
+    // Seed a valid 1-step (`gen`) user workflow.
+    let created: Json = client
+        .post(server.api_url("/workflows"))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&named_body(simple_def(), "builder-invalid-update"))
+        .send()
+        .await
+        .expect("create")
+        .json()
+        .await
+        .expect("parse create");
+    let wf_id = created["id"].as_str().expect("id").to_string();
+
+    // The original on-disk definition (the source of truth the runner re-parses).
+    let orig_steps = get_step_ids(&client, &server, &owner.token, &wf_id).await;
+    assert_eq!(orig_steps, vec!["gen"], "seeded with a single `gen` step");
+
+    // PUT an INVALID def — a `kind: llm` step carrying a dead `tools:` field
+    // (WORKFLOW_DEAD_TOOLS_FIELD, rejected by validate_for_install) — whose steps
+    // DIFFER from the original, so a wrongful overwrite would be visible.
+    let invalid_def = json!({
+        "inputs": [{ "name": "topic", "required": true }],
+        "steps": [{
+            "id": "wrecked",
+            "kind": "llm",
+            "prompt": "hi {{ inputs.topic }}",
+            "tools": ["web_search"]
+        }],
+        "outputs": [{ "name": "result", "from": "{{ wrecked.output }}" }]
+    });
+    let resp = client
+        .put(server.api_url(&format!("/workflows/{wf_id}/definition")))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&invalid_def)
+        .send()
+        .await
+        .expect("put invalid");
+    let status = resp.status();
+    let body: Json = resp.json().await.expect("parse invalid resp");
+    // (a) The invalid update is REJECTED (validate error → 4xx), no row change.
+    assert!(
+        status == 400 || status == 422,
+        "an invalid update is rejected (400/422), got {status}: {body}"
+    );
+
+    // (b) The PREVIOUS definition is INTACT — a refetch returns the original
+    // `gen` step, NOT the rejected `wrecked` step, and the bundle still parses
+    // (the data-loss bug would have wiped/corrupted the on-disk workflow.yaml).
+    let after_steps = get_step_ids(&client, &server, &owner.token, &wf_id).await;
+    assert_eq!(
+        after_steps,
+        vec!["gen"],
+        "a rejected update leaves the previous definition intact"
+    );
+
+    // And the stored compiled IR is unchanged (still a single-step workflow).
+    let got: Json = client
+        .get(server.api_url(&format!("/workflows/{wf_id}")))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .expect("get row")
+        .json()
+        .await
+        .expect("parse row");
+    assert_eq!(
+        got["compiled_ir_json"]["step_count"], 1,
+        "the stored compiled IR is unchanged by the rejected update: {got}"
+    );
+}
+
+/// Fetch a workflow's editable definition and return its ordered step ids.
+async fn get_step_ids(
+    client: &reqwest::Client,
+    server: &crate::common::TestServer,
+    token: &str,
+    wf_id: &str,
+) -> Vec<String> {
+    let def: Json = client
+        .get(server.api_url(&format!("/workflows/{wf_id}/definition")))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .expect("get definition")
+        .json()
+        .await
+        .expect("parse definition");
+    def["steps"]
+        .as_array()
+        .expect("steps array present (bundle intact + parseable)")
+        .iter()
+        .map(|s| s["id"].as_str().unwrap_or("").to_string())
+        .collect()
+}
