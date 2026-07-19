@@ -254,10 +254,23 @@ pub(crate) async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::P
             AppError::internal_error(format!("read_dir {}: {e}", src.display()))
         })? {
             let entry = entry.map_err(|e| AppError::internal_error(format!("entry: {e}")))?;
-            let md = entry.metadata().map_err(|e| AppError::internal_error(format!("stat: {e}")))?;
             let from = entry.path();
+            // FIX-4: use `symlink_metadata` (does NOT follow symlinks) and REJECT
+            // any symlink / special (non-dir, non-file) entry, matching the hard
+            // reject in `pack_workspace_dir_measured` (`WORKFLOW_WORKSPACE_SYMLINK`).
+            // The old `entry.metadata()` follows symlinks and only handled
+            // is_dir/is_file, so a symlinked asset was silently DROPPED on swap.
+            let md = fs::symlink_metadata(&from)
+                .map_err(|e| AppError::internal_error(format!("stat: {e}")))?;
             let to = dst.join(entry.file_name());
-            if md.is_dir() {
+            let ft = md.file_type();
+            if ft.is_symlink() {
+                return Err(AppError::bad_request(
+                    "WORKFLOW_WORKSPACE_SYMLINK",
+                    format!("symlinks are not packable ({})", from.display()),
+                ));
+            }
+            if ft.is_dir() {
                 // Recurse using a stack so we don't need tokio::fs in nested closures.
                 std::fs::create_dir_all(&to).ok();
                 let mut stack = vec![(from, to)];
@@ -265,22 +278,37 @@ pub(crate) async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::P
                     std::fs::create_dir_all(&d).ok();
                     for e in std::fs::read_dir(&s).map_err(|e| AppError::internal_error(format!("read_dir: {e}")))? {
                         let e = e.map_err(|e| AppError::internal_error(format!("entry: {e}")))?;
-                        let m = e.metadata().map_err(|e| AppError::internal_error(format!("stat: {e}")))?;
                         let f = e.path();
+                        let m = std::fs::symlink_metadata(&f)
+                            .map_err(|e| AppError::internal_error(format!("stat: {e}")))?;
                         let t = d.join(e.file_name());
-                        if m.is_dir() {
+                        let mft = m.file_type();
+                        if mft.is_symlink() {
+                            return Err(AppError::bad_request(
+                                "WORKFLOW_WORKSPACE_SYMLINK",
+                                format!("symlinks are not packable ({})", f.display()),
+                            ));
+                        }
+                        if mft.is_dir() {
                             stack.push((f, t));
-                        } else if m.is_file() {
+                        } else if mft.is_file() {
                             std::fs::copy(&f, &t).map_err(|e| AppError::internal_error(format!("copy {} -> {}: {e}", f.display(), t.display())))?;
                             #[cfg(unix)]
                             {
                                 use std::os::unix::fs::PermissionsExt;
                                 let _ = std::fs::set_permissions(&t, std::fs::Permissions::from_mode(m.permissions().mode()));
                             }
+                        } else {
+                            // Special file (fifo/socket/device) — reject rather than
+                            // silently drop, matching pack's is_dir/is_file-only contract.
+                            return Err(AppError::bad_request(
+                                "WORKFLOW_WORKSPACE_SPECIAL_FILE",
+                                format!("unsupported non-regular file in bundle ({})", f.display()),
+                            ));
                         }
                     }
                 }
-            } else if md.is_file() {
+            } else if ft.is_file() {
                 fs::copy(&from, &to).map_err(|e| {
                     AppError::internal_error(format!(
                         "copy {} -> {}: {e}",
@@ -294,6 +322,12 @@ pub(crate) async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::P
                     let _ =
                         fs::set_permissions(&to, fs::Permissions::from_mode(md.permissions().mode()));
                 }
+            } else {
+                // Special file (fifo/socket/device) — reject rather than silently drop.
+                return Err(AppError::bad_request(
+                    "WORKFLOW_WORKSPACE_SPECIAL_FILE",
+                    format!("unsupported non-regular file in bundle ({})", from.display()),
+                ));
             }
         }
         Ok(())

@@ -460,158 +460,335 @@ pub fn create_user_workflow_docs(op: TransformOperation) -> TransformOperation {
 /// run-history FKs survive). Owner-scoped (403 non-owner, 404 missing),
 /// mirroring `update_user_workflow`.
 ///
-/// FIX-1 (atomic update): the LIVE bundle at `extracted_path` is NEVER mutated
-/// until every step has succeeded, so a failed write / measure / compile / DB
-/// commit can't leave the on-disk `workflow.yaml` new while the row keeps the
-/// old sha/size/compiled_ir (the runner re-parses the on-disk yaml every run,
-/// so an in-place overwrite that then failed downstream would corrupt the
-/// workflow with no rollback). The flow is:
-///   1. Validate FIRST against the existing, still-intact `extracted_path` (so
+/// Concurrency + atomicity: the whole operation is serialized per workflow id by
+/// a Postgres session advisory lock (FIX-1), and the LIVE bundle at
+/// `extracted_path` is only ever mutated by an atomic same-filesystem rename, so a
+/// failed write / measure / compile / swap / DB commit can never leave the on-disk
+/// `workflow.yaml` and the row's sha/size/compiled_ir describing different defs.
+/// The flow (disk is the runner's source of truth, so it is swapped FIRST and the
+/// DB metadata follows LAST — FIX-2):
+///   1. Acquire the per-id advisory lock, then RE-READ the row under it.
+///   2. Best-effort sweep this workflow's own orphaned `.staging-*`/`.old-*`
+///      siblings (FIX-5).
+///   3. Validate FIRST against the existing, still-intact `extracted_path` (so
 ///      asset/`prompt_file:` refs resolve and no destructive op precedes a valid
 ///      def).
-///   2. Copy the live bundle into a unique sibling staging dir (preserving every
+///   4. Copy the live bundle into a unique sibling staging dir (preserving every
 ///      sibling asset — `scripts/`, prompt files, `tests/`) and overwrite ONLY
-///      `workflow.yaml` in the staging copy.
-///   3. Measure the staging dir + compile the IR. Any failure in 2–3 removes the
-///      staging dir and returns — the live bundle + row are untouched.
-///   4. Commit the new metadata via `repository::update_definition` (NOT
-///      delete+insert — that would change the id). On failure, remove staging;
-///      the live bundle is untouched.
-///   5. Atomically swap the staging dir into place (same-filesystem renames).
+///      `workflow.yaml` in the staging copy; measure + compile from staging. Any
+///      failure here removes staging and returns — the live bundle + row untouched.
+///   5. Atomically swap the staging dir into place (move live aside → move staging
+///      in). A swap failure restores the live bundle (checked — FIX-3) and returns
+///      a 500; it NEVER returns 200 on a swap/restore failure (FIX-2).
+///   6. Commit the new metadata via `repository::update_definition` (NOT
+///      delete+insert — that would change the id) LAST. A DB failure here returns a
+///      500 (the on-disk def is already the new source of truth; a retry is safe).
+///   7. Release the advisory lock on every path.
 pub async fn update_user_workflow_definition(
     auth: RequirePermissions<(WorkflowsManage,)>,
     AxumPath(id): AxumPath<Uuid>,
     origin: SyncOrigin,
     Json(def): Json<validate::WorkflowDef>,
 ) -> ApiResult<Json<Workflow>> {
-    let existing = repository::find_by_id(Repos.pool(), id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Workflow"))?;
-    if existing.scope != "user" || existing.owner_user_id != Some(auth.user.id) {
+    // FIX-1: serialize concurrent `PUT /definition` on the SAME workflow id via a
+    // Postgres SESSION advisory lock taken on a DEDICATED pooled connection. All of
+    // re-read → validate → stage → measure → compile → swap → update_definition
+    // runs while the lock is held, so two racers can't interleave stage/commit/swap
+    // and leave the row's metadata describing one def while on-disk workflow.yaml
+    // holds the other. The lock is released on EVERY path (success + every
+    // early-return / error) by the explicit `pg_advisory_unlock` below the captured
+    // `result`; a pg session advisory lock also releases when its connection closes,
+    // the backstop if this task is aborted before the unlock runs.
+    let mut lock_conn = Repos.pool().acquire().await.map_err(|e| {
+        <(StatusCode, AppError)>::from(AppError::internal_error(format!(
+            "workflow definition update: could not acquire advisory-lock connection: {e}"
+        )))
+    })?;
+    // Key = hashtextextended('wf-def-update:<id>', 0) computed in SQL (stable, and
+    // namespaced by the literal prefix so it can't collide with another subsystem's
+    // per-uuid advisory key).
+    let lock_arg = format!("wf-def-update:{id}");
+    if let Err(e) = sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 0))")
+        .bind(&lock_arg)
+        .execute(&mut *lock_conn)
+        .await
+    {
         return Err::<_, (StatusCode, AppError)>(
-            AppError::forbidden(
-                "WORKFLOW_FORBIDDEN",
-                "only the owner may edit a user-scope workflow",
-            )
+            AppError::internal_error(format!(
+                "workflow definition update: advisory lock failed: {e}"
+            ))
             .into(),
         );
     }
 
-    let bundle_root = std::path::PathBuf::from(&existing.extracted_path);
+    // Everything under the lock lives in this block so the single explicit unlock
+    // below runs on ALL of its early-returns.
+    let result: ApiResult<Json<Workflow>> = async {
+        // Re-read `existing` AFTER acquiring the lock so we operate on a consistent
+        // snapshot (a racer that just committed is fully applied before we read).
+        let existing = repository::find_by_id(Repos.pool(), id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Workflow"))?;
+        if existing.scope != "user" || existing.owner_user_id != Some(auth.user.id) {
+            return Err::<_, (StatusCode, AppError)>(
+                AppError::forbidden(
+                    "WORKFLOW_FORBIDDEN",
+                    "only the owner may edit a user-scope workflow",
+                )
+                .into(),
+            );
+        }
 
-    // Step 1: validate FIRST, against the EXISTING (still-intact) bundle root, so
-    // `prompt_file:` / sibling-asset refs still resolve — and, crucially, so NO
-    // filesystem op happens before validation succeeds. On error the live bundle
-    // AND the DB row are left untouched. is_dev=true so a builder-authored def
-    // parses under the same relaxed rules as import.
-    if let Err(e) = validate::validate_for_install(&def, &bundle_root, true) {
-        return Err::<_, (StatusCode, AppError)>(e.into());
-    }
+        let bundle_root = std::path::PathBuf::from(&existing.extracted_path);
 
-    // Serialize the new workflow.yaml (same serializer `def_to_bundle_bytes`
-    // uses — `serde_norway`). Purely in-memory; the live bundle is untouched.
-    let yaml = serde_norway::to_string(&def).map_err(|e| {
-        AppError::bad_request(
-            "WORKFLOW_SERIALIZE_FAILED",
-            format!("failed to serialize workflow.yaml: {e}"),
-        )
-    })?;
+        // FIX-5: best-effort sweep of orphaned `.staging-*` / `.old-*` siblings this
+        // workflow left behind on a previous crash. Scoped to this workflow's own
+        // bundle-name prefix; under the per-workflow lock no live op of THIS workflow
+        // can own such a sibling, so any match is a dead orphan. Never fails the update.
+        sweep_orphan_siblings(&bundle_root).await;
 
-    // Step 2+3: build the new bundle in a UNIQUE SIBLING staging dir — copy the
-    // live bundle (preserving `scripts/`, prompt files, `tests/`), overwrite ONLY
-    // `workflow.yaml` in the copy, then measure + compile from the staging dir.
-    // The live bundle is never mutated here, so ANY failure below just removes
-    // staging and returns with the live bundle + row intact.
-    let staging = sibling_with_suffix(&bundle_root, &format!(".staging-{}", Uuid::new_v4()));
-    let build = async {
-        crate::modules::workflow::runner::copy_dir_recursive(&bundle_root, &staging).await?;
-        let staged_wf = staging.join(&existing.entry_point);
-        tokio::fs::write(&staged_wf, yaml.as_bytes()).await.map_err(|e| {
-            AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
+        // Step 1: validate FIRST, against the EXISTING (still-intact) bundle root, so
+        // `prompt_file:` / sibling-asset refs still resolve — and, crucially, so NO
+        // filesystem op happens before validation succeeds. On error the live bundle
+        // AND the DB row are left untouched. is_dev=true so a builder-authored def
+        // parses under the same relaxed rules as import.
+        if let Err(e) = validate::validate_for_install(&def, &bundle_root, true) {
+            return Err::<_, (StatusCode, AppError)>(e.into());
+        }
+
+        // Serialize the new workflow.yaml (same serializer `def_to_bundle_bytes`
+        // uses — `serde_norway`). Purely in-memory; the live bundle is untouched.
+        let yaml = serde_norway::to_string(&def).map_err(|e| {
+            AppError::bad_request(
+                "WORKFLOW_SERIALIZE_FAILED",
+                format!("failed to serialize workflow.yaml: {e}"),
+            )
         })?;
-        // Recompute bundle_sha256 / bundle_size_bytes / file_count from the staged
-        // dir, reusing the install path's derivation (sha256 of the packed tar.gz +
-        // decompressed byte total + regular-file count). Paths are root-relative,
-        // so the metadata is identical whether measured on staging or the final
-        // location.
-        let measure = crate::modules::hub::bundle::pack_workspace_dir_measured(&staging)?;
-        let compiled = crate::modules::workflow::compiled::compile_to_json(&def);
-        Ok::<_, AppError>((measure, compiled))
+
+        // Step 2+3: build the new bundle in a UNIQUE SIBLING staging dir — copy the
+        // live bundle (preserving `scripts/`, prompt files, `tests/`), overwrite ONLY
+        // `workflow.yaml` in the copy, then measure + compile from the staging dir.
+        // The live bundle is never mutated here, so ANY failure below just removes
+        // staging and returns with the live bundle + row intact.
+        let staging = sibling_with_suffix(&bundle_root, &format!(".staging-{}", Uuid::new_v4()));
+        let build = async {
+            crate::modules::workflow::runner::copy_dir_recursive(&bundle_root, &staging).await?;
+            let staged_wf = staging.join(&existing.entry_point);
+            tokio::fs::write(&staged_wf, yaml.as_bytes()).await.map_err(|e| {
+                AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
+            })?;
+            // Recompute bundle_sha256 / bundle_size_bytes / file_count from the staged
+            // dir, reusing the install path's derivation (sha256 of the packed tar.gz +
+            // decompressed byte total + regular-file count). Paths are root-relative,
+            // so the metadata is identical whether measured on staging or the final
+            // location.
+            let measure = crate::modules::hub::bundle::pack_workspace_dir_measured(&staging)?;
+            let compiled = crate::modules::workflow::compiled::compile_to_json(&def);
+            Ok::<_, AppError>((measure, compiled))
+        }
+        .await;
+        let (measure, compiled) = match build {
+            Ok(v) => v,
+            Err(e) => {
+                // Pre-swap failure: clean up staging; live bundle + row untouched.
+                let _ = tokio::fs::remove_dir_all(&staging).await;
+                return Err::<_, (StatusCode, AppError)>(e.into());
+            }
+        };
+
+        // FIX-2: swap the DISK bundle FIRST (the runner re-parses on-disk yaml every
+        // run, so disk is the source of truth), THEN commit metadata to the DB LAST.
+        // Same-filesystem (sibling) renames are atomic. Any failure after staging
+        // surfaces a real 500 — we NEVER return 200 unless disk AND DB are both
+        // consistently updated.
+        let old = sibling_with_suffix(&bundle_root, &format!(".old-{}", Uuid::new_v4()));
+        if let Err(e) = tokio::fs::rename(&bundle_root, &old).await {
+            // Couldn't move the live bundle aside — nothing changed on disk or in the DB.
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            tracing::error!(
+                workflow_id = %id,
+                live = %bundle_root.display(),
+                error = %e,
+                "workflow definition update: could not move live bundle aside; no change applied"
+            );
+            return Err::<_, (StatusCode, AppError)>(
+                AppError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "WORKFLOW_UPDATE_SWAP_FAILED",
+                    format!("could not stage the new workflow bundle: {e}"),
+                )
+                .into(),
+            );
+        }
+        if let Err(e) = tokio::fs::rename(&staging, &bundle_root).await {
+            // Live moved to `old` but staging couldn't take its place — restore the
+            // live bundle so `extracted_path` is never left missing.
+            // FIX-3: CHECK the restore; never claim a restore that didn't happen.
+            match tokio::fs::rename(&old, &bundle_root).await {
+                Ok(()) => {
+                    let _ = tokio::fs::remove_dir_all(&staging).await;
+                    tracing::error!(
+                        workflow_id = %id,
+                        live = %bundle_root.display(),
+                        error = %e,
+                        "workflow definition update: could not install the staged bundle; \
+                         restored the previous live bundle. No change applied."
+                    );
+                    return Err::<_, (StatusCode, AppError)>(
+                        AppError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "WORKFLOW_UPDATE_SWAP_FAILED",
+                            format!("could not install the new workflow bundle: {e}"),
+                        )
+                        .into(),
+                    );
+                }
+                Err(re) => {
+                    // Restore ALSO failed — the live bundle is now MISSING at extracted_path.
+                    tracing::error!(
+                        workflow_id = %id,
+                        live = %bundle_root.display(),
+                        old = %old.display(),
+                        swap_error = %e,
+                        restore_error = %re,
+                        "workflow definition update: staged-bundle install FAILED and restore of \
+                         the previous bundle ALSO failed; the live bundle is MISSING at \
+                         extracted_path — recover it from the .old- sibling"
+                    );
+                    return Err::<_, (StatusCode, AppError)>(
+                        AppError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "WORKFLOW_UPDATE_BUNDLE_MISSING",
+                            format!(
+                                "workflow bundle could not be installed or restored; the live \
+                                 bundle is missing (install error: {e}; restore error: {re})"
+                            ),
+                        )
+                        .into(),
+                    );
+                }
+            }
+        }
+        // Swap succeeded: the live bundle now holds the new def. Drop the old copy.
+        let _ = tokio::fs::remove_dir_all(&old).await;
+
+        // Step (last): commit the new metadata (DB). The on-disk def — the runner's
+        // source of truth — is ALREADY the new one, so a DB failure here must NOT
+        // report success: surface a 500 telling the client the bundle was updated on
+        // disk but the metadata write failed (a retry is safe/idempotent — the same
+        // def re-stages to identical bytes and re-commits).
+        let updated = match repository::update_definition(
+            Repos.pool(),
+            id,
+            &existing.extracted_path,
+            &measure.sha256_hex,
+            measure.total_bytes as i64,
+            measure.file_count as i32,
+            compiled,
+        )
+        .await
+        {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::error!(
+                    workflow_id = %id,
+                    error = %e,
+                    "workflow definition update: on-disk bundle was updated but the metadata DB \
+                     write failed; the row still carries the OLD metadata (retry is safe/idempotent)"
+                );
+                return Err::<_, (StatusCode, AppError)>(
+                    AppError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "WORKFLOW_UPDATE_METADATA_FAILED",
+                        format!(
+                            "workflow bundle was updated on disk but the metadata write failed \
+                             (a retry is safe): {e}"
+                        ),
+                    )
+                    .into(),
+                );
+            }
+        };
+
+        crate::modules::workflow::events::emit_user_workflow(
+            SyncAction::Update,
+            id,
+            auth.user.id,
+            origin.0,
+        );
+        Ok((StatusCode::OK, Json(updated)))
     }
     .await;
-    let (measure, compiled) = match build {
-        Ok(v) => v,
+
+    // FIX-1: release the per-workflow advisory lock on ALL paths (success + error).
+    // (Session advisory locks would otherwise persist on the pooled connection when
+    // it returns to the pool — the connection close is only the abort backstop.)
+    let _ = sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 0))")
+        .bind(&lock_arg)
+        .execute(&mut *lock_conn)
+        .await;
+    drop(lock_conn);
+
+    result
+}
+
+/// FIX-5: best-effort sweep of orphaned `.staging-*` / `.old-*` sibling dirs left
+/// behind by a previously-crashed update of the workflow whose bundle is
+/// `bundle_root`. SCOPED to that workflow's own bundle-name prefix — other
+/// workflows share the parent (`workflows/`) dir and a concurrent update of one of
+/// THEM may hold a live sibling, which must never be touched. The per-workflow
+/// advisory lock guarantees no live op for THIS workflow is running, so any sibling
+/// matching this workflow's prefix is a dead orphan. Never returns an error (a
+/// failed prune only logs) — it must not fail the update.
+async fn sweep_orphan_siblings(bundle_root: &std::path::Path) {
+    let (Some(parent), Some(base)) = (bundle_root.parent(), bundle_root.file_name()) else {
+        return;
+    };
+    let base = base.to_string_lossy();
+    let staging_prefix = format!("{base}.staging-");
+    let old_prefix = format!("{base}.old-");
+    let mut rd = match tokio::fs::read_dir(parent).await {
+        Ok(r) => r,
         Err(e) => {
-            // Pre-commit failure: clean up staging; live bundle + row untouched.
-            let _ = tokio::fs::remove_dir_all(&staging).await;
-            return Err::<_, (StatusCode, AppError)>(e.into());
+            tracing::warn!(
+                parent = %parent.display(),
+                error = %e,
+                "workflow definition update: orphan sweep could not read the workflows dir"
+            );
+            return;
         }
     };
-
-    // Step 4: commit the new metadata (DB). Still no mutation of the live bundle;
-    // on failure remove staging and return — live bundle + row untouched.
-    let updated = match repository::update_definition(
-        Repos.pool(),
-        id,
-        &existing.extracted_path,
-        &measure.sha256_hex,
-        measure.total_bytes as i64,
-        measure.file_count as i32,
-        compiled,
-    )
-    .await
-    {
-        Ok(u) => u,
-        Err(e) => {
-            let _ = tokio::fs::remove_dir_all(&staging).await;
-            return Err::<_, (StatusCode, AppError)>(e.into());
+    loop {
+        match rd.next_entry().await {
+            Ok(Some(entry)) => {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.starts_with(&*staging_prefix) || name.starts_with(&*old_prefix) {
+                    let path = entry.path();
+                    if let Err(e) = tokio::fs::remove_dir_all(&path).await {
+                        tracing::warn!(
+                            orphan = %path.display(),
+                            error = %e,
+                            "workflow definition update: could not remove orphan staging/old dir"
+                        );
+                    } else {
+                        tracing::info!(
+                            orphan = %path.display(),
+                            "workflow definition update: removed orphan staging/old dir"
+                        );
+                    }
+                }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "workflow definition update: orphan sweep directory iteration failed"
+                );
+                break;
+            }
         }
-    };
-
-    // Step 5: atomic swap. Move the live bundle aside, move staging into place,
-    // then best-effort remove the old dir. Same-filesystem (sibling) renames are
-    // atomic. A rename failure here is a rare post-commit crash window: the DB
-    // already carries the new metadata, so we log with full context (rather than
-    // failing the request) and, if we managed to move the live bundle aside but
-    // not restore, put it back so the workflow is never left with a missing dir.
-    let old = sibling_with_suffix(&bundle_root, &format!(".old-{}", Uuid::new_v4()));
-    if let Err(e) = tokio::fs::rename(&bundle_root, &old).await {
-        tracing::error!(
-            workflow_id = %id,
-            live = %bundle_root.display(),
-            staging = %staging.display(),
-            error = %e,
-            "workflow definition update: could not move live bundle aside after DB commit; \
-             on-disk workflow.yaml still carries the OLD definition while the row holds the new \
-             metadata (rare crash window). Removing the staged copy."
-        );
-        let _ = tokio::fs::remove_dir_all(&staging).await;
-    } else if let Err(e) = tokio::fs::rename(&staging, &bundle_root).await {
-        // Live moved to `old` but staging couldn't take its place — restore the
-        // live bundle so `extracted_path` is never left missing.
-        let _ = tokio::fs::rename(&old, &bundle_root).await;
-        tracing::error!(
-            workflow_id = %id,
-            live = %bundle_root.display(),
-            staging = %staging.display(),
-            error = %e,
-            "workflow definition update: could not move staged bundle into place after DB commit; \
-             restored the previous bundle (on-disk workflow.yaml carries the OLD definition while \
-             the row holds the new metadata, rare crash window). Removing the staged copy."
-        );
-        let _ = tokio::fs::remove_dir_all(&staging).await;
-    } else {
-        // Success: the live bundle now holds the new def. Drop the old copy.
-        let _ = tokio::fs::remove_dir_all(&old).await;
     }
-
-    crate::modules::workflow::events::emit_user_workflow(
-        SyncAction::Update,
-        id,
-        auth.user.id,
-        origin.0,
-    );
-    Ok((StatusCode::OK, Json(updated)))
 }
 
 /// Build a UNIQUE sibling path next to `dir` by appending `suffix` to its final
