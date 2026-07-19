@@ -10,6 +10,12 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+/** The category of one `AgentActivity` entry. */
+export type AgentActivityKind = 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'gate' | 'compaction'
+
+/** Lifecycle status of one `AgentActivity` entry. */
+export type AgentActivityStatus = 'running' | 'ok' | 'error'
+
 /**
  * Deployment-wide agent policy (singleton row, `id = true`).
  *
@@ -33,6 +39,10 @@ export interface AgentAdminSettings {
   updated_at: string
 }
 
+export interface AllSettingsResponse {
+  settings: SettingItem[]
+}
+
 /**
  * One entry in a task's `allowed_unattended_tools` allow-list (DEC-17.4): an MCP
  *  server the creator pre-authorizes to run unattended, optionally narrowed to a
@@ -54,6 +64,13 @@ export interface AppendVersionRequest {
 
 /** Approval mode for conversation MCP settings */
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
+
+export interface ArtifactDecl {
+  description?: string
+  glob?: string
+  mime_type?: string
+  path?: string
+}
 
 export interface AssignProviderToGroupRequest {
   group_id: string
@@ -127,6 +144,22 @@ export interface AttachDocumentsResult {
 /** Request body for attach-by-ID (`POST /api/projects/{id}/files`). */
 export interface AttachFileRequest {
   file_id: string
+}
+
+/**
+ * Public, unauthenticated config that drives how the login page
+ *  renders for a given request. Returned by `GET /api/auth/config`.
+ *
+ *  Computed from the `remote_access_settings` singleton + the
+ *  inbound request's `Host` header. Tunneled requests (Host is not
+ *  localhost) get `hide_username: true` and only see the password
+ *  form when `password_auth_enabled: true`. Localhost requests get
+ *  the full multi-user UI behavior the web bundle would normally use.
+ */
+export interface AuthConfigResponse {
+  hide_username: boolean
+  magic_link_enabled: boolean
+  password_auth_enabled: boolean
 }
 
 /**
@@ -284,6 +317,13 @@ export interface AvailableVersion2 {
   version: string
 }
 
+/** Backend status response */
+export interface BackendStatusResponse {
+  ready: boolean
+  running: boolean
+  version: string
+}
+
 /** The per-item batch report returned by import / verify. */
 export interface BatchReport {
   results: CitationItemResult[]
@@ -369,6 +409,21 @@ export type CatalogProvenance = 'seed' | 'pages'
  *  accounts (`password_hash IS NOT NULL`).
  */
 export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
+/**
+ * Body of `POST /api/users/me/password`. Current + new password.
+ *  The endpoint sets `users.password_changed_at` so the Remote
+ *  Access module can allow enabling password authentication.
+ *
+ *  This handler lives in the desktop crate because its sole consumer
+ *  is the Remote Access flow — only the desktop installs the
+ *  migration that adds `password_changed_at`, and only the desktop
+ *  gates password-auth toggling on it.
+ */
+export interface ChangePasswordRequest2 {
   current_password: string
   new_password: string
 }
@@ -1119,6 +1174,12 @@ export interface CreateUserRequest {
   username: string
 }
 
+/** Optional query for the builder create endpoint. */
+export interface CreateWorkflowDefQuery {
+  /** Optional slug override; `local.dev.<owner>/<slug>` becomes the row name. */
+  name?: string
+}
+
 export interface CreateWorkflowFromHubRequest {
   hub_id: string
 }
@@ -1636,6 +1697,10 @@ export interface ExportResponse {
   output: string
 }
 
+export type ExposeLogs = 'always' | 'on_error' | 'never'
+
+export type ExposeMode = 'full' | 'preview' | 'artifact' | 'path' | 'hidden'
+
 /**
  * File entity — the **head view** of a versioned file. The per-version columns
  *  (`file_size`, `mime_type`, …) reflect the current head version: `files`
@@ -1969,6 +2034,18 @@ export interface HighlightRect {
   w: number
   x: number
   y: number
+}
+
+/** Deployment policy (singleton) — GET response. */
+export interface HostMountPolicyResponse {
+  allow_readwrite: boolean
+  allowed_prefixes: string[]
+  enabled: boolean
+}
+
+/** GET response / PUT body for a scope's (conversation or project) mount list. */
+export interface HostMountsBody {
+  mounts: MountEntry[]
 }
 
 /**
@@ -2493,6 +2570,13 @@ export interface IndexingSummary {
   total: number
 }
 
+export interface InputDef {
+  description?: string
+  default?: unknown
+  name: string
+  required?: boolean
+}
+
 export interface InstallTaskState {
   arch: string
   artifact_id?: string
@@ -3001,6 +3085,8 @@ export interface LlmRepositoryWithHealthWarning {
   url: string
 }
 
+export type LogCapture = 'off' | 'stderr' | 'full'
+
 export interface LoginRequest {
   password: string
   /**
@@ -3033,6 +3119,23 @@ export interface LoopSettings {
   stop_when_no_tool_calling?: boolean
   /** Stop when any of these specific tools are called */
   stop_when_tools_called?: ToolIdentifier[]
+}
+
+/** Body of POST /api/auth/magic-link/exchange. */
+export interface MagicLinkExchangeRequest {
+  token: string
+}
+
+/**
+ * Response of POST /api/auth/magic-link/issue.
+ *
+ *  `token` is the plaintext — returned ONCE and never persisted.
+ *  The desktop UI encodes it into the QR URL
+ *  `https://<tunnel>/auth/magic/<token>`.
+ */
+export interface MagicLinkIssueResponse {
+  expires_at: string
+  token: string
 }
 
 /**
@@ -4041,6 +4144,17 @@ export interface ModelUsageInfo {
   running: boolean
 }
 
+/** One mounted host folder (stored as a JSONB array element on `host_mounts`). */
+export interface MountEntry {
+  /** Absolute path on the user's machine (the desktop host). */
+  host_path: string
+  /**
+   * Read-only by default; read-write additionally requires the policy's
+   *  `allow_readwrite`.
+   */
+  read_only?: boolean
+}
+
 /** Generic mutation acknowledgement. */
 export interface MutationResponse {
   count?: number
@@ -4094,6 +4208,8 @@ export interface NotificationPage {
   unread: number
 }
 
+export type OnError = 'fail' | 'skip' | 'retry'
+
 /**
  * Per-user onboarding progress. Step ids use the composite
  *  "{guide_id}/{step_id}" key format. Replaces the two columns that
@@ -4110,6 +4226,16 @@ export interface OperatingSystemInfo {
   name: string
   version: string
 }
+
+export interface OutputDef {
+  description?: string
+  expose?: ExposeMode
+  from: string
+  mime_type?: string
+  name: string
+}
+
+export type OutputFormat = 'text' | 'json'
 
 /**
  * A page of messages from the active branch, chronological ascending. Cursors
@@ -4186,6 +4312,15 @@ export interface PaginationQuery5 {
    *  fall back to `recent`.
    */
   sort?: string
+}
+
+/**
+ * Body of `POST /api/auth/login-password-only`. Authenticates as the
+ *  single admin user using just a password (no username). Used by
+ *  the remote-served login page when `hide_username: true`.
+ */
+export interface PasswordOnlyLoginRequest {
+  password: string
 }
 
 export interface PendingApprovalsResponse {
@@ -4290,6 +4425,14 @@ export type ProgressKind = {
   index?: number | null
   name: string
   total?: number | null
+} | {
+  title: string
+  type: 'agent_activity'
+  detail?: string | null
+  kind: AgentActivityKind
+  seq: number
+  status: AgentActivityStatus
+  tool?: string | null
 }
 
 /**
@@ -4560,6 +4703,38 @@ export interface RegisterRequest {
   email: string
   password: string
   username: string
+}
+
+/**
+ * GET /api/remote-access/settings response. Token is NEVER included
+ *  in the response body — only the `auth_token_set` boolean. The
+ *  domain IS included because it becomes public the moment the tunnel
+ *  connects.
+ */
+export interface RemoteAccessSettingsResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  created_at: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  updated_at: string
+}
+
+/**
+ * GET /api/remote-access/status — combined status surface for the
+ *  admin page. Aggregates settings + live tunnel state + password
+ *  rotation status.
+ */
+export interface RemoteAccessStatusResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  last_error?: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  password_rotated: boolean
+  public_url?: string
+  started_at?: string
+  tunnel_state: TunnelStateKind
 }
 
 /**
@@ -5341,6 +5516,10 @@ export type SSEWorkflowRunEvent = {
  */
 export type SandboxAvailability = 'ready' | 'disabled_in_config' | 'host_unsupported' | 'cloud_imds_refused' | 'workspace_init_failed' | 'pool_missing' | 'not_initialized'
 
+export interface SandboxDecl {
+  flavor: string
+}
+
 /**
  * REST response for the MCP-server form's sandbox flavor picker:
  *  the selectable rootfs flavors plus the host command allowlist.
@@ -5534,6 +5713,21 @@ export interface SessionSettings {
   updated_at: string
 }
 
+/**
+ * POST /api/remote-access/admin-password request.
+ *
+ *  No `current_password` field — physical presence at the desktop
+ *  (proven by the localhost-Host middleware) IS the auth proof.
+ *  The standard `/api/users/me/password` flow that requires the
+ *  current password is still available for multi-user web deployments;
+ *  this endpoint exists specifically for the single-admin desktop
+ *  case where the bootstrap default is a published string and
+ *  requiring it would be friction without security benefit.
+ */
+export interface SetAdminPasswordRequest {
+  new_password: string
+}
+
 /** Request to set (create or replace) a server's OAuth config. */
 export interface SetMcpServerOAuthConfigRequest {
   client_id: string
@@ -5551,6 +5745,10 @@ export interface SetPinResponse {
   swap: SwapOutcome
 }
 
+export interface SetSettingRequest {
+  value: string
+}
+
 /**
  * Body of `PUT /api/chat/stream/subscription`: the conversation whose live
  *  tokens this connection wants (or `null` to receive nothing).
@@ -5565,6 +5763,16 @@ export interface SetTimeoutRequest {
    *  match the `timeout_secs` used across the rest of the timeout surface.
    */
   timeout_secs: number
+}
+
+export interface SettingItem {
+  key: string
+  value: string
+}
+
+export interface SettingResponse {
+  key: string
+  value?: string
 }
 
 export interface SetupAdminRequest {
@@ -5586,6 +5794,19 @@ export interface SetupAdminRequest {
  */
 export interface SetupStatusResponse {
   needs_setup: boolean
+}
+
+/**
+ * Severity of a validation finding. Errors BLOCK install; warnings are
+ *  surfaced (e.g. via the `/validate` endpoint's `warnings` array) but do
+ *  NOT fail install — they preserve the Phase-1 escape hatch for
+ *  under-specified workflows (plan §4.1 pattern (b)).
+ */
+export type Severity = 'error' | 'warning'
+
+export interface SimpleResponse {
+  message: string
+  success: boolean
 }
 
 /**
@@ -5691,6 +5912,48 @@ export interface SnapshotDto {
 
 export type StartInstanceRequest = any
 
+export type StepDef = {
+  kind: 'llm'
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  tools?: string[]
+} | {
+  for_each: string
+  item_var: string
+  kind: 'llm_map'
+  max_parallel?: number
+  max_retries?: number
+  on_error?: OnError
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  tools?: string[]
+} | {
+  kind: 'sandbox'
+  run: string
+  stdin?: string | null
+  timeout_ms?: number
+} | {
+  data?: unknown
+  kind: 'elicit'
+  schema: unknown
+  timeout_ms?: number
+} | {
+  arguments?: unknown
+  kind: 'tool'
+  server: string
+  tool: string
+} | {
+  kind: 'agent'
+  max_steps?: number
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  servers?: string[]
+  system?: string | null
+}
+
 /** Stream error information */
 export interface StreamError {
   code?: string
@@ -5699,6 +5962,11 @@ export interface StreamError {
 
 export interface StylesResponse {
   styles: string[]
+}
+
+export interface SuccessResponse {
+  message: string
+  success: boolean
 }
 
 /**
@@ -6031,6 +6299,14 @@ export interface TriggerResponse {
   status: string
 }
 
+/** POST /api/remote-access/tunnel/start response. */
+export interface TunnelStartResponse {
+  public_url: string
+  started_at: string
+}
+
+export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
+
 /**
  * One pre-authorized (server, tool?) grant for an unattended run. `tool_name`
  *  `None` allow-lists the whole server. Structurally identical to the
@@ -6096,6 +6372,12 @@ export interface UpdateAuthProviderRequest {
   config?: unknown
   enabled?: boolean
   name?: string
+}
+
+export interface UpdateCheckResponse {
+  available: boolean
+  notes?: string
+  version?: string
 }
 
 /**
@@ -6212,6 +6494,13 @@ export interface UpdateGroupSystemSkillsRequest {
  */
 export interface UpdateGroupSystemWorkflowsRequest {
   workflow_ids: string[]
+}
+
+/** Deployment policy — PUT body (tri-state-free: omitted field = unchanged). */
+export interface UpdateHostMountPolicyRequest {
+  allow_readwrite?: boolean
+  allowed_prefixes?: string[]
+  enabled?: boolean
 }
 
 /**
@@ -6401,6 +6690,25 @@ export interface UpdateProviderRequest {
   config?: unknown
 }
 
+/**
+ * PUT /api/remote-access/settings request body. Each field uses
+ *  three-state semantics:
+ *    - missing key → don't touch (keep DB value)
+ *    - null → clear (set to NULL / FALSE)
+ *    - value → set
+ *
+ *  Implemented via `Option<Option<T>>` + a custom serde fn that
+ *  distinguishes "absent" from "null". The frontend matches by
+ *  only sending fields it actually wants to change.
+ */
+export interface UpdateRemoteAccessSettingsRequest {
+  /** Booleans don't need null semantics — absent means "don't touch". */
+  auto_start_tunnel?: boolean
+  ngrok_auth_token?: string
+  ngrok_domain?: string
+  password_auth_enabled?: boolean
+}
+
 export interface UpdateRuntimeSettingsRequest {
   auto_start_timeout_secs?: number
   drain_timeout_secs?: number
@@ -6447,6 +6755,17 @@ export interface UpdateSkill {
   when_to_use?: string
 }
 
+export interface UpdateState {
+  available: boolean
+  checking: boolean
+  downloading: boolean
+  error?: string
+  notes?: string
+  progress?: number
+  ready_to_install: boolean
+  version?: string
+}
+
 /** Cached server update-availability status (admin endpoint). */
 export interface UpdateStatusResponse {
   /** RFC3339 timestamp of the last successful check, or null if never. */
@@ -6466,6 +6785,10 @@ export interface UpdateStatusResponse {
   release_url?: string
   /** True when `latest_version` is newer than `current_version`. */
   update_available: boolean
+}
+
+export interface UpdateStatusResponse2 {
+  status: UpdateState
 }
 
 /**
@@ -6757,6 +7080,17 @@ export interface UserProvidersQuery {
   offset?: number
 }
 
+/**
+ * Response of `POST /api/workflows/validate-def` — structured validation
+ *  findings (split by severity) plus a dry-run cost estimate for a posted
+ *  `WorkflowDef`. Returned with a 200 even when `errors` is non-empty.
+ */
+export interface ValidateDefResponse {
+  cost_estimate: DryRunResult
+  errors: ValidationError[]
+  warnings: ValidationError[]
+}
+
 export interface ValidateErrorEntry {
   code: string
   /**
@@ -6800,6 +7134,23 @@ export interface ValidateWorkflowResponse {
   steps: number
   valid: boolean
   warnings: ValidateErrorEntry2[]
+}
+
+export interface ValidationError {
+  code: string
+  layer: string
+  /**
+   * Optional step id / output name / inputs.foo path for FE
+   *  rendering.
+   */
+  location?: string
+  message: string
+  /**
+   * `Error` (blocks install) or `Warning` (surfaced, non-blocking).
+   *  Defaults to `Error` for all existing call sites; only the
+   *  type-aware ref checker (`ref_check.rs`) emits warnings.
+   */
+  severity?: Severity
 }
 
 /**
@@ -7073,6 +7424,23 @@ export interface Workflow {
   version?: string
 }
 
+export interface WorkflowDef {
+  $schema?: string
+  expose_logs?: ExposeLogs
+  inputs?: InputDef[]
+  /**
+   * Workflow-declared wall-clock cap in seconds. `None` → the engine default
+   *  (`RUN_WALL_CLOCK`). `Some(0)` → UNBOUNDED (no wall-clock — for long runs on
+   *  a user-owned machine). The effective value is live-adjustable per run via
+   *  `PUT /workflow-runs/{id}/timeout`. The per-run token + output-byte caps stay
+   *  as the resource backstops regardless.
+   */
+  max_runtime_secs?: number
+  outputs?: OutputDef[]
+  sandbox?: SandboxDecl
+  steps?: StepDef[]
+}
+
 export interface WorkflowFromHubResponse {
   hub_tracking: HubEntity
   workflow: Workflow
@@ -7260,6 +7628,8 @@ export enum Permissions {
   GroupsRead = 'groups::read',
   HardwareMonitor = 'hardware::monitor',
   HardwareRead = 'hardware::read',
+  HostMountManage = 'host_mount::manage',
+  HostMountRead = 'host_mount::read',
   HubAssistantsCreate = 'hub::assistants::create',
   HubAssistantsRead = 'hub::assistants::read',
   HubAssistantsRefresh = 'hub::assistants::refresh',
@@ -7323,6 +7693,8 @@ export enum Permissions {
   ProjectsDelete = 'projects::delete',
   ProjectsEdit = 'projects::edit',
   ProjectsRead = 'projects::read',
+  RemoteAccessManage = 'remote_access::manage',
+  RemoteAccessRead = 'remote_access::read',
   RuntimeSettingsManage = 'llm_local_runtime::settings_manage',
   RuntimeSettingsRead = 'llm_local_runtime::settings_read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
@@ -7404,6 +7776,8 @@ export const PermissionDescriptions: Record<string, string> = {
   GroupsRead: 'View groups and group information',
   HardwareMonitor: 'Monitor real-time hardware usage',
   HardwareRead: 'View hardware information',
+  HostMountManage: 'Configure host-folder mounts on projects/conversations and the host-mount policy.',
+  HostMountRead: 'Read host-folder mount configuration and policy.',
   HubAssistantsCreate: 'Create assistants from hub',
   HubAssistantsRead: 'View hub assistants',
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
@@ -7467,6 +7841,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsDelete: 'Delete chat projects',
   ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
   ProjectsRead: 'Read chat projects',
+  RemoteAccessManage: 'Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.',
+  RemoteAccessRead: 'Read remote-access settings, tunnel status, and current public URL.',
   RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain)',
   RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
   RuntimeVersionCreate: 'Download and register new runtime versions',
@@ -7529,11 +7905,15 @@ export const ApiEndpoints = {
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
   'Auth.changePassword': 'POST /api/auth/password',
+  'Auth.getConfig': 'GET /api/auth/config',
   'Auth.getSessionSettings': 'GET /api/auth/session-settings',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
+  'Auth.loginPasswordOnly': 'POST /api/auth/login-password-only',
   'Auth.logout': 'POST /api/auth/logout',
+  'Auth.magicLinkExchange': 'POST /api/auth/magic-link/exchange',
+  'Auth.magicLinkIssue': 'POST /api/auth/magic-link/issue',
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
@@ -7584,6 +7964,11 @@ export const ApiEndpoints = {
   'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
   'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
   'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
+  'DesktopBackend.status': 'GET /api/desktop/backend/status',
+  'DesktopSettings.delete': 'DELETE /api/desktop/settings/{key}',
+  'DesktopSettings.get': 'GET /api/desktop/settings/{key}',
+  'DesktopSettings.getAll': 'GET /api/desktop/settings',
+  'DesktopSettings.set': 'PUT /api/desktop/settings/{key}',
   'File.appendVersion': 'POST /api/files/{file_id}/versions',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
@@ -7623,6 +8008,12 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'HostMount.getConversationMounts': 'GET /api/host-mounts/conversation/{conversation_id}',
+  'HostMount.getPolicy': 'GET /api/host-mounts/policy',
+  'HostMount.getProjectMounts': 'GET /api/host-mounts/project/{project_id}',
+  'HostMount.putConversationMounts': 'PUT /api/host-mounts/conversation/{conversation_id}',
+  'HostMount.putProjectMounts': 'PUT /api/host-mounts/project/{project_id}',
+  'HostMount.updatePolicy': 'PUT /api/host-mounts/policy',
   'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
   'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
   'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
@@ -7814,6 +8205,12 @@ export const ApiEndpoints = {
   'Project.update': 'PUT /api/projects/{id}',
   'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
   'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
+  'RemoteAccess.getSettings': 'GET /api/remote-access/settings',
+  'RemoteAccess.getStatus': 'GET /api/remote-access/status',
+  'RemoteAccess.setAdminPassword': 'POST /api/remote-access/admin-password',
+  'RemoteAccess.startTunnel': 'POST /api/remote-access/tunnel/start',
+  'RemoteAccess.stopTunnel': 'POST /api/remote-access/tunnel/stop',
+  'RemoteAccess.updateSettings': 'PUT /api/remote-access/settings',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -7860,6 +8257,10 @@ export const ApiEndpoints = {
   'SummarizationAdmin.update': 'PUT /api/summarization/settings',
   'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
   'Sync.subscribe': 'GET /api/sync/subscribe',
+  'Updater.check': 'POST /api/desktop/updater/check',
+  'Updater.download': 'POST /api/desktop/updater/download',
+  'Updater.install': 'POST /api/desktop/updater/install',
+  'Updater.status': 'GET /api/desktop/updater/status',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -7875,6 +8276,7 @@ export const ApiEndpoints = {
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
   'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Users.changeOwnPassword': 'POST /api/users/me/password',
   'Voice.activateModel': 'POST /api/voice/models/{id}/activate',
   'Voice.cancelModelDownload': 'POST /api/voice/models/downloads/{key}/cancel',
   'Voice.capability': 'GET /api/voice/capability',
@@ -7914,11 +8316,13 @@ export const ApiEndpoints = {
   'WebSearch.updateProvider': 'PUT /api/web-search/providers/{provider}',
   'WebSearch.updateSettings': 'PUT /api/web-search/settings',
   'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
+  'Workflow.create': 'POST /api/workflows',
   'Workflow.delete': 'DELETE /api/workflows/{id}',
   'Workflow.deleteRun': 'DELETE /api/workflow-runs/{run_id}',
   'Workflow.deleteSystem': 'DELETE /api/workflows/system/{id}',
   'Workflow.dryRun': 'POST /api/workflows/{id}/dry-run',
   'Workflow.get': 'GET /api/workflows/{id}',
+  'Workflow.getDefinition': 'GET /api/workflows/{id}/definition',
   'Workflow.getRun': 'GET /api/workflow-runs/{run_id}',
   'Workflow.getSystem': 'GET /api/workflows/system/{id}',
   'Workflow.import': 'POST /api/workflows/import',
@@ -7935,7 +8339,9 @@ export const ApiEndpoints = {
   'Workflow.subscribeRunEvents': 'GET /api/workflow-runs/{run_id}/events',
   'Workflow.test': 'POST /api/workflows/{id}/test',
   'Workflow.update': 'PUT /api/workflows/{id}',
+  'Workflow.updateDefinition': 'PUT /api/workflows/{id}/definition',
   'Workflow.validate': 'POST /api/workflows/validate',
+  'Workflow.validateDef': 'POST /api/workflows/validate-def',
   'Workflow.workspaceExport': 'GET /api/workflows/workspace-export',
   'Workflow.workspaceSave': 'POST /api/workflows/workspace-save',
   'WorkflowSystem.getGroups': 'GET /api/workflows/system/{id}/groups',
@@ -7962,11 +8368,15 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
   'Auth.changePassword': ChangePasswordRequest
+  'Auth.getConfig': void
   'Auth.getSessionSettings': void
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
+  'Auth.loginPasswordOnly': PasswordOnlyLoginRequest
   'Auth.logout': void
+  'Auth.magicLinkExchange': MagicLinkExchangeRequest
+  'Auth.magicLinkIssue': void
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
@@ -8017,6 +8427,11 @@ export type ApiEndpointParameters = {
   'CoreMemory.delete': { assistant_id: string; block_label: string }
   'CoreMemory.list': { assistant_id: string }
   'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
+  'DesktopBackend.status': void
+  'DesktopSettings.delete': { key: string }
+  'DesktopSettings.get': { key: string }
+  'DesktopSettings.getAll': void
+  'DesktopSettings.set': { key: string } & SetSettingRequest
   'File.appendVersion': { file_id: string } & AppendVersionRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
@@ -8056,6 +8471,12 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'HostMount.getConversationMounts': { conversation_id: string }
+  'HostMount.getPolicy': void
+  'HostMount.getProjectMounts': { project_id: string }
+  'HostMount.putConversationMounts': { conversation_id: string } & HostMountsBody
+  'HostMount.putProjectMounts': { project_id: string } & HostMountsBody
+  'HostMount.updatePolicy': UpdateHostMountPolicyRequest
   'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
   'Hub.createAssistantTemplateFromHub': CreateAssistantFromHubRequest
   'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
@@ -8247,6 +8668,12 @@ export type ApiEndpointParameters = {
   'Project.update': { id: string } & UpdateProjectRequest
   'Project.updateMcpSettings': { id: string } & ProjectMcpSettingsRequest
   'Project.uploadAndAttachFile': { id: string } & FormData
+  'RemoteAccess.getSettings': void
+  'RemoteAccess.getStatus': void
+  'RemoteAccess.setAdminPassword': SetAdminPasswordRequest
+  'RemoteAccess.startTunnel': void
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': UpdateRemoteAccessSettingsRequest
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -8293,6 +8720,10 @@ export type ApiEndpointParameters = {
   'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
   'SummarizationTest.refresh': TestRefreshRequest
   'Sync.subscribe': void
+  'Updater.check': void
+  'Updater.download': void
+  'Updater.install': void
+  'Updater.status': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -8308,6 +8739,7 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'Users.changeOwnPassword': ChangePasswordRequest2
   'Voice.activateModel': { id: string }
   'Voice.cancelModelDownload': { key: string }
   'Voice.capability': void
@@ -8347,11 +8779,13 @@ export type ApiEndpointParameters = {
   'WebSearch.updateProvider': { provider: string } & UpdateProviderRequest
   'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
+  'Workflow.create': { name?: string } & WorkflowDef
   'Workflow.delete': { id: string }
   'Workflow.deleteRun': { run_id: string }
   'Workflow.deleteSystem': { id: string }
   'Workflow.dryRun': { id: string } & DryRunRequest
   'Workflow.get': { id: string }
+  'Workflow.getDefinition': { id: string }
   'Workflow.getRun': { run_id: string }
   'Workflow.getSystem': { id: string }
   'Workflow.import': { name?: string; scope?: string } & FormData
@@ -8368,7 +8802,9 @@ export type ApiEndpointParameters = {
   'Workflow.subscribeRunEvents': { run_id: string }
   'Workflow.test': { id: string } & TestWorkflowRequest
   'Workflow.update': { id: string } & UpdateWorkflow
+  'Workflow.updateDefinition': { id: string } & WorkflowDef
   'Workflow.validate': ValidateWorkflowRequest
+  'Workflow.validateDef': WorkflowDef
   'Workflow.workspaceExport': { conversation_id: string; dir: string }
   'Workflow.workspaceSave': WorkspaceSaveRequest
   'WorkflowSystem.getGroups': { id: string }
@@ -8395,11 +8831,15 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
   'Auth.changePassword': void
+  'Auth.getConfig': AuthConfigResponse
   'Auth.getSessionSettings': SessionSettings
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
+  'Auth.loginPasswordOnly': AuthResponse
   'Auth.logout': void
+  'Auth.magicLinkExchange': AuthResponse
+  'Auth.magicLinkIssue': MagicLinkIssueResponse
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
@@ -8450,6 +8890,11 @@ export type ApiEndpointResponses = {
   'CoreMemory.delete': void
   'CoreMemory.list': CoreMemoryBlock[]
   'CoreMemory.upsert': CoreMemoryBlock
+  'DesktopBackend.status': BackendStatusResponse
+  'DesktopSettings.delete': SuccessResponse
+  'DesktopSettings.get': SettingResponse
+  'DesktopSettings.getAll': AllSettingsResponse
+  'DesktopSettings.set': SuccessResponse
   'File.appendVersion': any
   'File.delete': void
   'File.download': Blob
@@ -8489,6 +8934,12 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'HostMount.getConversationMounts': HostMountsBody
+  'HostMount.getPolicy': HostMountPolicyResponse
+  'HostMount.getProjectMounts': HostMountsBody
+  'HostMount.putConversationMounts': HostMountsBody
+  'HostMount.putProjectMounts': HostMountsBody
+  'HostMount.updatePolicy': HostMountPolicyResponse
   'Hub.createAssistantFromHub': AssistantFromHubResponse
   'Hub.createAssistantTemplateFromHub': AssistantFromHubResponse
   'Hub.createMcpServerFromHub': McpServerFromHubResponse
@@ -8680,6 +9131,12 @@ export type ApiEndpointResponses = {
   'Project.update': Project
   'Project.updateMcpSettings': ProjectMcpSettingsResponse
   'Project.uploadAndAttachFile': File
+  'RemoteAccess.getSettings': RemoteAccessSettingsResponse
+  'RemoteAccess.getStatus': RemoteAccessStatusResponse
+  'RemoteAccess.setAdminPassword': void
+  'RemoteAccess.startTunnel': TunnelStartResponse
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': RemoteAccessSettingsResponse
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionStartedResponse
@@ -8726,6 +9183,10 @@ export type ApiEndpointResponses = {
   'SummarizationAdmin.update': SummarizationAdminSettings
   'SummarizationTest.refresh': unknown
   'Sync.subscribe': SyncSseEvent
+  'Updater.check': UpdateCheckResponse
+  'Updater.download': SimpleResponse
+  'Updater.install': SimpleResponse
+  'Updater.status': UpdateStatusResponse2
   'User.create': User
   'User.delete': void
   'User.get': User
@@ -8741,6 +9202,7 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'Users.changeOwnPassword': void
   'Voice.activateModel': VoiceModel
   'Voice.cancelModelDownload': any
   'Voice.capability': VoiceCapability
@@ -8780,11 +9242,13 @@ export type ApiEndpointResponses = {
   'WebSearch.updateProvider': ProviderCatalogResponse
   'WebSearch.updateSettings': WebSearchSettings
   'Workflow.cancelRun': RunActionAck
+  'Workflow.create': Workflow
   'Workflow.delete': void
   'Workflow.deleteRun': void
   'Workflow.deleteSystem': void
   'Workflow.dryRun': DryRunResult
   'Workflow.get': Workflow
+  'Workflow.getDefinition': WorkflowDef
   'Workflow.getRun': WorkflowRun
   'Workflow.getSystem': Workflow
   'Workflow.import': Workflow
@@ -8801,7 +9265,9 @@ export type ApiEndpointResponses = {
   'Workflow.subscribeRunEvents': SSEWorkflowRunEvent
   'Workflow.test': TestRunResponse
   'Workflow.update': Workflow
+  'Workflow.updateDefinition': Workflow
   'Workflow.validate': ValidateWorkflowResponse
+  'Workflow.validateDef': ValidateDefResponse
   'Workflow.workspaceExport': void
   'Workflow.workspaceSave': Workflow
   'WorkflowSystem.getGroups': string[]

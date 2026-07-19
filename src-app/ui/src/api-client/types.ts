@@ -10,6 +10,12 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+/** The category of one `AgentActivity` entry. */
+export type AgentActivityKind = 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'gate' | 'compaction'
+
+/** Lifecycle status of one `AgentActivity` entry. */
+export type AgentActivityStatus = 'running' | 'ok' | 'error'
+
 /**
  * Deployment-wide agent policy (singleton row, `id = true`).
  *
@@ -54,6 +60,13 @@ export interface AppendVersionRequest {
 
 /** Approval mode for conversation MCP settings */
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
+
+export interface ArtifactDecl {
+  description?: string
+  glob?: string
+  mime_type?: string
+  path?: string
+}
 
 export interface AssignProviderToGroupRequest {
   group_id: string
@@ -1119,6 +1132,12 @@ export interface CreateUserRequest {
   username: string
 }
 
+/** Optional query for the builder create endpoint. */
+export interface CreateWorkflowDefQuery {
+  /** Optional slug override; `local.dev.<owner>/<slug>` becomes the row name. */
+  name?: string
+}
+
 export interface CreateWorkflowFromHubRequest {
   hub_id: string
 }
@@ -1635,6 +1654,10 @@ export interface ExportResponse {
   format: string
   output: string
 }
+
+export type ExposeLogs = 'always' | 'on_error' | 'never'
+
+export type ExposeMode = 'full' | 'preview' | 'artifact' | 'path' | 'hidden'
 
 /**
  * File entity — the **head view** of a versioned file. The per-version columns
@@ -2493,6 +2516,13 @@ export interface IndexingSummary {
   total: number
 }
 
+export interface InputDef {
+  description?: string
+  default?: unknown
+  name: string
+  required?: boolean
+}
+
 export interface InstallTaskState {
   arch: string
   artifact_id?: string
@@ -3000,6 +3030,8 @@ export interface LlmRepositoryWithHealthWarning {
   updated_at: string
   url: string
 }
+
+export type LogCapture = 'off' | 'stderr' | 'full'
 
 export interface LoginRequest {
   password: string
@@ -4094,6 +4126,8 @@ export interface NotificationPage {
   unread: number
 }
 
+export type OnError = 'fail' | 'skip' | 'retry'
+
 /**
  * Per-user onboarding progress. Step ids use the composite
  *  "{guide_id}/{step_id}" key format. Replaces the two columns that
@@ -4110,6 +4144,16 @@ export interface OperatingSystemInfo {
   name: string
   version: string
 }
+
+export interface OutputDef {
+  description?: string
+  expose?: ExposeMode
+  from: string
+  mime_type?: string
+  name: string
+}
+
+export type OutputFormat = 'text' | 'json'
 
 /**
  * A page of messages from the active branch, chronological ascending. Cursors
@@ -4290,6 +4334,14 @@ export type ProgressKind = {
   index?: number | null
   name: string
   total?: number | null
+} | {
+  title: string
+  type: 'agent_activity'
+  detail?: string | null
+  kind: AgentActivityKind
+  seq: number
+  status: AgentActivityStatus
+  tool?: string | null
 }
 
 /**
@@ -5341,6 +5393,10 @@ export type SSEWorkflowRunEvent = {
  */
 export type SandboxAvailability = 'ready' | 'disabled_in_config' | 'host_unsupported' | 'cloud_imds_refused' | 'workspace_init_failed' | 'pool_missing' | 'not_initialized'
 
+export interface SandboxDecl {
+  flavor: string
+}
+
 /**
  * REST response for the MCP-server form's sandbox flavor picker:
  *  the selectable rootfs flavors plus the host command allowlist.
@@ -5589,6 +5645,14 @@ export interface SetupStatusResponse {
 }
 
 /**
+ * Severity of a validation finding. Errors BLOCK install; warnings are
+ *  surfaced (e.g. via the `/validate` endpoint's `warnings` array) but do
+ *  NOT fail install — they preserve the Phase-1 escape hatch for
+ *  under-specified workflows (plan §4.1 pattern (b)).
+ */
+export type Severity = 'error' | 'warning'
+
+/**
  * Database row in `skills`. The bundle's SKILL.md + reference files
  *  live on disk at `extracted_path`; the row carries metadata only.
  */
@@ -5690,6 +5754,48 @@ export interface SnapshotDto {
 }
 
 export type StartInstanceRequest = any
+
+export type StepDef = {
+  kind: 'llm'
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  tools?: string[]
+} | {
+  for_each: string
+  item_var: string
+  kind: 'llm_map'
+  max_parallel?: number
+  max_retries?: number
+  on_error?: OnError
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  tools?: string[]
+} | {
+  kind: 'sandbox'
+  run: string
+  stdin?: string | null
+  timeout_ms?: number
+} | {
+  data?: unknown
+  kind: 'elicit'
+  schema: unknown
+  timeout_ms?: number
+} | {
+  arguments?: unknown
+  kind: 'tool'
+  server: string
+  tool: string
+} | {
+  kind: 'agent'
+  max_steps?: number
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  servers?: string[]
+  system?: string | null
+}
 
 /** Stream error information */
 export interface StreamError {
@@ -6757,6 +6863,17 @@ export interface UserProvidersQuery {
   offset?: number
 }
 
+/**
+ * Response of `POST /api/workflows/validate-def` — structured validation
+ *  findings (split by severity) plus a dry-run cost estimate for a posted
+ *  `WorkflowDef`. Returned with a 200 even when `errors` is non-empty.
+ */
+export interface ValidateDefResponse {
+  cost_estimate: DryRunResult
+  errors: ValidationError[]
+  warnings: ValidationError[]
+}
+
 export interface ValidateErrorEntry {
   code: string
   /**
@@ -6800,6 +6917,23 @@ export interface ValidateWorkflowResponse {
   steps: number
   valid: boolean
   warnings: ValidateErrorEntry2[]
+}
+
+export interface ValidationError {
+  code: string
+  layer: string
+  /**
+   * Optional step id / output name / inputs.foo path for FE
+   *  rendering.
+   */
+  location?: string
+  message: string
+  /**
+   * `Error` (blocks install) or `Warning` (surfaced, non-blocking).
+   *  Defaults to `Error` for all existing call sites; only the
+   *  type-aware ref checker (`ref_check.rs`) emits warnings.
+   */
+  severity?: Severity
 }
 
 /**
@@ -7071,6 +7205,23 @@ export interface Workflow {
   tags: unknown
   updated_at: string
   version?: string
+}
+
+export interface WorkflowDef {
+  $schema?: string
+  expose_logs?: ExposeLogs
+  inputs?: InputDef[]
+  /**
+   * Workflow-declared wall-clock cap in seconds. `None` → the engine default
+   *  (`RUN_WALL_CLOCK`). `Some(0)` → UNBOUNDED (no wall-clock — for long runs on
+   *  a user-owned machine). The effective value is live-adjustable per run via
+   *  `PUT /workflow-runs/{id}/timeout`. The per-run token + output-byte caps stay
+   *  as the resource backstops regardless.
+   */
+  max_runtime_secs?: number
+  outputs?: OutputDef[]
+  sandbox?: SandboxDecl
+  steps?: StepDef[]
 }
 
 export interface WorkflowFromHubResponse {
@@ -7914,11 +8065,13 @@ export const ApiEndpoints = {
   'WebSearch.updateProvider': 'PUT /api/web-search/providers/{provider}',
   'WebSearch.updateSettings': 'PUT /api/web-search/settings',
   'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
+  'Workflow.create': 'POST /api/workflows',
   'Workflow.delete': 'DELETE /api/workflows/{id}',
   'Workflow.deleteRun': 'DELETE /api/workflow-runs/{run_id}',
   'Workflow.deleteSystem': 'DELETE /api/workflows/system/{id}',
   'Workflow.dryRun': 'POST /api/workflows/{id}/dry-run',
   'Workflow.get': 'GET /api/workflows/{id}',
+  'Workflow.getDefinition': 'GET /api/workflows/{id}/definition',
   'Workflow.getRun': 'GET /api/workflow-runs/{run_id}',
   'Workflow.getSystem': 'GET /api/workflows/system/{id}',
   'Workflow.import': 'POST /api/workflows/import',
@@ -7935,7 +8088,9 @@ export const ApiEndpoints = {
   'Workflow.subscribeRunEvents': 'GET /api/workflow-runs/{run_id}/events',
   'Workflow.test': 'POST /api/workflows/{id}/test',
   'Workflow.update': 'PUT /api/workflows/{id}',
+  'Workflow.updateDefinition': 'PUT /api/workflows/{id}/definition',
   'Workflow.validate': 'POST /api/workflows/validate',
+  'Workflow.validateDef': 'POST /api/workflows/validate-def',
   'Workflow.workspaceExport': 'GET /api/workflows/workspace-export',
   'Workflow.workspaceSave': 'POST /api/workflows/workspace-save',
   'WorkflowSystem.getGroups': 'GET /api/workflows/system/{id}/groups',
@@ -8347,11 +8502,13 @@ export type ApiEndpointParameters = {
   'WebSearch.updateProvider': { provider: string } & UpdateProviderRequest
   'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
+  'Workflow.create': { name?: string } & WorkflowDef
   'Workflow.delete': { id: string }
   'Workflow.deleteRun': { run_id: string }
   'Workflow.deleteSystem': { id: string }
   'Workflow.dryRun': { id: string } & DryRunRequest
   'Workflow.get': { id: string }
+  'Workflow.getDefinition': { id: string }
   'Workflow.getRun': { run_id: string }
   'Workflow.getSystem': { id: string }
   'Workflow.import': { name?: string; scope?: string } & FormData
@@ -8368,7 +8525,9 @@ export type ApiEndpointParameters = {
   'Workflow.subscribeRunEvents': { run_id: string }
   'Workflow.test': { id: string } & TestWorkflowRequest
   'Workflow.update': { id: string } & UpdateWorkflow
+  'Workflow.updateDefinition': { id: string } & WorkflowDef
   'Workflow.validate': ValidateWorkflowRequest
+  'Workflow.validateDef': WorkflowDef
   'Workflow.workspaceExport': { conversation_id: string; dir: string }
   'Workflow.workspaceSave': WorkspaceSaveRequest
   'WorkflowSystem.getGroups': { id: string }
@@ -8780,11 +8939,13 @@ export type ApiEndpointResponses = {
   'WebSearch.updateProvider': ProviderCatalogResponse
   'WebSearch.updateSettings': WebSearchSettings
   'Workflow.cancelRun': RunActionAck
+  'Workflow.create': Workflow
   'Workflow.delete': void
   'Workflow.deleteRun': void
   'Workflow.deleteSystem': void
   'Workflow.dryRun': DryRunResult
   'Workflow.get': Workflow
+  'Workflow.getDefinition': WorkflowDef
   'Workflow.getRun': WorkflowRun
   'Workflow.getSystem': Workflow
   'Workflow.import': Workflow
@@ -8801,7 +8962,9 @@ export type ApiEndpointResponses = {
   'Workflow.subscribeRunEvents': SSEWorkflowRunEvent
   'Workflow.test': TestRunResponse
   'Workflow.update': Workflow
+  'Workflow.updateDefinition': Workflow
   'Workflow.validate': ValidateWorkflowResponse
+  'Workflow.validateDef': ValidateDefResponse
   'Workflow.workspaceExport': void
   'Workflow.workspaceSave': Workflow
   'WorkflowSystem.getGroups': string[]

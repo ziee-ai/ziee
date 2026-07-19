@@ -16463,233 +16463,6 @@
         }
       }
     },
-    "/api/summarization/settings": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Read deployment-wide summarization settings",
-        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
-        "operationId": "SummarizationAdmin.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
-                        "name": "SummarizationSettingsRead",
-                        "value": "summarization::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Update deployment-wide summarization settings",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
-        "operationId": "SummarizationAdmin.update",
-        "requestBody": {
-          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/conversations/{id}/summary": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Get the active-branch summary for a conversation (null if none)",
-        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
-        "operationId": "Summarization.getConversationSummary",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConversationSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/_test/summarization/refresh": {
-      "post": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
-        "operationId": "SummarizationTest.refresh",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRefreshRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/memories": {
       "get": {
         "tags": [
@@ -17760,6 +17533,233 @@
           },
           "400": {
             "description": "Validation failed (out-of-range token cap / max-steps / fan-out, unknown sandbox/approval mode, or oversized reviewer_policy)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
           }
         },
         "security": [
@@ -19091,6 +19091,86 @@
             "bearerAuth": []
           }
         ]
+      },
+      "post": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Create a user-scope workflow from a WorkflowDef (visual builder)",
+        "description": "Serializes the posted WorkflowDef to a workflow.yaml bundle and installs it as a user-scope workflow via the shared validate+compile+insert core. Scope is always 'user'.",
+        "operationId": "Workflow.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "description": "Optional slug override; `local.dev.<owner>/<slug>` becomes the row name.",
+            "schema": {
+              "description": "Optional slug override; `local.dev.<owner>/<slug>` becomes the row name.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Install user-scope workflows",
+                        "name": "WorkflowsInstall",
+                        "value": "workflows::install"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::install",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Database row in `workflows`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid definition"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/workflows/install-from-hub": {
@@ -19289,6 +19369,109 @@
           },
           "204": {
             "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/{id}/definition": {
+      "get": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Get a workflow's editable definition (steps/inputs/outputs)",
+        "description": "Parses the workflow's on-disk workflow.yaml into the typed WorkflowDef the visual builder edits. Owner-scoped: a foreign or inaccessible id returns 404.",
+        "operationId": "Workflow.getDefinition",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed workflows",
+                        "name": "WorkflowsRead",
+                        "value": "workflows::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDef"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Workflow not found or not accessible"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Replace a user-scope workflow's steps/inputs in place",
+        "description": "Re-materializes the workflow bundle from the posted WorkflowDef, preserving the workflow id (run-history FKs survive). Owner-scoped: 403 for a non-owner, 404 for a missing workflow.",
+        "operationId": "Workflow.updateDefinition",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Not the owner"
+          },
+          "200": {
+            "description": "Database row in `workflows`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid definition"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Workflow not found"
           }
         },
         "security": [
@@ -19849,6 +20032,69 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ValidateWorkflowResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/workflows/validate-def": {
+      "post": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Validate a WorkflowDef JSON (no install)",
+        "description": "Runs the semantic + security checks + a dry-run cost estimate on a posted WorkflowDef. Findings are returned structured with a 200 (they never hard-fail the request).",
+        "operationId": "Workflow.validateDef",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed workflows",
+                        "name": "WorkflowsRead",
+                        "value": "workflows::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response of `POST /api/workflows/validate-def` — structured validation\n findings (split by severity) plus a dry-run cost estimate for a posted\n `WorkflowDef`. Returned with a 200 even when `errors` is non-empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateDefResponse"
                 }
               }
             }
@@ -21513,182 +21759,6 @@
         ]
       }
     },
-    "/api/app/setup/status": {
-      "get": {
-        "tags": [
-          "app"
-        ],
-        "description": "Check if initial admin setup is required",
-        "operationId": "App.getSetupStatus",
-        "responses": {
-          "200": {
-            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/app/setup/admin": {
-      "post": {
-        "tags": [
-          "app"
-        ],
-        "description": "Create the first administrator account",
-        "operationId": "App.setupAdmin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupAdminRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "no content"
-          }
-        }
-      }
-    },
-    "/api/js-tool/settings": {
-      "get": {
-        "tags": [
-          "Programmatic Tools"
-        ],
-        "summary": "Read the singleton run_js (js_tool) limits configuration",
-        "description": "Returns the current memory / stack / wall-clock / approval-timeout / concurrency / trace caps applied on every run_js invocation. Admin-only.",
-        "operationId": "JsTool.getSettings",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the run_js (js_tool) resource-limits configuration.",
-                        "name": "JsToolSettingsRead",
-                        "value": "js_tool::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: js_tool::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JsToolSettings"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Programmatic Tools"
-        ],
-        "summary": "Update the singleton run_js (js_tool) limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new caps take effect on the very next run_js invocation.",
-        "operationId": "JsTool.updateSettings",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their existing\n value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateJsToolSettings"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.",
-                        "name": "JsToolSettingsManage",
-                        "value": "js_tool::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: js_tool::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JsToolSettings"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/scheduled-tasks": {
       "get": {
         "summary": "List your scheduled tasks",
@@ -22309,6 +22379,182 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/app/setup/status": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "description": "Check if initial admin setup is required",
+        "operationId": "App.getSetupStatus",
+        "responses": {
+          "200": {
+            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/app/setup/admin": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "description": "Create the first administrator account",
+        "operationId": "App.setupAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "no content"
+          }
+        }
+      }
+    },
+    "/api/js-tool/settings": {
+      "get": {
+        "tags": [
+          "Programmatic Tools"
+        ],
+        "summary": "Read the singleton run_js (js_tool) limits configuration",
+        "description": "Returns the current memory / stack / wall-clock / approval-timeout / concurrency / trace caps applied on every run_js invocation. Admin-only.",
+        "operationId": "JsTool.getSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the run_js (js_tool) resource-limits configuration.",
+                        "name": "JsToolSettingsRead",
+                        "value": "js_tool::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: js_tool::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsToolSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Programmatic Tools"
+        ],
+        "summary": "Update the singleton run_js (js_tool) limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new caps take effect on the very next run_js invocation.",
+        "operationId": "JsTool.updateSettings",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their existing\n value (COALESCE PATCH). Mirrors `UpdateCodeSandboxResourceLimits`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateJsToolSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.",
+                        "name": "JsToolSettingsManage",
+                        "value": "js_tool::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: js_tool::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `js_tool_settings`. Field names match the SQL columns (snake_case)\n so the sqlx `query_as` mapping is trivial. Byte caps are `i64` (BIGINT — up\n to 4 GiB exceeds i32); the rest are `i32`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsToolSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
           }
         },
         "security": [
@@ -24603,6 +24849,27 @@
       }
     },
     "schemas": {
+      "AgentActivityKind": {
+        "description": "The category of one `AgentActivity` entry.",
+        "type": "string",
+        "enum": [
+          "thinking",
+          "tool_call",
+          "tool_result",
+          "message",
+          "gate",
+          "compaction"
+        ]
+      },
+      "AgentActivityStatus": {
+        "description": "Lifecycle status of one `AgentActivity` entry.",
+        "type": "string",
+        "enum": [
+          "running",
+          "ok",
+          "error"
+        ]
+      },
       "AgentAdminSettings": {
         "description": "Deployment-wide agent policy (singleton row, `id = true`).\n\n `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL\n means \"fall back to the run's own model / the compiled-in reviewer\n prompt\" (zero-config). The token caps + step/fan-out limits are the\n runtime-tunable knobs an operator adjusts per workload (DEC-6).",
         "type": "object",
@@ -24719,6 +24986,35 @@
             "const": "manual_approve"
           }
         ]
+      },
+      "ArtifactDecl": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "glob": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "AssignProviderToGroupRequest": {
         "type": "object",
@@ -27445,6 +27741,20 @@
           "password"
         ]
       },
+      "CreateWorkflowDefQuery": {
+        "description": "Optional query for the builder create endpoint.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Optional slug override; `local.dev.<owner>/<slug>` becomes the row name.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
       "CreateWorkflowFromHubRequest": {
         "type": "object",
         "properties": {
@@ -28925,6 +29235,24 @@
         "required": [
           "format",
           "output"
+        ]
+      },
+      "ExposeLogs": {
+        "type": "string",
+        "enum": [
+          "always",
+          "on_error",
+          "never"
+        ]
+      },
+      "ExposeMode": {
+        "type": "string",
+        "enum": [
+          "full",
+          "preview",
+          "artifact",
+          "path",
+          "hidden"
         ]
       },
       "File": {
@@ -31103,6 +31431,28 @@
           "pending"
         ]
       },
+      "InputDef": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": true,
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
       "InstallTaskState": {
         "type": "object",
         "properties": {
@@ -32668,6 +33018,14 @@
           "created_at",
           "updated_at",
           "last_health_check_status"
+        ]
+      },
+      "LogCapture": {
+        "type": "string",
+        "enum": [
+          "off",
+          "stderr",
+          "full"
         ]
       },
       "LoginRequest": {
@@ -35391,6 +35749,14 @@
           "per_page"
         ]
       },
+      "OnError": {
+        "type": "string",
+        "enum": [
+          "fail",
+          "skip",
+          "retry"
+        ]
+      },
       "OnboardingProgress": {
         "description": "Per-user onboarding progress. Step ids use the composite\n \"{guide_id}/{step_id}\" key format. Replaces the two columns that\n previously rode on the `User` object.",
         "type": "object",
@@ -35436,6 +35802,48 @@
           "name",
           "version",
           "architecture"
+        ]
+      },
+      "OutputDef": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expose": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ExposeMode"
+              }
+            ],
+            "default": "full"
+          },
+          "from": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "from"
+        ]
+      },
+      "OutputFormat": {
+        "type": "string",
+        "enum": [
+          "text",
+          "json"
         ]
       },
       "PaginatedMessages": {
@@ -35833,6 +36241,53 @@
             "required": [
               "type",
               "name"
+            ]
+          },
+          {
+            "description": "A single structured entry in a `kind: agent` step's activity stream —\n one observed agent-loop event (a thought, a tool call, a tool result, an\n assistant message, a human gate, or a context compaction). Each carries a\n monotonically-increasing `seq` and rides its own track id\n (`agent-<seq>`) so distinct entries accumulate rather than collapsing\n into a single log line. Persisted durably (see\n `repository::append_agent_activity`).",
+            "type": "object",
+            "properties": {
+              "title": {
+                "description": "Short human-readable headline (byte-capped at 512).",
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "const": "agent_activity"
+              },
+              "detail": {
+                "description": "Optional longer body (byte-capped at 16 KiB).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "$ref": "#/components/schemas/AgentActivityKind"
+              },
+              "seq": {
+                "description": "Monotonic per-step sequence number (ordering key for the FE).",
+                "type": "integer",
+                "format": "uint64",
+                "minimum": 0
+              },
+              "status": {
+                "$ref": "#/components/schemas/AgentActivityStatus"
+              },
+              "tool": {
+                "description": "The tool name for `tool_call` / `tool_result` entries.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "seq",
+              "kind",
+              "title",
+              "status"
             ]
           }
         ]
@@ -38963,6 +39418,17 @@
           }
         ]
       },
+      "SandboxDecl": {
+        "type": "object",
+        "properties": {
+          "flavor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "flavor"
+        ]
+      },
       "SandboxFlavorsResponse": {
         "description": "REST response for the MCP-server form's sandbox flavor picker:\n the selectable rootfs flavors plus the host command allowlist.",
         "type": "object",
@@ -39575,6 +40041,14 @@
           "needs_setup"
         ]
       },
+      "Severity": {
+        "description": "Severity of a validation finding. Errors BLOCK install; warnings are\n surfaced (e.g. via the `/validate` endpoint's `warnings` array) but do\n NOT fail install — they preserve the Phase-1 escape hatch for\n under-specified workflows (plan §4.1 pattern (b)).",
+        "type": "string",
+        "enum": [
+          "error",
+          "warning"
+        ]
+      },
       "Skill": {
         "description": "Database row in `skills`. The bundle's SKILL.md + reference files\n live on disk at `extracted_path`; the row carries metadata only.",
         "type": "object",
@@ -39822,6 +40296,299 @@
       },
       "StartInstanceRequest": {
         "type": "object"
+      },
+      "StepDef": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "description": "Author-facing, template-rendered label of what this step does\n (\"Search the web for {{ inputs.topic }}\"). Surfaced as the step\n title in the run progress UI for every kind. Distinct from\n `message` (the elicit prompt / dynamic status line). Optional;\n capped at `MAX_STEP_DESCRIPTION_CHARS`. Ref-checked at install\n like `message`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactDecl"
+            }
+          },
+          "depends_on": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          },
+          "expose_logs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExposeLogs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "log": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LogCapture"
+              }
+            ],
+            "default": "off"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mock": {
+            "description": "Dev-only canned response. Honored only when\n `workflows.is_dev = true`. Rejected at install for non-dev\n workflows (`validate_for_install` enforces)."
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "llm"
+              },
+              "output_format": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/OutputFormat"
+                  }
+                ],
+                "default": "text"
+              },
+              "prompt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "prompt_file": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "for_each": {
+                "type": "string"
+              },
+              "item_var": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "const": "llm_map"
+              },
+              "max_parallel": {
+                "type": "integer",
+                "format": "uint32",
+                "default": 5,
+                "minimum": 0
+              },
+              "max_retries": {
+                "type": "integer",
+                "format": "uint32",
+                "default": 0,
+                "minimum": 0
+              },
+              "on_error": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/OnError"
+                  }
+                ],
+                "default": "fail"
+              },
+              "output_format": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/OutputFormat"
+                  }
+                ],
+                "default": "text"
+              },
+              "prompt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "prompt_file": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "for_each",
+              "item_var"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "sandbox"
+              },
+              "run": {
+                "type": "string"
+              },
+              "stdin": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "timeout_ms": {
+                "type": "integer",
+                "format": "uint32",
+                "default": 30000,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "run"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "description": "D2: optional seed for the elicit form, template-rendered against the\n run context with the SAME type-preserving renderer as `tool`\n arguments (a whole-value `{{ ref }}` resolves to its native JSON\n type). Lets a prior step's output (e.g. an AI screening table)\n pre-fill the reviewer's form. Surfaced on the pending record + SSE."
+              },
+              "kind": {
+                "type": "string",
+                "const": "elicit"
+              },
+              "schema": true,
+              "timeout_ms": {
+                "description": "How long to wait for the human to submit, in ms. `0` = no timeout:\n the run parks indefinitely (a durable human gate that survives an\n app restart via durable resume). Any non-zero value is capped at\n `ELICIT_TIMEOUT_HARD_CAP_MS` (30 min). Default 5 min — unbounded\n must be explicit.",
+                "type": "integer",
+                "format": "uint32",
+                "default": 300000,
+                "minimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "schema"
+            ]
+          },
+          {
+            "description": "Call an MCP tool on an accessible server (A6). `server` is a stable\n NAME resolved at run time against the running user's accessible servers\n (built-ins by name, or own/group-assigned). `arguments` is a templated\n JSON object rendered against the run context (type-preserving for\n whole-value `{{ ref }}` substitutions).",
+            "type": "object",
+            "properties": {
+              "arguments": {
+                "default": null
+              },
+              "kind": {
+                "type": "string",
+                "const": "tool"
+              },
+              "server": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "server",
+              "tool"
+            ]
+          },
+          {
+            "description": "Run the shared `agent-core` loop as a workflow step (ITEM-18). The model\n drives an autonomous tool-use loop against the `servers` allow-list until\n it produces a final answer, hits `max_steps`, or a token cap. `prompt`\n (inline) / `prompt_file` (bundle-relative) is the initial user task;\n `system` is the optional system directive. Both `prompt`/`system` are\n template-rendered against the run context.",
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "agent"
+              },
+              "max_steps": {
+                "description": "Iteration ceiling for the loop. Defaults to the `agent_admin_settings`\n `default_max_steps` (DEC-7 = 30) at authoring time; the dispatcher\n clamps it to the admin cap at run time.",
+                "type": "integer",
+                "format": "uint32",
+                "default": 30,
+                "minimum": 0
+              },
+              "output_format": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/OutputFormat"
+                  }
+                ],
+                "default": "text"
+              },
+              "prompt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "prompt_file": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "servers": {
+                "description": "Allow-list of MCP server NAMES the agent may call (resolved at run\n time against the user's accessible servers, exactly like a `tool`\n step's `server`). Empty ⇒ the agent runs with no tools.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "system": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        ],
+        "required": [
+          "id"
+        ]
       },
       "StreamError": {
         "description": "Stream error information",
@@ -43462,6 +44229,32 @@
           }
         }
       },
+      "ValidateDefResponse": {
+        "description": "Response of `POST /api/workflows/validate-def` — structured validation\n findings (split by severity) plus a dry-run cost estimate for a posted\n `WorkflowDef`. Returned with a 200 even when `errors` is non-empty.",
+        "type": "object",
+        "properties": {
+          "cost_estimate": {
+            "$ref": "#/components/schemas/DryRunResult"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            }
+          }
+        },
+        "required": [
+          "errors",
+          "warnings",
+          "cost_estimate"
+        ]
+      },
       "ValidateErrorEntry": {
         "type": "object",
         "properties": {
@@ -43595,6 +44388,41 @@
           "steps",
           "est_max_calls",
           "est_max_tokens"
+        ]
+      },
+      "ValidationError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "layer": {
+            "type": "string"
+          },
+          "location": {
+            "description": "Optional step id / output name / inputs.foo path for FE\n rendering.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "description": "`Error` (blocks install) or `Warning` (surfaced, non-blocking).\n Defaults to `Error` for all existing call sites; only the\n type-aware ref checker (`ref_check.rs`) emits warnings.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Severity"
+              }
+            ],
+            "default": "error"
+          }
+        },
+        "required": [
+          "layer",
+          "code",
+          "message"
         ]
       },
       "VerificationStatus": {
@@ -44289,6 +45117,65 @@
           "created_at",
           "updated_at"
         ]
+      },
+      "WorkflowDef": {
+        "type": "object",
+        "properties": {
+          "$schema": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expose_logs": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ExposeLogs"
+              }
+            ],
+            "default": "on_error"
+          },
+          "inputs": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputDef"
+            }
+          },
+          "max_runtime_secs": {
+            "description": "Workflow-declared wall-clock cap in seconds. `None` → the engine default\n (`RUN_WALL_CLOCK`). `Some(0)` → UNBOUNDED (no wall-clock — for long runs on\n a user-owned machine). The effective value is live-adjustable per run via\n `PUT /workflow-runs/{id}/timeout`. The per-run token + output-byte caps stay\n as the resource backstops regardless.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "outputs": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OutputDef"
+            }
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SandboxDecl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StepDef"
+            }
+          }
+        }
       },
       "WorkflowFromHubResponse": {
         "type": "object",

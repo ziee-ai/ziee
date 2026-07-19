@@ -246,6 +246,48 @@ pub enum ProgressKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         total: Option<u32>,
     },
+    /// A single structured entry in a `kind: agent` step's activity stream —
+    /// one observed agent-loop event (a thought, a tool call, a tool result, an
+    /// assistant message, a human gate, or a context compaction). Each carries a
+    /// monotonically-increasing `seq` and rides its own track id
+    /// (`agent-<seq>`) so distinct entries accumulate rather than collapsing
+    /// into a single log line. Persisted durably (see
+    /// `repository::append_agent_activity`).
+    AgentActivity {
+        /// Monotonic per-step sequence number (ordering key for the FE).
+        seq: u64,
+        kind: AgentActivityKind,
+        /// The tool name for `tool_call` / `tool_result` entries.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool: Option<String>,
+        /// Short human-readable headline (byte-capped at 512).
+        title: String,
+        /// Optional longer body (byte-capped at 16 KiB).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+        status: AgentActivityStatus,
+    },
+}
+
+/// The category of one `AgentActivity` entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentActivityKind {
+    Thinking,
+    ToolCall,
+    ToolResult,
+    Message,
+    Gate,
+    Compaction,
+}
+
+/// Lifecycle status of one `AgentActivity` entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentActivityStatus {
+    Running,
+    Ok,
+    Error,
 }
 
 /// One live progress track inside a sandbox step. `id` keys parallel substeps

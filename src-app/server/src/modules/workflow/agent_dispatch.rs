@@ -23,6 +23,7 @@
 //! and maps the loop's stop reason to a [`StepResult`].
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
@@ -50,8 +51,8 @@ use crate::modules::mcp::agent_tool_call::{
 };
 use crate::modules::workflow::dispatch::{resolve_prompt, StepDispatcher};
 use crate::modules::workflow::events::{
-    ProgressEmitter, ProgressKind, ProgressTrack, SSEElicitationRequiredData, SSEStepProgressData,
-    SSEWorkflowRunEvent,
+    AgentActivityKind, AgentActivityStatus, ProgressEmitter, ProgressKind, ProgressTrack,
+    SSEElicitationRequiredData, SSEStepProgressData, SSEWorkflowRunEvent,
 };
 use crate::modules::workflow::file_io;
 use crate::modules::workflow::models::WorkflowRunStatus;
@@ -333,25 +334,84 @@ impl ToolProvider for McpToolProvider {
 // Event sink (ITEM-20)
 // ============================================================
 
-/// Maps the loop's coarse `AgentEvent` stream to live `StepProgress` log tracks.
+/// Per-entry byte caps applied before an activity is emitted / persisted (so a
+/// runaway thought or tool blob can't bloat the SSE frame or the durable row).
+const AGENT_ACTIVITY_TITLE_MAX_BYTES: usize = 512;
+const AGENT_ACTIVITY_DETAIL_MAX_BYTES: usize = 16 * 1024;
+
+/// Truncate `s` to at most `max` bytes on a UTF-8 char boundary.
+fn truncate_bytes(mut s: String, max: usize) -> String {
+    if s.len() <= max {
+        return s;
+    }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s.truncate(end);
+    s
+}
+
+/// Maps the loop's coarse `AgentEvent` stream to distinct, durable
+/// `StepProgress` agent-activity entries (ITEM-5). Each observed event becomes
+/// one `ProgressKind::AgentActivity` with a monotonically-increasing `seq`,
+/// emitted on its OWN track id (`agent-<seq>`) so entries accumulate instead of
+/// collapsing, and persisted (fire-and-forget) to `step_logs_json`.
 struct WorkflowEventSink {
     emit: Arc<dyn ProgressEmitter>,
     run_id: Uuid,
     step_id: String,
+    pool: PgPool,
+    seq: AtomicU64,
 }
 
 impl WorkflowEventSink {
-    fn push_line(&self, line: String) {
+    /// Emit + durably persist one activity entry.
+    fn push_activity(
+        &self,
+        kind: AgentActivityKind,
+        tool: Option<String>,
+        title: String,
+        detail: Option<String>,
+        status: AgentActivityStatus,
+    ) {
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed);
+        let title = truncate_bytes(title, AGENT_ACTIVITY_TITLE_MAX_BYTES);
+        let detail = detail.map(|d| truncate_bytes(d, AGENT_ACTIVITY_DETAIL_MAX_BYTES));
+        let activity = ProgressKind::AgentActivity {
+            seq,
+            kind,
+            tool,
+            title,
+            detail,
+            status,
+        };
+
+        // Live SSE frame — distinct track id per seq so the FE accumulates.
         self.emit.emit(SSEWorkflowRunEvent::StepProgress(SSEStepProgressData {
             run_id: self.run_id,
             step_id: self.step_id.clone(),
             tracks: vec![ProgressTrack {
-                id: "agent".to_string(),
+                id: format!("agent-{seq}"),
                 label: Some("Agent".to_string()),
                 done: false,
-                kind: ProgressKind::Log { line },
+                kind: activity.clone(),
             }],
         }));
+
+        // Durable append — fire-and-forget; a DB hiccup must NOT fail the run.
+        if let Ok(entry) = serde_json::to_value(&activity) {
+            let pool = self.pool.clone();
+            let run_id = self.run_id;
+            let step_id = self.step_id.clone();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    repository::append_agent_activity(&pool, run_id, &step_id, &entry).await
+                {
+                    tracing::warn!("workflow: append_agent_activity failed: {e}");
+                }
+            });
+        }
     }
 }
 
@@ -360,10 +420,29 @@ impl EventSink for WorkflowEventSink {
     async fn emit(&self, ev: AgentEvent) {
         match ev {
             AgentEvent::Message(msg) => {
-                // Surface tool requests + a short assistant-text preview.
+                // Surface each thinking block + tool request as its own entry,
+                // plus a short assistant-text preview.
                 for b in &msg.content {
-                    if let ContentBlock::ToolUse { name, .. } = b {
-                        self.push_line(format!("→ tool: {name}"));
+                    match b {
+                        ContentBlock::Thinking { thinking, .. } => {
+                            self.push_activity(
+                                AgentActivityKind::Thinking,
+                                None,
+                                thinking.chars().take(200).collect::<String>(),
+                                Some(thinking.clone()),
+                                AgentActivityStatus::Ok,
+                            );
+                        }
+                        ContentBlock::ToolUse { name, input, .. } => {
+                            self.push_activity(
+                                AgentActivityKind::ToolCall,
+                                Some(name.clone()),
+                                format!("→ {name}"),
+                                serde_json::to_string(input).ok(),
+                                AgentActivityStatus::Running,
+                            );
+                        }
+                        _ => {}
                     }
                 }
                 if msg.role == Role::Assistant {
@@ -377,22 +456,49 @@ impl EventSink for WorkflowEventSink {
                         .collect::<Vec<_>>()
                         .join("");
                     if !text.is_empty() {
-                        self.push_line(text.chars().take(200).collect::<String>());
+                        self.push_activity(
+                            AgentActivityKind::Message,
+                            None,
+                            text.chars().take(200).collect::<String>(),
+                            Some(text),
+                            AgentActivityStatus::Ok,
+                        );
                     }
                 }
             }
             AgentEvent::ToolNotification { server, note } => {
-                self.push_line(format!("{server}: {note}"));
+                self.push_activity(
+                    AgentActivityKind::ToolResult,
+                    Some(server.clone()),
+                    format!("{server}: {note}"),
+                    Some(note),
+                    AgentActivityStatus::Ok,
+                );
+            }
+            AgentEvent::GateOpened(_) => {
+                self.push_activity(
+                    AgentActivityKind::Gate,
+                    None,
+                    "awaiting human input".to_string(),
+                    None,
+                    AgentActivityStatus::Running,
+                );
             }
             AgentEvent::HistoryReplaced { summary_upto } => {
-                self.push_line(format!("context compacted ({summary_upto} messages summarized)"));
+                self.push_activity(
+                    AgentActivityKind::Compaction,
+                    None,
+                    format!("context compacted ({summary_upto} messages summarized)"),
+                    None,
+                    AgentActivityStatus::Ok,
+                );
             }
             // ContentDelta is the chat host's live token stream; the workflow
             // host surfaces only the finalized `Message`, so it's ignored here.
             AgentEvent::ContentDelta(_) => {}
-            // Usage / GateOpened / Stopped are handled by the dispatcher's
-            // result-folding + the gate's own ElicitationRequired emit.
-            AgentEvent::Usage(_) | AgentEvent::GateOpened(_) | AgentEvent::Stopped(_) => {}
+            // Usage / Stopped are handled by the dispatcher's result-folding;
+            // GateOpened ALSO drives the gate's own ElicitationRequired emit.
+            AgentEvent::Usage(_) | AgentEvent::Stopped(_) => {}
         }
     }
 }
@@ -732,6 +838,8 @@ impl StepDispatcher for AgentDispatcher {
             emit: emit.clone(),
             run_id: ctx.run_id,
             step_id: step.id.clone(),
+            pool: pool.clone(),
+            seq: AtomicU64::new(0),
         });
         let model_client: Arc<dyn ModelClient> =
             Arc::new(ProviderModelClient::new(self.provider.clone()));

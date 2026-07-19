@@ -661,6 +661,121 @@ pub async fn persist_step_logs(
     Ok(())
 }
 
+/// Cap on the number of most-recent agent-activity entries retained per step
+/// in `step_logs_json` (a bounded ring — older entries are trimmed off the
+/// front so a long agent run can't bloat the row unbounded).
+pub const AGENT_ACTIVITY_MAX_ENTRIES: i64 = 500;
+
+/// Durably append one `kind: agent` activity entry to
+/// `workflow_runs.step_logs_json`, under a per-step key holding an ordered
+/// array (`<step_id>::agent_activity`, kept distinct from the step's captured
+/// stdout/stderr log map under the bare `<step_id>` key). The whole append +
+/// trim-to-`AGENT_ACTIVITY_MAX_ENTRIES` runs in ONE atomic UPDATE statement so
+/// fire-and-forget concurrent appends can't lose or duplicate entries. The
+/// most-recent `AGENT_ACTIVITY_MAX_ENTRIES` are retained in chronological order.
+pub async fn append_agent_activity(
+    pool: &PgPool,
+    run_id: Uuid,
+    step_id: &str,
+    entry: &serde_json::Value,
+) -> Result<(), AppError> {
+    let key = format!("{step_id}::agent_activity");
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET step_logs_json = jsonb_set(
+                coalesce(step_logs_json, '{}'::jsonb),
+                ARRAY[$2::text],
+                coalesce((
+                    SELECT jsonb_agg(elem ORDER BY ord)
+                    FROM (
+                        SELECT elem, ord
+                        FROM jsonb_array_elements(
+                            coalesce(step_logs_json -> $2, '[]'::jsonb)
+                                || jsonb_build_array($3::jsonb)
+                        ) WITH ORDINALITY AS t(elem, ord)
+                        ORDER BY ord DESC
+                        LIMIT $4
+                    ) recent
+                ), '[]'::jsonb),
+                true
+            ),
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        run_id,
+        key,
+        entry,
+        AGENT_ACTIVITY_MAX_ENTRIES,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Replace an existing workflow's steps/inputs IN PLACE — a builder edit that
+/// re-materializes the on-disk bundle (new `extracted_path` contents + sha /
+/// size / file_count) and swaps the compiled IR, WITHOUT changing the row id
+/// (run-history FKs must survive). Distinct from `update`, which only touches
+/// display metadata.
+pub async fn update_definition(
+    pool: &PgPool,
+    id: Uuid,
+    extracted_path: &str,
+    bundle_sha256: &str,
+    bundle_size_bytes: i64,
+    file_count: i32,
+    compiled_ir_json: Option<serde_json::Value>,
+) -> Result<Workflow, AppError> {
+    let row = sqlx::query_as!(
+        Workflow,
+        r#"
+        UPDATE workflows SET
+            extracted_path = $2,
+            bundle_sha256 = $3,
+            bundle_size_bytes = $4,
+            file_count = $5,
+            compiled_ir_json = $6,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING
+            id,
+            name,
+            version,
+            display_name,
+            description,
+            extracted_path,
+            bundle_sha256,
+            bundle_size_bytes,
+            file_count,
+            entry_point,
+            tags as "tags: _",
+            scope,
+            owner_user_id,
+            created_by,
+            enabled,
+            is_dev,
+            ephemeral,
+            conversation_id,
+            compiled_ir_json as "compiled_ir_json: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        "#,
+        id,
+        extracted_path,
+        bundle_sha256,
+        bundle_size_bytes,
+        file_count,
+        compiled_ir_json,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?
+    .ok_or_else(|| AppError::not_found("Workflow"))?;
+    Ok(row)
+}
+
 /// Set or clear the pending elicitation slot.
 pub async fn set_pending_elicitation(
     pool: &PgPool,

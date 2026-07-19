@@ -342,14 +342,14 @@ fn default_expose_mode() -> ExposeMode {
 /// surfaced (e.g. via the `/validate` endpoint's `warnings` array) but do
 /// NOT fail install — they preserve the Phase-1 escape hatch for
 /// under-specified workflows (plan §4.1 pattern (b)).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Error,
     Warning,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ValidationError {
     pub layer: &'static str, // "schema" | "semantic" | "security"
     pub code: &'static str,

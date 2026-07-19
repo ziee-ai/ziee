@@ -76,6 +76,16 @@ pub struct UpdateWorkflow {
     pub tags: Option<serde_json::Value>,
 }
 
+/// Response of `POST /api/workflows/validate-def` — structured validation
+/// findings (split by severity) plus a dry-run cost estimate for a posted
+/// `WorkflowDef`. Returned with a 200 even when `errors` is non-empty.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct ValidateDefResponse {
+    pub errors: Vec<crate::modules::workflow::validate::ValidationError>,
+    pub warnings: Vec<crate::modules::workflow::validate::ValidationError>,
+    pub cost_estimate: crate::modules::workflow::cost::DryRunResult,
+}
+
 /// Per-conversation OPT-OUT row (mirrors `conversation_skill_overrides`).
 /// Phase B6 may add this as its own table if workflows need
 /// conversation-scoped hides; for now the type is reserved for parity

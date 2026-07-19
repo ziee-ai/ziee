@@ -23,7 +23,9 @@ use crate::modules::permissions::with_permission;
 use crate::modules::sync::{SyncAction, SyncOrigin};
 use crate::modules::workflow::cost;
 use crate::modules::workflow::models::{CreateWorkflow, CreateWorkflowRun, Workflow};
-use crate::modules::workflow::permissions::{WorkflowsExecute, WorkflowsInstall};
+use crate::modules::workflow::permissions::{
+    WorkflowsExecute, WorkflowsInstall, WorkflowsManage, WorkflowsRead,
+};
 use crate::modules::workflow::repository;
 use crate::modules::workflow::test_runner::{
     self, FixtureMode, FixtureResult, TestFixture, TestRunResponse,
@@ -340,6 +342,208 @@ pub(crate) async fn install_workflow_from_bytes(
     }
 
     Ok((StatusCode::CREATED, Json(workflow)))
+}
+
+// ============================================================
+// Visual builder: create / edit from a posted WorkflowDef
+// ============================================================
+
+/// Serialize a posted `WorkflowDef` into a one-file (`workflow.yaml`) tar.gz
+/// bundle — the shared body behind the builder's create + edit-in-place paths.
+/// Writes the YAML into a throwaway temp dir (cleaned on every exit path), then
+/// packs it exactly as `workspace-save` packs a sandbox-authored dir, so the
+/// downstream extract→validate→compile→insert core is byte-identical whether the
+/// bundle came from a tarball upload or the builder. `serde_norway` (the repo's
+/// maintained serde_yaml fork, used by `parse_workflow_yaml`) is the serializer.
+pub(crate) async fn def_to_bundle_bytes(
+    def: &validate::WorkflowDef,
+) -> Result<Vec<u8>, AppError> {
+    let yaml = serde_norway::to_string(def).map_err(|e| {
+        AppError::bad_request(
+            "WORKFLOW_SERIALIZE_FAILED",
+            format!("failed to serialize workflow.yaml: {e}"),
+        )
+    })?;
+    let tmp_dir = std::env::temp_dir().join(format!("ziee-wf-def-{}", Uuid::new_v4()));
+    tokio::fs::create_dir_all(&tmp_dir).await.map_err(|e| {
+        AppError::internal_error(format!("failed to stage workflow bundle dir: {e}"))
+    })?;
+    // Build the bytes inside a scope so the temp dir is cleaned on BOTH the ok
+    // and error paths (no RAII guard for a plain PathBuf, so do it explicitly).
+    let result = async {
+        let yaml_path = tmp_dir.join("workflow.yaml");
+        tokio::fs::write(&yaml_path, yaml.as_bytes()).await.map_err(|e| {
+            AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
+        })?;
+        crate::modules::hub::bundle::pack_workspace_dir(&tmp_dir)
+    }
+    .await;
+    let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+    result
+}
+
+/// Optional query for the builder create endpoint.
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct CreateWorkflowDefQuery {
+    /// Optional slug override; `local.dev.<owner>/<slug>` becomes the row name.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// `POST /api/workflows` — create a user-scope workflow from a posted
+/// `WorkflowDef` (the visual builder's "save new"). Serializes the def to a
+/// one-file bundle and runs the SAME extract→validate→compile→insert core as
+/// tarball import (so validation + IR compilation are identical). Scope is
+/// forced to `user` (never escalates to system through this route).
+pub async fn create_user_workflow(
+    auth: RequirePermissions<(WorkflowsInstall,)>,
+    Query(q): Query<CreateWorkflowDefQuery>,
+    origin: SyncOrigin,
+    Json(def): Json<validate::WorkflowDef>,
+) -> ApiResult<Json<Workflow>> {
+    let bytes = def_to_bundle_bytes(&def).await?;
+    let iq = ImportQuery {
+        name: q.name,
+        scope: Some("user".to_string()),
+    };
+    install_workflow_from_bytes(&auth.user, &auth.groups, iq, origin, bytes).await
+}
+
+pub fn create_user_workflow_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsInstall,)>(op)
+        .id("Workflow.create")
+        .tag("Workflows")
+        .summary("Create a user-scope workflow from a WorkflowDef (visual builder)")
+        .description("Serializes the posted WorkflowDef to a workflow.yaml bundle and installs it as a user-scope workflow via the shared validate+compile+insert core. Scope is always 'user'.")
+        .response::<201, Json<Workflow>>()
+        .response_with::<400, (), _>(|r| r.description("Invalid definition"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+}
+
+/// `PUT /api/workflows/{id}/definition` — replace a user-scope workflow's
+/// steps / inputs IN PLACE from a posted `WorkflowDef`, preserving the workflow
+/// id (so run-history FKs survive). Owner-scoped (403 non-owner, 404 missing),
+/// mirroring `update_user_workflow`. Re-materializes the on-disk bundle at the
+/// row's `extracted_path` (the old bundle contents are replaced/cleaned by
+/// `extract_tarball_bytes`, which removes the target dir before the atomic
+/// rename), recomputes sha/size/file_count, re-validates, recompiles the IR,
+/// and updates the row via `repository::update_definition` (NOT delete+insert —
+/// that would change the id).
+pub async fn update_user_workflow_definition(
+    auth: RequirePermissions<(WorkflowsManage,)>,
+    AxumPath(id): AxumPath<Uuid>,
+    origin: SyncOrigin,
+    Json(def): Json<validate::WorkflowDef>,
+) -> ApiResult<Json<Workflow>> {
+    let existing = repository::find_by_id(Repos.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Workflow"))?;
+    if existing.scope != "user" || existing.owner_user_id != Some(auth.user.id) {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::forbidden(
+                "WORKFLOW_FORBIDDEN",
+                "only the owner may edit a user-scope workflow",
+            )
+            .into(),
+        );
+    }
+
+    // Re-materialize the bundle in place. `extract_tarball_bytes` extracts to a
+    // sibling `.staging` dir, removes the existing target dir, then renames —
+    // so the OLD bundle contents we replace are cleaned as part of the swap.
+    let bytes = def_to_bundle_bytes(&def).await?;
+    let target = std::path::PathBuf::from(&existing.extracted_path);
+    let extraction = crate::modules::hub::bundle::extract_tarball_bytes(
+        &bytes,
+        &target,
+        crate::modules::hub::bundle::BundleKind::Workflow,
+    )
+    .await?;
+
+    // Re-validate against the freshly-materialized bundle root. is_dev=true so a
+    // builder-authored def parses under the same relaxed rules as import.
+    if let Err(e) =
+        validate::validate_for_install(&def, &extraction.extracted_path, true)
+    {
+        return Err::<_, (StatusCode, AppError)>(e.into());
+    }
+
+    let compiled = crate::modules::workflow::compiled::compile_to_json(&def);
+    let updated = repository::update_definition(
+        Repos.pool(),
+        id,
+        &extraction.extracted_path.display().to_string(),
+        &extraction.sha256_hex,
+        extraction.total_bytes as i64,
+        extraction.file_count as i32,
+        compiled,
+    )
+    .await?;
+
+    crate::modules::workflow::events::emit_user_workflow(
+        SyncAction::Update,
+        id,
+        auth.user.id,
+        origin.0,
+    );
+    Ok((StatusCode::OK, Json(updated)))
+}
+
+pub fn update_user_workflow_definition_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsManage,)>(op)
+        .id("Workflow.updateDefinition")
+        .tag("Workflows")
+        .summary("Replace a user-scope workflow's steps/inputs in place")
+        .description("Re-materializes the workflow bundle from the posted WorkflowDef, preserving the workflow id (run-history FKs survive). Owner-scoped: 403 for a non-owner, 404 for a missing workflow.")
+        .response::<200, Json<Workflow>>()
+        .response_with::<400, (), _>(|r| r.description("Invalid definition"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Not the owner"))
+        .response_with::<404, (), _>(|r| r.description("Workflow not found"))
+}
+
+// ============================================================
+// POST /api/workflows/validate-def  (validate a posted WorkflowDef)
+// ============================================================
+
+/// Validate a posted `WorkflowDef` JSON (the builder's live-validation feed) —
+/// the JSON-body twin of `/validate` (which takes workflow.yaml text). Returns
+/// all findings + a dry-run cost estimate as a 200 (validation findings are
+/// structured data, never a hard 4xx). Uses a throwaway temp dir as the bundle
+/// root (same as the YAML `/validate` surface).
+pub async fn validate_workflow_def(
+    _auth: RequirePermissions<(WorkflowsRead,)>,
+    Json(def): Json<validate::WorkflowDef>,
+) -> ApiResult<Json<crate::modules::workflow::models::ValidateDefResponse>> {
+    let tmp = std::env::temp_dir();
+    let raw = validate::validate_collecting(&def, &tmp, true);
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    for e in raw {
+        match e.severity {
+            validate::Severity::Error => errors.push(e),
+            validate::Severity::Warning => warnings.push(e),
+        }
+    }
+    let cost_estimate = cost::dry_run(&def, &serde_json::Map::new());
+    Ok((
+        StatusCode::OK,
+        Json(crate::modules::workflow::models::ValidateDefResponse {
+            errors,
+            warnings,
+            cost_estimate,
+        }),
+    ))
+}
+
+pub fn validate_workflow_def_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsRead,)>(op)
+        .id("Workflow.validateDef")
+        .tag("Workflows")
+        .summary("Validate a WorkflowDef JSON (no install)")
+        .description("Runs the semantic + security checks + a dry-run cost estimate on a posted WorkflowDef. Findings are returned structured with a 200 (they never hard-fail the request).")
+        .response::<200, Json<crate::modules::workflow::models::ValidateDefResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }
 
 pub fn import_workflow_docs(op: TransformOperation) -> TransformOperation {
