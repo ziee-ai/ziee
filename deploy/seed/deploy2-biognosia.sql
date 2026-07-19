@@ -130,6 +130,18 @@ SELECT g.id, s.id
  WHERE g.name = 'Users' AND s.is_system AND s.name = 'biognosia'
 ON CONFLICT (group_id, mcp_server_id) DO NOTHING;
 
+-- ...and to Administrators. MCP server ACCESS is by GROUP MEMBERSHIP, not by
+-- permission — the `*` wildcard does NOT make a system server accessible. An
+-- admin who is only in Administrators (the state seed.sql step 5 creates) would
+-- otherwise get NO biognosia MCP tag on the composer and NO "MCP tools &
+-- servers" entry in the + menu, because the server never enters their
+-- accessible-server list. Mirrors the Users grant above; additive + idempotent.
+INSERT INTO user_group_mcp_servers (group_id, mcp_server_id)
+SELECT g.id, s.id
+  FROM groups g, mcp_servers s
+ WHERE g.name = 'Administrators' AND s.is_system AND s.name = 'biognosia'
+ON CONFLICT (group_id, mcp_server_id) DO NOTHING;
+
 -- deploy2 is biognosia-only: drop the rcpa/dscc system servers that seed.sql
 -- registers (their group assignments cascade away via FK ON DELETE CASCADE).
 DELETE FROM mcp_servers WHERE is_system = true AND name IN ('rcpa', 'dscc');

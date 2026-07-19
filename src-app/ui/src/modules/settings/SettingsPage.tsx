@@ -51,9 +51,19 @@ export default function SettingsPage() {
   const isAllowed = (item: SettingsPageSlot) =>
     !item.permission || evaluatePermission(user, permissions, item.permission)
 
+  // DEPLOY-ONLY: hide the "Assistants" user-settings NAV ENTRY from non-admins.
+  // The deployment ships one template assistant applied to every chat, so the
+  // per-user assistant page is operator-facing here. Admins keep it. This hides
+  // the menu entry ONLY — the `/settings/assistants` route and its
+  // `assistants::read` permission are untouched (and it is deliberately NOT
+  // folded into `isAllowed`, so a deep link still resolves as before rather
+  // than rendering the "forbidden" Result).
+  const isHiddenUserPage = (item: SettingsPageSlot) =>
+    item.id === 'assistants' && !user?.is_admin
+
   // Get, sort, and permission-filter user settings from slots
   const userSettingsItems = (slots.get('settingsUserPages') || [])
-    .filter(isAllowed)
+    .filter(item => isAllowed(item) && !isHiddenUserPage(item))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   // Get, sort, and permission-filter admin settings from slots

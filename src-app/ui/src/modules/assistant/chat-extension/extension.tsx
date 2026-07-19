@@ -4,7 +4,6 @@ import {
   type ExtensionRequestFields,
 } from '@/modules/chat/core/extensions'
 import { Stores } from '@ziee/framework/stores'
-import { AssistantMenuItem } from '@/modules/assistant/chat-extension/components/AssistantMenuItem'
 import { AssistantStatusChip } from '@/modules/assistant/chat-extension/components/AssistantStatusChip'
 
 /**
@@ -97,8 +96,19 @@ const assistantExtension: ChatExtension = createExtension({
     )
   },
 
+  // DEPLOY-ONLY: the assistant picker + status chip are hidden from the chat
+  // composer (the deployment ships a single template assistant applied to every
+  // chat by default, and the chip duplicated the MCP-server tag).
+  //
+  // `toolbar_status` STAYS REGISTERED on purpose: AssistantStatusChip now
+  // renders null, but it must still MOUNT. The picker store initializes lazily
+  // on first `Stores.AssistantPicker` access, and this component's mount is what
+  // performs it — that access is what loads the assistant catalog that
+  // `composeRequestFields` reads (synchronously) at send time. Unregistering the
+  // slot instead of rendering null silently drops `assistant_id` from every
+  // request. Only `toolbar_plus_items` (the "Select assistant" menu entry) is
+  // unregistered; it has no such side effect.
   slots: {
-    toolbar_plus_items: { component: AssistantMenuItem, order: 30 },
     toolbar_status: { component: AssistantStatusChip, order: 20 },
   },
 

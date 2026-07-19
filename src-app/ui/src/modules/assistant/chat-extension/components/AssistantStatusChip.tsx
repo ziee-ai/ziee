@@ -1,7 +1,5 @@
-import { Tag } from '@ziee/kit'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Bot } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import {
   effectiveAssistantId,
@@ -18,8 +16,7 @@ export function AssistantStatusChip() {
   const canRead = usePermission(Permissions.AssistantsRead)
   // Per-conversation selection (ITEM-5): `selectedAssistantId` is derived below
   // from `selectedByConversation[key]`, not read globally off the store.
-  const { selectedByConversation, availableAssistants, clearAssistant } =
-    Stores.AssistantPicker
+  const { selectedByConversation, availableAssistants } = Stores.AssistantPicker
   // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
   const pane = useChatPaneOrNull()
   const key =
@@ -39,16 +36,12 @@ export function AssistantStatusChip() {
   )
   if (!assistant) return null
 
-  return (
-    <Tag variant="outline"
-      data-testid="assistant-status-chip"
-      tone="info"
-      icon={<Bot />}
-      onClose={() => clearAssistant(key)}
-      closeLabel="Remove"
-      className="m-0"
-    >
-      {assistant.name}
-    </Tag>
-  )
+  // DEPLOY-ONLY: render nothing. Everything ABOVE this line is deliberately
+  // UNCHANGED — the component must still mount and touch `Stores.AssistantPicker`,
+  // because that access is what lazily initializes the picker store and loads the
+  // assistant catalog that `composeRequestFields` reads (synchronously) at send
+  // time. Suppressing only the paint — rather than unregistering the slot — is
+  // what keeps the assistant functionally active while hiding the chip.
+  // See the matching note in ../extension.tsx.
+  return null
 }

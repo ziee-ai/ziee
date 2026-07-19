@@ -34,7 +34,11 @@ server:
   # so trust them for OAuth redirect_uri derivation.
   trust_forwarded_headers: true
   rate_limit:
-    enabled: true
+    # DEPLOY-ONLY override (the RateLimitConfig code default stays `true`).
+    # Internal MCP traffic (code_sandbox, memory, proxied external MCP) reaches
+    # the API over loopback and shares ONE peer-IP bucket with user traffic, so
+    # tool-heavy assistant runs otherwise self-throttle with HTTP 429.
+    enabled: false
     per_second: 50
     burst_size: 500
   cors:
