@@ -1,6 +1,11 @@
-import { Import as ImportIcon, Workflow as WorkflowIcon } from 'lucide-react'
+import {
+  Import as ImportIcon,
+  Plus,
+  Workflow as WorkflowIcon,
+} from 'lucide-react'
 import { Button, Card, Empty, ErrorState, Flex, Text } from '@ziee/kit'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Permissions } from '@/api-client/types'
 import { Can } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
@@ -17,6 +22,7 @@ import { WorkflowScopeBadge } from './WorkflowScopeBadge'
 export function WorkflowsList() {
   const { workflows, loading, error } = Stores.Workflow
   const [importOpen, setImportOpen] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <SettingsPageContainer
@@ -25,10 +31,19 @@ export function WorkflowsList() {
       subtitle="Declarative multi-step LLM chains you can run on demand"
     >
       <div className="flex flex-col gap-3">
-        <Flex justify="end">
+        <Flex justify="end" gap="small">
           <Can permission={Permissions.WorkflowsInstall}>
             <Button
+              data-testid="wf-list-new-btn"
+              variant="default"
+              icon={<Plus />}
+              onClick={() => navigate('/settings/workflows/builder')}
+            >
+              New workflow
+            </Button>
+            <Button
               data-testid="wf-list-import-btn"
+              variant="outline"
               icon={<ImportIcon />}
               onClick={() => setImportOpen(true)}
             >

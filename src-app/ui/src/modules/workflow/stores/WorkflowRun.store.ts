@@ -10,6 +10,23 @@ import {
   type RunProgressSubscription,
   subscribeRunProgress,
 } from '@/modules/workflow/sse/runProgressClient'
+import type { AgentActivityEntry } from '@/modules/workflow/components/run/activityDescriptors'
+
+/** Merge one agent-activity payload into an ordered, seq-deduped list (ascending
+ *  by `seq`). Re-emitting the same seq (e.g. a `running`→`ok` status upgrade)
+ *  REPLACES the existing row in place rather than appending a duplicate. */
+function mergeAgentActivity(list: AgentActivityEntry[], entry: AgentActivityEntry) {
+  const i = list.findIndex(e => e.seq === entry.seq)
+  if (i >= 0) {
+    list[i] = entry
+    return
+  }
+  // Fast path: activities almost always arrive in seq order → push + only sort
+  // when a straggler lands out of order.
+  const last = list[list.length - 1]
+  list.push(entry)
+  if (last && entry.seq < last.seq) list.sort((a, b) => a.seq - b.seq)
+}
 
 /** Per-step output metadata (mirrors backend `OutputMeta`). Content lives on
  *  disk; this is the snapshot blob in `step_outputs_json[step_id]`. Its
@@ -45,6 +62,11 @@ export interface StepProgress {
   itemProgress?: ItemProgress
   /** Live sandbox-step progress tracks (P2), keyed by track id ("" = default). */
   tracks?: Record<string, ProgressTrack>
+  /** Ordered agent ACTIVITY TIMELINE for a `kind:agent` step — accreting rows
+   *  (search/read/draft/gate…) deduped + ordered by `seq`. Fed by the
+   *  `agent_activity` tracks on the StepProgress frame (kept OUT of `tracks`) and
+   *  rehydrated from `step_logs_json["<stepId>::agent_activity"]` on snapshot. */
+  agentActivity?: AgentActivityEntry[]
   outputPreview?: string
   error?: string
   tokensUsed?: number
@@ -140,6 +162,23 @@ export const WorkflowRun = defineStore('WorkflowRun', {
                 const s = ensureStep(v, d.current_step)
                 s.tracks = d.step_progress_json as Record<string, ProgressTrack>
               }
+              // Rehydrate the agent ACTIVITY TIMELINE from durable per-step
+              // history so reopening a completed/resumed run replays every row.
+              // Persisted as `step_logs_json["<stepId>::agent_activity"]` → an
+              // array of `agent_activity` payloads. Array-merge (dedupe by seq).
+              const logs = (d.step_logs_json ?? {}) as Record<string, unknown>
+              const AGENT_SUFFIX = '::agent_activity'
+              for (const [key, value] of Object.entries(logs)) {
+                if (!key.endsWith(AGENT_SUFFIX) || !Array.isArray(value)) continue
+                const stepId = key.slice(0, -AGENT_SUFFIX.length)
+                const s = ensureStep(v, stepId)
+                if (!s.agentActivity) s.agentActivity = []
+                for (const raw of value as AgentActivityEntry[]) {
+                  if (raw && typeof raw === 'object' && typeof raw.seq === 'number') {
+                    mergeAgentActivity(s.agentActivity, raw)
+                  }
+                }
+              }
               // Hydrate per-step output + artifact metadata (metadata only;
               // content fetched lazily via readOutput / readArtifact).
               const outputs = (d.step_outputs_json ?? {}) as Record<string, StepOutputMeta>
@@ -197,6 +236,14 @@ export const WorkflowRun = defineStore('WorkflowRun', {
               const s = ensureStep(v, d.step_id)
               if (!s.tracks) s.tracks = {}
               for (const t of d.tracks) {
+                // Agent-activity tracks feed the dedicated ACTIVITY TIMELINE, not
+                // the generic track map — and the `done`-delete path must NOT
+                // apply (a completed activity row stays visible in history).
+                if (t.kind.type === 'agent_activity') {
+                  if (!s.agentActivity) s.agentActivity = []
+                  mergeAgentActivity(s.agentActivity, t.kind)
+                  continue
+                }
                 const id = t.id ?? ''
                 // `done` tracks were delivered once + evicted backend-side.
                 if (t.done) delete s.tracks[id]
