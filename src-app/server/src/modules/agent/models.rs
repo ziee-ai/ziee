@@ -45,6 +45,14 @@ pub struct AgentAdminSettings {
     /// with an explicit "capped at N" note. Threaded into the crate's
     /// `SubagentLimits.max_children_per_call`.
     pub fan_out_max_children_per_call: i32,
+    /// Goal-seeking evaluator model (ITEM-24 / DEC-61). NULL ⇒ fall back to the
+    /// goal-seeking run's OWN model (mirrors `reviewer_model_id`). Resolved under
+    /// the run owner's RBAC at evaluation time.
+    pub goal_eval_model_id: Option<Uuid>,
+    /// Max turns a goal-seeking loop may fire before stopping 'incomplete'
+    /// (ITEM-24 / DEC-62). Default 10, range 1..=50; the `max_horizon_days`
+    /// backstop is the other ceiling.
+    pub goal_seek_max_turns: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -69,6 +77,12 @@ pub struct UpdateAgentAdminSettingsRequest {
     pub fan_out_max_threads: Option<i32>,
     pub fan_out_max_depth: Option<i32>,
     pub fan_out_max_children_per_call: Option<i32>,
+    /// Goal-seeking evaluator model (DEC-61) — tri-state (null ⇒ clear back to
+    /// "use the run's own model").
+    #[serde(default, deserialize_with = "deserialize_nullable_field")]
+    pub goal_eval_model_id: Option<Option<Uuid>>,
+    /// Max goal-seeking turns (DEC-62), 1..=50.
+    pub goal_seek_max_turns: Option<i32>,
 }
 
 impl UpdateAgentAdminSettingsRequest {
@@ -133,6 +147,11 @@ impl UpdateAgentAdminSettingsRequest {
             && !(1..=64).contains(&v)
         {
             return Err(bad("fan_out_max_children_per_call out of range (1..=64)"));
+        }
+        if let Some(v) = self.goal_seek_max_turns
+            && !(1..=50).contains(&v)
+        {
+            return Err(bad("goal_seek_max_turns out of range (1..=50)"));
         }
         Ok(())
     }
@@ -230,6 +249,22 @@ mod tests {
             UpdateAgentAdminSettingsRequest { per_run_token_cap: Some(999), ..Default::default() }
                 .validate()
                 .is_err()
+        );
+        // ITEM-24 / DEC-62: goal_seek_max_turns is 1..=50.
+        assert!(
+            UpdateAgentAdminSettingsRequest { goal_seek_max_turns: Some(0), ..Default::default() }
+                .validate()
+                .is_err()
+        );
+        assert!(
+            UpdateAgentAdminSettingsRequest { goal_seek_max_turns: Some(51), ..Default::default() }
+                .validate()
+                .is_err()
+        );
+        assert!(
+            UpdateAgentAdminSettingsRequest { goal_seek_max_turns: Some(10), ..Default::default() }
+                .validate()
+                .is_ok()
         );
     }
 

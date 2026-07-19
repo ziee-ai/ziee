@@ -64,6 +64,11 @@ pub struct DispatchOutcome {
     /// Round 2 (ITEM-40): `{ changed, new_count, new_items }` from change-detection;
     /// `None` for a failed firing.
     pub change_summary: Option<serde_json::Value>,
+    /// ITEM-24 / DEC-63: the fired turn's result artifact text — the ONLY input
+    /// (besides the condition) the goal-seeking evaluator sees. `None` for a
+    /// failed / empty firing (⇒ the evaluator returns not_done without a model
+    /// call). Transient (not persisted); consumed in-process by the write-back.
+    pub result_text: Option<String>,
 }
 
 /// A successful target run, before change-detection/notification.
@@ -461,6 +466,10 @@ async fn finalize_success(
     // Round 2 (ITEM-40): persist a preview + change summary on the run for the timeline.
     let result_preview = build_result_preview(&raw.text);
     let change_summary = Some(build_change_summary(&outcome));
+    // ITEM-24 / DEC-63: carry the full result artifact for the goal-seeking
+    // evaluator (transient; capped when the evaluator builds its prompt). None
+    // for an empty result → the evaluator returns not_done without a model call.
+    let result_text = (!raw.text.trim().is_empty()).then(|| raw.text.clone());
 
     // on_change + nothing changed → record success, send NO notification —
     // UNLESS tools were skipped this firing. A skipped tool means the result is
@@ -480,6 +489,7 @@ async fn finalize_success(
             skipped_tools: raw.skipped_tools.clone(),
             result_preview,
             change_summary,
+            result_text,
         };
     }
 
@@ -538,6 +548,7 @@ async fn finalize_success(
         skipped_tools: raw.skipped_tools.clone(),
         result_preview,
         change_summary,
+        result_text,
     }
 }
 
@@ -585,6 +596,7 @@ async fn finalize_failure(
         skipped_tools: Vec::new(),
         result_preview: None,
         change_summary: None,
+        result_text: None,
     }
 }
 

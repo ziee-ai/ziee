@@ -258,26 +258,89 @@ pub async fn fire_task(
     }
 
     // ITEM-21/DEC-42/44/45: self-paced write-back — a SCHEDULED self-paced firing
-    // re-arms `next_run_at` from the model's clamped proposal, or self-completes on
-    // stop/expiry. run-now is off-schedule (must not touch schedule bookkeeping),
-    // so it's excluded. The proposal-producing tool is a later tranche; until it
-    // lands there is no proposal, so a fired self-paced turn self-completes.
+    // re-arms `next_run_at` (or self-completes on stop/expiry). run-now is
+    // off-schedule (must not touch schedule bookkeeping), so it's excluded.
     if trigger != "run_now" && matches!(task.schedule_kind(), ScheduleKind::SelfPaced) {
         let (min_interval, max_horizon) = settings::get(pool)
             .await
             .map(|s| (i64::from(s.min_interval_seconds), i64::from(s.max_horizon_days)))
             .unwrap_or((300, 7));
-        // TODO(later tranche): read the model's `SelfPacedProposal` off the turn.
-        let proposal: Option<schedule::SelfPacedProposal> = None;
-        let sp_outcome = dispatch::self_paced_writeback(
-            proposal.as_ref(),
-            min_interval,
-            max_horizon,
-            task.created_at,
-            now,
-        );
-        if let Err(e) = repository::arm_self_paced(pool, task.id, sp_outcome, now).await {
-            tracing::warn!("scheduler.tick: arm_self_paced {} failed: {e:?}", task.id);
+
+        if let Some(condition) = task.completion_condition.as_deref() {
+            // ITEM-24 / DEC-61/62/63: GOAL-SEEKING write-back. A single isolated,
+            // cheap, INDEPENDENT model call judges this turn's result artifact
+            // against the completion condition. `done` self-stops ('completed');
+            // `not_done` re-arms another turn (reusing the self-paced clamp) until
+            // the `goal_seek_max_turns` cap OR the `max_horizon_days` backstop →
+            // stop 'incomplete'. Any evaluator error/timeout is `not_done` — the
+            // loop keeps working and NEVER falsely reports success.
+            let (eval_model_id, max_turns) =
+                match crate::core::Repos.agent.get_admin_settings().await {
+                    Ok(s) => (
+                        s.goal_eval_model_id.or(task.model_id),
+                        i64::from(s.goal_seek_max_turns),
+                    ),
+                    Err(e) => {
+                        tracing::warn!(
+                            "scheduler.tick: goal-seek settings read failed for {}: {e:?}",
+                            task.id
+                        );
+                        (task.model_id, 10)
+                    }
+                };
+            // The evaluator sees ONLY the result artifact + the condition.
+            let artifact = outcome.result_text.as_deref().unwrap_or("");
+            let verdict = match eval_model_id {
+                Some(mid) => {
+                    super::goal_eval::evaluate(mid, task.user_id, condition, artifact).await
+                }
+                // No resolvable model → can't confirm completion → keep working.
+                None => super::goal_eval::GoalVerdict::NotDone,
+            };
+            // Turn counter: scheduled runs (incl. the row just inserted above).
+            let turns = repository::count_scheduled_runs_for_task(pool, task.id)
+                .await
+                .unwrap_or(0);
+            let (sp_outcome, reason) = match super::goal_eval::decide(
+                verdict,
+                turns,
+                max_turns,
+                min_interval,
+                max_horizon,
+                task.created_at,
+                now,
+            ) {
+                super::goal_eval::GoalOutcome::Done => {
+                    (schedule::SelfPacedOutcome::Disable, "completed")
+                }
+                super::goal_eval::GoalOutcome::Continue(t) => {
+                    (schedule::SelfPacedOutcome::Fire(t), "completed")
+                }
+                super::goal_eval::GoalOutcome::Incomplete => {
+                    (schedule::SelfPacedOutcome::Disable, "incomplete")
+                }
+            };
+            if let Err(e) = repository::arm_self_paced(pool, task.id, sp_outcome, now, reason).await
+            {
+                tracing::warn!("scheduler.tick: goal arm_self_paced {} failed: {e:?}", task.id);
+            }
+        } else {
+            // Plain self-paced: the model-facing `schedule_next` proposal tool is a
+            // later tranche; until it lands there is no proposal, so a fired
+            // self-paced turn self-completes ('completed').
+            let proposal: Option<schedule::SelfPacedProposal> = None;
+            let sp_outcome = dispatch::self_paced_writeback(
+                proposal.as_ref(),
+                min_interval,
+                max_horizon,
+                task.created_at,
+                now,
+            );
+            if let Err(e) =
+                repository::arm_self_paced(pool, task.id, sp_outcome, now, "completed").await
+            {
+                tracing::warn!("scheduler.tick: arm_self_paced {} failed: {e:?}", task.id);
+            }
         }
     }
 
@@ -321,6 +384,7 @@ mod tests {
             last_result_fingerprint: None,
             last_result_signature_json: None,
             bound_conversation_id: None,
+            completion_condition: None,
             allowed_unattended_tools: serde_json::json!([]),
             created_at: now,
             updated_at: now,

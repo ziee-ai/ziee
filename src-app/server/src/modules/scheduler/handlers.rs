@@ -124,7 +124,7 @@ async fn validate_allowed_tools(
 pub async fn create_task(
     auth: RequirePermissions<(SchedulerUse,)>,
     origin: SyncOrigin,
-    Json(body): Json<CreateScheduledTask>,
+    Json(mut body): Json<CreateScheduledTask>,
 ) -> ApiResult<Json<ScheduledTask>> {
     // Field validation.
     let name = body.name.trim();
@@ -238,6 +238,33 @@ pub async fn create_task(
     }
 
     let kind = parse_kind(&body.schedule_kind)?;
+
+    // ITEM-24 / DEC-61/62/63: a non-blank `completion_condition` makes this a
+    // GOAL-SEEKING task, which runs ONLY on the self-paced prompt write-back path
+    // (an isolated evaluator re-fires turns until the condition is met). Normalize
+    // a blank to None; a real condition must be a self-paced prompt task and is
+    // length-capped (a clean 400, not a DB-CHECK 500).
+    match body.completion_condition.as_deref() {
+        Some(c) if c.trim().is_empty() => body.completion_condition = None,
+        Some(c) if c.len() > super::models::MAX_COMPLETION_CONDITION_LEN => {
+            return Err(AppError::bad_request(
+                "SCHEDULER_BAD_CONDITION",
+                "completion_condition exceeds the length limit",
+            )
+            .into());
+        }
+        Some(_) => {
+            if body.target_kind != "prompt" || !matches!(kind, ScheduleKind::SelfPaced) {
+                return Err(AppError::bad_request(
+                    "SCHEDULER_BAD_CONDITION",
+                    "a completion_condition (goal-seeking) requires a self-paced prompt task",
+                )
+                .into());
+            }
+        }
+        None => {}
+    }
+
     let admin = settings::get(Repos.pool()).await?;
 
     // Quota (422).

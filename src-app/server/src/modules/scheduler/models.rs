@@ -16,6 +16,9 @@ pub const MAX_NAME_LEN: usize = 255;
 pub const MAX_PROMPT_LEN: usize = 32_768;
 /// Cap on the per-task unattended allow-list (avoids an unbounded blob).
 pub const MAX_ALLOWED_TOOLS: usize = 100;
+/// Max length of a goal-seeking `completion_condition` (ITEM-24). A "done when…"
+/// rubric is short natural language; matches the DB CHECK backstop.
+pub const MAX_COMPLETION_CONDITION_LEN: usize = 4096;
 
 /// One entry in a task's `allowed_unattended_tools` allow-list (DEC-17.4): an MCP
 /// server the creator pre-authorizes to run unattended, optionally narrowed to a
@@ -81,6 +84,14 @@ pub struct ScheduledTask {
     // prompt-kind bound conversation.
     pub bound_conversation_id: Option<Uuid>,
 
+    /// ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+    /// When set (on a `self_paced` prompt task), each fired turn's result is judged
+    /// by an isolated cheap-model evaluator against this natural-language condition;
+    /// 'done' self-stops the loop, 'not_done' re-arms another turn until
+    /// `goal_seek_max_turns` / the `max_horizon_days` backstop → stop 'incomplete'.
+    /// NULL ⇒ an ordinary (non-goal-seeking) task.
+    pub completion_condition: Option<String>,
+
     /// Per-task unattended tool allow-list (DEC-17). JSONB array of `AllowedTool`;
     /// read via `parse_allowed_tools`. Empty ⇒ built-in read-only tools only.
     pub allowed_unattended_tools: serde_json::Value,
@@ -140,6 +151,13 @@ pub struct CreateScheduledTask {
     /// time (a foreign id → 404); `None` keeps the create-a-conversation default.
     #[serde(default)]
     pub bound_conversation_id: Option<Uuid>,
+
+    /// ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+    /// A non-blank value makes this a goal-seeking task and (validated in the
+    /// handler) requires `schedule_kind = 'self_paced'` + `target_kind = 'prompt'`.
+    /// `None`/blank ⇒ an ordinary task.
+    #[serde(default)]
+    pub completion_condition: Option<String>,
 }
 
 /// Update-task request body (all fields optional; only present ones change).

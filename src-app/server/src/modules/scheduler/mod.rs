@@ -40,6 +40,7 @@ pub mod dispatch;
 pub mod dryrun;
 pub mod events;
 pub mod failure;
+pub mod goal_eval;
 pub mod handlers;
 pub mod models;
 pub mod permissions;
