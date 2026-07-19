@@ -851,13 +851,19 @@ async fn sweep_orphan_siblings(bundle_root: &std::path::Path) {
         }
     }
 
-    // bundle_root now exists (present all along or just restored). Safe to remove the
-    // remaining orphan `.staging-*` + `.old-*` siblings.
-    for path in staging_dirs
-        .into_iter()
-        .chain(old_dirs.into_iter().map(|(p, _)| p))
-    {
+    // bundle_root now exists (present all along or just restored). `.staging-*` are
+    // never the live bundle → always safe to prune. For `.old-*`: prune them ONLY when
+    // the live bundle was present all along (they are then confidently stale). If we
+    // just RECOVERED from a missing bundle, PRESERVE any remaining `.old-*` — in that
+    // ambiguous multi-`.old-` state the mtime pick could be wrong, so never risk
+    // deleting the real prior bundle; leave the extras for manual inspection.
+    for path in staging_dirs {
         remove_orphan_dir(&path).await;
+    }
+    if !live_missing {
+        for (path, _) in old_dirs {
+            remove_orphan_dir(&path).await;
+        }
     }
 }
 
