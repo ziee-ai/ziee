@@ -129,11 +129,30 @@ pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::E
             continue;
         }
 
+        let kind = task.schedule_kind();
+
+        // ITEM-21/DEC-42: a self-paced task's next fire comes from the model's
+        // proposal, not a fixed schedule. Advance-before-dispatch = DISARM the row
+        // (`next_run_at` NULL, stays enabled) so the next tick can't re-claim it
+        // while its turn runs; the post-dispatch write-back (`fire_task`) re-arms
+        // `next_run_at` from the clamped proposal, or self-completes on stop/expiry.
+        if matches!(kind, ScheduleKind::SelfPaced) {
+            if let Err(e) = repository::disarm_self_paced(pool, task.id, now).await {
+                tracing::warn!("scheduler.tick: disarm_self_paced {} failed: {e:?}", task.id);
+                continue;
+            }
+            let pool = pool.clone();
+            let config = config.clone();
+            tokio::spawn(async move {
+                fire_task(&pool, &config, &task, "schedule", now).await;
+            });
+            continue;
+        }
+
         // Advance `next_run_at` SYNCHRONOUSLY before dispatch (coalesced catch-up:
         // skip missed intervals). This both prevents the next tick from re-claiming
         // the row and — crucially — means a slow/hung dispatch can't starve the
         // loop, because the actual firing is spawned off the tick.
-        let kind = task.schedule_kind();
         let next = schedule::next_occurrence(
             kind,
             task.run_at,
@@ -236,6 +255,30 @@ pub async fn fire_task(
     };
     if let Err(e) = repository::insert_run(pool, run).await {
         tracing::warn!("scheduler.tick: insert_run {} failed: {e:?}", task.id);
+    }
+
+    // ITEM-21/DEC-42/44/45: self-paced write-back — a SCHEDULED self-paced firing
+    // re-arms `next_run_at` from the model's clamped proposal, or self-completes on
+    // stop/expiry. run-now is off-schedule (must not touch schedule bookkeeping),
+    // so it's excluded. The proposal-producing tool is a later tranche; until it
+    // lands there is no proposal, so a fired self-paced turn self-completes.
+    if trigger != "run_now" && matches!(task.schedule_kind(), ScheduleKind::SelfPaced) {
+        let (min_interval, max_horizon) = settings::get(pool)
+            .await
+            .map(|s| (i64::from(s.min_interval_seconds), i64::from(s.max_horizon_days)))
+            .unwrap_or((300, 7));
+        // TODO(later tranche): read the model's `SelfPacedProposal` off the turn.
+        let proposal: Option<schedule::SelfPacedProposal> = None;
+        let sp_outcome = dispatch::self_paced_writeback(
+            proposal.as_ref(),
+            min_interval,
+            max_horizon,
+            task.created_at,
+            now,
+        );
+        if let Err(e) = repository::arm_self_paced(pool, task.id, sp_outcome, now).await {
+            tracing::warn!("scheduler.tick: arm_self_paced {} failed: {e:?}", task.id);
+        }
     }
 
     // Notify the owner's devices that the task (its runs/state) changed.

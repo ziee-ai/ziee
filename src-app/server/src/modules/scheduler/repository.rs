@@ -14,6 +14,7 @@ use crate::common::AppError;
 use super::models::{
     CreateScheduledTask, NewTaskRun, ScheduledTask, ScheduledTaskRun, UpdateScheduledTask,
 };
+use super::schedule::SelfPacedOutcome;
 
 /// chrono→time bridge: sqlx binds `timestamptz` params as `time::OffsetDateTime`
 /// (the module is chrono-native because croner is), so convert at the bind edge.
@@ -48,9 +49,9 @@ pub async fn insert(
             user_id, name, target_kind, workflow_id, inputs_json,
             assistant_id, prompt, model_id, schedule_kind, run_at,
             cron_expr, timezone, next_run_at, notify_mode, notify_on,
-            allowed_unattended_tools
+            allowed_unattended_tools, bound_conversation_id
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         RETURNING
             id, user_id, name, enabled, paused_reason, target_kind, workflow_id,
             inputs_json as "inputs_json: _", assistant_id, prompt, model_id,
@@ -81,6 +82,7 @@ pub async fn insert(
         req.notify_on,
         serde_json::to_value(&req.allowed_unattended_tools)
             .unwrap_or_else(|_| serde_json::json!([])),
+        req.bound_conversation_id,
     )
     .fetch_one(pool)
     .await
@@ -146,6 +148,42 @@ pub async fn list_for_user(
         ORDER BY created_at DESC
         "#,
         user_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
+}
+
+/// ITEM-23 / DEC-47: a user's tasks BOUND to a given conversation, newest-first.
+/// Owner-scoped (the `user_id` predicate) AND conversation-scoped — the in-chat
+/// "attached loops/schedules" list. Indexed by `idx_scheduled_tasks_bound_conversation`.
+pub async fn list_for_user_by_conversation(
+    pool: &PgPool,
+    user_id: Uuid,
+    conversation_id: Uuid,
+) -> Result<Vec<ScheduledTask>, AppError> {
+    let rows = sqlx::query_as!(
+        ScheduledTask,
+        r#"
+        SELECT
+            id, user_id, name, enabled, paused_reason, target_kind, workflow_id,
+            inputs_json as "inputs_json: _", assistant_id, prompt, model_id,
+            schedule_kind, run_at as "run_at: _", cron_expr, timezone,
+            next_run_at as "next_run_at: _", last_run_at as "last_run_at: _",
+            last_status, consecutive_failures, notify_mode, notify_on,
+            last_result_fingerprint,
+            last_result_signature_json as "last_result_signature_json: _",
+            bound_conversation_id,
+            allowed_unattended_tools as "allowed_unattended_tools: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM scheduled_tasks
+        WHERE user_id = $1 AND bound_conversation_id = $2
+        ORDER BY created_at DESC
+        "#,
+        user_id,
+        conversation_id,
     )
     .fetch_all(pool)
     .await
@@ -341,6 +379,72 @@ pub async fn mark_fired(
         to_offset_opt(next_run_at),
         to_offset(fired_at),
         paused_reason,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// ITEM-21 / DEC-42: the tick's advance-before-dispatch step for a SELF-PACED
+/// task — disarm the row (`next_run_at = NULL`) WITHOUT disabling it, so the next
+/// tick can't re-claim it while its turn runs. The post-dispatch write-back
+/// (`arm_self_paced`) re-arms `next_run_at` from the model's clamped proposal or
+/// disables on stop. (Distinct from `mark_fired`, whose NULL-next path DISABLES a
+/// spent once/no-occurrence task.) `enabled` + `paused_reason` are left untouched.
+pub async fn disarm_self_paced(
+    pool: &PgPool,
+    id: Uuid,
+    fired_at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        UPDATE scheduled_tasks SET
+            next_run_at = NULL,
+            last_run_at = $2,
+            updated_at  = NOW()
+        WHERE id = $1
+        "#,
+        id,
+        to_offset(fired_at),
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// ITEM-21 / DEC-42/44: the self-paced WRITE-BACK — apply the clamped
+/// `SelfPacedOutcome` (from `schedule::next_self_paced_fire`) to the row:
+///   * `Fire(next)` → re-arm `next_run_at = next` (the task stays enabled).
+///   * `Disable`    → self-complete: `enabled = FALSE`, `paused_reason = 'completed'`
+///     (the same sentinel a spent `once` task carries, so the UI renders
+///     "Completed"; DEC-44's "self-stop = completed, not an error-pause").
+/// Owner scope is unnecessary — `id` is only ever a task the tick already claimed.
+pub async fn arm_self_paced(
+    pool: &PgPool,
+    id: Uuid,
+    outcome: SelfPacedOutcome,
+    fired_at: DateTime<Utc>,
+) -> Result<(), AppError> {
+    let (next, disable) = match outcome {
+        SelfPacedOutcome::Fire(t) => (Some(t), false),
+        SelfPacedOutcome::Disable => (None, true),
+    };
+    sqlx::query!(
+        r#"
+        UPDATE scheduled_tasks SET
+            next_run_at   = $2,
+            last_run_at   = $3,
+            enabled       = CASE WHEN $4 THEN FALSE ELSE enabled END,
+            paused_reason = CASE WHEN $4 THEN 'completed' ELSE paused_reason END,
+            updated_at    = NOW()
+        WHERE id = $1
+        "#,
+        id,
+        to_offset_opt(next),
+        to_offset(fired_at),
+        disable,
     )
     .execute(pool)
     .await
@@ -578,10 +682,12 @@ mod tests {
     async fn seed_prompt_task(pool: &PgPool, user_id: Uuid, kind: &str, enabled: bool) -> Uuid {
         let now = Utc::now();
         let (run_at, cron, next): (Option<time::OffsetDateTime>, Option<String>, Option<time::OffsetDateTime>) =
-            if kind == "once" {
-                (Some(to_offset(now)), None, None)
-            } else {
-                (None, Some("0 9 * * 1".to_string()), Some(to_offset(now)))
+            match kind {
+                "once" => (Some(to_offset(now)), None, None),
+                // self_paced carries neither run_at nor cron (relaxed coherence);
+                // its first arm fires immediately.
+                "self_paced" => (None, None, Some(to_offset(now))),
+                _ => (None, Some("0 9 * * 1".to_string()), Some(to_offset(now))),
             };
         let id: Uuid = sqlx::query_scalar(
             r#"
@@ -675,6 +781,93 @@ mod tests {
             t.paused_reason.is_none(),
             "a recurring task with a next run keeps a NULL paused_reason"
         );
+    }
+
+    // TEST-88 (ITEM-21 / DEC-48): a self_paced row needs NEITHER run_at NOR
+    // cron_expr — the relaxed `scheduled_tasks_schedule_coherent` CHECK admits it,
+    // and the row survives insert + read-back. DB-gated.
+    #[tokio::test]
+    async fn self_paced_row_survives_relaxed_coherent_check() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+        let id = seed_prompt_task(&pool, user, "self_paced", true).await;
+        let t = get_for_user(&pool, user, id)
+            .await
+            .expect("get self_paced")
+            .expect("self_paced row survives the relaxed coherence CHECK");
+        assert_eq!(t.schedule_kind, "self_paced");
+        assert!(
+            t.run_at.is_none() && t.cron_expr.is_none(),
+            "a self_paced row carries neither run_at nor cron_expr"
+        );
+    }
+
+    // TEST-87 (ITEM-21, partial): the self-paced write-back — `arm_self_paced(Fire)`
+    // re-arms next_run_at + keeps the task enabled; `arm_self_paced(Disable)`
+    // self-completes (next_run_at NULL, disabled, paused_reason='completed');
+    // `disarm_self_paced` clears next_run_at WITHOUT disabling. DB-gated.
+    #[tokio::test]
+    async fn self_paced_write_back_rearms_disarms_and_disables() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+        let id = seed_prompt_task(&pool, user, "self_paced", true).await;
+
+        // disarm: next_run_at NULL, still enabled (the tick's advance-before-dispatch).
+        disarm_self_paced(&pool, id, Utc::now()).await.expect("disarm");
+        let t = get_for_user(&pool, user, id).await.unwrap().unwrap();
+        assert!(t.next_run_at.is_none(), "disarm clears next_run_at");
+        assert!(t.enabled, "disarm must NOT disable the task");
+        assert!(t.paused_reason.is_none(), "disarm leaves paused_reason untouched");
+
+        // Fire: re-arm at a future instant, stays enabled.
+        let next = Utc::now() + chrono::Duration::hours(1);
+        arm_self_paced(&pool, id, SelfPacedOutcome::Fire(next), Utc::now())
+            .await
+            .expect("arm fire");
+        let t = get_for_user(&pool, user, id).await.unwrap().unwrap();
+        assert!(t.next_run_at.is_some(), "Fire re-arms next_run_at");
+        assert!(t.enabled, "Fire keeps the task enabled");
+        assert!(t.paused_reason.is_none());
+
+        // Disable: self-complete.
+        arm_self_paced(&pool, id, SelfPacedOutcome::Disable, Utc::now())
+            .await
+            .expect("arm disable");
+        let t = get_for_user(&pool, user, id).await.unwrap().unwrap();
+        assert!(t.next_run_at.is_none(), "Disable clears next_run_at");
+        assert!(!t.enabled, "Disable disables the task");
+        assert_eq!(
+            t.paused_reason.as_deref(),
+            Some("completed"),
+            "a self-stopped task reads as 'completed' (UI parity with a spent once task)"
+        );
+    }
+
+    // TEST-91 (ITEM-23 / DEC-47): `list_for_user_by_conversation` returns only the
+    // caller's tasks bound to that conversation; the unbound / other-conversation
+    // tasks are excluded. DB-gated.
+    #[tokio::test]
+    async fn list_by_conversation_filters_owner_scoped() {
+        let Some(pool) = db().await else { return };
+        let user = seed_user(&pool).await;
+        let conv = Uuid::new_v4();
+
+        // A task bound to `conv`, plus an unbound task (both this user's).
+        let bound = seed_prompt_task(&pool, user, "recurring", true).await;
+        set_bound_conversation(&pool, bound, conv).await.expect("bind");
+        let _unbound = seed_prompt_task(&pool, user, "recurring", true).await;
+
+        let rows = list_for_user_by_conversation(&pool, user, conv)
+            .await
+            .expect("list by conv");
+        let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+        assert_eq!(ids, vec![bound], "only the bound task is returned");
+
+        // A foreign conversation id → empty (owner-scoped, no leak).
+        let empty = list_for_user_by_conversation(&pool, user, Uuid::new_v4())
+            .await
+            .expect("list by unknown conv");
+        assert!(empty.is_empty(), "an unbound conversation returns no tasks");
     }
 
     // TEST-14 / TEST-15 (ITEM-8): `prune_runs_older_than` deletes ONLY runs whose

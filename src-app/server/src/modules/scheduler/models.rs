@@ -95,6 +95,7 @@ impl ScheduledTask {
     pub fn schedule_kind(&self) -> ScheduleKind {
         match self.schedule_kind.as_str() {
             "recurring" => ScheduleKind::Recurring,
+            "self_paced" => ScheduleKind::SelfPaced,
             _ => ScheduleKind::Once,
         }
     }
@@ -132,6 +133,13 @@ pub struct CreateScheduledTask {
     /// built-in read-only tools only).
     #[serde(default)]
     pub allowed_unattended_tools: Vec<AllowedTool>,
+
+    /// ITEM-22 / DEC-46: bind a prompt-kind task to an EXISTING conversation (the
+    /// "schedule/loop THIS chat" affordance) so its firings append to that chat
+    /// instead of a fresh per-task conversation. Ownership is verified at create
+    /// time (a foreign id → 404); `None` keeps the create-a-conversation default.
+    #[serde(default)]
+    pub bound_conversation_id: Option<Uuid>,
 }
 
 /// Update-task request body (all fields optional; only present ones change).

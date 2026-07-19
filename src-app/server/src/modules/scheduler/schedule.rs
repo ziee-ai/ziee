@@ -11,7 +11,7 @@
 
 use std::str::FromStr as _;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use chrono_tz::Tz;
 use croner::Cron;
 
@@ -20,6 +20,63 @@ use croner::Cron;
 pub enum ScheduleKind {
     Once,
     Recurring,
+    /// Model-driven cadence (ITEM-21 / DEC-42): the task carries neither `run_at`
+    /// nor `cron_expr`; after each turn the model proposes the next delay (or
+    /// stops), and `next_self_paced_fire` clamps it. First-arm fires immediately.
+    SelfPaced,
+}
+
+/// A self-paced turn's proposed next action (DEC-42), produced by the
+/// (later-tranche) model-facing `schedule_next` tool. `stop` ends the loop;
+/// otherwise `delay_seconds` is the model's requested wait until the next turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelfPacedProposal {
+    pub delay_seconds: i64,
+    pub stop: bool,
+}
+
+/// The clamped result of a self-paced proposal (DEC-44/45): re-arm at an instant,
+/// or stop the loop (self-complete).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelfPacedOutcome {
+    /// Re-arm `next_run_at` at this UTC instant.
+    Fire(DateTime<Utc>),
+    /// Stop the loop (self-complete): a `stop` signal, or the absolute per-task
+    /// horizon (`created_at + max_horizon_days`) was reached.
+    Disable,
+}
+
+/// Compute a self-paced task's next fire from the model's proposal (DEC-42/44/45):
+///   * `stop` → `Disable` (self-complete).
+///   * absolute expiry (`created_at + max_horizon_days`) reached → `Disable`.
+///   * else clamp `delay_seconds` to `[min_interval_seconds, max_horizon_days]`
+///     (the horizon in seconds is the ceiling) and cap the resulting instant at
+///     the absolute expiry so a late task never over-runs its horizon.
+///
+/// Pure + unit-tested (TEST-86). The model-facing tool that PRODUCES the proposal
+/// is a later tranche; the write-back path (`dispatch::self_paced_writeback` →
+/// `repository::arm_self_paced`) feeds this function's output back onto the row.
+pub fn next_self_paced_fire(
+    proposal: &SelfPacedProposal,
+    min_interval_seconds: i64,
+    max_horizon_days: i64,
+    created_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> SelfPacedOutcome {
+    if proposal.stop {
+        return SelfPacedOutcome::Disable;
+    }
+    let expiry = created_at + Duration::days(max_horizon_days.max(1));
+    if now >= expiry {
+        return SelfPacedOutcome::Disable;
+    }
+    let horizon_seconds = max_horizon_days.max(1).saturating_mul(86_400);
+    // A degenerate admin config (min > horizon) must not panic `clamp`; the
+    // horizon is the hard ceiling.
+    let lo = min_interval_seconds.clamp(0, horizon_seconds);
+    let clamped = proposal.delay_seconds.clamp(lo, horizon_seconds);
+    let candidate = now + Duration::seconds(clamped);
+    SelfPacedOutcome::Fire(candidate.min(expiry))
 }
 
 /// Why a proposed schedule was rejected (mapped to a 400 by the handler).
@@ -94,6 +151,11 @@ pub fn next_occurrence(
                 Err(_) => Ok(None),
             }
         }
+        // A self-paced task's FIRST arm fires immediately (`after` = create-time
+        // `now`); every subsequent fire time comes from the write-back path
+        // (`next_self_paced_fire`), NOT from this function. The tick special-cases
+        // SelfPaced and never re-derives the next fire here.
+        ScheduleKind::SelfPaced => Ok(Some(after)),
     }
 }
 
@@ -117,6 +179,11 @@ pub fn validate_schedule(
             }
             Ok(())
         }
+        // A self-paced task has no fixed schedule to validate at rest — it needs
+        // neither `run_at` nor `cron_expr` (the DB `schedule_coherent` CHECK is
+        // relaxed to match). Cadence is enforced later by `next_self_paced_fire`'s
+        // clamp to `[min_interval_seconds, max_horizon_days]`.
+        ScheduleKind::SelfPaced => Ok(()),
         ScheduleKind::Recurring => {
             let expr = cron_expr.ok_or(ScheduleError::MissingField("cron_expr"))?;
             let cron = parse_cron(expr)?;
@@ -271,5 +338,85 @@ mod tests {
             now
         )
         .is_ok());
+    }
+
+    // TEST-86 (ITEM-21 / DEC-42/44/45): the self-paced clamp — an over-horizon
+    // proposal is clamped to (and capped at) the absolute expiry; a sub-minimum
+    // delay is raised to the floor; an in-range delay passes through; and both a
+    // `stop` signal and a past-expiry task disable (self-complete).
+    #[test]
+    fn self_paced_clamps_and_stops() {
+        let created = utc(2026, 7, 1, 0, 0);
+        let now = utc(2026, 7, 2, 0, 0); // 1 day into a 7-day horizon
+        let min_interval = 300; // 5 min floor
+        let horizon_days = 7;
+
+        // A 30-day proposal is clamped to the 7-day horizon, then capped at the
+        // absolute expiry (created + 7d = 2026-07-08).
+        let out = next_self_paced_fire(
+            &SelfPacedProposal { delay_seconds: 30 * 86_400, stop: false },
+            min_interval,
+            horizon_days,
+            created,
+            now,
+        );
+        assert_eq!(
+            out,
+            SelfPacedOutcome::Fire(utc(2026, 7, 8, 0, 0)),
+            "an over-horizon proposal is clamped + capped at the absolute expiry"
+        );
+
+        // A sub-minimum delay is raised to the min_interval floor.
+        assert_eq!(
+            next_self_paced_fire(
+                &SelfPacedProposal { delay_seconds: 5, stop: false },
+                min_interval,
+                horizon_days,
+                created,
+                now,
+            ),
+            SelfPacedOutcome::Fire(now + Duration::seconds(300)),
+            "a sub-minimum delay is raised to min_interval_seconds"
+        );
+
+        // An in-range delay passes through unchanged.
+        assert_eq!(
+            next_self_paced_fire(
+                &SelfPacedProposal { delay_seconds: 3600, stop: false },
+                min_interval,
+                horizon_days,
+                created,
+                now,
+            ),
+            SelfPacedOutcome::Fire(now + Duration::seconds(3600)),
+            "an in-range delay is honored"
+        );
+
+        // A `stop` signal disables regardless of the delay.
+        assert_eq!(
+            next_self_paced_fire(
+                &SelfPacedProposal { delay_seconds: 3600, stop: true },
+                min_interval,
+                horizon_days,
+                created,
+                now,
+            ),
+            SelfPacedOutcome::Disable,
+            "stop → disable (self-complete)"
+        );
+
+        // Past the absolute expiry (created + 7d) → disable even without stop.
+        let late = utc(2026, 7, 9, 0, 0);
+        assert_eq!(
+            next_self_paced_fire(
+                &SelfPacedProposal { delay_seconds: 3600, stop: false },
+                min_interval,
+                horizon_days,
+                created,
+                late,
+            ),
+            SelfPacedOutcome::Disable,
+            "reaching the absolute horizon → disable"
+        );
     }
 }

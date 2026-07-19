@@ -138,6 +138,33 @@ pub(super) fn build_change_summary(outcome: &super::change::ChangeOutcome) -> se
     })
 }
 
+/// ITEM-21 / DEC-42/44/45: compute the self-paced WRITE-BACK outcome for a fired
+/// turn — clamp the model's proposed delay via `schedule::next_self_paced_fire`
+/// (honoring the min-interval floor, the max-horizon ceiling, and the absolute
+/// per-task expiry), or, when NO proposal was produced (the model-facing
+/// `schedule_next` tool is a later tranche), self-stop. Pure + unit-testable; the
+/// caller (`tick::fire_task`) applies the result via `repository::arm_self_paced`.
+pub(super) fn self_paced_writeback(
+    proposal: Option<&super::schedule::SelfPacedProposal>,
+    min_interval_seconds: i64,
+    max_horizon_days: i64,
+    created_at: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> super::schedule::SelfPacedOutcome {
+    match proposal {
+        Some(p) => super::schedule::next_self_paced_fire(
+            p,
+            min_interval_seconds,
+            max_horizon_days,
+            created_at,
+            now,
+        ),
+        // No proposal (tool not yet wired) ⇒ a fired self-paced turn self-completes
+        // rather than looping forever.
+        None => super::schedule::SelfPacedOutcome::Disable,
+    }
+}
+
 /// ITEM-9/DEC-8: transient-failure tolerance is provided by the consecutive-
 /// failure CAP (`max_consecutive_failures`, admin-configurable), NOT by an
 /// in-run retry. An earlier design re-ran the whole `dispatch` on a transient
