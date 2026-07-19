@@ -1,0 +1,24 @@
+# Production overlay for the WSU deploy host — layered over docker-compose.yml
+# (COMPOSE_FILE=deploy/runtime/docker-compose.yml:deploy/runtime/docker-compose.prod.yml).
+#
+# The base compose declares plain named volumes (portable / local test). Prod
+# keeps the cluster + file store on the WSU /data disk, so back the two named
+# volumes with host binds under ${ZIEE_DATA_ROOT:-/data/ziee} — mirroring the
+# retired docker-compose.deploy.yml. These host paths are what the cutover
+# runbook rotates (mv pg-data -> pg-data-bk); the empty pg-data is re-created on
+# first boot.
+name: ziee-web
+
+volumes:
+  pg-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${ZIEE_DATA_ROOT:-/data/ziee}/pg-data
+  ziee-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${ZIEE_DATA_ROOT:-/data/ziee}/ziee-data
