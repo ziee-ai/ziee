@@ -42,3 +42,24 @@ covered in **agent-core's OWN lifecycle**, NOT this feature). ALWAYS run with `-
 green on this feature's real hunks. A one-line agent-kit follow-up (have lifecycle-check read
 `APP.LIFECYCLE_BASE` as the default base) would make a bare invocation correct — deferred because
 `.claude/lifecycle` is a symlink into the agent-kit submodule (a cross-repo change, human-coordinated).
+
+## 4. The two remaining lifecycle-check fails are STACKED-BRANCH / PRE-EXISTING artifacts (not this feature)
+lifecycle-check computes its diff base from the `--base` flag ONLY (no env / app.config field is
+read — verified in lifecycle-check.mjs: `baseArg = opt('--base')`, else default `origin/main`). Because
+`feat/workflow-kind-agent` is STACKED on **UNMERGED** `feat/agent-core`, a BARE invocation
+(`origin/main...HEAD`) pulls in the entire agent-core crate + live1's pre-existing debt as if "new":
+
+- **Phase 6 (AUDIT_COVERAGE)** — fails ONLY against `origin/main...HEAD` (100+ agent-core hunks: the
+  agent-core crate, chat/agent_host, the agent module + tests — already **9/9-audited in agent-core's
+  OWN lifecycle**). With `--base feat/agent-core` (this feature's REAL diff) Phase 6 is **GREEN**.
+  Clears automatically when `feat/agent-core` merges to main (then `origin/main...HEAD` == this feature only).
+- **`npm run check (ui)`** — fails on (a) `check:{gallery-coverage,state-matrix,overlay-registry,
+  override-registry}` = live1's PRE-EXISTING kit→`@ziee/kit` package-move debt (fails identically on the
+  base), clearing when live1's SDK-extraction reconciles the kit gallery coverage; and (b)
+  `check:testid-registry` = this feature's kit-testid **merge carry-along** (§1), clearing when
+  regenerated + committed to the sdk at merge. Neither is this feature's code.
+
+**All FEATURE-SCOPE gates are green** (against `--base feat/agent-core`): phases 1-7 + 9 OK, Phase 6
+coverage green on the feature's real hunks; the only non-green is the pre-existing/carry-along
+`npm run check (ui)` debt above. Both remaining fails resolve at the respective merges — nothing to fix
+on this branch.
