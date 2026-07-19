@@ -233,6 +233,32 @@ async fn main() {
     setup_external_binaries();
 }
 
+/// The directory triple the embedded tool binaries are STAGED under, which must
+/// match the FIXED path the runtime `include_bytes!` resolves (see the
+/// `#[cfg(...)]` arms in each module's `embedded.rs`). For Linux the runtime
+/// always reads the `-gnu` triple (both x86_64 and aarch64) regardless of
+/// whether the ziee binary itself is built for gnu or musl — the tools we embed
+/// (uv/bun/pandoc/typst/pdfium/biomcp) ship only glibc/portable builds, so the
+/// setup helpers already download the `-gnu` artifact even for a `-musl` target
+/// (see the musl→gnu maps in build_helper/{uv,bun,biomcp}.rs). Stage them under
+/// that same `-gnu` dir so the staging path matches `include_bytes!`.
+///
+/// Without this, a `cargo zigbuild --target x86_64-unknown-linux-musl` stages
+/// the binaries under `binaries/x86_64-unknown-linux-musl/` while the source
+/// includes them from `binaries/x86_64-unknown-linux-gnu/`, so the link fails
+/// with `couldn't read binaries/x86_64-unknown-linux-gnu/<tool>: No such file`.
+///
+/// Non-Linux targets (apple-darwin, pc-windows-msvc) have no musl variant and
+/// their `include_bytes!` paths already equal `TARGET`, so they pass through
+/// unchanged.
+fn embed_triple(target: &str) -> &str {
+    match target {
+        "x86_64-unknown-linux-musl" => "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl" => "aarch64-unknown-linux-gnu",
+        other => other,
+    }
+}
+
 fn setup_external_binaries() {
     println!("=== SETUP_EXTERNAL_BINARIES CALLED ===");
 
@@ -242,20 +268,26 @@ fn setup_external_binaries() {
     println!("TARGET: {}", target);
     println!("OUT_DIR: {}", out_dir);
 
-    // Use server/binaries/{target}/ for embedding
+    // Stage under the embed triple the runtime `include_bytes!` resolves — for
+    // Linux that is the `-gnu` dir even on a musl build (see `embed_triple`).
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let binaries_dir = PathBuf::from(&manifest_dir)
         .join("binaries")
-        .join(&target);
+        .join(embed_triple(&target));
 
-    println!("Setting up external binaries for embedding at: {:?}", binaries_dir);
+    println!(
+        "Setting up external binaries for embedding at: {:?} (TARGET={}, embed_triple={})",
+        binaries_dir,
+        target,
+        embed_triple(&target)
+    );
 
-    // Setup Pandoc - downloads to binaries/{target}/
+    // Setup Pandoc - downloads to binaries/{embed_triple}/
     if let Err(e) = pandoc::setup_pandoc(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup Pandoc: {}", e);
     }
 
-    // Setup typst - downloads to binaries/{target}/typst/.
+    // Setup typst - downloads to binaries/{embed_triple}/typst/.
     // typst is the Unicode-capable PDF engine pandoc routes office-doc
     // → PDF conversions through (replaces pdflatex, which choked on
     // common Unicode characters like ≥/≤/→/π). Self-contained binary,
@@ -264,22 +296,22 @@ fn setup_external_binaries() {
         eprintln!("Warning: Failed to setup typst: {}", e);
     }
 
-    // Setup PDFium - downloads to binaries/{target}/
+    // Setup PDFium - downloads to binaries/{embed_triple}/
     if let Err(e) = pdfium::setup_pdfium(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup PDFium: {}", e);
     }
 
-    // Setup UV - downloads to binaries/{target}/
+    // Setup UV - downloads to binaries/{embed_triple}/
     if let Err(e) = uv::setup_uv(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup UV: {}", e);
     }
 
-    // Setup Bun - downloads to binaries/{target}/
+    // Setup Bun - downloads to binaries/{embed_triple}/
     if let Err(e) = bun::setup_bun(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup Bun: {}", e);
     }
 
-    // Setup BioMCP - downloads to binaries/{target}/. Fail-soft like
+    // Setup BioMCP - downloads to binaries/{embed_triple}/. Fail-soft like
     // pgvector: on failure a zero-byte stub is staged so the runtime
     // `include_bytes!` compiles and the bio_mcp module self-disables.
     if let Err(e) = biomcp::setup_biomcp(&target, &binaries_dir, &out_dir) {
