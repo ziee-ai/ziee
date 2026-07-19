@@ -33,7 +33,43 @@ pub struct RecordedRequest {
     /// structure — e.g. that a continuation (had_tool_result) request doesn't end
     /// with a stray `user` turn re-inlining the upload after the tool round-trip.
     pub roles: Vec<String>,
+    /// The request's `max_tokens` (or `max_completion_tokens`, whichever the
+    /// param policy selected). Lets the title tests assert the budget that
+    /// actually reached the wire.
+    pub max_tokens: Option<u64>,
+    /// True when this was the title extension's generation call — see
+    /// [`TITLE_PROMPT_PREFIX`].
+    pub is_title_request: bool,
 }
+
+/// The fixed preamble of the title extension's prompt
+/// (`chat/extensions/title/title.rs::build_title_request`). The title call is
+/// tool-less and otherwise indistinguishable from a normal generation, so the
+/// stub keys off this to answer it with a recognizable beacon.
+pub const TITLE_PROMPT_PREFIX: &str = "Generate a concise, descriptive title";
+
+/// The title the stub returns for a title-generation call. A test asserts the
+/// stored title equals this — proving an AI-generated title was used, and NOT
+/// the raw first user message.
+pub const STUB_TITLE: &str = "Stub Generated Title";
+
+/// Put this token in the ORIGINAL user message to make the stub answer EVERY
+/// title call with an EMPTY completion (no text, `finish_reason: "stop"`).
+///
+/// This reproduces the production failure: `openai/gpt-oss-120b` spent its whole
+/// token budget on `reasoning_content` and emitted no answer text. The title
+/// prompt quotes the user's FIRST message verbatim, so the token reaches the
+/// stub on every title call for that conversation.
+pub const STUB_TITLE_EMPTY: &str = "STUB_TITLE=empty";
+
+/// Like [`STUB_TITLE_EMPTY`], but only the FIRST title call comes back empty;
+/// later ones return [`STUB_TITLE`].
+///
+/// Models the TRANSIENT failure — which is the case the retry exists for. Note
+/// the permanent variant cannot show a successful retry: the title prompt always
+/// quotes the conversation's FIRST user message, so the token is still present
+/// on the retry.
+pub const STUB_TITLE_EMPTY_ONCE: &str = "STUB_TITLE=empty_once";
 
 impl RecordedRequest {
 
@@ -223,13 +259,56 @@ async fn chat_completions(State(s): State<StubState>, body: axum::body::Bytes) -
         })
         .collect();
 
+    let is_title_request = last_user.starts_with(TITLE_PROMPT_PREFIX);
+    let max_tokens = v
+        .get("max_tokens")
+        .or_else(|| v.get("max_completion_tokens"))
+        .and_then(|v| v.as_u64());
+
+    // Title calls seen BEFORE this one (the push below has not happened yet) —
+    // drives the `empty_once` transient-failure mode.
+    let prior_title_requests = s
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r.is_title_request)
+        .count();
+
     s.requests.lock().unwrap().push(RecordedRequest {
         tool_names: tool_names.clone(),
         had_tool_result,
         has_manifest,
         all_text,
         roles,
+        max_tokens,
+        is_title_request,
     });
+
+    // The title extension's call: answer with a beacon (or, when the test asked
+    // for it, an EMPTY completion) instead of routing through the STUB_PLAN
+    // dispatch — the title prompt quotes the user's message verbatim, so it
+    // would otherwise match the conversation's own plan token.
+    if is_title_request {
+        // Exact token match — a `contains` check would let the "empty" arm also
+        // swallow "empty_once". The title prompt embeds the user's message in
+        // QUOTES, so a token at end-of-message arrives as `empty"` — strip the
+        // quoting before matching.
+        let mode = parse_token(&last_user, "STUB_TITLE=")
+            .and_then(|t| t.split_whitespace().next().map(String::from))
+            .map(|t| t.trim_matches(['"', '\'']).to_string())
+            .unwrap_or_default();
+        let text = match mode.as_str() {
+            "empty" => None,
+            "empty_once" if prior_title_requests == 0 => None,
+            _ => Some(STUB_TITLE.to_string()),
+        };
+        return if streaming {
+            stream_response(&model, text, None)
+        } else {
+            json_response(&model, text, None)
+        };
+    }
 
     // Build the scripted turn: (text, optional tool call (name, args json)).
     let (text, tool_call) = script(&plan, had_tool_result, &tool_names, &system_text, &last_user, messages);
