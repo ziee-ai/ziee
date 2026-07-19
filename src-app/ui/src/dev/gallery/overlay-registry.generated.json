@@ -1,10 +1,10 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 87,
-    "hosts": 63,
-    "triggers": 24,
-    "wiredOpen": 40
+    "total": 37,
+    "hosts": 36,
+    "triggers": 1,
+    "wiredOpen": 31
   },
   "hosts": [
     {
@@ -34,32 +34,6 @@
         {
           "primitive": "Drawer",
           "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/chat/components/ChatInput",
-      "class": "host",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/chat/components/ConversationCard",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "controlled"
         }
       ]
     },
@@ -94,62 +68,6 @@
       ]
     },
     {
-      "surface": "modules/chat/extensions/voice/components/MicButton",
-      "class": "host",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/citations/components/ImportCitationsModal",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/file-rag/components/sections/EmbeddingSection",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        },
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/file/components/FileCard",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
       "surface": "modules/file/components/FilePreviewDrawer",
       "class": "host",
       "primitives": [
@@ -158,19 +76,6 @@
       "occurrences": [
         {
           "primitive": "Drawer",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/file/components/FileVersionBar",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
           "mode": "controlled"
         }
       ]
@@ -241,19 +146,6 @@
       ]
     },
     {
-      "surface": "modules/knowledge-base/components/KnowledgeBaseCard",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
       "surface": "modules/knowledge-base/components/KnowledgeBaseFormDrawer",
       "class": "host",
       "primitives": [
@@ -262,19 +154,6 @@
       "occurrences": [
         {
           "primitive": "Drawer",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/layouts/app-layout/AppLayout",
-      "class": "host",
-      "primitives": [
-        "Sheet"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Sheet",
           "mode": "controlled"
         }
       ]
@@ -371,19 +250,6 @@
       ]
     },
     {
-      "surface": "modules/llm-provider/components/widgets/DownloadIndicatorWidget",
-      "class": "host",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
       "surface": "modules/llm-repository/components/LlmRepositoryDrawer",
       "class": "host",
       "primitives": [
@@ -413,14 +279,9 @@
       "surface": "modules/mcp/components/McpConfigModal",
       "class": "host",
       "primitives": [
-        "Dialog",
         "Drawer"
       ],
       "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        },
         {
           "primitive": "Drawer",
           "mode": "controlled"
@@ -441,41 +302,9 @@
       ]
     },
     {
-      "surface": "modules/memory/components/CoreMemoryBlocksEditor",
-      "class": "host",
-      "primitives": [
-        "Confirm",
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        },
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/memory/components/sections/FullTextSearchSection",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
       "surface": "modules/memory/components/sections/MyMemoriesSection",
       "class": "host",
       "primitives": [
-        "Confirm",
         "Drawer"
       ],
       "occurrences": [
@@ -485,96 +314,6 @@
         },
         {
           "primitive": "Drawer",
-          "mode": "controlled"
-        },
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        },
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/memory/components/sections/SemanticSearchSection",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        },
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/notification/components/NotificationBellWidget",
-      "class": "host",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/projects/chat-extension/components/ProjectConversationsList",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/projects/chat-extension/extension",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/projects/components/AddToProjectModal",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/projects/components/ProjectCard",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
           "mode": "controlled"
         }
       ]
@@ -606,19 +345,6 @@
       ]
     },
     {
-      "surface": "modules/scheduler/components/ScheduledTaskCard",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
       "surface": "modules/scheduler/components/ScheduledTaskFormDrawer",
       "class": "host",
       "primitives": [
@@ -632,36 +358,9 @@
       ]
     },
     {
-      "surface": "modules/skill/components/ImportSkillDialog",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/skill/components/SkillConversationDrawer",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
       "surface": "modules/skill/components/SkillDetailDrawer",
       "class": "host",
       "primitives": [
-        "Confirm",
         "Drawer"
       ],
       "occurrences": [
@@ -671,23 +370,6 @@
         },
         {
           "primitive": "Drawer",
-          "mode": "controlled"
-        },
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
           "mode": "controlled"
         }
       ]
@@ -784,23 +466,6 @@
       ]
     },
     {
-      "surface": "modules/user/components/user/UsersSettings",
-      "class": "host",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "controlled"
-        },
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
       "surface": "modules/voice/components/UploadModelDrawer",
       "class": "host",
       "primitives": [
@@ -814,75 +479,18 @@
       ]
     },
     {
-      "surface": "modules/workflow/components/DryRunPreviewDialog",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/workflow/components/ImportWorkflowDialog",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
       "surface": "modules/workflow/components/WorkflowDetailDrawer",
       "class": "host",
       "primitives": [
-        "Dialog",
         "Drawer"
       ],
       "occurrences": [
         {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        },
-        {
           "primitive": "Drawer",
           "mode": "controlled"
         },
         {
           "primitive": "Drawer",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/workflow/components/WorkflowRunDialog",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
-          "mode": "controlled"
-        }
-      ]
-    },
-    {
-      "surface": "modules/workflow/components/WorkflowTestsPanel",
-      "class": "host",
-      "primitives": [
-        "Dialog"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Dialog",
           "mode": "controlled"
         }
       ]
@@ -890,326 +498,14 @@
   ],
   "triggers": [
     {
-      "surface": "modules/assistant/chat-extension/components/AssistantMenuItem",
-      "class": "trigger",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/assistant/pages/AssistantsSettings",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/assistant/pages/UserAssistantsSettings",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/auth-providers/components/AuthProvidersListSection",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/chat/components/ConversationList",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/chat/extensions/export/extension",
-      "class": "trigger",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/citations/components/CitationCard",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/code-sandbox/components/RootfsVersionGroup",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/file/components/FileExportMenu",
-      "class": "trigger",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/file/project-extension/components/ProjectFilesManagePanel",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/file/viewers/tabular/ExpandableCell",
-      "class": "trigger",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/hub/modules/installed/components/InstalledHubTab",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        },
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/knowledge-base/chat-extension/components/KbMenuItem",
-      "class": "trigger",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/knowledge-base/project-extension/components/ProjectKnowledgeBasesManagePanel",
-      "class": "trigger",
-      "primitives": [
-        "Popover"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Popover",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/llm-local-runtime/components/RuntimeVersionCard",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/llm-provider/components/ProviderHeader",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/llm-repository/components/LlmRepositorySettings",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/mcp/components/common/McpServerCard",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/projects/pages/ProjectDetailPage",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        },
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/user/components/group/GroupListItem",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
       "surface": "modules/user/components/user/UserGroupsDrawer",
       "class": "trigger",
       "primitives": [
-        "Confirm",
         "Drawer"
       ],
       "occurrences": [
         {
           "primitive": "Drawer",
-          "mode": "trigger"
-        },
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/voice/components/InstalledModelsCard",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/voice/components/InstalledVersionsCard",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
-          "mode": "trigger"
-        }
-      ]
-    },
-    {
-      "surface": "modules/workflow/components/WorkflowRunsList",
-      "class": "trigger",
-      "primitives": [
-        "Confirm"
-      ],
-      "occurrences": [
-        {
-          "primitive": "Confirm",
           "mode": "trigger"
         }
       ]

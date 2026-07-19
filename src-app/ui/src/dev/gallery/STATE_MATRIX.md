@@ -7,19 +7,19 @@
 
 ## Summary
 
-- **371** surfaces carry at least one renderable-state signal.
-- **2216** signals total: 1756 branch, 141 empty, 113 error, 106 loading, 97 overlay, 3 panel.
+- **318** surfaces carry at least one renderable-state signal.
+- **1982** signals total: 1551 branch, 132 empty, 113 error, 90 loading, 93 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
-- **34** slot registrations (sidebar / settings / chat mount points).
+- **35** slot registrations (sidebar / settings / chat mount points).
 
 ### Surfaces demanding each gallery state
 
 | state | surfaces |
 |---|---|
-| `delayed` | 94 |
-| `empty` | 111 |
+| `delayed` | 81 |
+| `empty` | 107 |
 | `error` | 89 |
-| `open` | 83 |
+| `open` | 79 |
 | `panel-open` | 3 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -39,6 +39,7 @@ conversation page.
 | slot | module surface |
 |---|---|
 | `chatConversationHeaderTrailing` | `modules/chat/module`:132 |
+| `settingsAdminPages` | `modules/agent/module`:45 |
 | `settingsAdminPages` | `modules/assistant/module`:79 |
 | `settingsAdminPages` | `modules/auth-providers/module`:43 |
 | `settingsAdminPages` | `modules/auth/module`:80 |
@@ -59,7 +60,7 @@ conversation page.
 | `settingsAdminPages` | `modules/user/module`:91 |
 | `settingsAdminPages` | `modules/voice/module`:61 |
 | `settingsAdminPages` | `modules/web-search/module`:57 |
-| `settingsAdminPages` | `modules/workflow/module`:104 |
+| `settingsAdminPages` | `modules/workflow/module`:126 |
 | `settingsUserPages` | `modules/assistant/module`:69 |
 | `settingsUserPages` | `modules/citations/module`:37 |
 | `settingsUserPages` | `modules/literature/module`:77 |
@@ -70,602 +71,22 @@ conversation page.
 | `settingsUserPages` | `modules/skill/module`:95 |
 | `settingsUserPages` | `modules/user-llm-providers/module`:40 |
 | `settingsUserPages` | `modules/web-search/module`:67 |
-| `settingsUserPages` | `modules/workflow/module`:94 |
+| `settingsUserPages` | `modules/workflow/module`:116 |
 | `sidebarContent` | `modules/chat/module`:117 |
 
 ## Per-surface required states
 
-### `components/ui/kit/accordion`
+### `modules/agent/components/AgentSettingsSection`
 
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `props.type === 'multiple'` | 41 |
-
-### `components/ui/kit/alert`
-
-Required states: _(branch-only — proven via dynamic coverage)_
+Required states: `delayed`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `icon != null` | 57 |
-| branch | `title != null` | 69 |
-| branch | `(description != null \|\| children != null)` | 70 |
-| branch | `onClose` | 73 |
-
-### `components/ui/kit/avatar`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `safe != null` | 20 |
-
-### `components/ui/kit/badge`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `count != null \|\| dot` | 71 |
-| branch | `children == null` | 86 |
-| branch | `hideBubble` | 87 |
-| branch | `dot` | 88 |
-| branch | `!(hideBubble)` | 108 |
-| branch | `icon != null` | 144 |
-
-### `components/ui/kit/button`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `regionLoading` | 72 |
-| loading | `loading` | 106 |
-| branch | `icon != null` | 106 |
-| branch | `linkHref && !isDisabled` | 113 |
-
-### `components/ui/kit/card`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `(title != null \|\| extra != null)` | 41 |
-| branch | `title != null` | 43 |
-| loading | `skeleton` | 52 |
-| branch | `footer != null` | 62 |
-
-### `components/ui/kit/checkbox`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 41 |
-
-### `components/ui/kit/combobox`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 75 |
-
-### `components/ui/kit/confirm`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `children != null` | 54 |
-| branch | `description != null` | 59 |
-
-### `components/ui/kit/date-picker`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `v == null \|\| v === ''` | 15 |
-| loading | `s.loading` | 94 |
-| branch | `s.readOnly` | 97 |
-| branch | `blocked` | 103 |
-| branch | `name != null` | 105 |
-
-### `components/ui/kit/descriptions`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!el` | 41 |
-| branch | `title != null` | 79 |
-
-### `components/ui/kit/dialog`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `trigger != null` | 41 |
-| branch | `description != null` | 57 |
-| branch | `footer != null` | 74 |
-
-### `components/ui/kit/dialog-host`
-
-Required states: `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!items.some((x) => x.id === it.id)` | 121 |
-| branch | `it == null` | 129 |
-| overlay | `<AlertDialog open>` | 138 |
-| branch | `Icon != null` | 142 |
-| branch | `it.description != null` | 145 |
-| branch | `it.choices != null` | 147 |
-| branch | `it.cancelText != null` | 164 |
-| branch | `it.cancelText != null` | 176 |
-
-### `components/ui/kit/dropdown`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 79 |
-| branch | `'type' in it && it.type === 'label'` | 81 |
-| branch | `(it as { icon?: React.ReactNode }).icon != null` | 99 |
-
-### `components/ui/kit/empty`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `image != null` | 21 |
-| branch | `icon != null` | 23 |
-| branch | `title != null` | 24 |
-| branch | `description != null` | 25 |
-| branch | `children != null` | 27 |
-
-### `components/ui/kit/error-state`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `hasActions` | 75 |
-| branch | `onRetry != null` | 77 |
-| branch | `details != null` | 86 |
-| branch | `details != null && showDetails` | 98 |
-| branch | `variant === 'page'` | 109 |
-
-### `components/ui/kit/form`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!el \|\| layout !== 'horizontal'` | 157 |
-| branch | `label != null` | 276 |
-| branch | `required` | 285 |
-| branch | `description != null` | 289 |
-| branch | `showError` | 291 |
-| branch | `beside` | 293 |
-
-### `components/ui/kit/image`
-
-Required states: `error`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!el` | 50 |
-| branch | `scale <= 1` | 61 |
-| error | `safe == null \|\| failed` | 93 |
-
-### `components/ui/kit/input`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 28 |
-| branch | `showClear` | 33 |
-| loading | `loading` | 43 |
-| branch | `prefix` | 70 |
-| branch | `rightAdornment` | 76 |
-| branch | `show` | 111 |
-
-### `components/ui/kit/input-number`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `raw === '' \|\| isIntermediate(raw)` | 46 |
-
-### `components/ui/kit/list`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `header != null` | 37 |
-| branch | `busy` | 38 |
-| empty | `dataSource.length === 0` | 44 |
-| branch | `footer != null` | 53 |
-
-### `components/ui/kit/menu`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 164 |
-| branch | `'type' in it && it.type === 'group'` | 170 |
-| branch | `!collapsed` | 174 |
-| branch | `'type' in it && it.type === 'label'` | 182 |
-| branch | `!(collapsed)` | 183 |
-| branch | `item.icon != null` | 215 |
-| branch | `!collapsed` | 217 |
-| branch | `hasActions` | 219 |
-
-### `components/ui/kit/multi-select`
-
-Required states: `delayed`, `empty`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `o && !o.disabled` | 94 |
-| branch | `exact && !exact.disabled` | 97 |
-| branch | `canCreate` | 121 |
-| empty | `filtered.length === 0 && !canCreate` | 131 |
-| empty | `!(filtered.length === 0)` | 133 |
-| branch | `locked` | 241 |
-| branch | `locked` | 243 |
-| loading | `s.loading` | 259 |
-| branch | `locked && o` | 261 |
-| branch | `name != null` | 263 |
-| branch | `locked` | 286 |
-| empty | `uniqueCurrent.length === 0` | 296 |
-| branch | `virtual` | 312 |
-| branch | `!canCreate` | 323 |
-| branch | `canCreate` | 324 |
-
-### `components/ui/kit/pagination`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `pageCount <= 1 && showTotal == null && !showSizeChanger` | 91 |
-| branch | `showTotal != null` | 103 |
-| branch | `pageCount > 1` | 104 |
-| branch | `p === 'gap'` | 119 |
-| branch | `showSizeChanger` | 152 |
-| branch | `showQuickJumper && pageCount > 1` | 162 |
-
-### `components/ui/kit/popover`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `hover` | 45 |
-| branch | `title != null` | 48 |
-
-### `components/ui/kit/progress`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `shape === 'circle'` | 44 |
-| branch | `showCenter` | 66 |
-
-### `components/ui/kit/radio-group`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 44 |
-
-### `components/ui/kit/result`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `subtitle != null` | 35 |
-| branch | `extra != null` | 36 |
-
-### `components/ui/kit/section-header`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `description != null` | 49 |
-| branch | `actions != null` | 55 |
-
-### `components/ui/kit/segmented`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 47 |
-| branch | `name != null` | 51 |
-
-### `components/ui/kit/select`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `isGroup(o)` | 103 |
-| branch | `o.label != null` | 106 |
-| loading | `s.loading` | 139 |
-| loading | `loading` | 177 |
-| branch | `showClear` | 179 |
-
-### `components/ui/kit/separator`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `children` | 14 |
-
-### `components/ui/kit/sheet`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!drag.current` | 57 |
-| branch | `!o && maskClosable === false && (details as { reason?: string }).reason === 'outside-press'` | 87 |
-| branch | `trigger != null` | 91 |
-| branch | `description != null` | 101 |
-| loading | `loading` | 105 |
-| branch | `footer != null` | 109 |
-| branch | `resizable` | 110 |
-
-### `components/ui/kit/spinner`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `children === undefined` | 35 |
-| branch | `description != null` | 39 |
-| branch | `spinning` | 46 |
-| branch | `description != null` | 49 |
-
-### `components/ui/kit/statistic`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `prefix != null` | 30 |
-| branch | `suffix != null` | 32 |
-
-### `components/ui/kit/switch`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 50 |
-| loading | `loading` | 79 |
-| branch | `tooltip != null` | 89 |
-
-### `components/ui/kit/table`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `v == null \|\| typeof v === 'boolean'` | 126 |
-| branch | `!active` | 158 |
-| branch | `view.sort!.dir === 'asc'` | 159 |
-| branch | `meta.sortable` | 162 |
-| branch | `props.filterable` | 236 |
-| branch | `props.columnChooser && hideable.length > 0` | 252 |
-| branch | `props.toolbarExtra` | 280 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 333 |
-| branch | `!tsv` | 335 |
-| branch | `showVirtual` | 346 |
-| branch | `hasToolbar` | 357 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 388 |
-| branch | `caption != null` | 407 |
-| branch | `resizableTable` | 408 |
-| branch | `meta.resizable` | 428 |
-| branch | `busy` | 435 |
-| empty | `rows.length === 0` | 443 |
-| branch | `meta.resizable` | 559 |
-| branch | `mode === 'none'` | 609 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 614 |
-| branch | `!selectionActive(props, col)` | 621 |
-
-### `components/ui/kit/tabs`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `scrollX` | 108 |
-| branch | `showClose` | 151 |
-| branch | `editable && !hideAdd` | 167 |
-
-### `components/ui/kit/tag`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `icon != null` | 85 |
-| branch | `onClose != null` | 87 |
-
-### `components/ui/kit/textarea`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 21 |
-
-### `components/ui/kit/theme`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `theme !== 'system' \|\| typeof window === 'undefined'` | 63 |
-| branch | `typeof document === 'undefined'` | 75 |
-
-### `components/ui/kit/tree`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `el` | 156 |
-| branch | `pendingFocus.current == null` | 161 |
-| branch | `!isOpen && loadData && !node.children?.length && !node.isLeaf && !loadingKeys.has(key)` | 169 |
-| branch | `node.disabled` | 181 |
-| branch | `active == null` | 187 |
-| branch | `!row` | 190 |
-| branch | `n.disabled` | 240 |
-| loading | `loading` | 242 |
-| branch | `hasKids` | 244 |
-| branch | `checkable` | 247 |
-| branch | `virtualStyle` | 277 |
-| branch | `!virtual` | 282 |
-
-### `components/ui/kit/typography`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `done` | 47 |
-| branch | `copyable != null` | 75 |
-| branch | `copyable != null` | 130 |
-| branch | `safe == null` | 145 |
-
-### `components/ui/kit/upload`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!list \|\| locked` | 34 |
-
-### `components/ui/shadcn/accordion`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `extra != null` | 51 |
-
-### `components/ui/shadcn/calendar`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `orientation === "left"` | 146 |
-| branch | `orientation === "right"` | 152 |
-
-### `components/ui/shadcn/carousel`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!api` | 63 |
-| branch | `!api \|\| !setApi` | 90 |
-| branch | `!api` | 95 |
-
-### `components/ui/shadcn/combobox`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `showTrigger` | 80 |
-| branch | `showClear` | 91 |
-| branch | `showRemove` | 267 |
-
-### `components/ui/shadcn/dialog`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `showCloseButton` | 93 |
-| branch | `showCloseButton` | 142 |
-
-### `components/ui/shadcn/field`
-
-Required states: `error`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `children` | 162 |
-| branch | `!errors?.length` | 187 |
-| error | `error?.message` | 203 |
-| branch | `!content` | 209 |
-
-### `components/ui/shadcn/input-group`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `(e.target as HTMLElement).closest("button")` | 58 |
-
-### `components/ui/shadcn/input-otp`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `hasFakeCaret` | 64 |
-
-### `components/ui/shadcn/resizable`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `withHandle` | 41 |
-
-### `components/ui/shadcn/sheet`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `showCloseButton` | 73 |
-
-### `components/ui/shadcn/sidebar`
-
-Required states: `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `collapsible === "none"` | 167 |
-| branch | `isMobile` | 182 |
-| overlay | `<Sheet open>` | 184 |
-| branch | `!tooltip` | 521 |
-| branch | `showIcon` | 619 |
+| branch | `!canRead` | 130 |
+| error | `error` | 169 |
+| loading | `loading && !settings` | 179 |
+| branch | `canManage` | 186 |
+| branch | `!canManage` | 206 |
 
 ### `modules/app/SetupPage`
 
@@ -1164,19 +585,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `this.initialized` | 365 |
-| empty | `extensions.length === 0` | 543 |
-| empty | `extensions.length === 0` | 576 |
-| empty | `!registered \|\| registered.length === 0` | 895 |
-
-### `modules/chat/core/extensions/slots`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| empty | `renderers.length === 0` | 32 |
-| branch | `fallback` | 33 |
+| branch | `this.initialized` | 353 |
+| empty | `extensions.length === 0` | 531 |
+| empty | `extensions.length === 0` | 564 |
+| empty | `!registered \|\| registered.length === 0` | 883 |
 
 ### `modules/chat/core/extensions/utils`
 
@@ -2665,69 +2077,6 @@ Required states: `delayed`, `empty`
 | empty | `attached.length === 0` | 144 |
 | branch | `canUse` | 167 |
 
-### `modules/layouts/app-layout/AppLayout`
-
-Required states: `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `prevXsRef.current === windowMinSize.sm` | 210 |
-| branch | `e.touches.length !== 1` | 250 |
-| branch | `!panel` | 254 |
-| branch | `!s` | 260 |
-| branch | `Math.abs(dx) < 8 && Math.abs(dy) < 8` | 265 |
-| branch | `Math.abs(dy) > Math.abs(dx)` | 266 |
-| branch | `!s \|\| !s.active` | 280 |
-| branch | `!windowMinSize.sm \|\| !isSidebarCollapsed \|\| e.touches.length !== 1` | 294 |
-| branch | `document.querySelector( '[data-slot="layout-drawer"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]', )` | 298 |
-| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 316 |
-| branch | `!s` | 323 |
-| branch | `Math.abs(dx) < 10 && Math.abs(dy) < 10` | 328 |
-| branch | `Math.abs(dy) > Math.abs(dx) \|\| dx < 0` | 330 |
-| branch | `!mainContentElement` | 348 |
-| branch | `!window.visualViewport` | 387 |
-| branch | `!window.visualViewport` | 391 |
-| branch | `windowMinSize.sm` | 436 |
-| overlay | `<Sheet open>` | 437 |
-| branch | `!windowMinSize.sm` | 459 |
-| branch | `!isSidebarCollapsed` | 539 |
-
-### `modules/layouts/app-layout/components/Drawer`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| empty | `closeDir === 0 \|\| e.touches.length !== 1` | 107 |
-| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 120 |
-| branch | `!s` | 127 |
-| branch | `Math.abs(dx) < 8 && Math.abs(dy) < 8` | 132 |
-| branch | `Math.abs(dy) > Math.abs(dx)` | 134 |
-| branch | `!el` | 142 |
-| branch | `!s \|\| !s.active \|\| !el` | 152 |
-| branch | `Array.isArray(footer)` | 187 |
-| branch | `showOverlay` | 218 |
-| branch | `title != null` | 268 |
-| branch | `closable` | 278 |
-| branch | `typeof title === 'string'` | 283 |
-| branch | `extra != null` | 298 |
-| empty | `noBodyScrollWrap` | 303 |
-| branch | `footerNode != null` | 306 |
-| branch | `title == null` | 323 |
-
-### `modules/layouts/app-layout/components/HeaderBarContainer`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!nativeScroll` | 40 |
-| branch | `now - lastToggle < TOGGLE_COOLDOWN_MS` | 53 |
-| branch | `y < 0 \|\| y > maxY` | 64 |
-| branch | `y <= HIDE_THRESHOLD` | 68 |
-| branch | `Math.abs(dy) < DIRECTION_DELTA` | 75 |
-| branch | `nativeScroll && pinned` | 91 |
-
 ### `modules/layouts/app-layout/components/LeftSidebar`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -2742,18 +2091,6 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | branch | `toolsItems.length > 0` | 243 |
 | branch | `!isIconOnly && bottomWidgets.length > 0` | 263 |
 | branch | `footerWidgets.length > 0` | 278 |
-
-### `modules/layouts/app-layout/components/ResizeHandle`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| empty | `!targets.length` | 122 |
-| empty | `grow === 0` | 131 |
-| empty | `!targets.length` | 156 |
-| branch | `currentScreenPos.top === newScreenPos.top && currentScreenPos.left === newScreenPos.left` | 231 |
-| branch | `isHorizontal` | 276 |
 
 ### `modules/layouts/app-layout/components/SidebarToggleButton`
 
@@ -3713,42 +3050,13 @@ Required states: `delayed`, `error`
 | error | `error && !settings` | 38 |
 | loading | `loading && !settings` | 47 |
 
-### `modules/notification/components/NotificationBellWidget`
-
-Required states: `empty`, `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `unread > 0` | 32 |
-| empty | `recent.length === 0` | 42 |
-| branch | `!n.read_at` | 58 |
-| branch | `n.body` | 63 |
-| overlay | `<Popover open>` | 91 |
-
-### `modules/notification/components/NotificationToastListener`
+### `modules/notification/kinds`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `event.data.action !== 'create'` | 22 |
-| branch | `!hasPermissionNow(Permissions.NotificationsRead)` | 23 |
-| branch | `!id \|\| id === '00000000-0000-0000-0000-000000000000'` | 26 |
-| branch | `!n.interrupt` | 29 |
-
-### `modules/notification/pages/NotificationsPage`
-
-Required states: `delayed`, `empty`, `error`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `loading && list.length === 0` | 68 |
-| error | `error && list.length === 0` | 72 |
-| empty | `list.length === 0` | 80 |
-| branch | `!n.read_at` | 90 |
-| branch | `n.body` | 100 |
-| branch | `!n.read_at` | 110 |
-| branch | `total > perPage` | 135 |
+| branch | `n.body` | 26 |
 
 ### `modules/onboarding/OnboardingPage`
 
@@ -4119,15 +3427,6 @@ Required states: _(branch-only — proven via dynamic coverage)_
 | kind | condition | line |
 |---|---|---|
 | branch | `saveDisabled && saveDisabledReason` | 50 |
-
-### `modules/settings/components/SettingsPageContainer`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `subtitle` | 41 |
-| branch | `nativeScroll` | 60 |
 
 ### `modules/skill/chat-extension/SkillMenuItem`
 
@@ -4739,20 +4038,22 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!workflow` | 63 |
-| overlay | `<Drawer open>` | 65 |
-| overlay | `<Drawer open>` | 92 |
-| branch | `editable` | 110 |
-| overlay | `<Dialog open>` | 115 |
-| branch | `workflow.description` | 150 |
-| branch | `canExecute` | 161 |
-| branch | `workflow.is_dev` | 179 |
-| branch | `steps.length > 0` | 195 |
-| branch | `s.kind` | 201 |
-| branch | `s.dependsOn && s.dependsOn.length > 0` | 203 |
-| branch | `activeRunId` | 223 |
-| overlay | `<WorkflowRunDialog open>` | 247 |
-| overlay | `<DryRunPreviewDialog open>` | 257 |
+| branch | `!workflow` | 72 |
+| overlay | `<Drawer open>` | 74 |
+| overlay | `<Drawer open>` | 105 |
+| branch | `editable \|\| editableDefinition` | 123 |
+| branch | `editableDefinition` | 125 |
+| branch | `editable` | 139 |
+| overlay | `<Dialog open>` | 144 |
+| branch | `workflow.description` | 179 |
+| branch | `canExecute` | 190 |
+| branch | `workflow.is_dev` | 208 |
+| branch | `steps.length > 0` | 224 |
+| branch | `s.kind` | 230 |
+| branch | `s.dependsOn && s.dependsOn.length > 0` | 232 |
+| branch | `activeRunId` | 252 |
+| overlay | `<WorkflowRunDialog open>` | 276 |
+| overlay | `<DryRunPreviewDialog open>` | 286 |
 
 ### `modules/workflow/components/WorkflowElicitForm`
 
@@ -4795,25 +4096,26 @@ Required states: `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!run` | 105 |
-| branch | `!run.connected && !terminal` | 132 |
-| branch | `!terminal` | 137 |
-| branch | `!terminal` | 151 |
-| error | `run.error` | 178 |
-| branch | `run.pendingElicitation` | 180 |
-| branch | `s.stepKind` | 199 |
-| branch | `s.tracks && Object.keys(s.tracks).length > 0` | 202 |
-| branch | `Object.keys(s.tracks).length > TRACK_DISPLAY_CAP` | 209 |
-| branch | `s.itemProgress && s.itemProgress.total > 0` | 216 |
-| branch | `s.outputPreview` | 235 |
-| error | `s.error` | 240 |
-| branch | `(s.tokensUsed != null \|\| s.msElapsed != null)` | 245 |
-| branch | `s.status === 'completed' && s.hasOutput` | 254 |
-| branch | `s.artifacts && s.artifacts.length > 0` | 261 |
-| error | `(s.status === 'completed' \|\| s.status === 'failed')` | 268 |
-| branch | `s.stepKind === 'sandbox'` | 283 |
-| branch | `s.status === 'completed'` | 292 |
-| empty | `steps.length === 0 && !terminal` | 307 |
+| branch | `!run` | 116 |
+| branch | `!run.connected && !terminal` | 151 |
+| branch | `!terminal` | 156 |
+| branch | `!terminal` | 170 |
+| error | `run.error` | 197 |
+| branch | `run.pendingElicitation && !agentGateStepId` | 199 |
+| branch | `s.stepKind` | 218 |
+| branch | `s.agentActivity && s.agentActivity.length > 0` | 221 |
+| branch | `s.tracks && Object.keys(s.tracks).length > 0` | 240 |
+| branch | `Object.keys(s.tracks).length > TRACK_DISPLAY_CAP` | 247 |
+| branch | `s.itemProgress && s.itemProgress.total > 0` | 254 |
+| branch | `s.outputPreview` | 273 |
+| error | `s.error` | 278 |
+| branch | `(s.tokensUsed != null \|\| s.msElapsed != null)` | 283 |
+| branch | `s.status === 'completed' && s.hasOutput` | 292 |
+| branch | `s.artifacts && s.artifacts.length > 0` | 299 |
+| error | `(s.status === 'completed' \|\| s.status === 'failed')` | 306 |
+| branch | `s.stepKind === 'sandbox'` | 321 |
+| branch | `s.status === 'completed'` | 330 |
+| empty | `steps.length === 0 && !terminal` | 345 |
 
 ### `modules/workflow/components/WorkflowRunsList`
 
@@ -4858,11 +4160,11 @@ Required states: `delayed`, `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| error | `loading && !error` | 40 |
-| branch | `workflow.description` | 62 |
-| error | `error && workflows.length === 0` | 71 |
-| loading | `!loading && workflows.length === 0` | 80 |
-| overlay | `<ImportWorkflowDialog open>` | 91 |
+| error | `loading && !error` | 55 |
+| branch | `workflow.description` | 77 |
+| error | `error && workflows.length === 0` | 86 |
+| loading | `!loading && workflows.length === 0` | 95 |
+| overlay | `<ImportWorkflowDialog open>` | 106 |
 
 ### `modules/workflow/components/admin/AdminWorkflowsPage`
 
@@ -4877,6 +4179,100 @@ Required states: `delayed`, `error`, `open`
 | loading | `!loading && systemWorkflows.length === 0` | 102 |
 | branch | `total > 0` | 112 |
 | overlay | `<ImportWorkflowDialog open>` | 126 |
+
+### `modules/workflow/components/builder/BuilderValidationPanel`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `finding.location` | 24 |
+| branch | `validating` | 47 |
+| branch | `!validation && !validating` | 50 |
+| empty | `validation && errors.length === 0` | 56 |
+| branch | `errors.length > 0` | 63 |
+| branch | `warnings.length > 0` | 71 |
+| branch | `cost` | 79 |
+
+### `modules/workflow/components/builder/RefInsertMenu`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `ref.hint` | 50 |
+
+### `modules/workflow/components/builder/StepConfigPanel`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!step` | 49 |
+
+### `modules/workflow/components/builder/StepList`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `from == null` | 26 |
+| empty | `steps.length === 0` | 38 |
+
+### `modules/workflow/components/builder/ToolStepForm`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `rows.length === 0` | 175 |
+
+### `modules/workflow/components/builder/WorkflowBuilderPage`
+
+Required states: `delayed`, `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `!canAccess` | 40 |
+| branch | `!canAccess` | 88 |
+| branch | `deletedExternally` | 106 |
+| error | `loadError` | 115 |
+| loading | `loading` | 123 |
+| branch | `isEdit` | 141 |
+| branch | `existingName` | 142 |
+| branch | `dirty` | 160 |
+
+### `modules/workflow/components/builder/WorkflowInputsEditor`
+
+Required states: `empty`
+
+| kind | condition | line |
+|---|---|---|
+| empty | `inputs.length === 0` | 61 |
+
+### `modules/workflow/components/builder/builderFields`
+
+Required states: `error`
+
+| kind | condition | line |
+|---|---|---|
+| branch | `required` | 60 |
+| branch | `description` | 65 |
+| error | `error` | 70 |
+
+### `modules/workflow/components/run/AgentActivityTimeline`
+
+Required states: _(branch-only — proven via dynamic coverage)_
+
+| kind | condition | line |
+|---|---|---|
+| branch | `hasDetails` | 80 |
+| branch | `tool` | 97 |
+| branch | `detail` | 102 |
+| branch | `elicitation && onSubmitElicitation` | 162 |
+| branch | `overflow > 0 && !showAll` | 177 |
+| branch | `isGateAnchor` | 199 |
+| branch | `showGateForm && !gateRendered` | 204 |
 
 ### `modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer`
 

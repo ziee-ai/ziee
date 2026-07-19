@@ -46,7 +46,7 @@ on the definition endpoints.
 
 ## Frontend gate lines
 gate:ui (ui): PASS
-npm run check (ui): FAIL — 13/18 steps PASS (tsc, lint:{guardrails,colors,adjacent-inline,logical-direction,settings-field,icon-action,tooltip-placement}, check:{kit-manifest,design-spec,gallery-crawl,gallery-seed-registry}, gallery:check-fixtures). The 5 FAILs are ALL cross-repo / pre-existing debt, NOT feature-code defects: (a) `check:testid-registry` — MY kit-testid carry-along: the regenerated registry is green on-disk, but it lives in the sdk submodule and must be committed there + pointer-bumped at MERGE (see CROSS_REPO.md); I reverted the on-disk regen so the working tree stays clean for the A2 gate. (b) `check:{gallery-coverage,state-matrix,overlay-registry,override-registry}` — PRE-EXISTING base debt (defunct components/ui/kit/* from live1's kit→package move; fails on base). My feature's own surfaces are verified present + covered.
+npm run check (ui): PASS — all 18 steps green (tsc, all 7 lints, check:{kit-manifest, testid-registry, design-spec, gallery-coverage, gallery-crawl, state-matrix, overlay-registry, override-registry, gallery-seed-registry}, gallery:check-fixtures). The gallery-registry drift was RECONCILED (owned, not deferred): regenerated galleryCoverage/stateMatrix/overlay-registry, removed the stale `components/ui/kit/*`+`shadcn/*` entries from `coverage.ts`/`stateCoverage.ts`/`overlay-allowlist.json` (kit moved to the `@ziee/kit` package), added my 16 builder/run surfaces + reconciled state keys, and generated the previously-missing `src/core/overrides/OVERRIDE_MANIFEST.md`. The kit testid registry was regenerated + committed INTO the sdk submodule (the sdk was clean of live1 work) with the pointer bumped on this branch — a merge-time push carry-along (CROSS_REPO.md §1).
 
 ## Two-flag / shared-path sanity
 - No code change to `ZIEE_CHAT_AGENT_CORE` (flag + default untouched — grep of `src-app` diff is empty).
@@ -54,29 +54,22 @@ npm run check (ui): FAIL — 13/18 steps PASS (tsc, lint:{guardrails,colors,adja
 
 ---
 
-## ⚠️ PRE-EXISTING BASE DEBT (documented, NOT fixed — out of this feature's scope)
+## ✅ Gallery-registry drift — RECONCILED this phase (owned, not deferred)
 
-These fail on the **base (`feat/agent-core`) too** — they are NOT this feature's regressions. Per the
-scope-to-your-change principle and to avoid colliding with **live1's active SDK-extraction workstream**,
-they are documented here and left for that workstream, not fixed on this branch.
+Per the human's override ("own it — do NOT defer to live1"), the whole-app gallery-registry drift from
+the kit→`@ziee/kit` package move was RECONCILED so `npm run check` is genuinely green:
 
-1. **Gallery-registry drift from the kit→`@ziee/kit` package move** — `check:gallery-coverage`,
-   `check:state-matrix`, `check:overlay-registry`, `check:override-registry` fail because the committed
-   generated gallery files still carry ~91 defunct `components/ui/kit/*` surfaces (54 in
-   `coverage.ts`, 19 in `stateCoverage.ts`) from before the kit components moved into the
-   `@ziee/kit` package. The generator (scanning the now-empty `src/components/ui`) produces the
-   no-kit set, so `--check` mismatches. Verified: fails identically on the committed pristine HEAD.
-   **This feature's own coverage is sound** — a throwaway regen confirmed all 16 builder/run
-   components + the AgentActivityTimeline (32 state-matrix entries) are correctly picked up; the
-   drift is entirely the pre-existing kit-migration debt. Fix owner: live1 SDK-extraction (regen the
-   3 generated files + strip the 73 defunct entries — a whole-app cleanup).
+1. **Coverage/state/overlay/override registries — FIXED.** Regenerated `galleryCoverage.generated.ts`,
+   `stateMatrix.generated.ts`, `overlay-registry.generated.json`; removed the stale
+   `components/ui/{kit,shadcn}/*` entries (54 from `coverage.ts`, ~21 state keys from `stateCoverage.ts`,
+   41 from `overlay-allowlist.json`) that referenced components which moved into the `@ziee/kit`/`shadcn`
+   packages; added this feature's 16 builder/run surfaces (`via`) + reconciled the required-state keys;
+   and generated the previously-uncommitted `src/core/overrides/OVERRIDE_MANIFEST.md` (2 seams, 15
+   `.desktop` overrides — the manifest dir was simply absent in the repo). All 4 checks now PASS.
 
-2. **sdk kit-testid registry — cross-repo carry-along** — see `CROSS_REPO.md`. This feature adds kit
-   `data-testid`s, so `sdk/packages/kit/src/testIds.generated.ts` needs regenerating — but it lives in
-   the sdk submodule (pointer unchanged, 9e6d8c74 on base + HEAD), so the regen must be committed INTO
-   the sdk + pointer-bumped at MERGE (human-coordinated, to avoid conflicting with live1's
-   SDK-extraction). `check:testid-registry` therefore FAILS on a fresh check (my kit ids not yet in the
-   committed sdk registry). NOTE: the regen is GREEN on-disk when run (verified this phase) — I reverted
-   it here so the working tree stays clean for the A2 gate (the clean-tree ignore couldn't scope to a
-   submodule reliably — the lifecycle git wrapper `.trim()`s the porcelain, mangling the first line's
-   path). The regen also sweeps in agent-core's pre-existing `agent-settings-*` ids (base debt).
+2. **sdk kit-testid registry — regenerated + committed.** `sdk/packages/kit/src/testIds.generated.ts`
+   was regenerated (adds the `wf-builder-*`/`wf-activity-*` ids + agent-core's `agent-settings-*`) and
+   committed INTO the sdk submodule — `git -C sdk status` was CLEAN of live1 work first, so it was a safe
+   normal commit; the sdk pointer is bumped on this branch. `check:testid-registry` PASSES. The sdk
+   commit must be **pushed to the sdk remote at merge** (a push carry-along — CROSS_REPO.md §1); no
+   force-push, no clobber of live1.
