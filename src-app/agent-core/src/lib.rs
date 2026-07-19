@@ -19,6 +19,7 @@ pub mod compaction;
 pub mod core;
 pub mod extension;
 pub mod fanout;
+pub mod guard;
 pub mod policy;
 pub mod ports;
 pub mod reviewer;
@@ -34,12 +35,15 @@ pub use core::{
     AgentCore, CancelToken, DeltaSink, ModelClient, ModelClientFactory, NoopDeltaSink,
     ProviderModelClient, ProviderModelClientFactory,
 };
-pub use extension::{AgentExtension, Flow, TurnContext};
+pub use extension::{sorted_extensions, AgentExtension, Flow, TurnContext};
+pub use guard::neutralize_untrusted;
 pub use policy::TrustedAutoApprovePolicy;
 pub use ports::{
     ApprovalPolicy, EventSink, HumanGate, ModelResolver, ToolProvider, TranscriptStore,
 };
-pub use reviewer::{map_risk, ModelRiskClassifier, Reviewer, Risk, RiskClassifier};
+pub use reviewer::{
+    map_risk, ModelRiskClassifier, Reviewer, Risk, RiskClassifier, RiskThresholds,
+};
 pub use types::{
     AgentEvent, AgentTurnRequest, ApprovalMode, Decision, GateAsk, GateOutcome, GateTicket,
     IdempotencyKey, ReviewDecision, SandboxMode, StopReason, SubagentLimits, SubagentSpec,

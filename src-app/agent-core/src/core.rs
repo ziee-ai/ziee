@@ -26,7 +26,9 @@ use futures_util::StreamExt;
 use ziee_core::AppError;
 
 use crate::budget::Budget;
-use crate::extension::{run_before_model, run_contribute, AgentExtension, Flow, TurnContext};
+use crate::extension::{
+    run_before_model, run_contribute, sorted_extensions, AgentExtension, Flow, TurnContext,
+};
 use crate::ports::{
     ApprovalPolicy, EventSink, HumanGate, ModelResolver, ToolProvider, TranscriptStore,
 };
@@ -299,6 +301,13 @@ impl AgentCore {
         let mut budget = self.budget.clone();
         let mut iteration = req.start_iteration.max(1);
 
+        // Order the extension pipeline by `.order()` (STABLE) ONCE per run and
+        // reuse it across every iteration's contribute / before_model /
+        // after_round phases (ITEM-56 / DEC-129). `.order()` was previously inert
+        // — the loop ran raw insertion order — so `COMPACTION_ORDER` and the
+        // context tier orders only become load-bearing here.
+        let extensions = sorted_extensions(&self.extensions);
+
         // Seed a fresh user message into the transcript (a Resume reads what's
         // already persisted).
         if let TurnSeed::NewMessage(msg) = &req.seed {
@@ -323,7 +332,7 @@ impl AgentCore {
                 inputs: req.inputs.clone(),
                 ..Default::default()
             };
-            run_contribute(&self.extensions, &mut tctx).await?;
+            run_contribute(&extensions, &mut tctx).await?;
 
             let history = self.transcript.load(req.run_id).await?;
             let tools = self.tools.list(&tctx.tool_scope).await?;
@@ -336,7 +345,7 @@ impl AgentCore {
 
             // `before_model` hooks (compaction runs here at a late order; the chat
             // registry bridge flips approval rows on a resume). A veto stops the turn.
-            if run_before_model(&self.extensions, &mut chat_req).await? == Flow::ShortCircuit {
+            if run_before_model(&extensions, &mut chat_req).await? == Flow::ShortCircuit {
                 self.push_emit(&mut events, AgentEvent::Stopped(StopReason::NoToolCall))
                     .await;
                 break;
@@ -435,7 +444,7 @@ impl AgentCore {
             // after-hooks on the turn that produced it. A short-circuit ends the turn.
             let mut short_circuit = false;
             if from_model {
-                for ext in &self.extensions {
+                for ext in &extensions {
                     if ext.after_round(&assistant_msg).await? == Flow::ShortCircuit {
                         short_circuit = true;
                         break;
