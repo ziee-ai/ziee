@@ -30,7 +30,9 @@
 > reviewer hardening** (ITEM-38–46) = the "model classifies, ask only when unsure"
 > safety layer (research-corrected; ziee already has the skeleton). Still **Phase 1** —
 > this refines the menu into the agreed scope; nothing implemented, nothing pushed.
-> Ready for Phase 2 (plan-audit) on the human's go.
+> Ready for Phase 2 (plan-audit) on the human's go. Group H additionally covers
+> **external MCP servers** (ITEM-47–53) — the no-enforcement-boundary case, where the
+> tool's own metadata is untrusted and config-time human server-trust is the root.
 
 ---
 
@@ -173,6 +175,29 @@ infra, scheduler) established the ground truth. Key facts every item below build
 - **ITEM-45** [stretch]: **Deny-and-continue mode** — optionally feed the agent the denial rationale so it tries a materially-safer alternative (Claude/Codex) instead of only halting to the human; keeps unattended runs productive without lowering safety; complements (not replaces) the durable `elicit` gate.
 - **ITEM-46**: **Dedupe the two parallel chat classifiers** — `gate.rs::decide_pure` (agent-core host) and the legacy `mcp.rs` in-extension ladder encode the same logic independently (drift risk); converge to one source of truth as chat cuts over to agent-core.
 
+#### Group H (cont.) — External MCP servers (NO enforcement boundary — the hard case)
+
+> The Group-H framing "the sandbox is the boundary" **does not apply to external
+> (third-party, user/admin-registered) MCP servers**: their side effects happen on
+> infrastructure we don't run, can't roll back, and can't confine — and the MCP spec
+> says the tool's own `name`/`description`/`annotations` are **untrusted** (a server
+> can set `readOnlyHint:true` and delete your data). An external MCP tool is the
+> **lethal trifecta as one primitive** (untrusted description + untrusted results +
+> arg-egress to the server's host). So external MCP is pure governance with **no
+> backstop → a STRICTER default than built-in/sandboxed tools**, and the decision root
+> is **config-time HUMAN server-trust**, never the tool's self-description. Ziee is
+> already ahead here (external servers are never auto-trusted; per-`(server,tool)`
+> allowlist; disabled-servers; reviewer; `env_clear`+secret-denylist; SSRF
+> `url_validator`) — these close the specific external-MCP gaps. (RESEARCH_SOTA.md §10.)
+
+- **ITEM-47**: **Classifier is VETO-ONLY for external servers.** Order = server-trust gate → per-`(server,tool)` human allowlist → classifier. The reviewer/classifier may only **downgrade** an external call (→ ask/deny), **never upgrade** an un-allowlisted external call to Auto. Assert in code + test: no external call reaches Auto without an explicit human allowlist entry.
+- **ITEM-48**: **Ask-by-default for a newly-added external server; no "trust all tools" one-click.** A fresh external server auto-approves nothing until per-`(server,tool)` human grants (MCP spec + OpenAI `require_approval:"always"` default). Avoid the server-wide one-click that produced the VS Code/Copilot workspace-trust bypass — require per-tool grants (or gate server-wide behind a heavier confirmation).
+- **ITEM-49**: **Rug-pull pinning (ziee's biggest concrete gap — CVE-2025-54136 class).** Bind each external auto-approve grant to a `tool_definition_fingerprint` = hash of `name + description + inputSchema + server command/URL/transport`, captured at grant time; recompute per call; **on any drift, invalidate the grant + re-elicit with a diff of what changed**; treat `tools/list_changed` as an invalidation event. (Invariant's checksum recommendation; ETDI signed-version model is the north star.)
+- **ITEM-50**: **Full-disclosure approval prompt.** The external-tool elicit prompt renders the **full, exact** tool description + the **concrete args** the model chose (no summarization — poisoning hides in truncation) and **names the destination host** ("sends «arg preview» to «host»"), so the human reviews a *data-egress* decision, not just a verb.
+- **ITEM-51**: **Result-cannot-escalate invariant.** Audit + assert that **no tool result or tool description can write allowlist / unattended / approval-mode state** — only human action / durable policy can (the Copilot `autoApprove`-via-settings bypass is the anti-pattern). Extend the untrusted-content fence (already on bio/lit/web) to **all** external MCP results.
+- **ITEM-52**: **Data-egress interlock + provenance tagging (CaMeL-lite).** A call whose args carry high-sensitivity data (secret patterns, file contents, **another server's output**) to an external host is forced to **ask regardless of allowlist**; tag cross-server-origin data and re-prompt when it would flow as an arg into a *different* external server (defends "read secret from server A → pass to attacker server B").
+- **ITEM-53**: **Hints tighten-only.** External `readOnlyHint`/etc. are **UX/advisory input to the classifier only — never sufficient to auto-approve**; honor `destructiveHint` / `requiresUserInteraction` as a one-way **force-ask** ratchet (mirror Claude Code's `anthropic/requiresUserInteraction`). MCP-registry / verified-publisher status is a trust-*prior* nudge, **never** auto-approve grounds (the registry authenticates provenance, not safety).
+
 ---
 
 ## Files to touch
@@ -226,6 +251,7 @@ infra, scheduler) established the ground truth. Key facts every item below build
 - **SSE events / content blocks** → register via the proc-macro compose seams (`compose_chat_stream_events` / `compose_message_content_variants`) — no central enum edit; validate from a **clean build** (B4: new compose variants can compile against a stale expansion).
 - **Admin settings** → `agent_admin_settings` / `scheduler_admin_settings` singleton pattern (`id=true` PK, DB CHECK + handler `validate()`, REST GET/PUT gated `<x>::admin::{read,manage}`, sync entity, admin card).
 - **Chat-vs-agent-core** → any chat-path work lands behind / coordinates with `ZIEE_CHAT_AGENT_CORE`; the workflow `kind: agent` host is the proven consumer to mirror for port impls.
+- **External MCP trust (Group H cont., ITEM-47–53)** → decision root = config-time human server-trust (mirror Claude Code `.mcp.json` trust prompt + `allow/ask/deny` deny>allow; OpenAI `require_approval:"always"` default); hash-pin tool definitions (CVE-2025-54136 fix / ETDI); classifier veto-only; extend the existing untrusted-content fence (bio/lit/web) to all external results; destination-host trust via `url_validator`. Touches `mcp/` (server registry, `tools/list_changed`, per-`(server,tool)` allowlist + `tool_definition_fingerprint` column), the gate/reviewer, and the elicit prompt UI. Never trust server-declared `annotations` for security (MCP spec). See RESEARCH_SOTA.md §10.
 - **Auto-approval + reviewer (Group H)** → mirror **Codex's `guardian/policy_template.md` rubric** (emit `{risk, authorization, category, rationale}`; per-band + per-category thresholds) + **Claude's reasoning-blind classifier** (strip tool results/assistant text) + a pre-scan probe; keep `code_sandbox` as the ENFORCEMENT boundary (classifier = governance only). Reuse the existing `Reviewer`/`ApprovalPolicy`/`HumanGate` ports + `agent_admin_settings` + `url_validator` SSRF allowlist. See RESEARCH_SOTA.md §9.
 - **Agent self-task-management (Group G)** → the tool set mirrors Claude Code's **current `Task` tools** (`TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` — per-item create+patch + read-back; NOT legacy `TodoWrite`'s array-rewrite), backed by a **durable store** (a table / `assistant_core_memory`-style block, not the transcript); the two context mechanisms are (a) a **change-gated out-of-band `<system-reminder>`** re-render and (b) an **explicit `CompactionExtension` re-emit** — mirror both, don't fuse them. Behavioral rules + render rule (`active_form` for the in_progress item) copied verbatim from CC. See RESEARCH_SOTA.md §8.
 
