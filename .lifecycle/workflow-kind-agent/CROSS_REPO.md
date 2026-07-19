@@ -9,9 +9,12 @@ conflict with the live SDK-extraction work.
 ## 1. Kit testid registry — MUST regenerate + commit to sdk at merge
 - **What:** this feature adds kit `data-testid`s (`wf-builder-*`, `wf-activity-*`, …). The canonical
   registry is `sdk/packages/kit/src/testIds.generated.ts` (a tracked, generated file in the sdk).
-- **State on this branch:** regenerated **on-disk** (so `npm run check`'s `check:testid-registry`
-  passes) but NOT committed. `git -C sdk status` shows it modified; the sdk POINTER is unchanged.
-  A2 clean-tree tolerates it via `LIFECYCLE_CLEAN_TREE_IGNORE=… sdk` added to `.claude/app.config`.
+- **State on this branch:** NOT regenerated in the committed tree — so `check:testid-registry` FAILS
+  on a fresh `npm run check` (my kit ids aren't in the committed sdk registry yet). The regen IS green
+  when run on-disk (verified this phase); I reverted it so the working tree stays clean for the A2
+  gate (a `LIFECYCLE_CLEAN_TREE_IGNORE` scoped to the submodule couldn't reliably match — the
+  lifecycle git wrapper `.trim()`s the porcelain and mangles the first status line's path). The sdk
+  POINTER is unchanged (9e6d8c74).
 - **At merge (human):** `cd src-app/ui && npm run gen:testid-registry`, commit
   `testIds.generated.ts` inside the sdk submodule, and bump the app's sdk pointer to that commit
   (push the sdk commit). NOTE the regen also includes agent-core's pre-existing `agent-settings-*`

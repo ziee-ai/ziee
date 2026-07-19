@@ -25,8 +25,6 @@ import { byTestId } from '../testid'
  * stream, and the timeline all run for real.
  */
 
-const BRIDGE = process.env.OPENAI_BASE_URL
-const KEY = process.env.OPENAI_API_KEY
 const MODEL = process.env.ZIEE_TEST_LLM_MODEL || process.env.OPENAI_MODEL
 
 // A minimal single agent-step workflow: a reasoning-only task (no tools) that
@@ -48,10 +46,10 @@ outputs:
 `
 
 test.describe('Workflows — agent step activity timeline (real LLM)', () => {
-  test.skip(
-    !BRIDGE || !KEY || !MODEL,
-    'no real LLM endpoint (set OPENAI_BASE_URL + OPENAI_API_KEY + ZIEE_TEST_LLM_MODEL)',
-  )
+  // Real-LLM spec: requires an OpenAI-compatible endpoint (OPENAI_BASE_URL +
+  // OPENAI_API_KEY + ZIEE_TEST_LLM_MODEL). The lifecycle expects real-LLM tests
+  // to RUN with the provided bridge (no skip-to-green); a missing endpoint is a
+  // setup error the harness surfaces, not a silent skip.
   test.setTimeout(180_000)
 
   test('run an agent workflow → the friendly activity timeline accretes rows', async ({

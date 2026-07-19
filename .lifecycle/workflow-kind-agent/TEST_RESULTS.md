@@ -37,7 +37,7 @@ timeline). No `#[ignore]`, no `page.route` mocking, no weakened assertions.
 
 ## Frontend gate lines
 gate:ui (ui): PASS
-npm run check (ui): FAIL — 14/18 steps PASS (tsc, lint:{guardrails,colors,adjacent-inline,logical-direction,settings-field,icon-action,tooltip-placement}, check:{kit-manifest,testid-registry,design-spec,gallery-crawl,gallery-seed-registry}, gallery:check-fixtures). The 4 FAILs (check:gallery-coverage, check:state-matrix, check:overlay-registry, check:override-registry) are PRE-EXISTING BASE DEBT (see below), NOT this feature — my feature's own surfaces are verified present + covered.
+npm run check (ui): FAIL — 13/18 steps PASS (tsc, lint:{guardrails,colors,adjacent-inline,logical-direction,settings-field,icon-action,tooltip-placement}, check:{kit-manifest,design-spec,gallery-crawl,gallery-seed-registry}, gallery:check-fixtures). The 5 FAILs are ALL cross-repo / pre-existing debt, NOT feature-code defects: (a) `check:testid-registry` — MY kit-testid carry-along: the regenerated registry is green on-disk, but it lives in the sdk submodule and must be committed there + pointer-bumped at MERGE (see CROSS_REPO.md); I reverted the on-disk regen so the working tree stays clean for the A2 gate. (b) `check:{gallery-coverage,state-matrix,overlay-registry,override-registry}` — PRE-EXISTING base debt (defunct components/ui/kit/* from live1's kit→package move; fails on base). My feature's own surfaces are verified present + covered.
 
 ## Two-flag / shared-path sanity
 - No code change to `ZIEE_CHAT_AGENT_CORE` (flag + default untouched — grep of `src-app` diff is empty).
@@ -63,9 +63,11 @@ they are documented here and left for that workstream, not fixed on this branch.
    3 generated files + strip the 73 defunct entries — a whole-app cleanup).
 
 2. **sdk kit-testid registry — cross-repo carry-along** — see `CROSS_REPO.md`. This feature adds kit
-   `data-testid`s, so `sdk/packages/kit/src/testIds.generated.ts` was regenerated (on-disk, so
-   `check:testid-registry` PASSES now). The sdk POINTER is unchanged (9e6d8c74 on base + HEAD); the
-   regen must be committed INTO the sdk submodule + pointer-bumped at MERGE time (human-coordinated,
-   to avoid conflicting with live1's SDK-extraction). The regen also sweeps in agent-core's
-   pre-existing `agent-settings-*` ids (base debt). A2 clean-tree tolerates the dirty sdk via the
-   `app.config` ignore added this phase.
+   `data-testid`s, so `sdk/packages/kit/src/testIds.generated.ts` needs regenerating — but it lives in
+   the sdk submodule (pointer unchanged, 9e6d8c74 on base + HEAD), so the regen must be committed INTO
+   the sdk + pointer-bumped at MERGE (human-coordinated, to avoid conflicting with live1's
+   SDK-extraction). `check:testid-registry` therefore FAILS on a fresh check (my kit ids not yet in the
+   committed sdk registry). NOTE: the regen is GREEN on-disk when run (verified this phase) — I reverted
+   it here so the working tree stays clean for the A2 gate (the clean-tree ignore couldn't scope to a
+   submodule reliably — the lifecycle git wrapper `.trim()`s the porcelain, mangling the first line's
+   path). The regen also sweeps in agent-core's pre-existing `agent-settings-*` ids (base debt).
