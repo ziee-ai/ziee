@@ -25,8 +25,10 @@
 > **hybrid (reuse `workflow_runs` + `JobKind` registry)**; **all four** completeness
 > capabilities in (goal-seeking ITEM-24, steer ITEM-25, unified inbox ITEM-26, event
 > triggers ITEM-27); **hardening ITEM-29–32 in as baseline**; build order **A + E first →
-> backbone → B + C**. Still **Phase 1** — this refines the menu into the agreed scope;
-> nothing implemented, nothing pushed. Ready for Phase 2 (plan-audit) on the human's go.
+> backbone → B + C**. Plus **Group G — agent self-task-management** (`TodoWrite`-style,
+> ITEM-34–37), added on the human's request so a long agent run doesn't forget its
+> steps. Still **Phase 1** — this refines the menu into the agreed scope; nothing
+> implemented, nothing pushed. Ready for Phase 2 (plan-audit) on the human's go.
 
 ---
 
@@ -112,7 +114,7 @@ infra, scheduler) established the ground truth. Key facts every item below build
 - **ITEM-25** (HIGH): **Steer a running agent** — nudge / redirect / queue a note to a background sub-agent or long sandbox run *without killing it* (Groups B/C). Avoids restart-from-scratch.
 - **ITEM-26** (HIGH-MEDIUM): **Unified background-work inbox/dashboard** — one consolidated surface (state + peek + unread + result) across Groups B/C/D/E. The connective tissue that makes the groups feel like one system; every SOTA leader converged on it.
 - **ITEM-27** (MEDIUM-HIGH): **Event-driven "monitor & notify" triggers** — "notify me when the sequencing run finishes / this dataset changes / this file appears" (cron can't express this; a top scientist JTBD). Add an event/completion trigger alongside cron; prefer event-push over Group-C polling.
-- **ITEM-28** [stretch, MEDIUM]: **Live agent TODO checklist** — a "plan → steps checking off live" surface complementing plan-preview + the activity timeline.
+- **ITEM-28**: **Live agent TODO checklist (UI)** — the "plan → steps checking off live" surface. This is only the *render*; the agent-facing mechanism (the tool + context re-injection) is **Group G** — ITEM-28 is absorbed by ITEM-36.
 
 **Correctness / hardening (make B/C/A production-grade — several are corrections)**
 - **ITEM-29**: **Persisted task state machine + boot orphan-reclaim** for background work — `queued→running→{completed|failed|cancelled}` **plus a `needs_input` state with a reply affordance**. Replaces the in-memory `tokio::spawn`+`is_generating` flag (which does NOT survive a restart). This is the durability the backbone (§Architecture) provides.
@@ -120,6 +122,23 @@ infra, scheduler) established the ground truth. Key facts every item below build
 - **ITEM-31**: **Sandbox background lifetime policy** — absolute-max + idle/no-new-output reaper + bind to conversation/sandbox teardown; report `timed_out` distinctly; **kill the cgroup** (reaps grandchildren); terminal-state registry reaping + prune-on-every-path (incl. server shutdown); re-apply ALL hardening on the new path.
 - **ITEM-32**: **Untrusted-output scanning of child summaries** — scan a sub-agent's merged summary for instruction-shaped injection (`<system-reminder>`/`Human:`/permission strings) before the parent reads it (children run bio/web/lit MCP = untrusted content). Cheap, high-value.
 - **ITEM-33** [stretch]: **Named, reusable agent definitions** + a **cumulative per-conversation spawn budget** (concurrency cap ≠ total-spawns cap; Claude uses 200/session) + **streaming child progress** + **per-child sandbox/approval mode**. The Group-A ergonomics/governance polish.
+
+### Group G — Agent self-task-management (the agent's OWN TODO list, Claude-Code-`TodoWrite`-style)
+
+> Added at the human's request: *"agents need to manage their task so they don't
+> forget things like how claude code does."* This is the **agent's own working
+> checklist** — DISTINCT from Group E (user-scheduled tasks/loops) and from the
+> ITEM-26 inbox (a user-facing view of background work). It is a core
+> anti-forgetting / self-tracking mechanism for long multi-step agentic runs, and it
+> belongs in **`agent-core`** so chat, the workflow agent step, sub-agents, and
+> future agents ALL inherit it. (Previously flagged **absent + deferred** in the
+> friendly-agent-surface handoff: "live agent-authored task checklist — needs agent
+> tool + SSE + renderer → deferred v2." This builds it.)
+
+- **ITEM-34**: A core agent-facing **task-list tool** (`update_task_list` / `TodoWrite`-style) — the model creates + updates a structured checklist, each step `{ content, status: pending|in_progress|completed, active_form }`, stored per-conversation (chat) / per-run (workflow + each sub-agent). Built into `agent-core` (not a single host) so every host inherits it. Semantics mirror Claude Code: exactly one `in_progress` at a time, mark complete immediately, use it for any multi-step task.
+- **ITEM-35**: **Context re-injection (the anti-forget mechanism — the substance)** — a core `AgentExtension` re-injects the current task list into context before each LLM call (working memory), so a long loop re-reads its own plan every turn and doesn't drift/forget; it **survives compaction** (a pinned, always-resurfaced block, like `assistant_core_memory`). This — not the UI — is what the human asked for.
+- **ITEM-36**: **Live checklist render** — the UI surface showing the agent's task list checking off live in chat (+ per-run in the workflow progress view). Absorbs ITEM-28 (which was only the render). Needs a new SSE event + content-block on the compose seams (mirror `mcpToolProgress`).
+- **ITEM-37** [stretch]: **Sub-agent task lists + rollup** — each delegated sub-agent keeps its own list; the parent sees a folded summary (parity with Claude Code sub-agent todos / the agent-teams shared task list), so a fan-out's progress is legible without leaking child transcripts.
 
 ---
 
@@ -146,6 +165,11 @@ infra, scheduler) established the ground truth. Key facts every item below build
 - FE (primary): `src-app/ui/src/modules/chat/components/ChatInput.tsx` (+ a new chat extension registering the composer slot), `src-app/ui/src/modules/chat/extensions/text/components/TextInput.tsx` + `Text.store.ts` (only if slash-parsing, ITEM-19), reuse `src-app/ui/src/modules/scheduler/components/{ScheduleBuilder,ScheduledTaskFormDrawer,ScheduledTaskCard}.tsx` + `scheduler` stores.
 - BE (thin): `src-app/server/src/modules/scheduler/{schedule.rs,models.rs,dispatch.rs,handlers.rs}` for `SelfPaced` (ITEM-21) + a "bind to existing conversation" input (ITEM-22); migration in `scheduler/migrations/`.
 
+**Group G — agent self-task-management (TodoWrite-style)**
+- `src-app/agent-core/src/{extension.rs,types.rs}` + a new `agent-core` extension for the task-list tool + re-injection (the core capability), so all hosts inherit it.
+- Storage: per-conversation (chat) / per-run (workflow) — a new table or reuse a jsonb column (mirror `assistant_core_memory` / `conversation_summaries`); a migration in the owning module.
+- FE renderer + SSE/content-block on the compose seams (`src-app/ui/src/modules/chat/...` + the proc-macro event/variant seams).
+
 **Cross-cutting**
 - `just openapi-regen` (BOTH `ui/` + `desktop/ui/`) for any new REST/type; desktop parity for any new chat/scheduler UI (desktop embeds the server, so the tick loop + backbone already run in-process).
 - `src-app/server/src/modules/agent/` (`agent_admin_settings`) for any new orchestration tunable.
@@ -162,6 +186,7 @@ infra, scheduler) established the ground truth. Key facts every item below build
 - **SSE events / content blocks** → register via the proc-macro compose seams (`compose_chat_stream_events` / `compose_message_content_variants`) — no central enum edit; validate from a **clean build** (B4: new compose variants can compile against a stale expansion).
 - **Admin settings** → `agent_admin_settings` / `scheduler_admin_settings` singleton pattern (`id=true` PK, DB CHECK + handler `validate()`, REST GET/PUT gated `<x>::admin::{read,manage}`, sync entity, admin card).
 - **Chat-vs-agent-core** → any chat-path work lands behind / coordinates with `ZIEE_CHAT_AGENT_CORE`; the workflow `kind: agent` host is the proven consumer to mirror for port impls.
+- **Agent self-task-management (Group G)** → the tool mirrors a built-in (memory/skill) tool shape; the re-injection mirrors `assistant_core_memory` (always-in-context blocks) + the `agent-core` `CompactionExtension` injection seam (pinned block that survives compaction); semantics mirror Claude Code `TodoWrite` (one `in_progress`, mark-complete-immediately).
 
 ---
 
