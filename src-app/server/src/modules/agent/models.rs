@@ -41,6 +41,10 @@ pub struct AgentAdminSettings {
     pub default_max_steps: i32,
     pub fan_out_max_threads: i32,
     pub fan_out_max_depth: i32,
+    /// Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates
+    /// with an explicit "capped at N" note. Threaded into the crate's
+    /// `SubagentLimits.max_children_per_call`.
+    pub fan_out_max_children_per_call: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -64,6 +68,7 @@ pub struct UpdateAgentAdminSettingsRequest {
     pub default_max_steps: Option<i32>,
     pub fan_out_max_threads: Option<i32>,
     pub fan_out_max_depth: Option<i32>,
+    pub fan_out_max_children_per_call: Option<i32>,
 }
 
 impl UpdateAgentAdminSettingsRequest {
@@ -123,6 +128,11 @@ impl UpdateAgentAdminSettingsRequest {
             && !(1..=5).contains(&v)
         {
             return Err(bad("fan_out_max_depth out of range (1..=5)"));
+        }
+        if let Some(v) = self.fan_out_max_children_per_call
+            && !(1..=64).contains(&v)
+        {
+            return Err(bad("fan_out_max_children_per_call out of range (1..=64)"));
         }
         Ok(())
     }
@@ -191,6 +201,30 @@ mod tests {
             UpdateAgentAdminSettingsRequest { fan_out_max_threads: Some(65), ..Default::default() }
                 .validate()
                 .is_err()
+        );
+        assert!(
+            UpdateAgentAdminSettingsRequest {
+                fan_out_max_children_per_call: Some(0),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            UpdateAgentAdminSettingsRequest {
+                fan_out_max_children_per_call: Some(65),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            UpdateAgentAdminSettingsRequest {
+                fan_out_max_children_per_call: Some(16),
+                ..Default::default()
+            }
+            .validate()
+            .is_ok()
         );
         assert!(
             UpdateAgentAdminSettingsRequest { per_run_token_cap: Some(999), ..Default::default() }

@@ -46,7 +46,11 @@ async fn agent_settings_roundtrip_bounds_and_sync() {
         .await
         .put(server.api_url("/agent/settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "default_max_steps": 42, "per_run_token_cap": 500_000 }))
+        .json(&json!({
+            "default_max_steps": 42,
+            "per_run_token_cap": 500_000,
+            "fan_out_max_children_per_call": 16
+        }))
         .send()
         .await
         .unwrap();
@@ -67,6 +71,8 @@ async fn agent_settings_roundtrip_bounds_and_sync() {
         .await
         .unwrap();
     assert_eq!(got["default_max_steps"].as_i64(), Some(42));
+    // W2 (ITEM-3): the new per-`delegate`-call child cap round-trips.
+    assert_eq!(got["fan_out_max_children_per_call"].as_i64(), Some(16));
 
     // Bounds: out-of-range + a bad enum → 400.
     for bad in [
@@ -74,6 +80,7 @@ async fn agent_settings_roundtrip_bounds_and_sync() {
         json!({ "per_run_token_cap": 5 }),
         json!({ "default_sandbox_mode": "bogus-mode" }),
         json!({ "fan_out_max_threads": 999 }),
+        json!({ "fan_out_max_children_per_call": 999 }),
     ] {
         let r = client()
             .await

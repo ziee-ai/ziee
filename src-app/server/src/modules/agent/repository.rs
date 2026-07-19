@@ -36,7 +36,8 @@ impl AgentRepository {
             SELECT default_sandbox_mode, unattended_approval_policy, reviewer_enabled,
                    reviewer_model_id, reviewer_policy, reviewer_risk_thresholds,
                    per_run_token_cap, per_step_token_cap, default_max_steps,
-                   fan_out_max_threads, fan_out_max_depth, updated_at
+                   fan_out_max_threads, fan_out_max_depth,
+                   fan_out_max_children_per_call, updated_at
             FROM agent_admin_settings
             WHERE id = TRUE
             "#,
@@ -76,12 +77,14 @@ impl AgentRepository {
                 default_max_steps           = COALESCE($11, default_max_steps),
                 fan_out_max_threads         = COALESCE($12, fan_out_max_threads),
                 fan_out_max_depth           = COALESCE($13, fan_out_max_depth),
+                fan_out_max_children_per_call = COALESCE($14, fan_out_max_children_per_call),
                 updated_at                  = NOW()
             WHERE id = TRUE
             RETURNING default_sandbox_mode, unattended_approval_policy, reviewer_enabled,
                       reviewer_model_id, reviewer_policy, reviewer_risk_thresholds,
                       per_run_token_cap, per_step_token_cap, default_max_steps,
-                      fan_out_max_threads, fan_out_max_depth, updated_at
+                      fan_out_max_threads, fan_out_max_depth,
+                      fan_out_max_children_per_call, updated_at
             "#,
         )
         .bind(patch.default_sandbox_mode.as_deref())
@@ -97,6 +100,7 @@ impl AgentRepository {
         .bind(patch.default_max_steps)
         .bind(patch.fan_out_max_threads)
         .bind(patch.fan_out_max_depth)
+        .bind(patch.fan_out_max_children_per_call)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {

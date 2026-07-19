@@ -706,7 +706,8 @@ impl StepDispatcher for AgentDispatcher {
             .map(|s| SubagentLimits {
                 max_depth: s.fan_out_max_depth.clamp(1, 255) as u8,
                 max_threads: s.fan_out_max_threads.clamp(1, 255) as u8,
-                ..Default::default()
+                // ITEM-3 admin side (DEC-1): the per-`delegate`-call child cap.
+                max_children_per_call: s.fan_out_max_children_per_call.clamp(1, 64) as u16,
             })
             .unwrap_or_default();
 
@@ -781,10 +782,34 @@ impl StepDispatcher for AgentDispatcher {
                     inner,
                     map: classifications.clone(),
                 };
-                Some(Reviewer::new(Arc::new(recording), policy))
+                // ITEM-38 / DEC-83: thread the admin-configured per-band → decision
+                // overrides (`reviewer_risk_thresholds` jsonb) into the reviewer.
+                // Previously `Reviewer::new` hardcoded the default ladder, so an
+                // admin's `{"high":"deny"}` was stored + validated but never read.
+                Some(Reviewer::new_with_thresholds(
+                    Arc::new(recording),
+                    policy,
+                    agent_core::RiskThresholds::from_json(&s.reviewer_risk_thresholds),
+                ))
             }
             _ => None,
         };
+
+        // ITEM-61 (server half, DEC-121/122): resolve the run's per-model context
+        // window so the compaction trigger is window-relative rather than the
+        // conservative 128k fallback. `None` (model gone / no context_length) →
+        // the preset's fallback window is used unchanged.
+        let mut compaction_config = agent_core::CompactionConfig::agent();
+        if let Some(ctx_len) = crate::core::Repos
+            .llm_model
+            .get_by_id(ctx.model_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|m| m.capabilities.context_length)
+        {
+            compaction_config.context_window = Some(ctx_len as usize);
+        }
 
         let core = AgentCore {
             transcript: transcript.clone(),
@@ -814,7 +839,7 @@ impl StepDispatcher for AgentDispatcher {
                 Compactor::new(
                     model_client.clone(),
                     ctx.model_name.clone(),
-                    agent_core::CompactionConfig::agent(),
+                    compaction_config,
                 ),
                 transcript.clone(),
                 sink.clone(),
@@ -828,7 +853,11 @@ impl StepDispatcher for AgentDispatcher {
             sandbox,
             model_name: ctx.model_name.clone(),
             resume_executes_pending: true,
-            task_store: None,
+            // Group G (DEC-49/50): the durable per-run task list, keyed by
+            // `run_id` (this step's `workflow_runs.id`).
+            task_store: Some(Arc::new(
+                crate::modules::agent::task_list::PgTaskListStore::new(pool.clone()),
+            )),
         };
 
         // ITEM-16: resume-replay. A non-empty persisted transcript means this is a

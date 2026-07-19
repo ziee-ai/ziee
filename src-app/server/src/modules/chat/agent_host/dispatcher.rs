@@ -148,13 +148,29 @@ impl ChatAgentTurn {
 
         let model_client = Arc::new(ProviderModelClient::new(self.provider.clone()));
 
+        // ITEM-61 (server half, DEC-121/122): resolve the run's per-model context
+        // window so the compaction trigger is window-relative rather than the
+        // conservative 128k fallback. `None` (model gone / no context_length) →
+        // the chat preset's fallback window is used unchanged.
+        let mut compaction_config = agent_core::CompactionConfig::chat();
+        if let Some(ctx_len) = crate::core::Repos
+            .llm_model
+            .get_by_id(self.model_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|m| m.capabilities.context_length)
+        {
+            compaction_config.context_window = Some(ctx_len as usize);
+        }
+
         let mut extensions = self.extensions.clone();
         // Core compaction extension (parity with the workflow host).
         extensions.push(Arc::new(CompactionExtension::new(
             Compactor::new(
                 model_client.clone(),
                 self.model_name.clone(),
-                agent_core::CompactionConfig::chat(),
+                compaction_config,
             ),
             transcript.clone(),
             sink.clone(),
@@ -192,7 +208,11 @@ impl ChatAgentTurn {
             sandbox: SandboxMode::ReadOnly { network: true },
             model_name: self.model_name.clone(),
             resume_executes_pending: false,
-            task_store: None,
+            // Group G (DEC-49/50): the durable per-run task list, keyed by
+            // `run_id` (chat's `assistant_message_id`).
+            task_store: Some(Arc::new(
+                crate::modules::agent::task_list::PgTaskListStore::new(self.pool.clone()),
+            )),
         };
 
         let req = AgentTurnRequest {
