@@ -392,7 +392,7 @@ impl EventSink for WorkflowEventSink {
             AgentEvent::ContentDelta(_) => {}
             // Usage / GateOpened / Stopped are handled by the dispatcher's
             // result-folding + the gate's own ElicitationRequired emit.
-            AgentEvent::Usage(_) | AgentEvent::GateOpened(_) | AgentEvent::Stopped(_) => {}
+            AgentEvent::Usage(_) | AgentEvent::GateOpened(_) | AgentEvent::Stopped(_) | AgentEvent::TaskListChanged { .. } => {}
         }
     }
 }
@@ -832,6 +832,7 @@ impl StepDispatcher for AgentDispatcher {
             sandbox,
             model_name: ctx.model_name.clone(),
             resume_executes_pending: true,
+            task_store: None,
         };
 
         // ITEM-16: resume-replay. A non-empty persisted transcript means this is a

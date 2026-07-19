@@ -31,7 +31,8 @@ use crate::extension::{
     run_before_model, run_contribute, sorted_extensions, AgentExtension, Flow, TurnContext,
 };
 use crate::ports::{
-    ApprovalPolicy, EventSink, HumanGate, ModelResolver, ToolProvider, TranscriptStore,
+    ApprovalPolicy, EventSink, HumanGate, ModelResolver, TaskListStore, ToolProvider,
+    TranscriptStore,
 };
 use crate::reviewer::Reviewer;
 use crate::types::{
@@ -261,6 +262,11 @@ pub struct AgentCore {
     pub extensions: Vec<Arc<dyn AgentExtension>>,
     /// Optional reviewer resolving a `Decision::Review` (ITEM-12).
     pub reviewer: Option<Reviewer>,
+    /// Durable per-run agent task list (Group G / ITEM-35 / DEC-50). `None`
+    /// disables the `task_*` core tools + the re-injection extension — a
+    /// construction site that doesn't wire a store passes `None`, so this field
+    /// is additive for existing hosts. The server owns the DB-backed impl.
+    pub task_store: Option<Arc<dyn TaskListStore>>,
     pub budget: Budget,
     pub limits: crate::types::SubagentLimits,
     pub sandbox: SandboxMode,
@@ -340,7 +346,10 @@ impl AgentCore {
             // (e.g. `delegate` when `allow_delegate`) — the model sees them as one
             // flat list; core tools are intercepted in-loop below (ITEM-1).
             let mut tools = self.tools.list(&tctx.tool_scope).await?;
-            tools.extend(crate::core_tools::core_tool_defs(&tctx.tool_scope));
+            tools.extend(crate::core_tools::core_tool_defs(
+                &tctx.tool_scope,
+                self.task_store.is_some(),
+            ));
             let mut chat_req = ChatRequest {
                 model: self.model_name.clone(),
                 messages: assemble_messages(&tctx.system, &history),
@@ -510,6 +519,7 @@ impl AgentCore {
                             core_tool,
                             call,
                             &tctx.tool_scope,
+                            req.run_id,
                             req.user_id,
                             &cancel,
                         )
@@ -798,6 +808,7 @@ mod tests {
             model_factory: Arc::new(ProviderModelClientFactory),
             extensions: vec![],
             reviewer: None,
+            task_store: None,
             budget: Budget::new(2, 1_000_000, 1_000_000),
             limits: Default::default(),
             sandbox: SandboxMode::WorkspaceWrite { network: false },

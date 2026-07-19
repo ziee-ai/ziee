@@ -235,6 +235,7 @@ mod tests {
             model_factory: factory,
             extensions: vec![],
             reviewer: None,
+            task_store: None,
             budget: Budget::new(4, 1_000_000, 1_000_000),
             limits: SubagentLimits {
                 max_depth: 1,
@@ -421,6 +422,66 @@ mod tests {
                 .iter()
                 .any(|s| s.summary.contains("subagent error") && s.summary.contains("boom")),
             "the failed child becomes an error-summary (not a hard error)"
+        );
+    }
+
+    /// TEST-100 (ITEM-37 / DEC-53): sub-agent task-list isolation, verified
+    /// STRUCTURALLY. `fan_out` gives each child a FRESH `run_id` and clones
+    /// `self` (so children SHARE the parent's `task_store` Arc) — but because the
+    /// store is keyed by `run_id`, a child's task writes land under its own key.
+    /// The parent gets ONLY the child's `SubagentSummary.summary` text, never its
+    /// task items (no rollup).
+    #[tokio::test]
+    async fn subagent_task_lists_are_run_scoped_no_rollup() {
+        use crate::test_fakes::{assistant_tool, FakeTaskStore};
+        use crate::tasklist::TASK_CREATE_TOOL;
+
+        let store = Arc::new(FakeTaskStore::default());
+        // One shared child model (model_id=None): create a task, then finish.
+        let child_model = Arc::new(ScriptedModel::script(vec![
+            assistant_tool(
+                "c1",
+                TASK_CREATE_TOOL,
+                serde_json::json!({ "content": "Do the child step", "active_form": "Doing the child step" }),
+            ),
+            ChatMessage::assistant("child final summary"),
+        ]));
+        let mut core = fanout_core(
+            child_model,
+            Arc::new(FakeResolver::default()),
+            Arc::new(ProviderModelClientFactory),
+            6,
+        );
+        core.task_store = Some(store.clone());
+
+        // A run_id the PARENT might use — it must stay ABSENT from the store
+        // (nothing rolls a child's list up into the parent's).
+        let parent_run = Uuid::new_v4();
+
+        let summaries = core
+            .fan_out(Uuid::new_v4(), vec![spec(None, "child task")], CancelToken::new())
+            .await
+            .unwrap();
+
+        // Parent receives ONLY the child's summary text — never its task items.
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].summary, "child final summary");
+        assert!(
+            !summaries[0].summary.contains("Do the child step"),
+            "the parent must not receive the child's task-list items (no rollup)"
+        );
+
+        // The store holds exactly ONE list — the child's, under its own fresh
+        // run_id — and NOTHING under the parent's run_id (structural isolation).
+        let lists = store.lists.lock().unwrap();
+        assert_eq!(lists.len(), 1, "only the child created a task list");
+        let (child_run, items) = lists.iter().next().unwrap();
+        assert_ne!(*child_run, parent_run, "the child list is keyed by its own run_id");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].content, "Do the child step");
+        assert!(
+            !lists.contains_key(&parent_run),
+            "the parent has no list (no auto-rollup)"
         );
     }
 

@@ -196,6 +196,7 @@ impl ChatAgentTurn {
             sandbox: SandboxMode::ReadOnly { network: true },
             model_name: self.model_name.clone(),
             resume_executes_pending: false,
+            task_store: None,
         };
 
         let req = AgentTurnRequest {

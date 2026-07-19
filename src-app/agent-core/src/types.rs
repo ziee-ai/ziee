@@ -163,6 +163,71 @@ pub struct SubagentSummary {
     pub summary: String,
 }
 
+// ---------------------------------------------------------------------------
+// Group G — agent self-task-management (Claude-Code `Task`-tools-style)
+// (ITEM-34/35, DEC-49/54). The item shape + status mirror CC's CURRENT Task
+// tools (per-item create + patch-by-id + read-back), NOT legacy `TodoWrite`.
+// ---------------------------------------------------------------------------
+
+/// A task-list item's status (DEC-54). Snake-case on the wire so the model's
+/// `status: "in_progress"` deserializes directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    Pending,
+    InProgress,
+    Completed,
+}
+
+/// One agent task-list item (ITEM-34 / DEC-54). `content` is the imperative
+/// form ("Run tests"); `active_form` the present-continuous form rendered while
+/// the item is `in_progress` ("Running tests") — CC's Anthropic-specific dual
+/// form. `owner`/`deps` mirror CC's current Task tools (carried as data; the
+/// crate does not hard-enforce dependency ordering — the model is guided by the
+/// tool descriptions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskItem {
+    pub id: Uuid,
+    pub content: String,
+    pub active_form: String,
+    pub status: TaskStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deps: Vec<Uuid>,
+}
+
+/// The fields to create a task item (the store assigns the `id`). `status`
+/// defaults to `pending` when the model omits it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskItemCreate {
+    pub content: String,
+    pub active_form: String,
+    #[serde(default)]
+    pub status: Option<TaskStatus>,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub deps: Vec<Uuid>,
+}
+
+/// A partial patch to an existing task item — only the supplied fields change
+/// (per-item patch-by-id, the CC `TaskUpdate` shape). `deps: Some(vec![])`
+/// clears deps; `deps: None` leaves them untouched.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TaskItemPatch {
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub active_form: Option<String>,
+    #[serde(default)]
+    pub status: Option<TaskStatus>,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub deps: Option<Vec<Uuid>>,
+}
+
 /// The set of tool servers a turn may call (RBAC-resolved by the host).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolScope {
@@ -206,6 +271,13 @@ pub enum AgentEvent {
     Usage(Usage),
     ToolNotification { server: String, note: String },
     HistoryReplaced { summary_upto: usize },
+    /// The agent's task list changed (Group G / ITEM-36) — emitted by the
+    /// `task_*` core tools after a create/update mutates the durable store,
+    /// carrying the full current list (small) so a surface renders without a
+    /// refetch. A later server/FE tranche maps this to an SSE frame +
+    /// content-block (mirroring `mcpToolProgress`); the workflow host maps it to
+    /// a per-run progress track. Hosts that don't surface it ignore it.
+    TaskListChanged { run_id: Uuid, items: Vec<TaskItem> },
     GateOpened(GateTicket),
     Stopped(StopReason),
 }

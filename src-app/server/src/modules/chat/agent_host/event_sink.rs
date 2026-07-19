@@ -167,6 +167,7 @@ impl EventSink for ChatEventSink {
             // (dispatcher) now emits — it folds the turn's `Usage` events itself
             // (via `Self::fold_usage`), so the sink doesn't accumulate here.
             AgentEvent::Usage(_u) => {}
+            AgentEvent::TaskListChanged { .. } => {}
 
             // No-op: the terminal `complete` frame is emitted by the HOST
             // (dispatcher) AFTER the extension-event channel is drained, so a

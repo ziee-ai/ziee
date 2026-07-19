@@ -24,6 +24,7 @@ pub mod guard;
 pub mod policy;
 pub mod ports;
 pub mod reviewer;
+pub mod tasklist;
 pub mod tokens;
 pub mod types;
 
@@ -44,13 +45,19 @@ pub use extension::{sorted_extensions, AgentExtension, Flow, TurnContext};
 pub use guard::neutralize_untrusted;
 pub use policy::TrustedAutoApprovePolicy;
 pub use ports::{
-    ApprovalPolicy, EventSink, HumanGate, ModelResolver, ToolProvider, TranscriptStore,
+    ApprovalPolicy, EventSink, HumanGate, ModelResolver, TaskListStore, ToolProvider,
+    TranscriptStore,
 };
 pub use reviewer::{
     map_risk, ModelRiskClassifier, Reviewer, Risk, RiskClassifier, RiskThresholds,
 };
+pub use tasklist::{
+    task_tool_defs, TaskListExtension, TASK_CREATE_TOOL, TASK_GET_TOOL, TASK_LIST_ORDER,
+    TASK_LIST_TOOL, TASK_UPDATE_TOOL,
+};
 pub use types::{
     AgentEvent, AgentTurnRequest, ApprovalMode, Decision, GateAsk, GateOutcome, GateTicket,
     IdempotencyKey, ReviewDecision, SandboxMode, StopReason, SubagentLimits, SubagentSpec,
-    SubagentSummary, ToolCall, ToolCallRecord, ToolResult, ToolScope, TurnSeed, Usage,
+    SubagentSummary, TaskItem, TaskItemCreate, TaskItemPatch, TaskStatus, ToolCall,
+    ToolCallRecord, ToolResult, ToolScope, TurnSeed, Usage,
 };

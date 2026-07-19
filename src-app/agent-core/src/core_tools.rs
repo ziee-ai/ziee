@@ -42,6 +42,14 @@ pub const DELEGATE_TOOL: &str = "delegate";
 pub enum CoreTool {
     /// `delegate` — fan out to parallel sub-agents (Group A / ITEM-1).
     Delegate,
+    /// `task_create` — add one item to the agent's task list (Group G / ITEM-34).
+    TaskCreate,
+    /// `task_update` — patch a task-list item by id (Group G / ITEM-34).
+    TaskUpdate,
+    /// `task_get` — read back one task-list item by id (Group G / ITEM-34).
+    TaskGet,
+    /// `task_list` — read back the whole task list (Group G / ITEM-34).
+    TaskList,
 }
 
 impl CoreTool {
@@ -49,18 +57,26 @@ impl CoreTool {
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
             DELEGATE_TOOL => Some(Self::Delegate),
+            crate::tasklist::TASK_CREATE_TOOL => Some(Self::TaskCreate),
+            crate::tasklist::TASK_UPDATE_TOOL => Some(Self::TaskUpdate),
+            crate::tasklist::TASK_GET_TOOL => Some(Self::TaskGet),
+            crate::tasklist::TASK_LIST_TOOL => Some(Self::TaskList),
             _ => None,
         }
     }
 }
 
-/// The core meta-tool definitions to APPEND to the model's tool list for a turn,
-/// gated by `scope`. Today: `delegate`, offered iff `scope.allow_delegate` is set
-/// (false in children → structural `max_depth = 1`).
-pub fn core_tool_defs(scope: &ToolScope) -> Vec<Tool> {
+/// The core meta-tool definitions to APPEND to the model's tool list for a turn.
+/// `delegate` is offered iff `scope.allow_delegate` (false in children →
+/// structural `max_depth = 1`); the Group-G `task_*` tools are offered iff
+/// `task_list_enabled` (the host wired an `AgentCore::task_store`).
+pub fn core_tool_defs(scope: &ToolScope, task_list_enabled: bool) -> Vec<Tool> {
     let mut out = Vec::new();
     if scope.allow_delegate {
         out.push(delegate_tool_def());
+    }
+    if task_list_enabled {
+        out.extend(crate::tasklist::task_tool_defs());
     }
     out
 }
@@ -235,6 +251,7 @@ impl AgentCore {
         tool: CoreTool,
         call: &'a ToolCall,
         parent_scope: &'a ToolScope,
+        run_id: Uuid,
         user_id: Uuid,
         cancel: &'a CancelToken,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolResult> + Send + 'a>> {
@@ -242,6 +259,12 @@ impl AgentCore {
             CoreTool::Delegate => {
                 Box::pin(self.handle_delegate(call, parent_scope, user_id, cancel))
             }
+            // Group G task-list tools (impls in `crate::tasklist`), keyed by the
+            // turn's `run_id` — each agent / sub-agent has its OWN run-scoped list.
+            CoreTool::TaskCreate => Box::pin(self.handle_task_create(run_id, call)),
+            CoreTool::TaskUpdate => Box::pin(self.handle_task_update(run_id, call)),
+            CoreTool::TaskGet => Box::pin(self.handle_task_get(run_id, call)),
+            CoreTool::TaskList => Box::pin(self.handle_task_list(run_id, call)),
         }
     }
 
@@ -326,10 +349,14 @@ mod tests {
             servers: vec![],
             allow_delegate: false,
         };
-        assert!(core_tool_defs(&on)
+        assert!(core_tool_defs(&on, false)
             .iter()
             .any(|t| t.function.name == DELEGATE_TOOL));
-        assert!(core_tool_defs(&off).is_empty());
+        assert!(core_tool_defs(&off, false).is_empty());
+        // Task tools appear iff the host wired a task_store (task_list_enabled).
+        assert!(core_tool_defs(&off, true)
+            .iter()
+            .any(|t| t.function.name == crate::tasklist::TASK_CREATE_TOOL));
     }
 
     #[test]
@@ -455,6 +482,7 @@ mod tests {
             model_factory: factory,
             extensions: vec![],
             reviewer: None,
+            task_store: None,
             budget: Budget::new(4, 1_000_000, 1_000_000),
             limits: SubagentLimits::default(),
             sandbox: SandboxMode::WorkspaceWrite { network: false },
