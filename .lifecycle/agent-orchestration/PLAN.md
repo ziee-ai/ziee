@@ -12,6 +12,15 @@
 > background sub-agents, (3) background sandbox execution, (4) a **general,
 > extensible** background-job + spawn-sub-agent abstraction (the hard part), and
 > (5) `/loop` + `/schedule` in chat (possibly merged into one dialog).
+>
+> **SOTA research is done** (human asked for it before locking scope) — see
+> **[`RESEARCH_SOTA.md`](./RESEARCH_SOTA.md)** (5 primary-source research passes over
+> Claude Code / Codex / Cursor / Goose / DBOS / LangGraph / Mastra / …). Two headline
+> results now folded into this plan: (a) the 5-group spine is **on the right track**,
+> with **~5 completeness gaps + a durability/hardening set** added below as **Group F**;
+> (b) the backbone recommendation is **REVISED** to a hybrid — *A-substrate + B-facade +
+> C-as-a-kind* (see § Architecture options). The human chose **full scope (A–E)**;
+> Group F items are the research-surfaced candidates to fold in.
 
 ---
 
@@ -85,6 +94,26 @@ infra, scheduler) established the ground truth. Key facts every item below build
 - **ITEM-21**: A **new "self-paced" schedule kind** — the one genuinely-new backend mode (cron covers fixed intervals; self-pacing is model-driven `next_run_at`). Adds a `ScheduleKind::SelfPaced` + a mechanism for the run to propose its own next fire time.
 - **ITEM-22**: **Bind-to-current-conversation** — land loop/schedule results in THIS chat (vs the scheduler's per-task bound conversation), reusing `continue_chat` seeding; an in-chat list of a conversation's attached loops/schedules (pause/edit/delete) reusing `ScheduledTaskCard`.
 - **ITEM-23** [stretch]: Reconcile the standalone "Scheduled Tasks" page with the new in-chat entry (one source of truth; the chat affordance is a second door onto the same tasks).
+
+### Group F — Research-surfaced additions (from RESEARCH_SOTA.md — completeness + hardening)
+
+> These are NOT in the original 5 groups; the SOTA sweep flagged them. Split into
+> completeness gaps (new capability) and correctness/hardening (make B/C/A actually
+> production-grade — several are where our current sketch is *behind* SOTA).
+
+**Completeness gaps (new capability, ranked)**
+- **ITEM-24** (HIGHEST): **Goal-seeking / verification loop** (`/goal` analog) — a *different axis* from scheduling: keep working across turns until a cheap independent evaluator confirms a natural-language completion condition ("done when the QC figure passes / no missing values"). Answers "green ≠ success"; grounds trust for non-technical users. Fold into the Group-E dialog as an optional "done when…" condition; host on the evaluator-model + workflow + memory ziee already has.
+- **ITEM-25** (HIGH): **Steer a running agent** — nudge / redirect / queue a note to a background sub-agent or long sandbox run *without killing it* (Groups B/C). Avoids restart-from-scratch.
+- **ITEM-26** (HIGH-MEDIUM): **Unified background-work inbox/dashboard** — one consolidated surface (state + peek + unread + result) across Groups B/C/D/E. The connective tissue that makes the groups feel like one system; every SOTA leader converged on it.
+- **ITEM-27** (MEDIUM-HIGH): **Event-driven "monitor & notify" triggers** — "notify me when the sequencing run finishes / this dataset changes / this file appears" (cron can't express this; a top scientist JTBD). Add an event/completion trigger alongside cron; prefer event-push over Group-C polling.
+- **ITEM-28** [stretch, MEDIUM]: **Live agent TODO checklist** — a "plan → steps checking off live" surface complementing plan-preview + the activity timeline.
+
+**Correctness / hardening (make B/C/A production-grade — several are corrections)**
+- **ITEM-29**: **Persisted task state machine + boot orphan-reclaim** for background work — `queued→running→{completed|failed|cancelled}` **plus a `needs_input` state with a reply affordance**. Replaces the in-memory `tokio::spawn`+`is_generating` flag (which does NOT survive a restart). This is the durability the backbone (§Architecture) provides.
+- **ITEM-30**: **Sandbox background output backpressure fix** — continuously drain both pipes into a **ring / head+tail buffer** (or spill to a per-run workspace file with byte-range paging); the current 1 MiB hard drop-after is WRONG for background (loses the recent tail).
+- **ITEM-31**: **Sandbox background lifetime policy** — absolute-max + idle/no-new-output reaper + bind to conversation/sandbox teardown; report `timed_out` distinctly; **kill the cgroup** (reaps grandchildren); terminal-state registry reaping + prune-on-every-path (incl. server shutdown); re-apply ALL hardening on the new path.
+- **ITEM-32**: **Untrusted-output scanning of child summaries** — scan a sub-agent's merged summary for instruction-shaped injection (`<system-reminder>`/`Human:`/permission strings) before the parent reads it (children run bio/web/lit MCP = untrusted content). Cheap, high-value.
+- **ITEM-33** [stretch]: **Named, reusable agent definitions** + a **cumulative per-conversation spawn budget** (concurrency cap ≠ total-spawns cap; Claude uses 200/session) + **streaming child progress** + **per-child sandbox/approval mode**. The Group-A ergonomics/governance polish.
 
 ---
 
@@ -200,25 +229,37 @@ transcript.
 - **Cons:** the raw **sandbox-exec** case is not an "agent turn," so it needs a separate path anyway → doesn't fully unify; pushes durable-run concerns into `agent-core` (which is deliberately domain-free behind its ports); depends on the still-hardening chat-agent-core cutover.
 - **Best when:** the scope is sub-agent-centric and we defer background sandbox.
 
-### Recommendation (for discussion, not locked)
-**Option B** as the backbone, **reusing** (not re-forking) as much of workflow's
-mechanics as possible — i.e. a thin `background_job` module whose registry/SSE/
-sweep are pattern-mirrors of `workflow`'s, exposing the uniform `spawn_background /
-check_status / collect_result` surface (ITEM-17). It's the only option that cleanly
-covers **all three** producers (sub-agents, background sandbox, future kinds) behind
-one open seam, which is exactly the "general + extensible, not one-off" requirement.
-Option A is the pragmatic fallback if we want to ship the narrowest first cut; Option
-C composes *with* B for the agent-specific cases (delegate/background sub-agents can
-be a `JobKind` that internally runs agent-core turns).
+### Recommendation — REVISED by the SOTA research (see RESEARCH_SOTA.md §5)
+
+**A-substrate + B-facade + C-as-a-kind.** The research changed my initial "Option B
+(new table)" answer. The prevailing SOTA pattern (DBOS, Restate, Inngest, and Goose —
+Goose is Rust and is *actively collapsing* its split design into one
+`execute(RecipeSource, ExecutionMode{Interactive,Background,SubTask})` primitive) is
+**ONE durable-run primitive with a `kind` discriminator + decentralized kind
+registration, where "spawn sub-agent" is just a run-kind.** ziee is checkpoint-camp on
+Postgres — the same camp as **DBOS**, whose `workflow_status` table is architecturally
+the same shape as ziee's existing `workflow_runs`. So:
+
+- **Option A is the skeleton** — generalize `workflow_runs` with a `kind` discriminator + a compact typed per-kind jsonb payload (a background job = a 1-step run; a sub-agent = a run whose single step *is* the agent loop). Reuse the runner/heartbeat/`RunHandle` SSE/`startup_sweep`/notification already built.
+- **Option B is the skin — KEEP its API + `JobKind` trait registry** (the uniform `spawn_background/check_status/collect_result` + decentralized registration, matching ziee's built-in-MCP registry culture) — **but back it by `workflow_runs`, NOT a new `background_jobs` table.** A second durable substrate = two orphan-sweeps / status models / SSE-sync-notification-retention pipelines — the exact fragmentation Goose is spending a cycle to delete.
+- **Option C is one bone** — the agent-core "detached turn" is `JobKind::SubAgent`, not a standalone seam (standalone C doesn't cover non-agent background work and re-forks the split everyone is collapsing).
+
+**Biggest risk:** semantic overload of `workflow_runs`. Mitigate with the `kind`
+discriminator + compact typed jsonb (never kind-conditional nullable-column sprawl),
+an *optional* step/journal, and **per-`JobKind` policies** for orphan-sweep / flap-cap /
+concurrency / retention (a token-heavy LLM sub-agent ≠ a fire-and-forget export — copy
+Goose's sub-agent caps: ≤25 turns / 5 min / ~10 concurrent / no recursion).
 
 ---
 
 ## Open scope decisions for the human (the menu picks — resolve in chat before Phase 2)
 
-1. **Which capability areas are in v1?** All five (A–E), or a core subset? (e.g. A + E are cheapest — both mostly surface existing engines; B/C/D are the heavier "background platform.")
-2. **Extensibility backbone** — Option A / B / C (see above). This gates the shape of B/C/D items.
-3. **`/loop` `/schedule` entry** — composer slot-button only, slash-command parser only, or both (ITEM-18 vs ITEM-19)?
-4. **Self-paced loop mode** (ITEM-21) — in scope, or start with Once + Recurring-cron only?
-5. **Bind-to-current-conversation** (ITEM-22) — do loops/schedules created in a chat post back into THAT chat, or into the scheduler's per-task bound conversation (current behavior)?
-6. **Background sandbox** (Group C) — in v1, or defer (it touches the `sdk` submodule and is the largest single lift)?
-7. **On-demand sub-agents depth** — just the delegate tool + merged summary (A1–A4), or also background sub-agents (Group B)?
+1. **Scope breadth** — human chose **full (A–E)**. Remaining: **how much of Group F** rides along? (My rec: fold in the *hardening* items 29–32 wherever B/C/A ship — they're corrections, not extras — and treat the *completeness gaps* 24–27 as their own prioritized round, led by **ITEM-24 goal-seeking** and **ITEM-26 unified inbox**.)
+2. **Extensibility backbone** — the research **revised** this to **A-substrate + B-facade + C-as-a-kind** (reuse `workflow_runs` + a `JobKind` trait registry; NO separate table). Confirm this direction, or prefer a clean separate `background_jobs` table anyway (the divergence the field is unwinding).
+3. **Sequencing** — the backbone (D, item 14/15/17 revised) is the substrate B/C sit on. Ship order: A + E first (surface existing engines) → backbone → B + C on it? Or backbone-first?
+4. **Goal-seeking (ITEM-24)** — in scope as its own axis (the highest-value completeness gap), and does it live *inside* the merged Group-E dialog ("done when…") or as its own affordance?
+5. **`/loop` `/schedule` entry** — composer slot-button only, slash-command parser only, or both (ITEM-18 vs ITEM-19)? (SOTA is NL-first; a slash parser is optional sugar.)
+6. **Self-paced loop mode** (ITEM-21) — confirmed on-SOTA (Claude Code bare `/loop`); include the mirror mechanics (show next-delay + reason, self-stop, 7-day max-horizon backstop)?
+7. **Bind-to-current-conversation** (ITEM-22) — loops/schedules created in a chat post back into THAT chat, or into the scheduler's per-task bound conversation (current behavior)?
+8. **Unified inbox (ITEM-26)** — build the one consolidated dashboard now (connective tissue), or ship per-surface status first and add the inbox as a fast-follow?
+9. **Event-driven triggers (ITEM-27)** — in the first round, or defer behind cron+once + goal-seeking?
