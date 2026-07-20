@@ -508,60 +508,6 @@ const chatStoreConfig = {
   }: StoreInitCtx<typeof chatInitialState>) => {
     const get = getRaw as () => ChatState
 
-    // Warm the lazy-action chunks OFF the first-render path (init runs at first
-    // store access, post-initial-render; `.preload()` only starts a background
-    // import, never blocking paint). Render-critical + streaming actions warm
-    // immediately; the rest on idle. Chunks are module-global, primed via the
-    // singleton for every pane. Also satisfies the prefetch gate for all actions.
-    const cs = useChatStore.getState()
-    void cs.applyStreamFrame.preload()
-    void cs.loadConversation.preload()
-    void cs.loadConversationState.preload()
-    void cs.loadMessages.preload()
-    void cs.reconcileTail.preload()
-    void cs.sendMessage.preload()
-    const warmIdle = (cb: () => void) => {
-      // `{ timeout }` guarantees the cold-action warm-up still fires even if the
-      // main thread stays busy (e.g. a long SSE token stream keeps eating idle
-      // time) — without it, a never-idle page could defer these indefinitely.
-      if (typeof requestIdleCallback !== 'undefined')
-        requestIdleCallback(cb, { timeout: 2000 })
-      else setTimeout(cb, 200)
-    }
-    warmIdle(() => {
-      const c = useChatStore.getState()
-      void c.activateBranch.preload()
-      void c.attachExtensionRuntime.preload()
-      void c.cancelCacheClear.preload()
-      void c.cancelEdit.preload()
-      void c.captureBranchForkLevel.preload()
-      void c.clearConversationCache.preload()
-      void c.clearError.preload()
-      void c.clearPendingBranch.preload()
-      void c.closeAllRightPanelTabs.preload()
-      void c.closeMobileDrawer.preload()
-      void c.closeRightPanelTab.preload()
-      void c.computeForkPoints.preload()
-      void c.createConversation.preload()
-      void c.displayInRightPanel.preload()
-      void c.jumpToMessage.preload()
-      void c.loadBranches.preload()
-      void c.loadNewerMessages.preload()
-      void c.loadOlderMessages.preload()
-      void c.reset.preload()
-      void c.saveConversationState.preload()
-      void c.scheduleCacheClear.preload()
-      void c.setActiveRightPanelTab.preload()
-      void c.setPaneId.preload()
-      void c.setRightPanelWidth.preload()
-      void c.startEditMessage.preload()
-      void c.startRegenerateMessage.preload()
-      void c.stopStreaming.preload()
-      void c.trimMessagesToForkPoint.preload()
-      void c.updateConversation.preload()
-      void c.updateRightPanelTab.preload()
-    })
-
     // Idempotent: `__init__.__store__` can be invoked more than once per instance
     // (a local pane self-inits via `.use()`, and the `Stores.Chat` proxy's lazy
     // init check may also fire it for the focused pane). Bail if this instance

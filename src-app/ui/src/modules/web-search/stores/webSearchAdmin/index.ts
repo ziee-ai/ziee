@@ -19,9 +19,6 @@ export const WebSearchAdmin = defineStore<WebSearchAdminState, Actions>('WebSear
     on('sync:web_search_settings', reload)
     on('sync:reconnect', reload)
     reload()
-    void actions.updateSettings.preload()
-    void actions.updateProvider.preload()
-    void actions.load.preload()
   },
 })
 export const useWebSearchAdminStore = WebSearchAdmin.store

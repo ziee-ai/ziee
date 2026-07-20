@@ -38,10 +38,6 @@ const UsersStoreDef = defineStore<UsersState, Actions>('Users', {
     on('sync:user', reload)
     on('sync:reconnect', reload)
     void actions.loadUsers()
-    // Programmatic (non-click) actions: warm their chunks so they're ready when
-    // fired reactively — and satisfy the prefetch gate without a hover trigger.
-    void actions.clearError.preload()
-    void actions.loadUserRegistrationSettings.preload()
   },
 })
 
