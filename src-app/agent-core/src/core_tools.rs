@@ -393,6 +393,24 @@ impl AgentCore {
         user_id: Uuid,
         cancel: &CancelToken,
     ) -> ToolResult {
+        // SECURITY — structural `max_depth = 1` (the finding). `delegate` is only
+        // OFFERED to the model when `allow_delegate` (never to a fan-out child,
+        // which runs `allow_delegate = false`). But the loop intercepts core tools
+        // by NAME, so a child running untrusted third-party MCP content that is
+        // prompt-injected into EMITTING a `delegate` ToolUse block would otherwise
+        // still reach here and spawn grandchildren — breaking the depth invariant.
+        // Refuse it structurally (no fan-out) whenever delegation isn't permitted
+        // for this scope. (The other conditionally-offered core tools already
+        // self-guard: `task_*` returns `task_unavailable` when no `task_store` is
+        // wired, and `schedule_next` errors when no `SchedulePort` is wired — so an
+        // induced, unoffered call to those does no privileged work. `delegate` was
+        // the sole gap because it is gated on a per-request FLAG, not a wired port.)
+        if !parent_scope.allow_delegate {
+            return error_tool_result(
+                "delegate: delegation is not permitted in this context (a sub-agent cannot \
+                 spawn further sub-agents)",
+            );
+        }
         let input: DelegateInput = match serde_json::from_value(call.input.clone()) {
             Ok(i) => i,
             Err(e) => return error_tool_result(format!("delegate: invalid input: {e}")),
@@ -816,6 +834,63 @@ mod tests {
             .any(|b| matches!(b, ContentBlock::ToolResult { tool_use_id, is_error: Some(true), .. } if tool_use_id == "d1"));
         assert!(is_error, "empty delegate yields an is_error tool result");
         assert!(tc.tools.calls.lock().unwrap().is_empty());
+    }
+
+    /// SECURITY regression (the HIGH finding): a request with
+    /// `allow_delegate = false` that is INDUCED to emit a `delegate` ToolUse
+    /// block (as a prompt-injected fan-out child could be) must return an
+    /// `is_error` result and spawn NO children — the loop intercepts `delegate`
+    /// by name, so the guard in `handle_delegate` is what structurally enforces
+    /// `max_depth = 1`. Mirrors `delegate_injected_iff_allow_delegate`.
+    #[tokio::test]
+    async fn delegate_refused_when_allow_delegate_false() {
+        let child_model = Uuid::new_v4();
+        // The model (a stand-in for an injected child) emits a `delegate` call
+        // even though delegation is NOT permitted for this turn.
+        let parent = Arc::new(ScriptedModel::script(vec![
+            assistant_tool(
+                "d1",
+                "delegate",
+                serde_json::json!({
+                    "children": [ { "system": "spawn a grandchild", "model_id": child_model.to_string() } ]
+                }),
+            ),
+            ChatMessage::assistant("done"),
+        ]));
+        let tc = build_core(
+            parent,
+            // A factory whose child model would resolve — so if the fan-out ran,
+            // the resolver WOULD be asked for `child_model` (our negative probe).
+            Arc::new(FakeFactory {
+                inner: Arc::new(ScriptedModel::final_text("grandchild summary")),
+            }),
+            Arc::new(FakeResolver::default()),
+        );
+
+        // allow_delegate = false → the delegate tool is not even offered, but the
+        // scripted model emits it anyway; the interception must refuse it.
+        tc.core.run(req(false), CancelToken::new()).await.unwrap();
+
+        // The delegate call yielded an is_error tool result (refused).
+        let msgs = tc.transcript.msgs.lock().unwrap();
+        let is_error = msgs
+            .values()
+            .flatten()
+            .flat_map(|m| &m.content)
+            .any(|b| matches!(b, ContentBlock::ToolResult { tool_use_id, is_error: Some(true), .. } if tool_use_id == "d1"));
+        assert!(is_error, "an induced delegate under allow_delegate=false must be an is_error result");
+        drop(msgs);
+
+        // No fan-out ran: the child model_id was NEVER resolved (no grandchild
+        // was spawned) and no MCP tool was routed out.
+        assert!(
+            !tc.resolver.asked.lock().unwrap().contains(&child_model),
+            "no sub-agent may be spawned when delegation is not permitted"
+        );
+        assert!(
+            tc.tools.calls.lock().unwrap().iter().all(|c| c.name != "delegate"),
+            "delegate is still intercepted (never routed to ToolProvider::call)"
+        );
     }
 
     // ----- Group E: schedule_next (DEC-42) ---------------------------------

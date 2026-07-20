@@ -58,7 +58,13 @@ pub enum StopReason {
     IterationCap,
     /// Per-run or per-step token cap breached.
     TokenCap,
-    /// Wall-clock deadline.
+    /// Wall-clock deadline. RESERVED / host-enforced: the base loop tracks no
+    /// elapsed time so it never constructs this itself, but it is a load-bearing
+    /// public wire variant — the chat host maps it to the `"timeout"`
+    /// `finish_reason` (`agent_host::event_sink::finish_reason`) and a future
+    /// deadline-enforcing host will emit it. (A `pub` enum variant is not
+    /// dead-code-linted, so no `#[allow]` is needed; it is kept, not removed, to
+    /// preserve the wire contract + the exhaustive host mapping.)
     WallClock,
     /// Cancelled / halted by the host.
     Halted,

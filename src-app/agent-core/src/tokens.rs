@@ -16,11 +16,6 @@ pub fn tokens_from_chars(chars: usize) -> usize {
     }
 }
 
-/// Estimate tokens across an iterator of string slices.
-pub fn estimate_tokens_iter<'a, I: IntoIterator<Item = &'a str>>(iter: I) -> usize {
-    iter.into_iter().map(estimate_tokens).sum()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -38,10 +33,5 @@ mod tests {
         assert_eq!(tokens_from_chars(5), 2);
         assert_eq!(estimate_tokens("abcd"), 1);
         assert_eq!(estimate_tokens("abcde"), 2);
-    }
-
-    #[test]
-    fn iter_sums() {
-        assert_eq!(estimate_tokens_iter(["abcd", "abcd"]), 2);
     }
 }

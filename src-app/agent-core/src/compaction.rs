@@ -72,6 +72,16 @@ const SUMMARY_RESERVE_TOKENS: usize = 2000;
 const TOOL_RESULT_PLACEHOLDER: &str =
     "[Older tool result cleared to save context. Recall it with get_tool_result if still needed.]";
 
+/// Prefix of a rolling-summary `System` block that a prior DESTRUCTIVE
+/// `replace_head` (the workflow host — chat's `replace_head` is non-destructive)
+/// injected at the transcript HEAD. A later compaction pass identifies these to
+/// (a) FOLD their content into the new summary via `previous_summary` (never drop
+/// it) and (b) count them toward the RAW-transcript `upto` index — they physically
+/// live in the transcript, whereas the contributed system prompt (assembled fresh
+/// each turn) does not. Kept in lockstep with the summary block's own format
+/// (`"[Summary of {upto} earlier messages]…"`) written at the bottom of Phase B.
+const SUMMARY_MARKER_PREFIX: &str = "[Summary of ";
+
 /// A pluggable token counter (`text → tokens`). Defaults to [`estimate_tokens`]
 /// (~chars/4); a server tranche can inject a tokenizer-accurate impl (DEC-132)
 /// without changing the pipeline.
@@ -486,11 +496,29 @@ impl Compactor {
         // Phase B — summary tier (LAST resort). Split the ORIGINAL messages by
         // TOKENS so `upto` maps cleanly to the persisted transcript head and the
         // kept newest lands at/under the low watermark net of the summary.
+        // System messages split into two kinds:
+        //  * the CONTRIBUTED system prompt(s) — assembled fresh each turn, NOT
+        //    stored in the transcript; kept in the outbound request + re-emitted
+        //    next turn (`pinned`).
+        //  * PRIOR rolling-summary blocks — a previous destructive `replace_head`
+        //    (workflow host) injected them at the transcript HEAD, so they DO live
+        //    in the raw transcript (`prior_summaries`).
+        // The prior summaries are FOLDED into the new summary (`previous_summary`)
+        // and dropped from the head — not carried alongside a fresh summary (which
+        // both loses their content on the next destructive `replace_head` and
+        // double-counts context). They ALSO shift the raw-transcript `upto` index:
+        // `keep_start` is a `rest` (System-filtered) index, but `replace_head`
+        // treats `upto` as a raw-transcript index, and the raw transcript carries
+        // the prior summaries at its head — so a `rest`-relative boundary is off by
+        // exactly `prior_summaries.len()` after a previous compaction (the FIRST
+        // compaction has none → unchanged). See the finding at line ~547.
         let pinned: Vec<ChatMessage> = messages
             .iter()
-            .filter(|m| m.role == Role::System)
+            .filter(|m| m.role == Role::System && !is_prior_summary(m))
             .cloned()
             .collect();
+        let prior_summaries: Vec<&ChatMessage> =
+            messages.iter().filter(|m| is_prior_summary(m)).collect();
         let rest: Vec<ChatMessage> = messages
             .iter()
             .filter(|m| m.role != Role::System)
@@ -536,15 +564,36 @@ impl Compactor {
             .map(Self::message_text)
             .collect::<Vec<_>>()
             .join("\n\n");
+        // Fold any prior rolling summary(ies) into the new one via an INCREMENTAL
+        // refresh, so a second+ compaction never loses the earlier summary's
+        // content (the finding). No prior summary (first compaction / chat's
+        // non-destructive path) → `None` → the full re-summarize path, unchanged.
+        let previous_summary = if prior_summaries.is_empty() {
+            None
+        } else {
+            Some(
+                prior_summaries
+                    .iter()
+                    .map(|m| Self::message_text(m))
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+            )
+        };
         let summary_text = self
             .summarizer
             .summarize(SummaryInput {
                 transcript: joined,
-                previous_summary: None,
+                previous_summary,
             })
             .await?;
 
-        let upto = keep_start;
+        // `keep_start` indexes `rest` (System-filtered); `replace_head` treats
+        // `upto` as a RAW-transcript index, and the raw transcript holds the prior
+        // summaries at its head — so add them back to land the boundary on exactly
+        // the first KEPT message. This drops the prior summaries + `old` from the
+        // head, keeps exactly `keep`, and is off-by-none across repeated compaction
+        // (first compaction: `prior_summaries` empty → `upto == keep_start`).
+        let upto = prior_summaries.len() + keep_start;
         let summary = ChatMessage::system(format!(
             "[Summary of {upto} earlier messages]\n{summary_text}"
         ));
@@ -558,6 +607,17 @@ impl Compactor {
             summary_write: Some((summary, upto)),
         }))
     }
+}
+
+/// Is this a rolling-summary `System` block that a prior destructive
+/// `replace_head` injected at the transcript head (identified by the
+/// [`SUMMARY_MARKER_PREFIX`])? Used to fold it into the new summary + map `upto`.
+fn is_prior_summary(m: &ChatMessage) -> bool {
+    m.role == Role::System
+        && m.content.iter().any(|b| match b {
+            ContentBlock::Text { text } => text.trim_start().starts_with(SUMMARY_MARKER_PREFIX),
+            _ => false,
+        })
 }
 
 /// Does this message carry any tool_use OR tool_result block?
@@ -972,6 +1032,107 @@ mod tests {
         assert_eq!(*model.calls.lock().unwrap(), 0);
         assert!(transcript.replaced.lock().unwrap().is_empty());
         assert!(sink.events.lock().unwrap().is_empty());
+    }
+
+    /// A summarizer that records each `SummaryInput` and returns a fixed body, so
+    /// a test can assert whether the prior rolling summary was folded into
+    /// `previous_summary`.
+    struct RecordingSummarizer {
+        inputs: std::sync::Mutex<Vec<SummaryInput>>,
+        reply: String,
+    }
+    #[async_trait]
+    impl Summarizer for RecordingSummarizer {
+        async fn summarize(&self, input: SummaryInput) -> Result<String, AppError> {
+            self.inputs.lock().unwrap().push(input);
+            Ok(self.reply.clone())
+        }
+    }
+
+    /// Regression for the compaction finding (upto off-by-one + prior-summary
+    /// loss on the DESTRUCTIVE `replace_head` path). A SECOND compaction — when the
+    /// raw transcript ALREADY starts with a prior rolling-summary `System` block
+    /// (a first destructive `replace_head` injected it) — must:
+    ///  (a) FOLD that prior summary into `previous_summary` (never lose it); and
+    ///  (b) map `upto` to the RAW transcript so the head-replacement drops exactly
+    ///      the prior summary + `old` and keeps exactly `keep` — no off-by-one that
+    ///      both drops the prior summary AND re-keeps a summarized message.
+    /// `FakeTranscript::replace_head` is destructive (mirrors the workflow host),
+    /// so this drives the real bug end-to-end via `CompactionExtension`.
+    #[tokio::test]
+    async fn second_compaction_folds_prior_summary_and_maps_upto() {
+        let summarizer = Arc::new(RecordingSummarizer {
+            inputs: std::sync::Mutex::new(Vec::new()),
+            reply: "NEW-NINE-SECTION".into(),
+        });
+        let compactor = Compactor::with_summarizer(summarizer.clone(), "m", small_cfg());
+        let transcript = Arc::new(FakeTranscript::default());
+        let sink = Arc::new(FakeSink::default());
+        let run_id = Uuid::new_v4();
+
+        // The RAW transcript after a FIRST compaction: a prior rolling summary at
+        // the head, then 20 body messages. No contributed system message here, so
+        // `req.messages` == the raw transcript, isolating the `upto` mapping.
+        let prior = ChatMessage::system("[Summary of 5 earlier messages]\nPRIOR-RECAP-XYZ");
+        let mut raw: Vec<ChatMessage> = vec![prior];
+        for i in 0..20 {
+            raw.push(big_user(i));
+        }
+        transcript.msgs.lock().unwrap().insert(run_id, raw.clone());
+
+        let ext = CompactionExtension::new(compactor, transcript.clone(), sink.clone(), run_id);
+        let mut req = ChatRequest {
+            model: "m".into(),
+            messages: raw.clone(),
+            ..Default::default()
+        };
+        ext.before_model(&mut req).await.unwrap();
+
+        // (a) The prior summary was FOLDED into `previous_summary`, not dropped.
+        let summarized_transcript = {
+            let inputs = summarizer.inputs.lock().unwrap();
+            assert_eq!(inputs.len(), 1, "the summary tier fired exactly once");
+            let prev = inputs[0]
+                .previous_summary
+                .as_deref()
+                .expect("the prior rolling summary must be folded into previous_summary");
+            assert!(
+                prev.contains("PRIOR-RECAP-XYZ"),
+                "prior summary content preserved (folded, not lost): {prev}"
+            );
+            inputs[0].transcript.clone()
+        };
+
+        // The persisted transcript after the destructive head-replacement.
+        let persisted = transcript.msgs.lock().unwrap().get(&run_id).cloned().unwrap();
+
+        // Exactly ONE summary block at the head — the NEW one; the prior summary
+        // block is gone from the transcript head (folded into the new summary).
+        let systems: Vec<&ChatMessage> =
+            persisted.iter().filter(|m| m.role == Role::System).collect();
+        assert_eq!(systems.len(), 1, "exactly one summary block at the head");
+        assert!(Compactor::message_text(systems[0]).contains("NEW-NINE-SECTION"));
+
+        // (b) `upto` mapped to the raw transcript: every body message appears in
+        // EXACTLY ONE of {the summarized `old`, the persisted kept tail}. The bug
+        // (`upto = keep_start`, off by the leading prior summary) re-keeps the
+        // boundary body message that was ALSO summarized → it appears in BOTH.
+        let kept_body_text: String = persisted
+            .iter()
+            .filter(|m| m.role != Role::System)
+            .map(Compactor::message_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        for i in 0..20 {
+            let marker = format!("message {i}:");
+            let in_summary = summarized_transcript.contains(&marker);
+            let in_kept = kept_body_text.contains(&marker);
+            assert!(
+                in_summary ^ in_kept,
+                "body message {i} must be in EXACTLY ONE of summarized/kept \
+                 (summarized={in_summary}, kept={in_kept}) — off-by-one leaks it into both"
+            );
+        }
     }
 
     #[test]

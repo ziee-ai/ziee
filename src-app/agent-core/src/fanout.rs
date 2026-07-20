@@ -126,23 +126,24 @@ impl AgentCore {
         let permits = self.limits.max_threads.max(1) as usize;
         let sem = Arc::new(Semaphore::new(permits));
         let mut outcomes: Vec<ChildOutcome> = Vec::new();
+        // Abort handles for every SPAWNED child, so a `FailFast` early-return can
+        // stop the survivors instead of DETACHING them (dropping a `JoinHandle`
+        // detaches — it does NOT abort — so they would keep running model calls).
+        let mut abort_handles: Vec<tokio::task::AbortHandle> = Vec::new();
         // ITEM-4 / DEC-65: one activity entry per child, IN SPAWN ORDER, so
         // `outcomes[i]` ↔ `activity[i]` at the join barrier. Mutated to a
         // terminal status as each child settles and re-emitted as a full
         // snapshot (last-wins) through the parent's `EventSink`.
         let mut activity: Vec<SubAgentChild> = Vec::new();
+        // Count of children that actually acquired a run slot (resolution-failed
+        // children never spawn), so the START snapshot's running/pending label
+        // tracks true concurrency rather than the raw child index.
+        let mut spawned = 0usize;
 
-        for (idx, spec) in children.into_iter().enumerate() {
+        for spec in children.into_iter() {
             // A fresh per-child run id doubles as the activity entry id.
             let child_id = Uuid::new_v4();
             let label = subagent_label(&spec.system);
-            // Bounded concurrency: the first `permits` children get a semaphore
-            // slot immediately (running); the rest queue behind it (pending).
-            let initial = if idx < permits {
-                SubAgentChildStatus::Running
-            } else {
-                SubAgentChildStatus::Pending
-            };
 
             // Resolve the per-child model (RBAC-bound). Under FailFast a rejected
             // id aborts the fan-out; under ErrorSummary it becomes this child's
@@ -151,7 +152,10 @@ impl AgentCore {
                 Some(model_id) => match self.models.resolve(model_id, user_id).await {
                     Ok(provider) => self.model_factory.for_provider(provider),
                     Err(e) => match mode {
-                        FailureMode::FailFast => return Err(e),
+                        FailureMode::FailFast => {
+                            stop_survivors(&cancel, &abort_handles);
+                            return Err(e);
+                        }
                         FailureMode::ErrorSummary => {
                             outcomes.push(ChildOutcome::Ready(error_summary(&format!(
                                 "model resolution failed: {e}"
@@ -169,6 +173,15 @@ impl AgentCore {
                 None => self.model.clone(),
             };
 
+            // Bounded concurrency: the first `permits` SPAWNED children get a
+            // semaphore slot immediately (running); the rest queue (pending). Keyed
+            // by the spawned count (not the raw child index) so a resolution-failed
+            // earlier child doesn't mislabel a truly-running child as pending.
+            let initial = if spawned < permits {
+                SubAgentChildStatus::Running
+            } else {
+                SubAgentChildStatus::Pending
+            };
             activity.push(SubAgentChild {
                 id: child_id.to_string(),
                 label,
@@ -198,14 +211,17 @@ impl AgentCore {
 
             let sem = sem.clone();
             let cancel = cancel.clone();
-            outcomes.push(ChildOutcome::Spawned(tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 let _permit = sem
                     .acquire_owned()
                     .await
                     .map_err(|e| AppError::internal_error(format!("semaphore closed: {e}")))?;
                 let events = child.run(child_req, cancel).await?;
                 Ok::<SubagentSummary, AppError>(summary_from_events(&events))
-            })));
+            });
+            abort_handles.push(handle.abort_handle());
+            outcomes.push(ChildOutcome::Spawned(handle));
+            spawned += 1;
         }
 
         // START snapshot (ITEM-4): all children spawned (running / pending) plus
@@ -227,7 +243,10 @@ impl AgentCore {
                     Ok(Err(e)) => {
                         set_child_status(&mut activity, idx, SubAgentChildStatus::Failed);
                         match mode {
-                            FailureMode::FailFast => return Err(e),
+                            FailureMode::FailFast => {
+                                stop_survivors(&cancel, &abort_handles);
+                                return Err(e);
+                            }
                             FailureMode::ErrorSummary => {
                                 out.push(error_summary(&format!("sub-agent failed: {e}")))
                             }
@@ -237,9 +256,10 @@ impl AgentCore {
                         set_child_status(&mut activity, idx, SubAgentChildStatus::Failed);
                         match mode {
                             FailureMode::FailFast => {
+                                stop_survivors(&cancel, &abort_handles);
                                 return Err(AppError::internal_error(format!(
                                     "subagent task panicked: {e}"
-                                )))
+                                )));
                             }
                             FailureMode::ErrorSummary => {
                                 out.push(error_summary(&format!("sub-agent task panicked: {e}")))
@@ -262,6 +282,19 @@ impl AgentCore {
                 summary: neutralize_untrusted(&s.summary),
             })
             .collect())
+    }
+}
+
+/// Stop the surviving children on a `FailFast` early-return. Dropping the
+/// remaining `JoinHandle`s DETACHES them (they keep running model calls), so we
+/// (1) trip the SHARED cancel token — every child holds a clone and stops at its
+/// next loop/stream checkpoint — and (2) `abort()` each handle for promptness
+/// (already-settled handles no-op). Belt-and-suspenders: cancel is cooperative,
+/// abort is immediate.
+fn stop_survivors(cancel: &CancelToken, abort_handles: &[tokio::task::AbortHandle]) {
+    cancel.cancel();
+    for h in abort_handles {
+        h.abort();
     }
 }
 
@@ -698,5 +731,67 @@ mod tests {
         assert!(summaries
             .iter()
             .any(|s| s.summary.contains("subagent error")));
+    }
+
+    /// The FailFast finding (fanout.rs:~219): on the early `return Err`, the
+    /// remaining child `JoinHandle`s must NOT merely detach (keep running model
+    /// calls) — they must be STOPPED (shared-cancel + abort). Child A fails
+    /// immediately; child B is long-running. After A fails, B must never reach
+    /// completion.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn failfast_stops_surviving_children() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::time::Duration;
+
+        // B's model: runs a while, then flips `completed` — the negative probe.
+        struct LongModel {
+            completed: Arc<AtomicBool>,
+        }
+        #[async_trait::async_trait]
+        impl ModelClient for LongModel {
+            async fn call(
+                &self,
+                _req: ai_providers::ChatRequest,
+            ) -> Result<(ChatMessage, crate::types::Usage), AppError> {
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                self.completed.store(true, Ordering::SeqCst);
+                Ok((
+                    ChatMessage::assistant("B done"),
+                    crate::types::Usage::default(),
+                ))
+            }
+        }
+
+        let completed = Arc::new(AtomicBool::new(false));
+        let core = fanout_core(
+            // core.model → child B (model_id = None).
+            Arc::new(LongModel {
+                completed: completed.clone(),
+            }),
+            Arc::new(FakeResolver::default()),
+            // child A (model_id set) resolves to the instantly-FAILING model.
+            Arc::new(FakeFactory {
+                inner: Arc::new(FailingModel),
+            }),
+            6,
+        );
+
+        let result = core
+            .fan_out(
+                Uuid::new_v4(),
+                // A is FIRST → awaited first → its error triggers the FailFast
+                // early-return while B is still mid-run.
+                vec![spec(Some(Uuid::new_v4()), "A fails fast"), spec(None, "B runs long")],
+                CancelToken::new(),
+            )
+            .await;
+        assert!(result.is_err(), "FailFast returns the first child's error");
+
+        // Well past B's would-be completion: it must have been stopped.
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert!(
+            !completed.load(Ordering::SeqCst),
+            "a surviving child must be stopped on a FailFast early-return, not left running"
+        );
     }
 }

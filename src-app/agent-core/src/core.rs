@@ -458,6 +458,9 @@ impl AgentCore {
             };
             let from_model = resume_msg.is_none();
 
+            // Tokens THIS step's model call reported (0 on a resume-executed
+            // message — no call happened), used for the per-step cap check below.
+            let mut last_step_tokens: u64 = 0;
             let assistant_msg = match resume_msg {
                 Some(msg) => msg,
                 None => {
@@ -476,6 +479,7 @@ impl AgentCore {
                         }
                     };
                     budget.add_tokens(usage.total_tokens);
+                    last_step_tokens = usage.total_tokens;
                     self.transcript
                         .append(req.run_id, assistant_msg.clone())
                         .await?;
@@ -517,6 +521,12 @@ impl AgentCore {
             let stop_reason = if cancel.is_cancelled() {
                 Some(StopReason::Halted)
             } else if budget.run_tokens() > budget.per_run_token_cap {
+                Some(StopReason::TokenCap)
+            } else if budget.step_over_cap(last_step_tokens) {
+                // Per-step failsafe (ITEM-5): a single model call that blew past
+                // `per_step_token_cap` stops the loop rather than issuing another
+                // (likely just-as-large) round — mirrors the workflow runner's
+                // `PER_STEP_TOKEN_CAP` at the agent-loop layer.
                 Some(StopReason::TokenCap)
             } else if iteration >= budget.max_steps {
                 Some(StopReason::IterationCap)
@@ -1016,6 +1026,78 @@ mod tests {
                 m.content.iter().any(|b| {
                     matches!(b, ContentBlock::ToolResult { is_error: Some(true), .. })
                 })
+            });
+        assert!(has_error_result);
+    }
+
+    /// ITEM-5 (the budget finding): a single model call whose reported usage
+    /// blows past `per_step_token_cap` stops the loop with `TokenCap`, WITHOUT
+    /// running that round's tools — even though the per-RUN cap is untouched. This
+    /// proves `Budget::step_over_cap` / `per_step_token_cap` is now wired in (it
+    /// was previously inert).
+    #[tokio::test]
+    async fn per_step_token_cap_stops_the_loop() {
+        use crate::test_fakes::{FakeGate, FakeResolver, FakeSink, FakeTools, FakeTranscript};
+
+        // A model that always wants a tool AND reports a large per-call usage.
+        struct BigStepModel;
+        #[async_trait]
+        impl ModelClient for BigStepModel {
+            async fn call(&self, _req: ChatRequest) -> Result<(ChatMessage, Usage), AppError> {
+                Ok((
+                    assistant_tool("t1", "search", serde_json::json!({})),
+                    Usage {
+                        input_tokens: 0,
+                        output_tokens: 500,
+                        total_tokens: 500,
+                    },
+                ))
+            }
+        }
+
+        let transcript = Arc::new(FakeTranscript::default());
+        let tools = Arc::new(FakeTools::new(true));
+        let core = AgentCore {
+            transcript: transcript.clone(),
+            sink: Arc::new(FakeSink::default()),
+            tools: tools.clone(),
+            gate: Arc::new(FakeGate {
+                behavior: GateBehavior::Approve,
+            }),
+            policy: Arc::new(TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest)),
+            models: Arc::new(FakeResolver::default()),
+            model: Arc::new(BigStepModel),
+            model_factory: Arc::new(ProviderModelClientFactory),
+            extensions: vec![],
+            reviewer: None,
+            task_store: None,
+            steer: None,
+            schedule: None,
+            // per_run cap huge (untouched by 500) but per_step cap = 100 (< 500).
+            budget: Budget::new(10, 1_000_000, 100),
+            limits: Default::default(),
+            sandbox: SandboxMode::WorkspaceWrite { network: false },
+            model_name: "test".into(),
+            resume_executes_pending: true,
+        };
+        let events = core.run(new_req(), CancelToken::new()).await.unwrap();
+
+        // Stopped by the per-step cap (not iteration cap, not per-run cap).
+        assert_eq!(last_stop(&events), StopReason::TokenCap);
+        // The over-cap round's tool was never executed / journaled…
+        assert!(tools.calls.lock().unwrap().is_empty());
+        assert!(transcript.journal.lock().unwrap().is_empty());
+        // …but its `tool_use` got a synthesized is_error result (no orphan).
+        let has_error_result = transcript
+            .msgs
+            .lock()
+            .unwrap()
+            .values()
+            .flatten()
+            .any(|m| {
+                m.content
+                    .iter()
+                    .any(|b| matches!(b, ContentBlock::ToolResult { is_error: Some(true), .. }))
             });
         assert!(has_error_result);
     }
