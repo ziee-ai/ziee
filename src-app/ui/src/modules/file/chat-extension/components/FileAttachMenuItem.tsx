@@ -19,11 +19,17 @@ export function FileAttachMenuItem() {
   const { uploadFiles } = Stores.File
   const paneKey = composerPaneKey(useChatPaneOrNull()?.paneId)
   const { close } = usePlusDropdown()
+  // DEPLOY-ONLY: file upload is currently buggy (uploads fail) — hide the
+  // "Attach files or photos" entry from non-admins until it's fixed; admins keep
+  // it for testing. Read `Stores.Auth` here (before any early return) so the
+  // deploy-hide gate below can't trip a rules-of-hooks violation.
+  const { user } = Stores.Auth
   // Gate on files::upload (mirrors FilePasteHandler / FileUploadArea). Without
   // it, a user lacking the grant saw the "Attach files or photos" + menu item
   // and could trigger an upload that the backend 403s.
   const canUpload = usePermission(Permissions.FilesUpload)
   if (!canUpload) return null
+  if (!user?.is_admin) return null
 
   const handleFiles = (incoming: File[]) => {
     close()
