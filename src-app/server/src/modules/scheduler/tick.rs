@@ -260,7 +260,24 @@ pub async fn fire_task(
     // ITEM-21/DEC-42/44/45: self-paced write-back — a SCHEDULED self-paced firing
     // re-arms `next_run_at` (or self-completes on stop/expiry). run-now is
     // off-schedule (must not touch schedule bookkeeping), so it's excluded.
-    if trigger != "run_now" && matches!(task.schedule_kind(), ScheduleKind::SelfPaced) {
+    //
+    // GATED ON `outcome.success`: the self-paced next-fire / goal-seeking verdict /
+    // self-complete are computed ONLY for a firing that actually SUCCEEDED. On a
+    // FAILED firing `record_outcome` (above) is authoritative — it already stamped
+    // the failure `paused_reason` (the terminal class, or `max_failures` once the
+    // consecutive-failure cap is crossed) and honored that cap. Running the
+    // write-back on a failure would call `arm_self_paced(Disable, "completed")`
+    // (there is no proposal on a failed turn), which OVERWRITES the real failure
+    // reason with `'completed'` (masking the failure as success in the UI) AND
+    // disables the loop on the FIRST transient blip (bypassing the cap entirely
+    // for self-paced tasks). So on failure we leave the row exactly as
+    // `record_outcome` left it — a transient failure under the cap stays enabled
+    // for its next natural re-fire; a terminal / cap-crossing failure is disabled
+    // with the true failure reason.
+    if trigger != "run_now"
+        && outcome.success
+        && matches!(task.schedule_kind(), ScheduleKind::SelfPaced)
+    {
         let (min_interval, max_horizon) = settings::get(pool)
             .await
             .map(|s| (i64::from(s.min_interval_seconds), i64::from(s.max_horizon_days)))

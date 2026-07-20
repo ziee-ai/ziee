@@ -17,6 +17,7 @@ mod crud_test;
 mod dispatch_behavior_test;
 mod goal_seeking_test;
 mod runs_timeline_test;
+mod self_paced_failure_test;
 mod sync_emit_test;
 mod test_fire_test;
 mod tick_test;
