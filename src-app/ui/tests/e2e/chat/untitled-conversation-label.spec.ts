@@ -82,16 +82,13 @@ function recentRow(page: Page, conversationId: string) {
 }
 
 test.describe('untitled conversation display label', () => {
-  test.beforeEach(async ({ page, testInfra }) => {
-    await loginAsAdmin(page, testInfra.baseURL)
-  })
-
   // TEST-12 — the three label states, cold (post-reload).
   test('an untitled conversation is labelled by its first user message', async ({
     page,
     testInfra,
   }) => {
     const { apiURL, baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const modelId = await seedModel(apiURL, token)
 
@@ -121,6 +118,7 @@ test.describe('untitled conversation display label', () => {
   // placeholder it replaces, so the row must still not overflow at mobile width.
   test('the derived label does not overflow the row at 390px', async ({ page, testInfra }) => {
     const { apiURL, baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const modelId = await seedModel(apiURL, token)
     const long =
@@ -148,6 +146,7 @@ test.describe('untitled conversation display label', () => {
     testInfra,
   }) => {
     const { apiURL, baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const modelId = await seedModel(apiURL, token)
     const id = await seedConversation(apiURL, token, modelId, { firstMessage: PREVIEW })
@@ -171,6 +170,7 @@ test.describe('untitled conversation display label', () => {
     testInfra,
   }) => {
     const { apiURL, baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const modelId = await seedModel(apiURL, token)
     const id = await seedConversation(apiURL, token, modelId, { firstMessage: PREVIEW })

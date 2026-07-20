@@ -20,7 +20,8 @@ clean tree and diffing the failing-test-name sets — not asserted from the brie
 - **TEST-17**: PASS — `types_ts_parity` (both OpenAPI specs regenerated)
 - **TEST-18**: PASS — `bio_mcp` de-vacuated assertion
 - **TEST-19**: PASS — `provider_routing_integration_test` uses `TITLE_PROMPT_PREFIX`
-- **TEST-10 / TEST-11**: DESCOPED with ITEM-5 / ITEM-6 (DEC-20)
+- **TEST-10**: DESCOPED with ITEM-5 (DEC-20 — the live repro showed no defect to cover)
+- **TEST-11**: DESCOPED with ITEM-6 (DEC-20 — no reproducible stall; loop already capped)
 
 Commands + results:
 
@@ -61,17 +62,54 @@ making, so they are left alone.
 pre-existing failures, plus the 7 new `conversationDisplayLabel` tests all
 passing (verified by running that file directly: 7/7).
 
-## E2E — enumerated and written, NOT executed
+## E2E — RUN, and NOT passing. Not claimed as green.
 
-`tests/e2e/chat/untitled-conversation-label.spec.ts` (TEST-12, TEST-13, TEST-15)
-typechecks and follows the existing spec patterns, but **was not run**: the
-Playwright chain needs a built SPA plus a provisioned backend, which this
-environment did not stand up. Do not read these as green. The self-audit already
-caught one defect in them that only static review would find (a missing required
-`model_id` that would have 422'd every seeded message).
+- **TEST-12**: FAIL (harness) — `an untitled conversation is labelled by its first user message`
+- **TEST-12** (responsive leg): FAIL (harness) — `does not overflow the row at 390px`
+- **TEST-13**: FAIL (harness) — `findable by its first-message text`
+- **TEST-15**: FAIL (harness) — `title editor edits the real title`
+- **TEST-14**: PASS — `conversationDisplayLabel.test.ts`, 7/7 (run directly)
 
-The user-visible behavior they cover was instead proven directly against the
-review container: `first_message_preview` is populated on the live list endpoint.
+`npx playwright test tests/e2e/chat/untitled-conversation-label.spec.ts --workers=1`
+→ **4 failed**, twice.
+
+**Where they fail matters:** every failure is inside the SHARED `loginAsAdmin`
+helper (`common/auth-helpers.ts:103` and `:144` — `app-setup-username-input` and
+then `auth-login-username` never become visible), i.e. **before a single
+assertion of mine executes**. The specs' own logic was never reached, so this is
+not evidence for or against the feature.
+
+**Control run (the honest check):** an UNTOUCHED, pre-existing spec —
+`tests/e2e/chat/chat-basic.spec.ts` — scores **4 passed / 3 failed** on this same
+host, with the same login-helper timeouts. So the Playwright harness is
+partially broken in this environment independently of this change.
+
+Two rounds of fixes were applied from real run output rather than guessing:
+seeding a provider + model so the required `model_id` is supplied (a genuine
+defect — every seeded message would otherwise 422), and moving `loginAsAdmin`
+out of `beforeEach` into each test to match the pattern of the spec that does
+pass. Neither cleared it.
+
+**Therefore: the e2e leg is NOT validated, and phase 8 does not pass.** These
+specs must be run on a host with a working e2e harness before this PR is
+considered complete on that axis. I am flagging this rather than marking them
+PASS or deleting them to make the gate green.
+
+**What IS proven about ITEM-7/10's data dependency**, against the live review
+container — the field the whole frontend change reads:
+
+```
+GET /api/conversations →
+  title    = 'TP53 and Cell Cycle Regulation'
+  preview  = 'What does the knowledge base say about the role of TP53 in cell cycle regulation?'
+```
+
+So the backend half is verified end-to-end on a real deployment; it is the
+browser-level rendering assertions that remain unverified.
+
+`gate:ui (ui): NOT RUN` — `npm run gate:ui` boots the gallery and drives the
+runtime-health pass; it depends on the same browser harness that is failing here,
+so running it would produce an equally untrustworthy result.
 
 ## Live verification (the real proof)
 
