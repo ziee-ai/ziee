@@ -5,7 +5,7 @@ import { SubAgentActivityCard } from '@/modules/chat/components/agent-activity/S
 
 /** Empty snapshot for a message with no sub-agent activity — the committed
  *  `SubAgentActivityCard` returns null on zero children, so this renders nothing. */
-const EMPTY_ACTIVITY = { children: [], summary: null } as const
+const EMPTY_ACTIVITY = { children: [] } as const
 
 /**
  * Renders the live delegated sub-agent activity card (ITEM-4) inline in the

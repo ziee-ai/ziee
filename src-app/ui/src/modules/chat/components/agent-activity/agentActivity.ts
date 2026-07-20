@@ -97,13 +97,12 @@ export interface SubAgentChildVM {
   status: SubAgentChildStatus
 }
 
-/** A `delegate` fan-out's live activity: the children + (when finished) the
- *  merged `SubagentSummary` text the parent reads back. */
+/** A `delegate` fan-out's live activity: the per-child running → done/failed
+ *  status list. (The backend `subAgentActivity` frame carries only
+ *  `{ run_id, children }`; there is NO merged-summary field on the wire, so the
+ *  VM intentionally has none either — the child list is the whole content.) */
 export interface SubAgentActivityVM {
   children: SubAgentChildVM[]
-  /** The merged child summary (Rust `SubagentSummary.summary`), present once
-   *  the fan-out completes; the parent never sees child transcripts (P9). */
-  summary?: string | null
 }
 
 /**
@@ -132,11 +131,11 @@ export function subAgentRollupStatus(
   return 'success'
 }
 
-/** Adapter seam for the future sub-agent-activity SSE frame / content-block
- *  (DEC-65). Present so the eventual SSE handler builds a VM without `as any`. */
+/** Adapter seam for the sub-agent-activity SSE frame / content-block (DEC-65).
+ *  Present so the SSE handler builds a VM without `as any`. The frame carries
+ *  only `children`, so the VM is a thin wrapper. */
 export function subAgentActivityFromChildren(
   children: SubAgentChildVM[],
-  summary?: string | null,
 ): SubAgentActivityVM {
-  return { children, summary: summary ?? null }
+  return { children }
 }

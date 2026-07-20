@@ -65,8 +65,8 @@ test('subAgentRollupStatus: any-failed dominates, then any-running, else success
   assert.equal(subAgentRollupStatus([c('completed'), c('failed')]), 'failed')
 })
 
-test('subAgentActivityFromChildren normalizes an absent summary to null', () => {
+test('subAgentActivityFromChildren wraps the frame children into a VM', () => {
   const a = subAgentActivityFromChildren([{ id: 'c', label: 'x', status: 'running' }])
-  assert.equal(a.summary, null)
   assert.equal(a.children.length, 1)
+  assert.equal(a.children[0].id, 'c')
 })

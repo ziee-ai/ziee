@@ -13,6 +13,15 @@ import type { TaskItemVM } from '@/modules/chat/components/agent-activity/agentA
  * One instance per pane (injected as `Stores.Chat.TaskListStore`), so a split
  * pane's task list tracks ITS own stream. Read reactively in the `message_footer`
  * slot via the pane-correct `Stores.Chat` bridge (mirrors the VoiceStore pattern).
+ *
+ * EPHEMERAL BY DESIGN — non-durable across reload. `byMessage` is fed ONLY by
+ * live (non-replay) `taskListChanged` SSE frames; there is no REST source and no
+ * mount/reconnect refetch, so a page reload mid-run drops the in-memory snapshot
+ * and the checklist renders blank until the NEXT frame re-populates it. This is
+ * an accepted limitation of the SSE-only live-card design (the whole agent path
+ * is default-off, `ZIEE_CHAT_AGENT_CORE`-gated); a durable view would need a
+ * server-side task-list store + a REST getter, which this feature deliberately
+ * does not add. Do NOT paper over it with a fake persistence layer.
  */
 
 /** Bound the retained snapshots so a long session can't grow the map without

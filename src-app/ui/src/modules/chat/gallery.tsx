@@ -467,8 +467,7 @@ export const gallery: ModuleGallery = {
         },
       ),
     },
-    // ── Delegated sub-agents (ITEM-4): fan-out still running (per-child status,
-    //    no merged summary yet). ─────────────────────────────────────────────────
+    // ── Delegated sub-agents (ITEM-4): fan-out still running (per-child status). ──
     {
       slug: 'seeded-agent-subagents-running',
       title: 'Delegated sub-agents — running',
@@ -485,17 +484,16 @@ export const gallery: ModuleGallery = {
               { id: 'c2', label: 'Summarise the ClinicalTrials.gov results', status: 'running' },
               { id: 'c3', label: 'Cross-check the ChEMBL targets', status: 'running' },
             ],
-            summary: null,
           },
         },
       ),
     },
-    // ── Delegated sub-agents (ITEM-4): fan-out finished + merged summary folded
-    //    in (one child failed — rollup = failed). ──────────────────────────────
+    // ── Delegated sub-agents (ITEM-4): fan-out finished, all terminal (one child
+    //    failed — rollup = failed). ──────────────────────────────────────────────
     {
       slug: 'seeded-agent-subagents-done',
-      title: 'Delegated sub-agents — done + summary',
-      note: 'SubAgentActivityCard: all terminal (1 failed) + merged SubagentSummary block',
+      title: 'Delegated sub-agents — done',
+      note: 'SubAgentActivityCard: all terminal (1 failed), rollup = failed',
       path: '/',
       initialPath: '/',
       component: lazyProps(
@@ -508,8 +506,6 @@ export const gallery: ModuleGallery = {
               { id: 'c2', label: 'Summarise the ClinicalTrials.gov results', status: 'completed' },
               { id: 'c3', label: 'Cross-check the ChEMBL targets', status: 'failed' },
             ],
-            summary:
-              'Two of three angles returned. PubMed: 4 active BRCA1 PARP-inhibitor trials. ClinicalTrials.gov: 2 recruiting, 1 completed. ChEMBL cross-check failed (upstream timeout) — retry recommended.',
           },
         },
       ),

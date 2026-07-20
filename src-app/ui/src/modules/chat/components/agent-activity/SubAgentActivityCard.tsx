@@ -12,10 +12,10 @@ import {
  * ITEM-4 — a compact **delegated sub-agents** activity card in the chat
  * timeline. When the agent fans out to parallel sub-agents (a `delegate` call),
  * this surfaces the N children with a per-child running → done/failed status so
- * the user sees work happening beside the live chat, then folds in the merged
- * `SubagentSummary` when the fan-out finishes (the parent never sees child
+ * the user sees work happening beside the live chat (the parent never sees child
  * transcripts — P9 / DEC-53). The header rollup mirrors the whole fan-out's
- * status.
+ * status. (The `subAgentActivity` frame carries only `{ run_id, children }` — no
+ * merged-summary field — so the card shows the child list, not a summary block.)
  *
  * Presentational + pure: it takes the already-adapted activity VM. The live data
  * source (a sub-agent-activity SSE frame / content-block, DEC-65) is not yet in
@@ -35,7 +35,7 @@ export function SubAgentActivityCard({
   className,
   'data-testid': testId = 'agent-subagents-card',
 }: SubAgentActivityCardProps) {
-  const { children, summary } = activity
+  const { children } = activity
   if (children.length === 0) return null
   const rollup = subAgentRollupStatus(children)
 
@@ -75,20 +75,6 @@ export function SubAgentActivityCard({
           </li>
         ))}
       </ul>
-
-      {summary != null && summary.length > 0 && (
-        <div className="mt-2">
-          <Text type="secondary" className="text-xs" strong>
-            Merged summary
-          </Text>
-          <div
-            className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted p-2 text-sm text-muted-foreground"
-            data-testid={`${testId}-summary`}
-          >
-            {summary}
-          </div>
-        </div>
-      )}
     </Card>
   )
 }
