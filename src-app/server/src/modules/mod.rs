@@ -4,6 +4,7 @@ pub mod app;
 pub mod assistant;
 pub mod assistant_core_memory;
 pub mod auth;
+pub mod background_mcp;
 pub mod bio_mcp;
 pub mod chat;
 pub mod citations;

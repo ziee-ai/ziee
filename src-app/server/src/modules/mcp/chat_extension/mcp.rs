@@ -248,6 +248,16 @@ fn auto_attach_builtin_ids(
         // ANY tool-using conversation. Read-only, scoped to the caller's own
         // conversation; approval-bypassed (see is_builtin_server_id).
         ids.push(crate::modules::tool_result_mcp::tool_result_mcp_server_id());
+        // `background` (ITEM-17 / DEC-33) is always-on for tool-capable models so
+        // the model can offload long, self-contained work to a detached sub-agent
+        // (`spawn_background`) and later `check_status` / `collect_result`. Like
+        // `control` it is auto-attached but NOT approval-bypassed (absent from
+        // `is_builtin_server_id`): the WRITE `spawn_background` LAUNCHES an agent,
+        // so it is forced through approval by the per-tool `is_background` arm in
+        // the approval loop below, while the two reads auto-run. Every run is
+        // owner-scoped, so the `background::use` grant + `find_run_for_owner`
+        // guard the surface.
+        ids.push(crate::modules::background_mcp::background_mcp_server_id());
     }
     ids
 }
@@ -2576,10 +2586,21 @@ impl ChatExtension for McpChatExtension {
                 .map(|id| id == crate::modules::control_mcp::control_mcp_server_id())
                 .unwrap_or(false);
 
+            // The background server (ITEM-17 / DEC-33) is auto-attached but NOT
+            // approval-bypassed: `check_status` / `collect_result` (owner-scoped
+            // reads) auto-run, but `spawn_background` LAUNCHES a detached agent, so
+            // it ALWAYS requires explicit approval — overriding even AutoApprove
+            // (the security posture, same as control's mutating invoke).
+            let is_background = uuid::Uuid::parse_str(&server_id)
+                .map(|id| id == crate::modules::background_mcp::background_mcp_server_id())
+                .unwrap_or(false);
+
             let needs_approval = if is_control {
                 crate::modules::control_mcp::handlers::control_call_needs_approval(
                     &tool_name, &input,
                 )
+            } else if is_background {
+                crate::modules::background_mcp::tools::background_call_needs_approval(&tool_name)
             } else if is_builtin {
                 false
             } else {
@@ -4157,6 +4178,7 @@ mod builtin_tests {
         let lit = crate::modules::lit_search::lit_search_server_id();
         let citations = crate::modules::citations::citations_server_id();
         let tool_result = crate::modules::tool_result_mcp::tool_result_mcp_server_id();
+        let background = crate::modules::background_mcp::background_mcp_server_id();
 
         // Non-tool-capable model (no model_tools_capable seeded) → NOTHING
         // auto-attaches. ask_user must NOT be sent to a model that can't call
@@ -4169,39 +4191,40 @@ mod builtin_tests {
         assert!(auto_attach_builtin_ids(&m).is_empty());
 
         // Tool-capable model → the always-on built-ins (elicitation `ask_user` +
-        // `tool_result` `get_tool_result`) are attached even with no flags.
-        let always_on = [elicit, tool_result];
+        // `tool_result` `get_tool_result` + `background` spawn/check/collect) are
+        // attached even with no flags.
+        let always_on = [elicit, tool_result, background];
         let mut m = HashMap::new();
         m.insert("model_tools_capable".into(), json!(true));
         let base = auto_attach_builtin_ids(&m);
-        assert_eq!(base.len(), 2);
+        assert_eq!(base.len(), 3);
         assert!(always_on.iter().all(|id| base.contains(id)));
         // The capability flag round-trips as a "true"/"false" string too.
         let mut ms = HashMap::new();
         ms.insert("model_tools_capable".into(), json!("true"));
         let base_s = auto_attach_builtin_ids(&ms);
-        assert_eq!(base_s.len(), 2);
+        assert_eq!(base_s.len(), 3);
         assert!(always_on.iter().all(|id| base_s.contains(id)));
 
-        // The flag-gated built-ins add on top of the always-on pair.
+        // The flag-gated built-ins add on top of the always-on set.
         m.insert("attach_files_mcp".into(), json!("true"));
         let with_files = auto_attach_builtin_ids(&m);
         assert!(with_files.contains(&files) && with_files.contains(&elicit));
-        assert_eq!(with_files.len(), 3);
+        assert_eq!(with_files.len(), 4);
         m.insert("attach_memory_mcp".into(), json!("true"));
         let all = auto_attach_builtin_ids(&m);
         assert!(all.contains(&files) && all.contains(&memory) && all.contains(&elicit));
-        assert_eq!(all.len(), 4);
+        assert_eq!(all.len(), 5);
         // bio attaches on its own flag, on top of the others.
         m.insert("attach_bio_mcp".into(), json!("true"));
         let with_bio = auto_attach_builtin_ids(&m);
         assert!(with_bio.contains(&bio));
-        assert_eq!(with_bio.len(), 5);
+        assert_eq!(with_bio.len(), 6);
         // web_search adds on top when its flag is set.
         m.insert("attach_web_search_mcp".into(), json!("true"));
         let with_web = auto_attach_builtin_ids(&m);
         assert!(with_web.contains(&web));
-        assert_eq!(with_web.len(), 6);
+        assert_eq!(with_web.len(), 7);
         // lit_search adds on top when ITS flag is set.
         m.insert(crate::modules::lit_search::chat_extension::ATTACH_FLAG.into(), json!("true"));
         let with_lit = auto_attach_builtin_ids(&m);
@@ -4213,21 +4236,22 @@ mod builtin_tests {
                 && with_lit.contains(&memory)
                 && with_lit.contains(&elicit)
                 && with_lit.contains(&tool_result)
+                && with_lit.contains(&background)
         );
-        assert_eq!(with_lit.len(), 7);
+        assert_eq!(with_lit.len(), 8);
         // citations adds on top when ITS flag is set (the two mcp.rs edits — the
         // documented silent-failure footgun if forgotten).
         m.insert(crate::modules::citations::chat_extension::ATTACH_FLAG.into(), json!("true"));
         let with_cit = auto_attach_builtin_ids(&m);
         assert!(with_cit.contains(&citations), "citations flag must attach its server id");
         assert!(with_cit.contains(&lit) && with_cit.contains(&web));
-        assert_eq!(with_cit.len(), 8);
-        // A non-"true" flag value is ignored — only the always-on pair remains.
+        assert_eq!(with_cit.len(), 9);
+        // A non-"true" flag value is ignored — only the always-on set remains.
         let mut m2: HashMap<String, serde_json::Value> = HashMap::new();
         m2.insert("model_tools_capable".into(), json!(true));
         m2.insert("attach_files_mcp".into(), json!("false"));
         let only_base = auto_attach_builtin_ids(&m2);
-        assert_eq!(only_base.len(), 2);
+        assert_eq!(only_base.len(), 3);
         assert!(always_on.iter().all(|id| only_base.contains(id)));
     }
 
@@ -4260,6 +4284,44 @@ mod builtin_tests {
             !is_builtin_server_id(control),
             "control must NOT be approval-bypassed"
         );
+    }
+
+    /// background_mcp attach seam (ITEM-17 / DEC-33) + the security-critical
+    /// negative. Background is auto-attached for every tool-capable model (both
+    /// mcp.rs edits present), but is deliberately NOT on the approval-bypass list:
+    /// `spawn_background` LAUNCHES a detached agent → it is forced through approval
+    /// by the per-tool `is_background` arm, while `check_status` / `collect_result`
+    /// auto-run. This is the same posture as `control` (attach ≠ bypass).
+    #[test]
+    fn background_attaches_on_tool_capable_and_gates_spawn_only() {
+        use crate::modules::background_mcp::tools::background_call_needs_approval;
+        let background = crate::modules::background_mcp::background_mcp_server_id();
+
+        // Edit 1 — auto_attach: present for every tool-capable chat, absent for a
+        // non-tool-capable one (mirrors elicitation/tool_result).
+        let mut non_capable: HashMap<String, serde_json::Value> = HashMap::new();
+        assert!(!auto_attach_builtin_ids(&non_capable).contains(&background));
+        non_capable.insert("model_tools_capable".into(), json!(false));
+        assert!(!auto_attach_builtin_ids(&non_capable).contains(&background));
+        let mut capable: HashMap<String, serde_json::Value> = HashMap::new();
+        capable.insert("model_tools_capable".into(), json!(true));
+        assert!(
+            auto_attach_builtin_ids(&capable).contains(&background),
+            "background must attach for a tool-capable model (both mcp.rs edits)"
+        );
+
+        // Edit 2 — approval: the server is NOT approval-bypassed, and the per-tool
+        // classifier gates the WRITE while auto-running the READS.
+        assert!(
+            !is_builtin_server_id(background),
+            "background must NOT be approval-bypassed (spawn_background is a write)"
+        );
+        assert!(
+            background_call_needs_approval("spawn_background"),
+            "spawn_background must require approval"
+        );
+        assert!(!background_call_needs_approval("check_status"));
+        assert!(!background_call_needs_approval("collect_result"));
     }
 
     /// The three life-science built-ins (`bio_mcp`, `lit_search`, `citations`)
@@ -4301,14 +4363,15 @@ mod builtin_tests {
         assert!(ids.contains(&bio), "bio_mcp must attach");
         assert!(ids.contains(&lit), "lit_search must attach");
         assert!(ids.contains(&citations), "citations must attach");
-        // … alongside the always-on pair …
-        assert!(ids.contains(&elicit) && ids.contains(&tool_result));
+        // … alongside the always-on set (elicit + tool_result + background) …
+        let background = crate::modules::background_mcp::background_mcp_server_id();
+        assert!(ids.contains(&elicit) && ids.contains(&tool_result) && ids.contains(&background));
         // … and the un-flagged built-ins stay OFF (no coupling / clobber).
         assert!(!ids.contains(&files));
         assert!(!ids.contains(&memory));
         assert!(!ids.contains(&web));
-        // Exactly the 3 flagged + 2 always-on, no duplicates.
-        assert_eq!(ids.len(), 5, "got {ids:?}");
+        // Exactly the 3 flagged + 3 always-on, no duplicates.
+        assert_eq!(ids.len(), 6, "got {ids:?}");
         let mut deduped = ids.clone();
         deduped.sort();
         deduped.dedup();
@@ -4407,10 +4470,15 @@ mod builtin_tests {
         }
 
         // Execution subsystems are NOT approval-bypassed — they mutate / run code
-        // and must stay behind manual approval even when auto-attached.
+        // and must stay behind manual approval even when auto-attached. `background`
+        // joins them: `spawn_background` LAUNCHES a detached agent, so — like
+        // `control` — the server is deliberately absent from `is_builtin_server_id`
+        // and the WRITE is gated by the per-tool `is_background` approval arm (its
+        // two reads still auto-run via `background_call_needs_approval`).
         let needs_approval = [
             crate::modules::code_sandbox::code_sandbox_server_id(),
             crate::modules::workflow_mcp::workflow_mcp_server_id(),
+            crate::modules::background_mcp::background_mcp_server_id(),
         ];
         for id in needs_approval {
             assert!(
