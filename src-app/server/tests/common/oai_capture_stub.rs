@@ -184,15 +184,39 @@ async fn models() -> Json<Value> {
 async fn chat_completions(State(state): State<Arc<AppState>>, Json(body): Json<Value>) -> Response {
     state.requests.lock().unwrap().push(body.clone());
 
+    // The title extension issues a tool-less call whose prompt starts with a
+    // fixed preamble. Replaying the scripted plan for it would emit the plan's
+    // tool_call and no text, so the title could never be generated — answer it
+    // with the shared beacon instead. Keyed off the same constant the
+    // `stub_chat` fixture uses, so the two stubs stay in lockstep.
+    let is_title_request = body
+        .get("messages")
+        .and_then(Value::as_array)
+        .and_then(|m| m.last())
+        .and_then(|m| m.get("content"))
+        .and_then(Value::as_str)
+        .is_some_and(|c| c.starts_with(crate::common::stub_chat::TITLE_PROMPT_PREFIX));
+
+    let title_plan;
+    let plan = if is_title_request {
+        title_plan = StubPlan {
+            text: crate::common::stub_chat::STUB_TITLE.to_string(),
+            ..Default::default()
+        };
+        &title_plan
+    } else {
+        &state.plan
+    };
+
     // Default to streaming; the gpt-5 workaround sends `stream:false`.
     let streaming = body.get("stream").and_then(Value::as_bool).unwrap_or(true);
     if streaming {
         Response::builder()
             .header(header::CONTENT_TYPE, "text/event-stream")
-            .body(Body::from(build_sse(&state.plan)))
+            .body(Body::from(build_sse(plan)))
             .unwrap()
     } else {
-        Json(build_non_streaming(&state.plan)).into_response()
+        Json(build_non_streaming(plan)).into_response()
     }
 }
 
