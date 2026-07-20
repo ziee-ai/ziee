@@ -115,7 +115,6 @@ pub fn list_background_runs_docs(op: TransformOperation) -> TransformOperation {
         )
         .response::<200, Json<BackgroundRunListResponse>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
-        .response_with::<403, (), _>(|r| r.description("Missing background::use"))
 }
 
 #[debug_handler]
@@ -148,7 +147,6 @@ pub fn get_background_run_docs(op: TransformOperation) -> TransformOperation {
         )
         .response::<200, Json<BackgroundRunDetail>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
-        .response_with::<403, (), _>(|r| r.description("Missing background::use"))
         .response_with::<404, (), _>(|r| r.description("Run not found / not owned"))
 }
 
@@ -230,7 +228,6 @@ pub fn cancel_background_run_docs(op: TransformOperation) -> TransformOperation 
         )
         .response::<200, Json<BackgroundRunCancelAck>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
-        .response_with::<403, (), _>(|r| r.description("Missing background::use"))
         .response_with::<404, (), _>(|r| r.description("Run not found / not owned"))
         .response_with::<409, (), _>(|r| r.description("Run already finished"))
 }
