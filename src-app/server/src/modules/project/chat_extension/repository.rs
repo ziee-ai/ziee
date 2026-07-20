@@ -60,7 +60,22 @@ impl ProjectChatRepository {
                 (SELECT COUNT(bm.message_id)
                    FROM branches b
                    JOIN branch_messages bm ON bm.branch_id = b.id
-                  WHERE b.conversation_id = p.id) AS message_count
+                  WHERE b.conversation_id = p.id) AS message_count,
+                -- Same display-label fallback the main conversation list
+                -- computes (see chat::core::repository::conversations). This
+                -- list renders the SAME `ConversationCard`, so omitting it here
+                -- would show "Untitled Conversation" for a project conversation
+                -- that the sidebar labels with its first message.
+                (SELECT LEFT(mc.content->>'text', $5)
+                   FROM branch_messages bm3
+                   JOIN messages m ON m.id = bm3.message_id
+                   JOIN message_contents mc ON mc.message_id = m.id
+                  WHERE bm3.branch_id = p.active_branch_id
+                    AND m.role = 'user'
+                    AND mc.content_type = 'text'
+                    AND NULLIF(TRIM(mc.content->>'text'), '') IS NOT NULL
+                  ORDER BY bm3.created_at ASC, m.id ASC, mc.sequence_order ASC
+                  LIMIT 1) AS first_message_preview
             FROM page p
             ORDER BY p.updated_at DESC
             "#,
@@ -68,6 +83,7 @@ impl ProjectChatRepository {
             user_id,
             limit,
             offset,
+            crate::modules::chat::core::repository::conversations::CONVERSATION_PREVIEW_MAX_CHARS,
         )
         .fetch_all(&self.pool)
         .await
@@ -91,6 +107,7 @@ impl ProjectChatRepository {
                     updated_at: to_chrono(row.updated_at),
                 },
                 message_count: row.message_count.unwrap_or(0),
+                first_message_preview: row.first_message_preview,
             })
             .collect())
     }

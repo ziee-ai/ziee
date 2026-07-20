@@ -11,6 +11,7 @@ import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
 import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
 import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
+import { conversationDisplayLabel } from '@/modules/chat/core/utils/conversationDisplayLabel'
 
 dayjs.extend(relativeTime)
 
@@ -112,7 +113,7 @@ export function ConversationCard({
       key={conversation.id}
       role="button"
       tabIndex={0}
-      aria-label={conversation.title || 'Untitled Conversation'}
+      aria-label={conversationDisplayLabel(conversation)}
       onClick={handleCardClick}
       onAuxClick={handleCardClick}
       draggable
@@ -144,7 +145,7 @@ export function ConversationCard({
           <Text
             className="text-sm sm:flex-1 min-w-0 line-clamp-2 [overflow-wrap:anywhere]"
           >
-            {conversation.title || 'Untitled Conversation'}
+            {conversationDisplayLabel(conversation)}
           </Text>
           <div className="flex items-center gap-x-1 flex-shrink-0">
             {conversation.message_count > 0 && (

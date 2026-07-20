@@ -148,6 +148,33 @@ pub trait ChatExtension: Send + Sync {
         Ok(ExtensionAction::Complete)
     }
 
+    /// Called when a turn ends WITHOUT the provider ever being called — i.e. an
+    /// extension returned [`BeforeLlmAction::Complete`] or
+    /// [`BeforeLlmAction::CompleteWithContent`] from `before_llm_call`.
+    ///
+    /// `after_llm_call` cannot cover those paths: its ONLY call site is
+    /// `DeltaAccumulator::finalize`, and the accumulator is never constructed
+    /// when the provider is skipped, so the streaming loop `break`s straight out.
+    /// An extension whose work must observe every COMPLETED turn (rather than
+    /// every LLM round-trip) therefore implements this in addition to
+    /// `after_llm_call`. That gap is what left a `manual_approve` conversation
+    /// permanently untitled: the approved tool's `audience:["user"]` result IS
+    /// the answer, so the turn completes without an LLM call and the title
+    /// extension never ran.
+    ///
+    /// Deliberately NOT called on normal turn ends — `after_llm_call` already
+    /// covers those, and firing both would double-invoke every implementor.
+    ///
+    /// Returns no action: the turn is already ending and its content is already
+    /// persisted, so there is no control flow left to influence.
+    async fn after_llm_skipped(
+        &self,
+        _context: &StreamContext,
+        _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+
     /// Process a streaming delta during LLM response
     /// Called for each content delta that core streaming doesn't handle
     /// Extensions can convert ai-providers deltas to their own ContentBlockDelta variants
@@ -420,6 +447,37 @@ impl ExtensionRegistry {
         }
 
         Ok(decided.unwrap_or(ExtensionAction::Complete))
+    }
+
+    /// Call `after_llm_skipped` on all extensions, in registration (`order`)
+    /// sequence.
+    ///
+    /// Runs on the turn-ending paths where the provider was never called, so
+    /// `finalize` — and therefore [`Self::call_after_llm_call`] — never ran.
+    ///
+    /// Unlike `call_after_llm_call`, a failing extension does NOT abort the
+    /// fan-out and does NOT surface an error to the caller: it is logged and the
+    /// remaining extensions still run. By the time this fires the user's answer
+    /// is already persisted AND streamed, so failing the turn over a
+    /// post-processing error (a title provider being down, say) would break a
+    /// turn that otherwise succeeded. `call_after_llm_call` can afford `?`
+    /// because it runs inside `finalize`, whose caller already degrades to
+    /// `ExtensionAction::Complete` on error.
+    pub async fn call_after_llm_skipped(
+        &self,
+        context: &StreamContext,
+        tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+    ) {
+        for ext in self.inner.iter() {
+            if let Err(e) = ext.after_llm_skipped(context, tx).await {
+                tracing::error!(
+                    "Extension {} failed in after_llm_skipped (turn already \
+                     completed; continuing): {}",
+                    ext.name(),
+                    e
+                );
+            }
+        }
     }
 
     /// Process delta through extensions
@@ -795,5 +853,136 @@ mod after_llm_call_tests {
             .await
             .expect("hook must not error");
         assert!(matches!(action, ExtensionAction::Complete));
+    }
+
+    // ── after_llm_skipped: the turn-end pass for LLM-skipped turns ──────────
+
+    /// Records that it ran, in order, and optionally fails.
+    struct SkipProbe {
+        name: &'static str,
+        fails: bool,
+        order_log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+
+    #[async_trait]
+    impl ChatExtension for SkipProbe {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        async fn after_llm_skipped(
+            &self,
+            _context: &StreamContext,
+            _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+        ) -> Result<(), AppError> {
+            self.order_log.lock().unwrap().push(self.name);
+            if self.fails {
+                return Err(AppError::internal_error("probe failure"));
+            }
+            Ok(())
+        }
+    }
+
+    /// An extension that implements NOTHING — proves the trait's default
+    /// `after_llm_skipped` is a harmless no-op, which is what keeps the other 18
+    /// extensions unaffected by the new hook.
+    struct InertProbe;
+
+    #[async_trait]
+    impl ChatExtension for InertProbe {
+        fn name(&self) -> &str {
+            "inert"
+        }
+    }
+
+    /// TEST-2: every extension runs, in registration (order) sequence.
+    ///
+    /// Unlike `call_before_llm_call`, this must NOT short-circuit — the whole
+    /// point is to reach the extensions ordered after MCP.
+    #[sqlx::test]
+    async fn skipped_hook_runs_every_extension_in_order(pool: PgPool) {
+        let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut registry = ExtensionRegistry::new();
+        for name in ["first", "second", "third"] {
+            registry.register(Arc::new(SkipProbe {
+                name,
+                fails: false,
+                order_log: log.clone(),
+            }));
+        }
+
+        registry
+            .call_after_llm_skipped(&context(pool), None)
+            .await;
+
+        assert_eq!(
+            *log.lock().unwrap(),
+            vec!["first", "second", "third"],
+            "all extensions must run, in registration order"
+        );
+    }
+
+    /// TEST-3: one extension failing must not stop the others, and must not
+    /// surface an error.
+    ///
+    /// By the time this hook fires the user's answer is already persisted AND
+    /// streamed, so failing the turn over a post-processing error (a title
+    /// provider being down) would break a turn that otherwise succeeded.
+    /// `call_after_llm_call` can afford `?` because its caller degrades to
+    /// `Complete`; this one has no such caller.
+    #[sqlx::test]
+    async fn skipped_hook_swallows_an_extension_error_and_keeps_going(pool: PgPool) {
+        let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut registry = ExtensionRegistry::new();
+        registry.register(Arc::new(SkipProbe {
+            name: "before",
+            fails: false,
+            order_log: log.clone(),
+        }));
+        registry.register(Arc::new(SkipProbe {
+            name: "boom",
+            fails: true,
+            order_log: log.clone(),
+        }));
+        registry.register(Arc::new(SkipProbe {
+            name: "after",
+            fails: false,
+            order_log: log.clone(),
+        }));
+
+        // Returns unit: there is deliberately no error for the caller to handle.
+        registry
+            .call_after_llm_skipped(&context(pool), None)
+            .await;
+
+        assert_eq!(
+            *log.lock().unwrap(),
+            vec!["before", "boom", "after"],
+            "an extension ordered AFTER a failing one must still run"
+        );
+    }
+
+    /// TEST-4: the default impl is a no-op, so extensions that do not opt in are
+    /// unaffected.
+    #[sqlx::test]
+    async fn skipped_hook_default_impl_is_a_noop(pool: PgPool) {
+        let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut registry = ExtensionRegistry::new();
+        registry.register(Arc::new(InertProbe));
+        registry.register(Arc::new(SkipProbe {
+            name: "implementor",
+            fails: false,
+            order_log: log.clone(),
+        }));
+
+        registry
+            .call_after_llm_skipped(&context(pool), None)
+            .await;
+
+        assert_eq!(
+            *log.lock().unwrap(),
+            vec!["implementor"],
+            "the inert extension contributes nothing and does not error"
+        );
     }
 }

@@ -681,6 +681,18 @@ export interface ConversationResponse {
   title?: string
   active_branch_id?: string
   created_at: string
+  /**
+   * First user message text on the conversation's ACTIVE branch, truncated to
+   *  [`CONVERSATION_PREVIEW_MAX_CHARS`]. `None` when the conversation has no
+   *  user text yet (e.g. an attachment-only first message).
+   *
+   *  Exists so the client can label a conversation that has NO title. Title
+   *  generation deliberately leaves `title` NULL rather than persisting the
+   *  user's raw message, so a deployment whose title provider is misconfigured
+   *  would otherwise render every row as an identical "Untitled Conversation".
+   *  This is a DISPLAY fallback only — it is never written back to `title`.
+   */
+  first_message_preview?: string
   id: string
   message_count: number
   /**
