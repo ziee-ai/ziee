@@ -191,6 +191,13 @@ pub struct ChatApprovalPolicy {
     pub unattended: bool,
     /// The unattended allow-list (`[{server_id, tool_name?}]`).
     pub unattended_allowed: serde_json::Value,
+    /// ITEM-54/DEC-112 + FINDING-2: admin per-(server, tool) approval overrides,
+    /// batch-loaded once per turn (same `get_tool_approval_overrides_for_servers`
+    /// the legacy classification loop uses). An override WINS over the built-in
+    /// bypass / control force-approval / conversation default — otherwise the
+    /// agent-core chat path (`ZIEE_CHAT_AGENT_CORE=1`) dropped it entirely.
+    pub admin_tool_overrides:
+        std::collections::HashMap<Uuid, std::collections::HashMap<String, ApprovalMode>>,
 }
 
 /// Resolve the conversation's effective approval policy for a turn — the SAME
@@ -239,6 +246,33 @@ pub async fn resolve_chat_approval_policy(
         (ApprovalMode::ManualApprove, Vec::new(), Vec::new())
     };
 
+    // ITEM-54/DEC-112 + FINDING-2: batch-load the admin per-(server, tool)
+    // approval overrides for every server that could be called this turn — the
+    // user's accessible servers PLUS every auto-attached built-in (whose ids are
+    // deterministic and NOT always returned by `get_all_accessible_config`) PLUS
+    // control/background. The override query filters non-empty rows in SQL, so a
+    // broad id set is cheap. Propagated with `?` (a failed admin-policy read must
+    // not fail-open into "no override").
+    let override_ids: Vec<Uuid> = {
+        let mut ids: Vec<Uuid> =
+            crate::modules::mcp::chat_extension::mcp::builtin_server_ids().to_vec();
+        ids.push(crate::modules::control_mcp::control_mcp_server_id());
+        ids.push(crate::modules::background_mcp::background_mcp_server_id());
+        if let Ok(accessible) = crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
+            Repos.pool(),
+            user_id,
+        )
+        .await
+        {
+            ids.extend(accessible.iter().map(|s| s.id));
+        }
+        ids
+    };
+    let admin_tool_overrides = Repos
+        .mcp
+        .get_tool_approval_overrides_for_servers(&override_ids)
+        .await?;
+
     Ok(ChatApprovalPolicy {
         user_id,
         conversation_id,
@@ -249,6 +283,7 @@ pub async fn resolve_chat_approval_policy(
         disabled_servers,
         unattended: false,
         unattended_allowed: serde_json::Value::Null,
+        admin_tool_overrides,
     })
 }
 
@@ -272,9 +307,22 @@ impl ChatApprovalPolicy {
             .any(|d| d.server_id == server_id && d.is_tool_disabled(tool_name))
     }
 
+    /// Look up the admin per-(server, tool) approval override for this call, if
+    /// any (ITEM-54/DEC-112 + FINDING-2). `None` server_id (a bare tool name that
+    /// hasn't been resolved) or no override → `None`.
+    fn admin_override(&self, server_id: Option<Uuid>, tool_name: &str) -> Option<&ApprovalMode> {
+        server_id
+            .and_then(|id| self.admin_tool_overrides.get(&id))
+            .and_then(|m| m.get(tool_name))
+    }
+
     /// The pure, testable decision (no async / DB). `trusted` is the
     /// `ToolProvider::is_trusted` verdict — for chat parity it MUST equal
     /// `is_builtin_server_id(server_id)` (see the HANDOFF parity note).
+    /// `admin_override` is the resolved per-(server, tool) admin override for this
+    /// call ([`Self::admin_override`]) — it WINS over the built-in bypass, the
+    /// control force-approval, and the conversation default (same precedence as
+    /// the legacy classification loop).
     fn decide_pure(
         &self,
         server_id: Option<Uuid>,
@@ -282,49 +330,69 @@ impl ChatApprovalPolicy {
         tool_name: &str,
         input: &serde_json::Value,
         trusted: bool,
+        admin_override: Option<&ApprovalMode>,
     ) -> Decision {
-        // (1) Built-in read-only / approval-bypassed server → auto-run.
-        if trusted {
-            return Decision::Auto;
-        }
-
-        // (2) Whole-conversation MCP off → deny every non-built-in call (control
-        // included). Built-ins were already handled by `trusted` above. This
-        // matches mcp.rs's `tools_disabled` (Disabled + !is_builtin) branch.
-        if matches!(self.approval_mode, ApprovalMode::Disabled) {
+        // (0) Whole-conversation MCP off → deny every non-built-in call (control
+        // included), BEFORE the admin override. Mirrors mcp.rs, where the
+        // `tools_disabled` (Disabled + !is_builtin) deny precedes the override
+        // consult; a built-in (`trusted`) is NOT denied here (it falls through so
+        // its override, or bypass, is honored).
+        if !trusted && matches!(self.approval_mode, ApprovalMode::Disabled) {
             return Decision::Deny;
         }
 
-        // (3) Per-conversation disabled server/tool → deny (defensive: such tools
-        // are normally filtered before being offered).
-        if let Some(id) = server_id {
-            if self.is_disabled(id, tool_name) {
-                return Decision::Deny;
-            }
-        }
-
-        // (4) Classify needs-approval, mirroring mcp.rs's control / builtin /
-        // approval-mode ladder.
-        let is_control = server_id
-            .map(|id| id == crate::modules::control_mcp::control_mcp_server_id())
-            .unwrap_or(false);
-
-        let needs_approval = if is_control {
-            // Control is auto-attached but NOT approval-bypassed: read-only
-            // control tools auto-run; a mutating `invoke_capability` always needs
-            // approval (overriding even AutoApprove).
-            crate::modules::control_mcp::handlers::control_call_needs_approval(tool_name, input)
-        } else {
-            match self.approval_mode {
-                ApprovalMode::AutoApprove => false,
-                ApprovalMode::ManualApprove => {
-                    // Auto-approved for this (server, tool)? Then no prompt.
-                    !server_id
-                        .map(|id| self.is_auto_approved(id, tool_name))
-                        .unwrap_or(false)
-                }
-                // Handled by the Disabled-deny branch above.
+        // (1) Admin per-(server, tool) approval override (ITEM-54/DEC-112 +
+        // FINDING-2). Consulted BEFORE the built-in bypass, the control
+        // force-approval, and the conversation default — an override on ANY
+        // server (incl. a built-in / control) WINS. Absent → fall through to the
+        // historical classification unchanged. (DRIFT-1.4: an explicit
+        // auto_approve on a mutating built-in is the admin's own deliberate
+        // footgun, honored — not the silent ignore this fixes.)
+        let needs_approval = if let Some(mode) = admin_override {
+            match mode {
                 ApprovalMode::Disabled => return Decision::Deny,
+                ApprovalMode::AutoApprove => false,
+                ApprovalMode::ManualApprove => true,
+            }
+        } else {
+            // ── historical no-override classification ──
+            // (2) Built-in read-only / approval-bypassed server → auto-run.
+            if trusted {
+                return Decision::Auto;
+            }
+
+            // (3) Per-conversation disabled server/tool → deny (defensive: such
+            // tools are normally filtered before being offered).
+            if let Some(id) = server_id {
+                if self.is_disabled(id, tool_name) {
+                    return Decision::Deny;
+                }
+            }
+
+            // (4) Classify needs-approval, mirroring mcp.rs's control /
+            // approval-mode ladder.
+            let is_control = server_id
+                .map(|id| id == crate::modules::control_mcp::control_mcp_server_id())
+                .unwrap_or(false);
+
+            if is_control {
+                // Control is auto-attached but NOT approval-bypassed: read-only
+                // control tools auto-run; a mutating `invoke_capability` always
+                // needs approval (overriding even AutoApprove).
+                crate::modules::control_mcp::handlers::control_call_needs_approval(tool_name, input)
+            } else {
+                match self.approval_mode {
+                    ApprovalMode::AutoApprove => false,
+                    ApprovalMode::ManualApprove => {
+                        // Auto-approved for this (server, tool)? Then no prompt.
+                        !server_id
+                            .map(|id| self.is_auto_approved(id, tool_name))
+                            .unwrap_or(false)
+                    }
+                    // Handled by the Disabled-deny branch above (non-builtin);
+                    // unreachable here.
+                    ApprovalMode::Disabled => return Decision::Deny,
+                }
             }
         };
 
@@ -386,7 +454,15 @@ impl ApprovalPolicy for ChatApprovalPolicy {
             Err(_) => return Decision::Prompt,
         }
         let (server_id, server_str, tool_name) = split_server_tool(call);
-        self.decide_pure(server_id, &server_str, &tool_name, &call.input, trusted)
+        let admin_override = self.admin_override(server_id, &tool_name);
+        self.decide_pure(
+            server_id,
+            &server_str,
+            &tool_name,
+            &call.input,
+            trusted,
+            admin_override,
+        )
     }
 }
 
@@ -499,6 +575,7 @@ mod tests {
             disabled_servers: vec![],
             unattended: false,
             unattended_allowed: serde_json::json!([]),
+            admin_tool_overrides: std::collections::HashMap::new(),
         }
     }
 
@@ -514,7 +591,7 @@ mod tests {
         ] {
             let p = policy(mode);
             assert_eq!(
-                p.decide_pure(Some(sid), &sid.to_string(), "read_file", &serde_json::json!({}), true),
+                p.decide_pure(Some(sid), &sid.to_string(), "read_file", &serde_json::json!({}), true, None),
                 Decision::Auto
             );
         }
@@ -525,7 +602,7 @@ mod tests {
         let sid = Uuid::new_v4();
         let p = policy(ApprovalMode::Disabled);
         assert_eq!(
-            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Deny
         );
     }
@@ -535,7 +612,7 @@ mod tests {
         let sid = Uuid::new_v4();
         let p = policy(ApprovalMode::AutoApprove);
         assert_eq!(
-            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Auto
         );
     }
@@ -546,7 +623,7 @@ mod tests {
         let mut p = policy(ApprovalMode::ManualApprove);
         // Not on the auto-approve list → Prompt.
         assert_eq!(
-            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Prompt
         );
         // Auto-approved for this (server, tool) → Auto.
@@ -555,7 +632,7 @@ mod tests {
             tools: vec!["do_thing".to_string()],
         }];
         assert_eq!(
-            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Auto
         );
     }
@@ -569,7 +646,7 @@ mod tests {
             tools: vec![], // whole server disabled
         }];
         assert_eq!(
-            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Deny
         );
     }
@@ -581,15 +658,134 @@ mod tests {
         p.unattended = true;
         // Not allow-listed → Deny (no orphaned pending row).
         assert_eq!(
-            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Deny
         );
         // Allow-listed → Auto (pre-authorised by the task creator).
         p.unattended_allowed = serde_json::json!([{ "server_id": sid.to_string(), "tool_name": "do_thing" }]);
         assert_eq!(
-            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Auto
         );
+    }
+
+    // ── ITEM-54/DEC-112 + FINDING-2: admin per-(server, tool) override ──
+    // The override WINS over the built-in bypass, the control force-approval, and
+    // the conversation default (byte-for-byte the legacy loop's precedence). The
+    // agent-core chat path previously dropped it entirely.
+
+    #[test]
+    fn admin_override_disabled_denies_trusted_builtin() {
+        // A built-in (`trusted=true`) normally bypasses to Auto; an admin
+        // `disabled` override must deny it instead (the silent-ignore bug fixed).
+        let sid = Uuid::new_v4();
+        let p = policy(ApprovalMode::AutoApprove);
+        assert_eq!(
+            p.decide_pure(
+                Some(sid),
+                &sid.to_string(),
+                "read_file",
+                &serde_json::json!({}),
+                true,
+                Some(&ApprovalMode::Disabled),
+            ),
+            Decision::Deny
+        );
+    }
+
+    #[test]
+    fn admin_override_manual_prompts_trusted_builtin() {
+        // A normally-bypassed built-in read becomes approval-required (Prompt)
+        // under an admin `manual_approve` override.
+        let sid = Uuid::new_v4();
+        let p = policy(ApprovalMode::AutoApprove);
+        assert_eq!(
+            p.decide_pure(
+                Some(sid),
+                &sid.to_string(),
+                "read_file",
+                &serde_json::json!({}),
+                true,
+                Some(&ApprovalMode::ManualApprove),
+            ),
+            Decision::Prompt
+        );
+    }
+
+    #[test]
+    fn admin_override_changes_conversation_default() {
+        let sid = Uuid::new_v4();
+        // ManualApprove conversation would Prompt a non-builtin tool …
+        let p = policy(ApprovalMode::ManualApprove);
+        assert_eq!(
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
+            Decision::Prompt
+        );
+        // … but an admin `auto_approve` override runs it without a prompt.
+        assert_eq!(
+            p.decide_pure(
+                Some(sid),
+                &sid.to_string(),
+                "do_thing",
+                &serde_json::json!({}),
+                false,
+                Some(&ApprovalMode::AutoApprove),
+            ),
+            Decision::Auto
+        );
+        // … and an admin `disabled` override denies it even in an AutoApprove
+        // conversation (override tightens, wins over the default).
+        let p_auto = policy(ApprovalMode::AutoApprove);
+        assert_eq!(
+            p_auto.decide_pure(
+                Some(sid),
+                &sid.to_string(),
+                "do_thing",
+                &serde_json::json!({}),
+                false,
+                Some(&ApprovalMode::Disabled),
+            ),
+            Decision::Deny
+        );
+    }
+
+    #[test]
+    fn admin_override_lookup_threads_into_decide() {
+        // The map-backed `admin_override` lookup (populated per turn) resolves the
+        // mode for a (server, tool) and changes the decision vs the map being empty.
+        let sid = Uuid::new_v4();
+        let mut p = policy(ApprovalMode::AutoApprove);
+        // Empty map → no override → built-in bypass runs.
+        assert!(p.admin_override(Some(sid), "read_file").is_none());
+        assert_eq!(
+            p.decide_pure(
+                Some(sid),
+                &sid.to_string(),
+                "read_file",
+                &serde_json::json!({}),
+                true,
+                p.admin_override(Some(sid), "read_file"),
+            ),
+            Decision::Auto
+        );
+        // Populate an override for exactly this (server, tool) → decision flips.
+        let mut per_tool = std::collections::HashMap::new();
+        per_tool.insert("read_file".to_string(), ApprovalMode::Disabled);
+        p.admin_tool_overrides.insert(sid, per_tool);
+        assert_eq!(p.admin_override(Some(sid), "read_file"), Some(&ApprovalMode::Disabled));
+        assert_eq!(
+            p.decide_pure(
+                Some(sid),
+                &sid.to_string(),
+                "read_file",
+                &serde_json::json!({}),
+                true,
+                p.admin_override(Some(sid), "read_file"),
+            ),
+            Decision::Deny
+        );
+        // A DIFFERENT tool on the same server is unaffected (still bypasses).
+        assert!(p.admin_override(Some(sid), "other_tool").is_none());
     }
 
     #[tokio::test]

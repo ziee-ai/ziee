@@ -481,38 +481,27 @@ fn unattended_tool_allowed(allow: &serde_json::Value, server_id: &str, tool_name
         .unwrap_or(false)
 }
 
-/// Resolved action for a regular (non-builtin/control/background) MCP tool in
-/// the approval gate (ITEM-54/DEC-112).
+/// Resolved action for a regular (non-builtin/control/background) MCP tool
+/// under the conversation / user default approval mode. Admin per-(server,
+/// tool) overrides are NOT handled here — they are resolved earlier and with
+/// higher precedence by [`resolve_tool_approval`].
 #[derive(Debug, PartialEq, Eq)]
 enum RegularToolDecision {
     /// Run the tool without approval.
     Execute,
     /// Require explicit approval (pause / unattended-deny downstream).
     Approve,
-    /// Admin `disabled` per-tool override → deny outright (no run, no prompt).
-    AdminDisabled,
 }
 
-/// Decide a regular tool's approval action. The admin per-(server, tool)
-/// override is consulted FIRST — when present it fully decides the outcome
-/// (`auto_approve`→Execute, `manual_approve`→Approve, `disabled`→AdminDisabled),
-/// overriding the conversation/user default. Absent → the existing behavior:
-/// `AutoApprove` conversations Execute; `ManualApprove` conversations Execute
-/// only a user-auto-approved tool, else Approve. (`Disabled` conversations are
-/// handled by the caller before reaching here.)
+/// Decide a regular tool's approval action from the conversation / user
+/// default: an `AutoApprove` conversation Executes; a `ManualApprove`
+/// conversation Executes only a user-auto-approved tool, else Approves.
+/// (`Disabled` conversations deny non-builtin tools before reaching here.)
 fn decide_regular_tool_approval(
-    admin_override: Option<&super::approval::models::ApprovalMode>,
     conversation_mode: &super::approval::models::ApprovalMode,
     is_auto_approved: bool,
 ) -> RegularToolDecision {
     use super::approval::models::ApprovalMode;
-    if let Some(mode) = admin_override {
-        return match mode {
-            ApprovalMode::AutoApprove => RegularToolDecision::Execute,
-            ApprovalMode::ManualApprove => RegularToolDecision::Approve,
-            ApprovalMode::Disabled => RegularToolDecision::AdminDisabled,
-        };
-    }
     match conversation_mode {
         ApprovalMode::AutoApprove => RegularToolDecision::Execute,
         ApprovalMode::ManualApprove => {
@@ -528,6 +517,55 @@ fn decide_regular_tool_approval(
     }
 }
 
+/// Outcome of the per-tool approval classification in the chat loop
+/// ([`resolve_tool_approval`]).
+#[derive(Debug, PartialEq, Eq)]
+enum ToolApprovalOutcome {
+    /// Run the tool without approval.
+    Execute,
+    /// Pause for explicit approval (or unattended-deny downstream).
+    Approve,
+    /// Admin `disabled` override → deny outright (no run, no prompt).
+    Denied,
+}
+
+/// FINDING-1 / ITEM-54 / DEC-112: resolve a tool call's approval outcome with
+/// the admin per-(server, tool) override consulted FIRST — WINNING over the
+/// built-in bypass and the control/background force-approval below it. Every
+/// built-in MCP server is `is_system=true`, so an admin who set
+/// `disabled`/`manual_approve`/`auto_approve` on a built-in tool used to get a
+/// successful GET/PUT while the tool kept auto-running (false assurance); this
+/// makes the override actually take effect.
+///
+/// When there is NO override the historical behavior is reproduced verbatim from
+/// `bypass_needs_approval` — what the built-in/control/background/regular arms
+/// decided (`false` for a privileged built-in, the control/background
+/// force-approval result, or the regular conversation default). Pure so the
+/// "override wins over the built-in bypass" precedence is unit-testable.
+///
+/// DRIFT-1.4: an admin who explicitly sets `auto_approve` on a mutating built-in
+/// (e.g. control's `invoke` / background's `spawn`) is deliberately loosening
+/// their OWN deployment — that footgun is honored, not silently ignored (the
+/// bug this fixes). The absent-override case keeps forcing approval on those.
+fn resolve_tool_approval(
+    admin_override: Option<&super::approval::models::ApprovalMode>,
+    bypass_needs_approval: bool,
+) -> ToolApprovalOutcome {
+    use super::approval::models::ApprovalMode;
+    match admin_override {
+        Some(ApprovalMode::Disabled) => ToolApprovalOutcome::Denied,
+        Some(ApprovalMode::ManualApprove) => ToolApprovalOutcome::Approve,
+        Some(ApprovalMode::AutoApprove) => ToolApprovalOutcome::Execute,
+        None => {
+            if bypass_needs_approval {
+                ToolApprovalOutcome::Approve
+            } else {
+                ToolApprovalOutcome::Execute
+            }
+        }
+    }
+}
+
 /// Privileged built-in servers (files, memory, elicitation, bio, web_search,
 /// lit_search, tool_result). Their tools bypass the MCP approval flow — they're
 /// read-only / save-only / user-prompting and auto-attached, so a
@@ -535,42 +573,57 @@ fn decide_regular_tool_approval(
 /// `ask_user` call must execute immediately rather than stall behind a
 /// manual-approval prompt the user never opted into (for `ask_user`, the user
 /// answering the form IS the approval).
+/// The deterministic ids of every in-process built-in MCP server that is
+/// approval-bypassed (auto-attached, read-only / trusted). SINGLE SOURCE OF
+/// TRUTH for [`is_builtin_server_id`] and for the chat approval gate's admin
+/// per-tool override batch-load (`chat/agent_host/gate.rs`) so a built-in's
+/// override is actually loaded. Computed once (the `_server_id()` fns are v5
+/// UUID derivations) and cached.
+pub(crate) fn builtin_server_ids() -> &'static [Uuid] {
+    static IDS: std::sync::LazyLock<Vec<Uuid>> = std::sync::LazyLock::new(|| {
+        vec![
+            crate::modules::files_mcp::files_mcp_server_id(),
+            crate::modules::memory_mcp::memory_mcp_server_id(),
+            crate::modules::elicitation_mcp::elicitation_mcp_server_id(),
+            // bio is approval-bypassed (read-only biomedical searches,
+            // auto-attached) but — unlike the three above — it is NOT in the
+            // zero-config edit deny-list (`repository.rs::update_system_mcp_server`),
+            // so admins can still edit its Headers (API keys). Lists are independent.
+            crate::modules::bio_mcp::bio_mcp_server_id(),
+            // web_search is approval-bypassed too (read-only search + page fetch,
+            // auto-attached); fetched content is treated as untrusted data.
+            crate::modules::web_search::web_search_server_id(),
+            // tool_result is approval-bypassed (read-only recall of the caller's
+            // own prior tool results, auto-attached for tool-capable models).
+            crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
+            // lit_search is approval-bypassed (read-only literature search + OA
+            // full-text fetch, auto-attached); results treated as untrusted data.
+            crate::modules::lit_search::lit_search_server_id(),
+            // citations is auto-attached for tool-capable chats; writes operate
+            // ONLY on the caller's own verified library and never invent data
+            // (fabricated DOIs return not_found), so it is approval-bypassed.
+            crate::modules::citations::citations_server_id(),
+            // knowledge_base is approval-bypassed: `search_knowledge` /
+            // `list_knowledge_bases` are read-only retrieval over the caller's own
+            // KBs; results are treated as untrusted data.
+            crate::modules::knowledge_base::knowledge_base_server_id(),
+            // skill_mcp is approval-bypassed: `load_skill` / `read_skill_file` are
+            // read-only reads of skills already installed + available to the caller,
+            // auto-attached for tool-capable chats with ≥1 available skill.
+            crate::modules::skill_mcp::skill_mcp_server_id(),
+            // run_js is approval-bypassed for the script START only — the model's
+            // `run_js` call auto-runs (like the read-only built-ins), while gated
+            // sub-tools called INSIDE the script are individually approved by the
+            // js_tool executor. Execution is intercepted inline (see the run_js
+            // branch in the execute loop), never dispatched over the loopback.
+            crate::modules::js_tool::run_js_mcp_server_id(),
+        ]
+    });
+    &IDS
+}
+
 pub(crate) fn is_builtin_server_id(id: Uuid) -> bool {
-    id == crate::modules::files_mcp::files_mcp_server_id()
-        || id == crate::modules::memory_mcp::memory_mcp_server_id()
-        || id == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
-        // bio is approval-bypassed (read-only biomedical searches, auto-attached)
-        // but — unlike the three above — it is NOT in the zero-config edit
-        // deny-list (`repository.rs::update_system_mcp_server`), so admins can
-        // still edit its Headers (API keys). The two lists are independent.
-        || id == crate::modules::bio_mcp::bio_mcp_server_id()
-        // web_search is approval-bypassed too (read-only search + page fetch,
-        // auto-attached); fetched content is treated as untrusted data.
-        || id == crate::modules::web_search::web_search_server_id()
-        // tool_result is approval-bypassed (read-only recall of the caller's own
-        // prior tool results, auto-attached for tool-capable models).
-        || id == crate::modules::tool_result_mcp::tool_result_mcp_server_id()
-        // lit_search is approval-bypassed (read-only literature search + OA
-        // full-text fetch, auto-attached); results are treated as untrusted data.
-        || id == crate::modules::lit_search::lit_search_server_id()
-        // citations is auto-attached for tool-capable chats; writes operate ONLY
-        // on the caller's own verified library and never invent data (fabricated
-        // DOIs return not_found), so it is approval-bypassed like the others.
-        || id == crate::modules::citations::citations_server_id()
-        // knowledge_base is approval-bypassed: `search_knowledge` /
-        // `list_knowledge_bases` are read-only retrieval over the caller's own
-        // KBs; results are treated as untrusted data.
-        || id == crate::modules::knowledge_base::knowledge_base_server_id()
-        // skill_mcp is approval-bypassed: `load_skill` / `read_skill_file` are
-        // read-only reads of skills already installed + available to the caller,
-        // auto-attached for tool-capable chats with ≥1 available skill.
-        || id == crate::modules::skill_mcp::skill_mcp_server_id()
-        // run_js is approval-bypassed for the script START only — the model's
-        // `run_js` call auto-runs (like the read-only built-ins), while gated
-        // sub-tools called INSIDE the script are individually approved by the
-        // js_tool executor. Execution is intercepted inline (see the run_js
-        // branch in the execute loop), never dispatched over the loopback.
-        || id == crate::modules::js_tool::run_js_mcp_server_id()
+    builtin_server_ids().contains(&id)
 }
 
 ///
@@ -2662,7 +2715,25 @@ impl ChatExtension for McpChatExtension {
                 .map(|id| id == crate::modules::background_mcp::background_mcp_server_id())
                 .unwrap_or(false);
 
-            let needs_approval = if is_control {
+            // ITEM-54/DEC-112 + FINDING-1: the admin per-(server, tool) approval
+            // override. Consulted FIRST by `resolve_tool_approval` below — it
+            // WINS over the built-in bypass AND the control/background
+            // force-approval, so an admin who sets disabled/manual_approve/
+            // auto_approve on a tool of a SYSTEM MCP server (which includes EVERY
+            // built-in: files/memory/web_search/lit_search/citations/…) actually
+            // takes effect instead of being silently ignored. Absent → the
+            // "bypass" classification below is byte-identical to the prior
+            // behavior (built-in bypass + control/background force-approval kept).
+            let admin_override = uuid::Uuid::parse_str(&server_id)
+                .ok()
+                .and_then(|sid| admin_tool_overrides.get(&sid))
+                .and_then(|m| m.get(&tool_name));
+
+            // The no-override ("bypass") decision, consulted ONLY when there is no
+            // admin override: privileged built-ins run without approval;
+            // control/background force approval on their mutating ops; a regular
+            // tool follows the conversation / user default.
+            let bypass_needs_approval = if is_control {
                 crate::modules::control_mcp::handlers::control_call_needs_approval(
                     &tool_name, &input,
                 )
@@ -2671,13 +2742,6 @@ impl ChatExtension for McpChatExtension {
             } else if is_builtin {
                 false
             } else {
-                // Admin per-tool override (ITEM-54/DEC-112) — only for regular
-                // (non-builtin/control/background) tools, so the built-in
-                // security arms above stay authoritative.
-                let admin_override = uuid::Uuid::parse_str(&server_id)
-                    .ok()
-                    .and_then(|sid| admin_tool_overrides.get(&sid))
-                    .and_then(|m| m.get(&tool_name));
                 // Whether the user auto-approved this (server, tool).
                 let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
                     auto_approved_servers
@@ -2689,24 +2753,29 @@ impl ChatExtension for McpChatExtension {
                 } else {
                     false
                 };
-                tracing::info!(
-                    "Tool '{}' (server={}) approval: override={:?}, auto_approved={}",
-                    tool_name,
-                    server_id,
-                    admin_override.map(|m| m.to_string()),
-                    is_auto_approved
-                );
-                match decide_regular_tool_approval(admin_override, &approval_mode, is_auto_approved)
-                {
-                    RegularToolDecision::AdminDisabled => {
-                        // Admin `disabled` override → deny outright (no run, no
-                        // prompt); a synthesized denial is emitted downstream.
-                        tools_admin_disabled.push((tool_use_id, tool_name, server_id));
-                        continue;
-                    }
-                    RegularToolDecision::Execute => false,
-                    RegularToolDecision::Approve => true,
+                matches!(
+                    decide_regular_tool_approval(&approval_mode, is_auto_approved),
+                    RegularToolDecision::Approve
+                )
+            };
+
+            tracing::info!(
+                "Tool '{}' (server={}) approval: override={:?}, bypass_needs_approval={}",
+                tool_name,
+                server_id,
+                admin_override.map(|m| m.to_string()),
+                bypass_needs_approval
+            );
+
+            let needs_approval = match resolve_tool_approval(admin_override, bypass_needs_approval) {
+                ToolApprovalOutcome::Denied => {
+                    // Admin `disabled` override → deny outright (no run, no
+                    // prompt); a synthesized denial is emitted downstream.
+                    tools_admin_disabled.push((tool_use_id, tool_name, server_id));
+                    continue;
                 }
+                ToolApprovalOutcome::Execute => false,
+                ToolApprovalOutcome::Approve => true,
             };
 
             tracing::info!(
@@ -4742,68 +4811,89 @@ mod approval_loop_tests {
     }
 }
 
-/// ITEM-54/DEC-112: the admin per-(server, tool) approval override is consulted
-/// BEFORE the conversation/user default (override wins); absent → unchanged.
+/// ITEM-54/DEC-112 + FINDING-1: the admin per-(server, tool) approval override is
+/// consulted BEFORE the built-in bypass / control-background force-approval /
+/// conversation default (override wins); absent → unchanged.
 #[cfg(test)]
 mod admin_tool_override_tests {
-    use super::{decide_regular_tool_approval, RegularToolDecision};
+    use super::{
+        decide_regular_tool_approval, resolve_tool_approval, RegularToolDecision,
+        ToolApprovalOutcome,
+    };
     use crate::modules::mcp::chat_extension::approval::models::ApprovalMode;
 
+    // ── FINDING-1: an admin override WINS over the built-in bypass ──
+    // A privileged built-in tool's no-override decision is `false`
+    // (`bypass_needs_approval == false` → it would auto-run). With an admin
+    // override present, `resolve_tool_approval` must apply the override instead
+    // of the built-in bypass — the silent-ignore bug this fixes.
+
     #[test]
-    fn override_auto_means_no_approval_even_in_manual_conversation() {
-        // override=auto ⇒ Execute (no approval), even when the conversation is
-        // ManualApprove and the tool is NOT user-auto-approved.
+    fn override_disabled_on_builtin_denies_not_bypass() {
+        // e.g. an admin sets `disabled` on a `background`/`files` tool: the
+        // built-in bypass would auto-run (bypass=false), but the override denies
+        // outright — NOT the bypass.
         assert_eq!(
-            decide_regular_tool_approval(
-                Some(&ApprovalMode::AutoApprove),
-                &ApprovalMode::ManualApprove,
-                false,
-            ),
+            resolve_tool_approval(Some(&ApprovalMode::Disabled), false),
+            ToolApprovalOutcome::Denied
+        );
+    }
+
+    #[test]
+    fn override_manual_on_builtin_requires_approval_not_bypass() {
+        // A normally-bypassed built-in read becomes approval-required under an
+        // admin `manual_approve` override.
+        assert_eq!(
+            resolve_tool_approval(Some(&ApprovalMode::ManualApprove), false),
+            ToolApprovalOutcome::Approve
+        );
+    }
+
+    #[test]
+    fn override_auto_on_force_approved_tool_executes() {
+        // DRIFT-1.4: control's mutating `invoke` / background's `spawn` force
+        // approval (bypass=true), but an admin `auto_approve` override deliberately
+        // runs it (the admin's own footgun, honored — not the silent ignore).
+        assert_eq!(
+            resolve_tool_approval(Some(&ApprovalMode::AutoApprove), true),
+            ToolApprovalOutcome::Execute
+        );
+    }
+
+    #[test]
+    fn absent_override_preserves_bypass() {
+        // No override + built-in bypass (false) ⇒ Execute (auto-run, unchanged).
+        assert_eq!(
+            resolve_tool_approval(None, false),
+            ToolApprovalOutcome::Execute
+        );
+        // No override + control/background force-approval (true) ⇒ Approve.
+        assert_eq!(
+            resolve_tool_approval(None, true),
+            ToolApprovalOutcome::Approve
+        );
+    }
+
+    // ── Regular (non-builtin) conversation-default decision (no override) ──
+
+    #[test]
+    fn regular_default_auto_conversation_executes() {
+        assert_eq!(
+            decide_regular_tool_approval(&ApprovalMode::AutoApprove, false),
             RegularToolDecision::Execute
         );
     }
 
     #[test]
-    fn override_ask_forces_approval_even_in_auto_conversation() {
-        // override=ask ⇒ Approve, even when the conversation is AutoApprove or the
-        // user auto-approved the tool (admin override wins, not loosened).
-        assert_eq!(
-            decide_regular_tool_approval(
-                Some(&ApprovalMode::ManualApprove),
-                &ApprovalMode::AutoApprove,
-                true,
-            ),
-            RegularToolDecision::Approve
-        );
-    }
-
-    #[test]
-    fn override_disabled_denies_outright() {
-        assert_eq!(
-            decide_regular_tool_approval(
-                Some(&ApprovalMode::Disabled),
-                &ApprovalMode::AutoApprove,
-                true,
-            ),
-            RegularToolDecision::AdminDisabled
-        );
-    }
-
-    #[test]
-    fn absent_override_preserves_existing_behavior() {
-        // AutoApprove conversation ⇒ Execute.
-        assert_eq!(
-            decide_regular_tool_approval(None, &ApprovalMode::AutoApprove, false),
-            RegularToolDecision::Execute
-        );
+    fn regular_default_manual_conversation() {
         // ManualApprove + not user-auto-approved ⇒ Approve.
         assert_eq!(
-            decide_regular_tool_approval(None, &ApprovalMode::ManualApprove, false),
+            decide_regular_tool_approval(&ApprovalMode::ManualApprove, false),
             RegularToolDecision::Approve
         );
         // ManualApprove + user-auto-approved ⇒ Execute.
         assert_eq!(
-            decide_regular_tool_approval(None, &ApprovalMode::ManualApprove, true),
+            decide_regular_tool_approval(&ApprovalMode::ManualApprove, true),
             RegularToolDecision::Execute
         );
     }
