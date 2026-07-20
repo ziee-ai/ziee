@@ -60,8 +60,8 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::modules::chat::core::types::streaming::{
-    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, SSEChatStreamTaskListChangedData,
-    TaskListItemDto, Usage,
+    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, SSEChatStreamSubAgentActivityData,
+    SSEChatStreamTaskListChangedData, SubAgentActivityChildDto, TaskListItemDto, Usage,
 };
 use crate::modules::chat::stream::{publish_frame, publish_raw_event, ChatStreamFrame};
 
@@ -183,6 +183,26 @@ impl EventSink for ChatEventSink {
                     run_id,
                     items: items.into_iter().map(TaskListItemDto::from).collect(),
                 });
+                publish_raw_event(self.owner_id, self.conversation_id, event.into());
+            }
+
+            // A `delegate` fan-out's per-child status changed (ITEM-4 / DEC-65).
+            // Same raw/ephemeral side-channel as `TaskListChanged`: build the
+            // `subAgentActivity` frame (full current child list, snake_case DTO
+            // the FE `SubAgentActivityCard` reads) and deliver it via
+            // `publish_raw_event` — NOT `self.publish` — so it is not appended to
+            // the per-conversation content replay buffer (it is not part of the
+            // assistant message content; a mid-join catches up on the next
+            // snapshot). The `run_id` is the PARENT agent run.
+            AgentEvent::SubAgentActivity { run_id, children } => {
+                let event =
+                    SSEChatStreamEvent::SubAgentActivity(SSEChatStreamSubAgentActivityData {
+                        run_id,
+                        children: children
+                            .into_iter()
+                            .map(SubAgentActivityChildDto::from)
+                            .collect(),
+                    });
                 publish_raw_event(self.owner_id, self.conversation_id, event.into());
             }
 

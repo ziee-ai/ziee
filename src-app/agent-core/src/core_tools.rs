@@ -324,7 +324,7 @@ impl AgentCore {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolResult> + Send + 'a>> {
         match tool {
             CoreTool::Delegate => {
-                Box::pin(self.handle_delegate(call, parent_scope, user_id, cancel))
+                Box::pin(self.handle_delegate(call, parent_scope, run_id, user_id, cancel))
             }
             // Group G task-list tools (impls in `crate::tasklist`), keyed by the
             // turn's `run_id` — each agent / sub-agent has its OWN run-scoped list.
@@ -389,6 +389,7 @@ impl AgentCore {
         &self,
         call: &ToolCall,
         parent_scope: &ToolScope,
+        parent_run_id: Uuid,
         user_id: Uuid,
         cancel: &CancelToken,
     ) -> ToolResult {
@@ -407,7 +408,13 @@ impl AgentCore {
         // The recursive-async cycle is severed at `handle_core_tool` (a boxed,
         // non-opaque future), so this call awaits `fan_out_inner` directly.
         let summaries = match self
-            .fan_out_inner(user_id, specs, cancel.clone(), FailureMode::ErrorSummary)
+            .fan_out_inner(
+                parent_run_id,
+                user_id,
+                specs,
+                cancel.clone(),
+                FailureMode::ErrorSummary,
+            )
             .await
         {
             Ok(s) => s,

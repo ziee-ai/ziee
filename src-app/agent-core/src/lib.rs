@@ -64,7 +64,7 @@ pub use tasklist::{
 };
 pub use types::{
     AgentEvent, AgentTurnRequest, ApprovalMode, Decision, GateAsk, GateOutcome, GateTicket,
-    IdempotencyKey, ReviewDecision, SandboxMode, ScheduleProposal, StopReason, SubagentLimits,
-    SubagentSpec, SubagentSummary, TaskItem, TaskItemCreate, TaskItemPatch, TaskStatus, ToolCall,
-    ToolCallRecord, ToolResult, ToolScope, TurnSeed, Usage,
+    IdempotencyKey, ReviewDecision, SandboxMode, ScheduleProposal, StopReason, SubAgentChild,
+    SubAgentChildStatus, SubagentLimits, SubagentSpec, SubagentSummary, TaskItem, TaskItemCreate,
+    TaskItemPatch, TaskStatus, ToolCall, ToolCallRecord, ToolResult, ToolScope, TurnSeed, Usage,
 };

@@ -408,6 +408,37 @@ impl EventSink for WorkflowEventSink {
                     None => self.push_line(format!("tasks: {completed}/{total}")),
                 }
             }
+            // A `delegate` fan-out's per-child status changed (ITEM-4 / DEC-65).
+            // Like TaskListChanged, the workflow run has no dedicated sub-agent
+            // card surface (that's the CHAT host's `SubAgentActivityCard`), so —
+            // per DEC-65's "per-run progress track" — roll the full child list up
+            // to ONE compact log line on the existing "agent" track rather than
+            // streaming a rich frame. The line shows settled/total plus any
+            // failures.
+            AgentEvent::SubAgentActivity { children, .. } => {
+                let total = children.len();
+                let settled = children
+                    .iter()
+                    .filter(|c| {
+                        matches!(
+                            c.status,
+                            agent_core::SubAgentChildStatus::Completed
+                                | agent_core::SubAgentChildStatus::Failed
+                        )
+                    })
+                    .count();
+                let failed = children
+                    .iter()
+                    .filter(|c| c.status == agent_core::SubAgentChildStatus::Failed)
+                    .count();
+                if failed > 0 {
+                    self.push_line(format!(
+                        "sub-agents: {settled}/{total} settled ({failed} failed)"
+                    ));
+                } else {
+                    self.push_line(format!("sub-agents: {settled}/{total} settled"));
+                }
+            }
             // ContentDelta is the chat host's live token stream; the workflow
             // host surfaces only the finalized `Message`, so it's ignored here.
             AgentEvent::ContentDelta(_) => {}

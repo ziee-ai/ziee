@@ -18,8 +18,29 @@ use ziee_core::AppError;
 use crate::core::{AgentCore, CancelToken};
 use crate::guard::neutralize_untrusted;
 use crate::types::{
-    AgentEvent, AgentTurnRequest, SubagentSpec, SubagentSummary, ToolScope, TurnSeed,
+    AgentEvent, AgentTurnRequest, SubAgentChild, SubAgentChildStatus, SubagentSpec,
+    SubagentSummary, ToolScope, TurnSeed,
 };
+
+/// Build a concise, friendly per-child label (ITEM-4 / DEC-65) from the child's
+/// system instruction: the first non-empty line, trimmed and length-capped so a
+/// long system prompt doesn't render as a wall of text in the activity card.
+fn subagent_label(system: &str) -> String {
+    const MAX: usize = 80;
+    let first_line = system
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    if first_line.is_empty() {
+        "Sub-agent".to_string()
+    } else if first_line.chars().count() > MAX {
+        let truncated: String = first_line.chars().take(MAX).collect();
+        format!("{truncated}…")
+    } else {
+        first_line.to_string()
+    }
+}
 
 /// How [`AgentCore::fan_out_inner`] treats a child that fails (model-resolution
 /// error, a child-run error, or a panicked task).
@@ -68,8 +89,25 @@ impl AgentCore {
         children: Vec<SubagentSpec>,
         cancel: CancelToken,
     ) -> Result<Vec<SubagentSummary>, AppError> {
-        self.fan_out_inner(user_id, children, cancel, FailureMode::FailFast)
+        // The public strict path has no parent-run context to key the ITEM-4
+        // activity snapshots (its callers don't surface a sub-agent card), so a
+        // nil parent run id is used; the activity events are still emitted (a
+        // sink that doesn't map them ignores them).
+        self.fan_out_inner(Uuid::nil(), user_id, children, cancel, FailureMode::FailFast)
             .await
+    }
+
+    /// Emit a full-snapshot [`AgentEvent::SubAgentActivity`] (ITEM-4 / DEC-65)
+    /// through the PARENT's `EventSink` — the same out-of-band channel every
+    /// other loop event uses. Last-wins: the chat host renders the newest
+    /// snapshot in place (a mid-join surface catches up on the next change).
+    async fn emit_subagent_activity(&self, parent_run_id: Uuid, activity: &[SubAgentChild]) {
+        self.sink
+            .emit(AgentEvent::SubAgentActivity {
+                run_id: parent_run_id,
+                children: activity.to_vec(),
+            })
+            .await;
     }
 
     /// The shared fan-out engine. `mode` selects the child-failure contract
@@ -79,6 +117,7 @@ impl AgentCore {
     /// before return.
     pub(crate) async fn fan_out_inner(
         &self,
+        parent_run_id: Uuid,
         user_id: Uuid,
         children: Vec<SubagentSpec>,
         cancel: CancelToken,
@@ -87,8 +126,24 @@ impl AgentCore {
         let permits = self.limits.max_threads.max(1) as usize;
         let sem = Arc::new(Semaphore::new(permits));
         let mut outcomes: Vec<ChildOutcome> = Vec::new();
+        // ITEM-4 / DEC-65: one activity entry per child, IN SPAWN ORDER, so
+        // `outcomes[i]` ↔ `activity[i]` at the join barrier. Mutated to a
+        // terminal status as each child settles and re-emitted as a full
+        // snapshot (last-wins) through the parent's `EventSink`.
+        let mut activity: Vec<SubAgentChild> = Vec::new();
 
-        for spec in children {
+        for (idx, spec) in children.into_iter().enumerate() {
+            // A fresh per-child run id doubles as the activity entry id.
+            let child_id = Uuid::new_v4();
+            let label = subagent_label(&spec.system);
+            // Bounded concurrency: the first `permits` children get a semaphore
+            // slot immediately (running); the rest queue behind it (pending).
+            let initial = if idx < permits {
+                SubAgentChildStatus::Running
+            } else {
+                SubAgentChildStatus::Pending
+            };
+
             // Resolve the per-child model (RBAC-bound). Under FailFast a rejected
             // id aborts the fan-out; under ErrorSummary it becomes this child's
             // error-summary and the others still run (DEC-9).
@@ -101,12 +156,24 @@ impl AgentCore {
                             outcomes.push(ChildOutcome::Ready(error_summary(&format!(
                                 "model resolution failed: {e}"
                             ))));
+                            // Never ran → reflect it as `failed` in the snapshot.
+                            activity.push(SubAgentChild {
+                                id: child_id.to_string(),
+                                label,
+                                status: SubAgentChildStatus::Failed,
+                            });
                             continue;
                         }
                     },
                 },
                 None => self.model.clone(),
             };
+
+            activity.push(SubAgentChild {
+                id: child_id.to_string(),
+                label,
+                status: initial,
+            });
 
             let mut child = self.clone();
             child.model = model_client;
@@ -116,7 +183,7 @@ impl AgentCore {
             child.steer = None;
 
             let child_req = AgentTurnRequest {
-                run_id: Uuid::new_v4(),
+                run_id: child_id,
                 user_id,
                 seed: TurnSeed::NewMessage(ChatMessage::user("Proceed with your task.")),
                 system: vec![ContentBlock::Text { text: spec.system }],
@@ -141,33 +208,49 @@ impl AgentCore {
             })));
         }
 
+        // START snapshot (ITEM-4): all children spawned (running / pending) plus
+        // any resolution-failed children already marked `failed`.
+        self.emit_subagent_activity(parent_run_id, &activity).await;
+
         let mut out = Vec::new();
-        for outcome in outcomes {
+        for (idx, outcome) in outcomes.into_iter().enumerate() {
             match outcome {
                 ChildOutcome::Ready(summary) => out.push(summary),
                 ChildOutcome::Spawned(handle) => match handle.await {
-                    Ok(Ok(summary)) => out.push(summary),
+                    Ok(Ok(summary)) => {
+                        set_child_status(&mut activity, idx, SubAgentChildStatus::Completed);
+                        out.push(summary);
+                    }
                     // A child RUN error (fanout.rs join barrier): abort under
                     // FailFast; contribute an error-summary under ErrorSummary
                     // (DEC-9 — survivors still return).
-                    Ok(Err(e)) => match mode {
-                        FailureMode::FailFast => return Err(e),
-                        FailureMode::ErrorSummary => {
-                            out.push(error_summary(&format!("sub-agent failed: {e}")))
+                    Ok(Err(e)) => {
+                        set_child_status(&mut activity, idx, SubAgentChildStatus::Failed);
+                        match mode {
+                            FailureMode::FailFast => return Err(e),
+                            FailureMode::ErrorSummary => {
+                                out.push(error_summary(&format!("sub-agent failed: {e}")))
+                            }
                         }
-                    },
-                    Err(e) => match mode {
-                        FailureMode::FailFast => {
-                            return Err(AppError::internal_error(format!(
-                                "subagent task panicked: {e}"
-                            )))
+                    }
+                    Err(e) => {
+                        set_child_status(&mut activity, idx, SubAgentChildStatus::Failed);
+                        match mode {
+                            FailureMode::FailFast => {
+                                return Err(AppError::internal_error(format!(
+                                    "subagent task panicked: {e}"
+                                )))
+                            }
+                            FailureMode::ErrorSummary => {
+                                out.push(error_summary(&format!("sub-agent task panicked: {e}")))
+                            }
                         }
-                        FailureMode::ErrorSummary => {
-                            out.push(error_summary(&format!("sub-agent task panicked: {e}")))
-                        }
-                    },
+                    }
                 },
             }
+            // SETTLE snapshot (ITEM-4): re-emit the full list after each child
+            // resolves (a Ready child is already terminal in `activity`).
+            self.emit_subagent_activity(parent_run_id, &activity).await;
         }
 
         // ITEM-32 / DEC-80: a child ran untrusted third-party MCP content, so its
@@ -179,6 +262,14 @@ impl AgentCore {
                 summary: neutralize_untrusted(&s.summary),
             })
             .collect())
+    }
+}
+
+/// Set the terminal status of the `idx`-th child in the activity snapshot
+/// (ITEM-4). Bounds-checked so an unexpected index can never panic the join.
+fn set_child_status(activity: &mut [SubAgentChild], idx: usize, status: SubAgentChildStatus) {
+    if let Some(child) = activity.get_mut(idx) {
+        child.status = status;
     }
 }
 
@@ -226,9 +317,21 @@ mod tests {
         factory: Arc<dyn crate::core::ModelClientFactory>,
         max_threads: u8,
     ) -> AgentCore {
+        fanout_core_with_sink(model, resolver, factory, max_threads, Arc::new(FakeSink::default()))
+    }
+
+    /// Like [`fanout_core`] but with a CAPTURED [`FakeSink`], so a test can
+    /// inspect the [`AgentEvent::SubAgentActivity`] snapshots the fan-out emits.
+    fn fanout_core_with_sink(
+        model: Arc<dyn ModelClient>,
+        resolver: Arc<FakeResolver>,
+        factory: Arc<dyn crate::core::ModelClientFactory>,
+        max_threads: u8,
+        sink: Arc<FakeSink>,
+    ) -> AgentCore {
         AgentCore {
             transcript: Arc::new(FakeTranscript::default()),
-            sink: Arc::new(FakeSink::default()),
+            sink,
             tools: Arc::new(FakeTools::new(true)),
             gate: Arc::new(FakeGate {
                 behavior: GateBehavior::Approve,
@@ -284,6 +387,78 @@ mod tests {
         assert_eq!(summaries.len(), 5);
         // Never more than max_threads model calls in flight at once.
         assert!(model.peak.load(std::sync::atomic::Ordering::SeqCst) <= 2);
+    }
+
+    /// ITEM-4 / DEC-65: the fan-out emits a START snapshot (children
+    /// running/pending) and a SETTLE snapshot per child (last-wins), all keyed
+    /// by the parent run id, through the parent's `EventSink`. The final
+    /// snapshot has every child terminal.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn fan_out_emits_start_and_settle_activity_snapshots() {
+        let sink = Arc::new(FakeSink::default());
+        let core = fanout_core_with_sink(
+            Arc::new(ScriptedModel::final_text("child done")),
+            Arc::new(FakeResolver::default()),
+            Arc::new(ProviderModelClientFactory),
+            2,
+            sink.clone(),
+        );
+        let parent_run = Uuid::from_u128(0xF00D);
+        let summaries = core
+            .fan_out_inner(
+                parent_run,
+                Uuid::new_v4(),
+                vec![spec(None, "First task line\nmore detail"), spec(None, "Second task")],
+                CancelToken::new(),
+                FailureMode::FailFast,
+            )
+            .await
+            .unwrap();
+        assert_eq!(summaries.len(), 2);
+
+        // Only the SubAgentActivity events, in emission order (children also emit
+        // their own loop events onto the shared sink — filtered out here).
+        let snapshots: Vec<Vec<SubAgentChild>> = sink
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                AgentEvent::SubAgentActivity { run_id, children } => {
+                    assert_eq!(*run_id, parent_run, "activity keyed by the PARENT run id");
+                    Some(children.clone())
+                }
+                _ => None,
+            })
+            .collect();
+
+        // A start snapshot + one settle snapshot per child (2) → ≥ 3.
+        assert!(
+            snapshots.len() >= 3,
+            "expected start + per-child settle snapshots, got {}",
+            snapshots.len()
+        );
+
+        // START: every child present, none terminal yet; the label is the child's
+        // first non-empty system line.
+        let start = &snapshots[0];
+        assert_eq!(start.len(), 2, "start snapshot lists all children");
+        assert!(
+            start.iter().all(|c| matches!(
+                c.status,
+                SubAgentChildStatus::Running | SubAgentChildStatus::Pending
+            )),
+            "no child is terminal in the start snapshot"
+        );
+        assert_eq!(start[0].label, "First task line", "friendly label = first system line");
+
+        // FINAL: last-wins, both children completed.
+        let last = snapshots.last().unwrap();
+        assert_eq!(last.len(), 2);
+        assert!(
+            last.iter().all(|c| c.status == SubAgentChildStatus::Completed),
+            "the final snapshot has every child completed"
+        );
     }
 
     #[tokio::test]
@@ -411,6 +586,7 @@ mod tests {
         let summaries = core
             .fan_out_inner(
                 Uuid::new_v4(),
+                Uuid::new_v4(),
                 vec![spec(Some(Uuid::new_v4()), "will fail"), spec(None, "will survive")],
                 CancelToken::new(),
                 FailureMode::ErrorSummary,
@@ -509,6 +685,7 @@ mod tests {
         );
         let summaries = core
             .fan_out_inner(
+                Uuid::new_v4(),
                 Uuid::new_v4(),
                 vec![spec(Some(bad), "rejected"), spec(None, "survivor")],
                 CancelToken::new(),

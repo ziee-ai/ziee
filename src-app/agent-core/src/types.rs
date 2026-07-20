@@ -163,6 +163,32 @@ pub struct SubagentSummary {
     pub summary: String,
 }
 
+/// The live status of one delegated sub-agent in a `delegate` fan-out
+/// (Group A / ITEM-4 / DEC-65). Snake-case on the wire so the FE
+/// `SubAgentChildStatus` union (`agentActivity.ts`) consumes it directly.
+/// `pending` = spawned but queued behind the concurrency limit; `running` =
+/// executing; `completed`/`failed` are terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubAgentChildStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+}
+
+/// One delegated sub-agent's activity snapshot entry (Group A / ITEM-4 /
+/// DEC-65). `id` is the child's fresh run id; `label` is the friendly per-child
+/// descriptor (its objective / role, derived from the child's system
+/// instruction). Mirrors the FE `SubAgentChildVM`; a thin server DTO carries it
+/// to the wire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubAgentChild {
+    pub id: String,
+    pub label: String,
+    pub status: SubAgentChildStatus,
+}
+
 // ---------------------------------------------------------------------------
 // Group G — agent self-task-management (Claude-Code `Task`-tools-style)
 // (ITEM-34/35, DEC-49/54). The item shape + status mirror CC's CURRENT Task
@@ -298,6 +324,16 @@ pub enum AgentEvent {
     /// content-block (mirroring `mcpToolProgress`); the workflow host maps it to
     /// a per-run progress track. Hosts that don't surface it ignore it.
     TaskListChanged { run_id: Uuid, items: Vec<TaskItem> },
+    /// A `delegate` fan-out's per-child status changed (Group A / ITEM-4 /
+    /// DEC-65) — emitted by `fan_out_inner` when the children are spawned (all
+    /// `running`/`pending`) and again as each child settles
+    /// (`completed`/`failed`), carrying the FULL current child list (a small,
+    /// idempotent last-wins snapshot, exactly like `TaskListChanged`). `run_id`
+    /// is the PARENT agent run. The chat host maps this to a `subAgentActivity`
+    /// SSE frame (`event_sink.rs`) that drives the timeline
+    /// `SubAgentActivityCard`; the workflow host rolls it up to a progress log
+    /// line; hosts that don't surface it ignore it.
+    SubAgentActivity { run_id: Uuid, children: Vec<SubAgentChild> },
     GateOpened(GateTicket),
     Stopped(StopReason),
 }
@@ -336,6 +372,19 @@ mod tests {
         assert_eq!(l.max_depth, 1);
         assert_eq!(l.max_threads, 6);
         assert_eq!(l.max_children_per_call, 8);
+    }
+
+    #[test]
+    fn sub_agent_child_status_snake_case_wire() {
+        // The FE `SubAgentChildStatus` union (agentActivity.ts) reads these
+        // snake_case tokens verbatim.
+        assert_eq!(serde_json::to_string(&SubAgentChildStatus::Pending).unwrap(), "\"pending\"");
+        assert_eq!(serde_json::to_string(&SubAgentChildStatus::Running).unwrap(), "\"running\"");
+        assert_eq!(
+            serde_json::to_string(&SubAgentChildStatus::Completed).unwrap(),
+            "\"completed\""
+        );
+        assert_eq!(serde_json::to_string(&SubAgentChildStatus::Failed).unwrap(), "\"failed\"");
     }
 
     #[test]
