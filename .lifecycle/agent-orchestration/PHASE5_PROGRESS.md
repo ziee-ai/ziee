@@ -28,8 +28,11 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 11 (FE) | Chat /loop + /schedule + goal-seek done-when | 18, 20, 24-FE | `tsc --noEmit` exit 0 (parent-run); fixes 4 pre-existing regen tsc errors | (committed) | ✅ VERIFIED |
 | 12 (FE) | Task-list checklist + sub-agent activity renderers (presentational) | 36, 4 | `tsc` exit 0 + 7/7 unit (parent-run); NO live data yet → 12b | fd95fc0a0 | ✅ VERIFIED |
 | 13 (FE) | Expose 4 orphaned admin-configurable agent settings | 24-adm, 39-adm, fan_out-adm | `tsc` exit 0 + lints (parent-run) | f3f1cfada | ✅ VERIFIED |
-| 14 | Admin per-tool MCP approval override (backend) | 55-be | pending | — | 🔄 in progress |
-| 12b | Task-list SSE plumbing (event_sink map + chat SSE variant) | 36-live | pending | — | 🔄 in progress |
+| 14 | Admin per-tool MCP approval override (backend) | 55-be | `cargo clean+check -p ziee` + 4 unit + integration (parent combined-run) | cd9e168ac | ✅ VERIFIED |
+| 12b | Task-list SSE plumbing (event_sink map + chat SSE variant) | 36-live | `cargo check -p ziee` + tasklist_frame/compose_guard (parent combined-run) | 1793a2362 | ✅ VERIFIED |
+| — | Batched openapi-regen #2 (both workspaces) | — | `openapi::tests::types_ts_parity{,_desktop}` PASS | (committed) | ✅ VERIFIED |
+| 15 (FE) | Task-list live handler + per-tool approval UI | 36-live-FE, 55-FE | `tsc --noEmit` exit 0 + 3 lints (parent-run) | (committed) | ✅ VERIFIED |
+| 16 | Group F inbox + steer note-queue (backend) | 26, 25-storage | pending | — | 🔄 in progress |
 
 ## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
 Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
