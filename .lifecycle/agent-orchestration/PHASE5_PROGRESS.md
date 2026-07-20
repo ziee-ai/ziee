@@ -32,7 +32,10 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 12b | Task-list SSE plumbing (event_sink map + chat SSE variant) | 36-live | `cargo check -p ziee` + tasklist_frame/compose_guard (parent combined-run) | 1793a2362 | ✅ VERIFIED |
 | — | Batched openapi-regen #2 (both workspaces) | — | `openapi::tests::types_ts_parity{,_desktop}` PASS | (committed) | ✅ VERIFIED |
 | 15 (FE) | Task-list live handler + per-tool approval UI | 36-live-FE, 55-FE | `tsc --noEmit` exit 0 + 3 lints (parent-run) | (committed) | ✅ VERIFIED |
-| 16 | Group F inbox + steer note-queue (backend) | 26, 25-storage | pending | — | 🔄 in progress |
+| 16 | Group F inbox kind + steer note-queue (backend) | 26-be, 25-storage | `cargo clean+check -p ziee` + 3 repo DB tests (parent-run) | (committed) | ✅ VERIFIED |
+| 17 | Steer loop-read seam (SteerNotePort, agent-core) | 25-loop | `cargo check -p agent-core` + -p ziee + steer unit (parent-run); amended 3 missed fan-in files | (committed) | ✅ VERIFIED |
+| 18 (FE) | Agent inbox surface (notification composition) | 26-FE | pending (tsc) | — | 🔄 in progress |
+| 19 | schedule_next self-paced model tool (agent-core + scheduler) | DEC-42 | pending | — | 🔄 in progress |
 
 ## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
 Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
@@ -58,6 +61,9 @@ fields). Driving remaining ~40 items in dependency-ordered, file-disjoint tranch
 - **FE follow-up: task-list live handler** — after 12b regen, register `sseEventHandlers.taskListChanged` in a chat extension → store items keyed by run/message → feed the committed `TaskListChecklist`. Gated behind `ZIEE_CHAT_AGENT_CORE` for the chat path (workflow kind:agent path streams it unconditionally).
 - **FE follow-up: per-tool approval UI (ITEM-55 FE)** — after T14 regen, the tool-list + per-tool approval-mode Select on the system-MCP-server settings surface.
 - **Sub-agent-activity SSE frame (ITEM-4 live, DEC-65)** — needs a NEW AgentEvent variant (agent-core) for per-child status; deferred to an agent-core tranche (T12-FE built the presentational card already).
+- **Batched openapi-regen #3** — T16 (RunNote/CreateRunNote + Background.postRunNote/listRunNotes) needs regen before the steer FE. Batch with any T19 REST type. Run before steer/background-runs FE follow-ups.
+- **scheduler `scheduled_task_result` notification kind** — register into NOTIFICATION_KINDS in a scheduler-owning tranche (T16 did the background_run_result one; noted so the agent-inbox filter is complete).
+- **Group I unify (56/60)** + **reviewer-thresholds chat wiring** (T1 drift) + **Group C sandbox background-exec (11-13/30/31, sdk cross-repo)** — remaining agent-core/cross-repo tranches.
 
 ## Remaining tranche plan (dependency-ordered)
 - A (delegate host-gate 2/4/5 chat+workflow), E FE dialog (18/20 + 24 done-when UI) [needs openapi-regen], G task-list (34-37 agent-core, shares delegate interception seam), I compaction (56 unify + 57-61,63), H approval core (39/41/42/43/44/45/46 agent-core+mcp) + H external (47-55) + H admin per-tool UI (55), F (24 goal-seek backend / 25 steer / 26 inbox / 27 event-triggers / 29 state-machine), **backbone D (14/17/29)** → then **B (7-10)** + **C sandbox (11-13/30/31, sdk cross-repo)** → I sleep-time (62).
