@@ -9,7 +9,7 @@ import type { StoreApi } from 'zustand'
 import {
   Chat,
   ChatPaneStore,
-} from '@/modules/chat/core/stores/Chat.store'
+} from '@/modules/chat/core/stores/chat'
 import { registerPane, unregisterPane } from '@/modules/chat/core/stores/chatBridge'
 import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
 import { PaneExtensionRuntime } from '@/modules/chat/core/extensions/PaneExtensionRuntime'

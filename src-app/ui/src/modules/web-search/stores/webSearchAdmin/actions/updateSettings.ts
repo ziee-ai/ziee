@@ -3,7 +3,7 @@ import type {
   UpdateWebSearchSettingsRequest,
   WebSearchSettings,
 } from '@/api-client/types'
-import type { WebSearchAdminState } from '../types'
+import type { WebSearchAdminState } from '../state'
 
 /** Lazy action — saves the global settings. Its own chunk. */
 export default (set: (fn: (s: WebSearchAdminState) => void) => void) =>

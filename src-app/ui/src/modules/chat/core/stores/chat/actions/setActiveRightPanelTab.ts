@@ -1,4 +1,4 @@
-import type { ChatSet, ChatInitialState } from '@/modules/chat/core/stores/Chat.store'
+import type { ChatSet, ChatInitialState } from '@/modules/chat/core/stores/chat'
 
 export default (set: ChatSet, _getRaw: () => ChatInitialState) => {
   return async (id: string) => {

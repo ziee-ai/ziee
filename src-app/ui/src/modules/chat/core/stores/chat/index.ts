@@ -3,7 +3,6 @@ import {
   defineLocalStore,
   defineStore,
   type StoreInitCtx,
-  type StoreSet,
 } from '@ziee/framework/store-kit'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { ApiClient } from '@/api-client'
@@ -28,7 +27,7 @@ export const MESSAGE_PAGE_SIZE = 30
  * Extensions augment this interface via declaration merging so the rest of
  * the API can statically link a `type` to the `data` shape it accepts:
  *
- *   declare module '@/modules/chat/core/stores/Chat.store' {
+ *   declare module '@/modules/chat/core/stores/chat' {
  *     interface PanelRendererMap {
  *       file: { fileId: string }
  *     }
@@ -447,12 +446,12 @@ export interface ChatState {
   /** This instance's own chat-token stream client (ITEM-6); null before init. */
   chatStreamClient: ChatStreamClient | null
   /** This pane's extension runtime (ITEM-34); null on the single-pane primary. */
-  extensionRuntime: import('../extensions/types').ExtensionLifecycle | null
+  extensionRuntime: import('@/modules/chat/core/extensions/types').ExtensionLifecycle | null
   /** This pane's stable id (ITEM-32/37); null on the single-pane primary. */
   paneId: string | null
   /** Attach a per-pane extension runtime (called by ChatPaneProvider on mount). */
   attachExtensionRuntime: (
-    runtime: import('../extensions/types').ExtensionLifecycle | null,
+    runtime: import('@/modules/chat/core/extensions/types').ExtensionLifecycle | null,
   ) => Promise<void>
   /** Set this pane's stable id (called by ChatPaneProvider on mount). */
   setPaneId: (paneId: string | null) => Promise<void>
@@ -493,106 +492,14 @@ export interface ChatState {
 // The initial per-conversation state (named so `typeof chatInitialState` can
 // type the actions/init callbacks — extracting the config to a const otherwise
 // drops the contextual param typing `defineStore` gave them inline).
-const chatInitialState = {
-    conversation: null as Conversation | null,
-    messages: new Map<string, MessageWithContent>(),
-    loading: false,
-    loadingConversationId: null as string | null,
-    sending: false,
-    isStreaming: false,
-    error: null as string | null,
-    // HTTP status of the last failed conversation load (404 gone / 403 no-access),
-    // so a split pane can move itself out of the workspace when its conversation
-    // is deleted or access is revoked (ITEM-29). Null on success / transient error.
-    lastLoadErrorStatus: null as number | null,
-    lastTurnInterrupted: false,
-    finalizingTurn: false,
-    hasMoreBefore: false,
-    hasMoreAfter: false,
-    loadingOlder: false,
-    loadingNewer: false,
-    streamingMessage: null as MessageWithContent | null,
-    tempUserMessageId: null as string | null,
-    streamingAbortController: null as AbortController | null,
-    streamingMessageId: null as string | null,
-    // This instance's own chat-token stream client (ITEM-6). Created in `init`
-    // so actions can scope it via `setActiveConversation`; null before init.
-    chatStreamClient: null as ChatStreamClient | null,
-    // This pane's extension runtime (ITEM-34). Attached by `ChatPaneProvider` on
-    // mount so lifecycle/hooks bind to THIS pane's store + its own `initialized`
-    // flag. Null on the single-pane primary store → falls back to the global
-    // `chatExtensionRegistry` (which binds to the singleton = correct).
-    extensionRuntime: null as import(
-      '../extensions/types'
-    ).ExtensionLifecycle | null,
-    // This pane's stable id (ITEM-32/37), attached by ChatPaneProvider. Scopes
-    // the composer buffer (per-pane files) + the new-chat sentinel keys (model /
-    // assistant / MCP) so two new-chat panes don't share one selection. Null on
-    // the single-pane primary → the shared/global key (byte-identical).
-    paneId: null as string | null,
-    conversationStateCache: new Map<string, ChatStateSnapshot>(),
-    cacheClearTimers: new Map<string, NodeJS.Timeout>(),
-    // Branch initial state
-    branches: [] as Branch[],
-    branchesLoading: false,
-    pendingBranchFromMessageId: null as string | null,
-    pendingBranchForkLevel: null as 'user' | 'assistant' | null,
-    branchForkLevels: new Map<string, 'user' | 'assistant'>(),
-    branchChangedDuringStream: false,
-    forkPoints: new Map<string, string[]>(),
-    editingMessage: null as MessageWithContent | null,
-    // Right panel initial state
-    rightPanel: {
-      panelWidth: 440,
-      tabs: [] as RightPanelTab[],
-      activeId: null as string | null,
-      mobileDrawerOpen: false,
-    },
-}
+import { chatInitialState, type ChatInitialState } from './state'
+export type { ChatInitialState, ChatSet } from './state'
+import type { Actions } from './actions.gen'
 
-export type ChatInitialState = typeof chatInitialState
-export type ChatSet = StoreSet<ChatInitialState>
 
 const chatStoreConfig = {
   state: chatInitialState,
-  lazyActions: {
-    attachExtensionRuntime: () => import('./chat/actions/attachExtensionRuntime'),
-    setPaneId: () => import('./chat/actions/setPaneId'),
-    saveConversationState: () => import('./chat/actions/saveConversationState'),
-    loadConversationState: () => import('./chat/actions/loadConversationState'),
-    scheduleCacheClear: () => import('./chat/actions/scheduleCacheClear'),
-    cancelCacheClear: () => import('./chat/actions/cancelCacheClear'),
-    clearConversationCache: () => import('./chat/actions/clearConversationCache'),
-    createConversation: () => import('./chat/actions/createConversation'),
-    loadConversation: () => import('./chat/actions/loadConversation'),
-    loadMessages: () => import('./chat/actions/loadMessages'),
-    loadOlderMessages: () => import('./chat/actions/loadOlderMessages'),
-    loadNewerMessages: () => import('./chat/actions/loadNewerMessages'),
-    jumpToMessage: () => import('./chat/actions/jumpToMessage'),
-    reconcileTail: () => import('./chat/actions/reconcileTail'),
-    loadBranches: () => import('./chat/actions/loadBranches'),
-    activateBranch: () => import('./chat/actions/activateBranch'),
-    computeForkPoints: () => import('./chat/actions/computeForkPoints'),
-    trimMessagesToForkPoint: () => import('./chat/actions/trimMessagesToForkPoint'),
-    captureBranchForkLevel: () => import('./chat/actions/captureBranchForkLevel'),
-    clearPendingBranch: () => import('./chat/actions/clearPendingBranch'),
-    startEditMessage: () => import('./chat/actions/startEditMessage'),
-    cancelEdit: () => import('./chat/actions/cancelEdit'),
-    startRegenerateMessage: () => import('./chat/actions/startRegenerateMessage'),
-    applyStreamFrame: () => import('./chat/actions/applyStreamFrame'),
-    sendMessage: () => import('./chat/actions/sendMessage'),
-    updateConversation: () => import('./chat/actions/updateConversation'),
-    clearError: () => import('./chat/actions/clearError'),
-    stopStreaming: () => import('./chat/actions/stopStreaming'),
-    displayInRightPanel: () => import('./chat/actions/displayInRightPanel'),
-    updateRightPanelTab: () => import('./chat/actions/updateRightPanelTab'),
-    setActiveRightPanelTab: () => import('./chat/actions/setActiveRightPanelTab'),
-    closeRightPanelTab: () => import('./chat/actions/closeRightPanelTab'),
-    closeAllRightPanelTabs: () => import('./chat/actions/closeAllRightPanelTabs'),
-    closeMobileDrawer: () => import('./chat/actions/closeMobileDrawer'),
-    setRightPanelWidth: () => import('./chat/actions/setRightPanelWidth'),
-    reset: () => import('./chat/actions/reset'),
-  },
+  actions: import.meta.glob('./actions/*.ts'),
   init: ({
     set,
     get: getRaw,
@@ -614,7 +521,11 @@ const chatStoreConfig = {
     void cs.reconcileTail.preload()
     void cs.sendMessage.preload()
     const warmIdle = (cb: () => void) => {
-      if (typeof requestIdleCallback !== 'undefined') requestIdleCallback(cb)
+      // `{ timeout }` guarantees the cold-action warm-up still fires even if the
+      // main thread stays busy (e.g. a long SSE token stream keeps eating idle
+      // time) — without it, a never-idle page could defer these indefinitely.
+      if (typeof requestIdleCallback !== 'undefined')
+        requestIdleCallback(cb, { timeout: 2000 })
       else setTimeout(cb, 200)
     }
     warmIdle(() => {
@@ -871,11 +782,11 @@ const chatStoreConfig = {
 /** Pane 0 — the eager primary chat store (a global singleton). Single-pane chat
  *  runs entirely on this instance, so behaviour is unchanged. The `Stores.Chat`
  *  bridge (chatBridge.ts) forwards to whichever pane is focused, defaulting here. */
-export const Chat = defineStore('Chat', chatStoreConfig)
+export const Chat = defineStore<ChatInitialState, Actions>('Chat', chatStoreConfig)
 
 /** Per-pane chat store for additional split panes (ITEM-2). Same config as the
  *  primary; each `.use()` / `.create()` is an independent instance with its own
  *  EventBus group. */
-export const ChatPaneStore = defineLocalStore(chatStoreConfig)
+export const ChatPaneStore = defineLocalStore<ChatInitialState, Actions>(chatStoreConfig)
 
 export const useChatStore = Chat.store

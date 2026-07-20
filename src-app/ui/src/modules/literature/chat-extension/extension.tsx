@@ -22,7 +22,7 @@ const literatureExtension: ChatExtension = createExtension({
   priority: 75,
 
   initialize: async () => {
-    const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
+    const { registerPanelRenderer } = await import('@/modules/chat/core/stores/chat')
     const { LiteratureScreeningPanel } = await import('../components/LiteratureScreeningPanel')
     registerPanelRenderer('literature', {
       icon: <FileSearch />,

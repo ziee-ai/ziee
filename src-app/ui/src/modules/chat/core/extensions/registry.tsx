@@ -110,7 +110,7 @@ export class ChatExtensionRegistry {
     if (extension.store) {
       // Lazy import useChatStore to avoid circular dependency
       // Import happens at runtime when register() is called, not at module load time
-      import('../stores/Chat.store').then(({ useChatStore }) => {
+      import('../stores/chat').then(({ useChatStore }) => {
         // Inject store at root level of Chat store for reactive access via Stores.Chat.{storeName}
         // Direct mutation is safe now that Immer middleware has been removed
         const stateObject = useChatStore.getState() as unknown as Record<
@@ -275,7 +275,7 @@ export class ChatExtensionRegistry {
 
     // Remove extension store from Chat store (if it was injected)
     if (extension?.store) {
-      import('../stores/Chat.store').then(({ useChatStore }) => {
+      import('../stores/chat').then(({ useChatStore }) => {
         // Direct mutation is safe now that Immer middleware has been removed
         const stateObject = useChatStore.getState()
         const storeName = extension.store!.name
@@ -381,7 +381,7 @@ export class ChatExtensionRegistry {
     let api = chatStore
     let resolve = resolveStore
     if (!api || !resolve) {
-      const { useChatStore } = await import('../stores/Chat.store')
+      const { useChatStore } = await import('../stores/chat')
       const state = useChatStore.getState() as unknown as Record<string, unknown>
       api =
         api ?? (useChatStore as unknown as import('./types').ChatExtStoreApi)
@@ -616,7 +616,7 @@ export class ChatExtensionRegistry {
     let api = chatStore
     let resolve = resolveStore
     if (!api || !resolve) {
-      const { useChatStore } = await import('../stores/Chat.store')
+      const { useChatStore } = await import('../stores/chat')
       const state = useChatStore.getState() as unknown as Record<string, unknown>
       api =
         api ?? (useChatStore as unknown as import('./types').ChatExtStoreApi)

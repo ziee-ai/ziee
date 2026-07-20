@@ -2,7 +2,7 @@ import { ApiClient } from '@/api-client'
 import { chatExtensionRegistry } from '@/modules/chat/extensions'
 import type { MessageWithContent } from '@/api-client/types'
 
-import type { ChatSet, ChatInitialState, ChatState } from '@/modules/chat/core/stores/Chat.store'
+import type { ChatSet, ChatInitialState, ChatState } from '@/modules/chat/core/stores/chat'
 import type { ExtensionLifecycle } from '@/modules/chat/core/extensions/types'
 
 export default (set: ChatSet, getRaw: () => ChatInitialState) => {

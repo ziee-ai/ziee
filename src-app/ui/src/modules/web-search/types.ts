@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useWebSearchAdminStore } from './stores/WebSearchAdmin.store'
+import type { useWebSearchAdminStore } from './stores/webSearchAdmin'
 import type { useWebSearchUserKeysStore } from './stores/WebSearchUserKeys.store'
 
 declare module '@ziee/framework/stores' {

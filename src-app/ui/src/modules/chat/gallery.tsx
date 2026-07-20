@@ -20,7 +20,7 @@ import {
   whenTrue,
 } from '@/dev/gallery/support'
 import { chatCassette } from '@/dev/gallery/fixtures/chat'
-import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
+import { useChatStore } from '@/modules/chat/core/stores/chat'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
 import { ModelPicker } from '@/modules/user-llm-providers/ModelPicker.store'
@@ -634,7 +634,7 @@ export const gallery: ModuleGallery = {
       ),
       setup: async () => {
         const { useChatStore } = await import(
-          '@/modules/chat/core/stores/Chat.store'
+          '@/modules/chat/core/stores/chat'
         )
         await holdPatch(() =>
           useChatStore.setState({
@@ -698,7 +698,7 @@ export const gallery: ModuleGallery = {
       ),
       setup: async () => {
         const { useChatStore } = await import(
-          '@/modules/chat/core/stores/Chat.store'
+          '@/modules/chat/core/stores/chat'
         )
         await holdPatch(() =>
           useChatStore.setState({ loading: true, conversation: null } as any),
@@ -718,7 +718,7 @@ export const gallery: ModuleGallery = {
       ),
       setup: async () => {
         const { useChatStore } = await import(
-          '@/modules/chat/core/stores/Chat.store'
+          '@/modules/chat/core/stores/chat'
         )
         await holdPatch(() =>
           useChatStore.setState({
@@ -744,7 +744,7 @@ export const gallery: ModuleGallery = {
       ),
       setup: async () => {
         const { useChatStore } = await import(
-          '@/modules/chat/core/stores/Chat.store'
+          '@/modules/chat/core/stores/chat'
         )
         const { SHOWCASE_CONVERSATION_ID } = await import(
           '@/dev/gallery/fixtures/chat-deep'

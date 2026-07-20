@@ -1,5 +1,5 @@
 
-import type { ChatSet, ChatInitialState, ChatState, ChatStateSnapshot } from '@/modules/chat/core/stores/Chat.store'
+import type { ChatSet, ChatInitialState, ChatState, ChatStateSnapshot } from '@/modules/chat/core/stores/chat'
 
 export default (set: ChatSet, getRaw: () => ChatInitialState) => {
   const get = getRaw as unknown as () => ChatState

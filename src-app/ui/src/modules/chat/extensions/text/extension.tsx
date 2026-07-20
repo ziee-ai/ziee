@@ -36,7 +36,7 @@ async function ownerChatState(
   pendingBranchFromMessageId: string | null
 }> {
   const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
-  const { Chat } = await import('@/modules/chat/core/stores/Chat.store')
+  const { Chat } = await import('@/modules/chat/core/stores/chat')
   const api = ownerPaneId ? paneRegistry.get(ownerPaneId)?.api : undefined
   return (api?.getState() ?? Chat.store.getState()) as unknown as {
     TextStore: ReturnType<typeof createTextStore>

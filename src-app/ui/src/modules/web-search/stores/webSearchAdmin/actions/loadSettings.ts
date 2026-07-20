@@ -1,5 +1,5 @@
 import { ApiClient } from '@/api-client'
-import type { WebSearchAdminState } from '../types'
+import type { WebSearchAdminState } from '../state'
 
 /** Lazy action — loads the global web-search settings row. Its own chunk. */
 export default (set: (fn: (s: WebSearchAdminState) => void) => void) =>

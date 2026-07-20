@@ -16,7 +16,7 @@ import {
   MessageList,
   type MessageListHandle,
 } from '@/modules/chat/components/MessageList'
-import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
+import { useChatStore } from '@/modules/chat/core/stores/chat'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import type { MessageContent, MessageWithContent } from '@/api-client/types'
 

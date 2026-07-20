@@ -2,8 +2,8 @@ import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageView
 import { ApiClient } from '@/api-client'
 import { chatExtensionRegistry } from '@/modules/chat/extensions'
 
-import { loadAllPanelSnapshots, touchPanelSnapshot, savePanelSnapshotForConversation, rehydrateTabs } from '@/modules/chat/core/stores/Chat.store'
-import type { ChatSet, ChatInitialState, ChatState } from '@/modules/chat/core/stores/Chat.store'
+import { loadAllPanelSnapshots, touchPanelSnapshot, savePanelSnapshotForConversation, rehydrateTabs } from '@/modules/chat/core/stores/chat'
+import type { ChatSet, ChatInitialState, ChatState } from '@/modules/chat/core/stores/chat'
 import type { ExtensionLifecycle } from '@/modules/chat/core/extensions/types'
 
 export default (set: ChatSet, getRaw: () => ChatInitialState) => {

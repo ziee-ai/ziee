@@ -65,7 +65,7 @@ export interface LiteratureScreeningData {
   reasons: Record<string, string>
 }
 
-declare module '@/modules/chat/core/stores/Chat.store' {
+declare module '@/modules/chat/core/stores/chat' {
   interface PanelRendererMap {
     literature: LiteratureScreeningData
   }

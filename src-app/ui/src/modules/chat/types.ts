@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useChatStore } from '@/modules/chat/core/stores/Chat.store'
+import type { useChatStore } from '@/modules/chat/core/stores/chat'
 import type { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
 import type { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import type { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'

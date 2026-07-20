@@ -1,6 +1,6 @@
 import { ApiClient } from '@/api-client'
 import type { UpdateProviderRequest } from '@/api-client/types'
-import type { WebSearchAdminState } from '../types'
+import type { WebSearchAdminState } from '../state'
 
 /** Lazy action — saves one provider's config. Its own chunk. */
 export default (set: (fn: (s: WebSearchAdminState) => void) => void) =>

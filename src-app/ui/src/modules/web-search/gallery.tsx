@@ -28,7 +28,7 @@ export const gallery: ModuleGallery = {
       ]),
       setup: async () => {
         const { WebSearchAdmin } = await import(
-          '@/modules/web-search/stores/WebSearchAdmin.store'
+          '@/modules/web-search/stores/webSearchAdmin'
         )
         await holdPatch(() =>
           WebSearchAdmin.store.setState({

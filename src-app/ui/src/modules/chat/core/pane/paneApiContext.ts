@@ -1,6 +1,6 @@
 import { createContext } from 'react'
 import type { StoreApi } from 'zustand'
-import type { Chat } from '@/modules/chat/core/stores/Chat.store'
+import type { Chat } from '@/modules/chat/core/stores/chat'
 
 /**
  * The chat `StoreApi` of the pane a subtree belongs to (ITEM-10 / DEC-5).
