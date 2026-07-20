@@ -26,6 +26,8 @@ const SETTINGS: AgentAdminSettings = {
   per_run_token_cap: 5_000_000,
   per_step_token_cap: 2_000_000,
   default_max_steps: 30,
+  // On-demand delegation enabled so the toggle renders in its ON state.
+  delegate_enabled: true,
   fan_out_max_threads: 6,
   fan_out_max_depth: 1,
   fan_out_max_children_per_call: 8,

@@ -132,6 +132,10 @@ const schema = z.object({
   default_max_steps: z
     .number()
     .refine(v => v >= 1 && v <= 1_000, 'must be 1..=1000'),
+  // On-demand delegation master switch (ITEM-2 / DEC-2). Plain bool like
+  // `reviewer_enabled` (no bounds); gates whether the top-level agent-core
+  // chat path + workflow agent steps offer the core `delegate` tool.
+  delegate_enabled: z.boolean(),
   fan_out_max_threads: z
     .number()
     .refine(v => v >= 1 && v <= 64, 'must be 1..=64'),
@@ -173,6 +177,7 @@ const EMPTY_DEFAULTS: FormValues = {
   per_run_token_cap: 5_000_000,
   per_step_token_cap: 2_000_000,
   default_max_steps: 30,
+  delegate_enabled: false,
   fan_out_max_threads: 6,
   fan_out_max_depth: 1,
   fan_out_max_children_per_call: 8,
@@ -214,6 +219,7 @@ export function AgentSettingsSection() {
         per_run_token_cap: settings.per_run_token_cap,
         per_step_token_cap: settings.per_step_token_cap,
         default_max_steps: settings.default_max_steps,
+        delegate_enabled: settings.delegate_enabled,
         fan_out_max_threads: settings.fan_out_max_threads,
         fan_out_max_depth: settings.fan_out_max_depth,
         fan_out_max_children_per_call: settings.fan_out_max_children_per_call,
@@ -248,6 +254,7 @@ export function AgentSettingsSection() {
         per_run_token_cap: v.per_run_token_cap,
         per_step_token_cap: v.per_step_token_cap,
         default_max_steps: v.default_max_steps,
+        delegate_enabled: v.delegate_enabled,
         fan_out_max_threads: v.fan_out_max_threads,
         fan_out_max_depth: v.fan_out_max_depth,
         fan_out_max_children_per_call: v.fan_out_max_children_per_call,
@@ -473,6 +480,17 @@ export function AgentSettingsSection() {
               />
             </FormField>
             <FormField
+              name="delegate_enabled"
+              label="Enable on-demand delegation"
+              description="Lets the agent delegate work to parallel sub-agents via the built-in delegate tool. Applies to the agent-core chat path and workflow agent steps. The fan-out limits below bound each delegate call."
+              valuePropName="checked"
+            >
+              <Switch
+                aria-label="Enable on-demand delegation"
+                data-testid="agent-settings-delegate-enabled"
+              />
+            </FormField>
+            <FormField
               name="fan_out_max_threads"
               label="Fan-out max threads"
               description="Maximum number of subagents that may run in parallel during a fan-out."
@@ -553,8 +571,9 @@ export function AgentSettingsSection() {
               Defaults: workspace-write sandbox, on-request approval, reviewer
               on with the built-in risk ladder (Low → Auto, High → Prompt,
               Critical → Deny), 5,000,000 per-run / 2,000,000 per-step token
-              caps, 30 max steps, fan-out 6 threads × depth 1 × 8 children per
-              call, goal-seeking 10 turns on the run's own model. Stored at{' '}
+              caps, 30 max steps, on-demand delegation off, fan-out 6 threads ×
+              depth 1 × 8 children per call, goal-seeking 10 turns on the run's
+              own model. Stored at{' '}
               <code>agent_admin_settings</code>; the server re-reads the row at
               use.
             </Paragraph>
