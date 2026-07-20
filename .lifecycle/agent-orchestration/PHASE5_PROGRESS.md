@@ -40,8 +40,10 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 22 (FE) | /loop task legibility (ScheduledTaskCard) + agent-inbox nav + 4 dead-link fixes | 18/20-list, 26-nav | `tsc` exit 0 + lints (parent-run) | (committed) | ✅ VERIFIED |
 | 21 | List/cancel background runs REST (Group B) | 8, 10 | `cargo check -p ziee` + 12/12 background_mcp runs+notes (parent-run); fixed a pre-existing broken 403 test | (committed) | ✅ VERIFIED |
 | — | Batched openapi-regen #4 (BackgroundRunSummary + listRuns/cancelRun) | — | `types_ts_parity{,_desktop}` PASS | (committed) | ✅ |
-| 24 (FE) | Background-runs panel (list/cancel/steer) | 8-FE, 25-FE | pending (tsc) | — | 🔄 in progress |
-| 25 | Group C sandbox background-exec (JobKind::SandboxExec) | 11, 12, 13 (30/31 sdk flagged) | pending | — | 🔄 in progress |
+| 24 (FE) | Background tasks page (/background-tasks: list/cancel/steer) | 8-FE, 25-FE | `tsc` exit 0 + lints (parent-run) | (committed) | ✅ VERIFIED |
+| 25 | Group C sandbox background-exec (JobKind::SandboxExec) | 11, 12, 13 (30/31 sdk flagged) | `cargo check -p ziee` + 8/8 unit (parent-run); JobKind pre-existed → reuse | (committed) | ✅ VERIFIED |
+| 26 | Group I summarizer-unify + 9-section (agent-core) | 56, 60 | pending | — | 🔄 in progress |
+| 27 | Run-detail REST + scheduler notif-kind (backend) | 8-detail, 26-kind | pending | — | 🔄 in progress |
 
 ## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
 Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
@@ -69,7 +71,15 @@ fields). Driving remaining ~40 items in dependency-ordered, file-disjoint tranch
 - **Sub-agent-activity SSE frame (ITEM-4 live, DEC-65)** — needs a NEW AgentEvent variant (agent-core) for per-child status; deferred to an agent-core tranche (T12-FE built the presentational card already).
 - **Batched openapi-regen #3** — T16 (RunNote/CreateRunNote + Background.postRunNote/listRunNotes) needs regen before the steer FE. Batch with any T19 REST type. Run before steer/background-runs FE follow-ups.
 - **scheduler `scheduled_task_result` notification kind** — register into NOTIFICATION_KINDS in a scheduler-owning tranche (T16 did the background_run_result one; noted so the agent-inbox filter is complete).
-- **Group I unify (56/60)** + **reviewer-thresholds chat wiring** (T1 drift) + **Group C sandbox background-exec (11-13/30/31, sdk cross-repo)** — remaining agent-core/cross-repo tranches.
+- **reviewer-thresholds chat wiring** (T1 drift, behind ZIEE_CHAT_AGENT_CORE) — remaining agent-core.
+- **Sub-agent-activity SSE frame (ITEM-4 live, DEC-65)** — new AgentEvent variant + event_sink + chat SSE variant + FE handler (makes T12-FE's SubAgentActivityCard live).
+- **event-triggers (27) + state-machine (29)** + **Group A host-gate (2) / per-child track (5)** — remaining smaller items.
+- **Group C sdk streaming (30/31)** — cross-repo sdk (mid-command detach, output ring/paging, admin lifetime/idle cols, cgroup-kill reap); T25 stopped at the seam.
+- **FE follow-up: inline background-run result view** — after T27's GET /background/runs/{id} + regen #5.
+- **FE follow-up: swap raw 'background::use' → Permissions.BackgroundUse** — after the perm-enum fix below.
+
+## Findings for Phase 6/7 (recorded so nothing is lost)
+- **FINDING (perm-enum): `background::use` is MISSING from the generated TS `Permissions` enum** (`ui/src/api-client/types.ts`), though its siblings `web_search::use`/`citations::use`/`knowledge_base::use`/`lit_search::use` ARE present — all via the identical `PermissionCheck` impl (`background_mcp/permissions.rs` has NAME/PERMISSION/DESCRIPTION/MODULE like `web_search/permissions.rs`). The enum is NOT in any `openapi.json` schema (background::use appears only in 403 error *descriptions*) and no server Rust file emits `PermissionDescriptions` — the emitter is in the shared `ziee-identity`/`ziee-auth` crate (untraced from the main loop). T24-FE workaround: raw `'background::use'` string constant (a valid `PermissionExpr`). FIX (Phase 7): trace the ziee-identity permission-catalog collection the siblings register into, add `BackgroundUse`, regen, swap the FE constant to `Permissions.BackgroundUse`. Functional now (raw string works + backend enforcement is compile-time); this is a completeness/consistency gap (+ likely absent from any admin permission-assignment catalog).
 
 ## Remaining tranche plan (dependency-ordered)
 - A (delegate host-gate 2/4/5 chat+workflow), E FE dialog (18/20 + 24 done-when UI) [needs openapi-regen], G task-list (34-37 agent-core, shares delegate interception seam), I compaction (56 unify + 57-61,63), H approval core (39/41/42/43/44/45/46 agent-core+mcp) + H external (47-55) + H admin per-tool UI (55), F (24 goal-seek backend / 25 steer / 26 inbox / 27 event-triggers / 29 state-machine), **backbone D (14/17/29)** → then **B (7-10)** + **C sandbox (11-13/30/31, sdk cross-repo)** → I sleep-time (62).
