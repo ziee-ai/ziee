@@ -11,8 +11,11 @@
 --   3. Makes biognosia the ONLY external data (HTTP) MCP server: (re)asserts the
 --      biognosia system server at the local host gateway, assigns it to Users,
 --      and removes the rcpa/dscc system servers that seed.sql registers (deploy2
---      is biognosia-only). Built-in system servers (code_sandbox, files, memory,
---      fetch, web_search, …) are untouched.
+--      is biognosia-only). The remaining built-in system servers (code_sandbox,
+--      files, memory, …) are untouched.
+--   4. Turns web fetch OFF deployment-wide — BOTH the visible `fetch` /
+--      "Web Fetch" server AND the hidden web_search built-in that owns the
+--      `web_search` + `fetch_url` tools.
 --
 -- NOTE: LLM providers/models are NOT seeded here — deploy2 gets its LLM config
 -- copied from the live :8080 instance (local-provider.sql is dropped from the
@@ -145,6 +148,32 @@ ON CONFLICT (group_id, mcp_server_id) DO NOTHING;
 -- deploy2 is biognosia-only: drop the rcpa/dscc system servers that seed.sql
 -- registers (their group assignments cascade away via FK ON DELETE CASCADE).
 DELETE FROM mcp_servers WHERE is_system = true AND name IN ('rcpa', 'dscc');
+
+-- ── 4. Disable web fetch, deployment-wide ────────────────────────────────────
+-- "webfetch" is TWO distinct surfaces in this codebase; both are turned off.
+-- Idempotent: the trailing `AND enabled` makes a re-run a no-op. biognosia is
+-- unaffected (it is neither of these rows).
+--
+-- (a) The `fetch` / "Web Fetch" stdio server (`uvx mcp-server-fetch`, fixed id
+--     865f06fa-c4e5-4eb3-9801-5804f67062c2), seeded by the mcp seed migration
+--     and assigned to the Users group. This is the row users SEE on the System
+--     MCP page. It is migration-seeded and never boot-upserted, so once
+--     disabled it stays disabled across restarts.
+UPDATE mcp_servers
+   SET enabled = false, updated_at = NOW()
+ WHERE is_system = true AND name = 'fetch' AND enabled;
+
+-- (b) The hidden `web_search` built-in, which owns BOTH the `web_search` and
+--     `fetch_url` tools. `attach_gate_open()` is
+--     `settings.enabled && any_configured_in_chain(...)`, so clearing the
+--     singleton's `enabled` closes the attach gate for both tools and also
+--     drops the model-facing WEB_SEARCH_NUDGE prompt text. (The server row
+--     itself is re-upserted at every boot, but that upsert re-asserts only the
+--     identity columns — never `enabled` — so the gate below is the durable
+--     switch.)
+UPDATE web_search_settings
+   SET enabled = false, updated_at = NOW()
+ WHERE id = true AND enabled;
 
 COMMIT;
 

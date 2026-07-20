@@ -26,6 +26,12 @@ export function McpStatusRow() {
   // pattern) rather than the focused-pane bridge — so a split pane's chips reflect
   // ITS conversation, not the focused one.
   const pane = useChatPaneOrNull()
+  // DEPLOY-ONLY: the close (X) affordance is ADMIN-ONLY. This deployment ships
+  // biognosia as the one data server and auto-selects it; a normal user who
+  // removed the chip would have no way to add it back (the "MCP tools & servers"
+  // entry is likewise operator-facing here). The chip itself still renders for
+  // everyone — only the X is withheld.
+  const { user } = Stores.Auth
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
   const paneId = pane?.paneId ?? null
   const conversation = chat.conversation
@@ -51,25 +57,33 @@ export function McpStatusRow() {
       {visibleServerIds.map(serverId => {
         const server = servers.find(s => s.id === serverId)!
 
+        // DEPLOY-ONLY: spread rather than pass `onClose={undefined}` so the X is
+        // structurally absent for non-admins, not merely inert.
+        const closeProps = user?.is_admin
+          ? {
+              onClose: async () => {
+                // Edit THIS pane's conversation (or its own pending buffer for a new
+                // chat), not the global-active one.
+                mcpStore.deselectServerForConversation(conversation?.id ?? null, serverId, paneId)
+                if (conversation?.id) {
+                  // Existing conversation: persist to conversation config
+                  await mcpStore.saveConversationConfig(conversation.id, enabledServerIds)
+                } else {
+                  // New conversation: persist as user defaults so applyUserDefaultsToPending
+                  // restores the correct selection after reload
+                  await mcpStore.saveUserDefaults(null, enabledServerIds)
+                }
+              },
+              closeLabel: 'Remove',
+            }
+          : {}
+
         return (
           <Tag variant="outline"
             key={serverId}
             tone="info"
             icon={<Wrench />}
-            onClose={async () => {
-              // Edit THIS pane's conversation (or its own pending buffer for a new
-              // chat), not the global-active one.
-              mcpStore.deselectServerForConversation(conversation?.id ?? null, serverId, paneId)
-              if (conversation?.id) {
-                // Existing conversation: persist to conversation config
-                await mcpStore.saveConversationConfig(conversation.id, enabledServerIds)
-              } else {
-                // New conversation: persist as user defaults so applyUserDefaultsToPending
-                // restores the correct selection after reload
-                await mcpStore.saveUserDefaults(null, enabledServerIds)
-              }
-            }}
-            closeLabel="Remove"
+            {...closeProps}
             className="m-0"
             data-testid={`mcp-chip-${serverId}`}
           >

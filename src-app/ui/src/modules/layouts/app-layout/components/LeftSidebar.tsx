@@ -71,6 +71,17 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
   const isAllowed = (item: { permission?: SidebarNavItem['permission'] }) =>
     !item.permission || evaluatePermission(user, permissions, item.permission)
 
+  // DEPLOY-ONLY: hide operator-facing sidebar entries from non-admins, mirroring
+  // `isHiddenUserPage` in SettingsPage.tsx.
+  //   onboarding        — the guided setup tour is operator-facing here.
+  //   notification-bell — nothing in this single-purpose deployment notifies users.
+  // Id-based rather than component-internal because the onboarding entry is a
+  // declarative link item with no component to self-gate. The slot registrations
+  // (and onboarding's `onboarding-redirect` router effect) are untouched.
+  const DEPLOY_HIDDEN_SIDEBAR_IDS = ['onboarding', 'notification-bell']
+  const isVisibleForRole = (item: { id?: string }) =>
+    !DEPLOY_HIDDEN_SIDEBAR_IDS.includes(item.id ?? '') || !!user?.is_admin
+
   // Get and sort items from slots
   const primaryActions = (slots.get('sidebarPrimaryActions') ||
     []) as SidebarActionItem[]
@@ -83,7 +94,9 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
   // `permission` render unconditionally (they self-gate internally if
   // needed). Reactive via the `user`/`permissions` read above.
   const contentWidgets = (slots.get('sidebarContent') || []).filter(isAllowed)
-  const bottomWidgets = (slots.get('sidebarBottom') || []).filter(isAllowed)
+  const bottomWidgets = (slots.get('sidebarBottom') || [])
+    .filter(isAllowed)
+    .filter(isVisibleForRole)
   const footerWidgets = (slots.get('sidebarFooter') || []).filter(isAllowed)
 
   const sortedPrimaryActions = useMemo(
@@ -102,6 +115,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
     () =>
       [...tools]
         .filter(isAllowed)
+        .filter(isVisibleForRole)
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tools, user, permissions],

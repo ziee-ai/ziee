@@ -26,6 +26,8 @@ export function SummarizationStatusPill() {
   const conversation = Stores.Chat.conversation
   const messages = Stores.Chat.messages
   const adminSettings = Stores.SummarizationAdmin.settings
+  // DEPLOY-ONLY: the pill is admin-only (see the gate below the effects).
+  const { user } = Stores.Auth
   const [mode, setMode] = useState<Mode>('inherit')
   const [loading, setLoading] = useState(false)
 
@@ -69,6 +71,14 @@ export function SummarizationStatusPill() {
   }, [conversation?.id, messages.size])
 
   if (!conversation?.id) return null
+
+  // DEPLOY-ONLY: hidden for non-admins — the per-conversation summarization
+  // override is operator-facing here. This gate MUST stay BELOW both effects
+  // above: the second one is the read-model driver for `SummaryBoundaryMarker`,
+  // so returning early before it would silently kill the in-thread summary
+  // marker for every normal user. Summarization itself keeps running; only the
+  // pill is withheld. (Same reason the `toolbar_status` slot stays registered.)
+  if (!user?.is_admin) return null
   // Known cross-cutting limitation (mirrors MemoryStatusPill): for
   // non-admins, `adminSettings` stays null because
   // `SummarizationAdmin.__init__.settings` is self-gated on
