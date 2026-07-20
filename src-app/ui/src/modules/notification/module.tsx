@@ -12,6 +12,11 @@ const NotificationsPage = lazyWithPreload(() =>
     default: m.NotificationsPage,
   })),
 )
+const AgentInboxPage = lazyWithPreload(() =>
+  import('./pages/AgentInboxPage').then(m => ({
+    default: m.AgentInboxPage,
+  })),
+)
 const NotificationToastListener = lazyWithPreload(() =>
   import('./components/NotificationToastListener').then(m => ({
     default: m.NotificationToastListener,
@@ -29,6 +34,16 @@ export default createModule({
     {
       path: '/notifications',
       element: NotificationsPage,
+      requiresAuth: true,
+      permission: Permissions.NotificationsRead,
+    },
+    {
+      // Agent/background inbox (ITEM-26) — a focused view over the same
+      // notifications, narrowed to background sub-agent / scheduled-loop results.
+      // Same read perm as the inbox (self-gated store; no 403 for a role without
+      // the grant).
+      path: '/notifications/background',
+      element: AgentInboxPage,
       requiresAuth: true,
       permission: Permissions.NotificationsRead,
     },

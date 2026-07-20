@@ -385,6 +385,7 @@ export const GALLERY_SURFACES = [
   "modules/memory/pages/MemorySettingsPage",
   "modules/notification/components/NotificationBellWidget",
   "modules/notification/components/NotificationToastListener",
+  "modules/notification/pages/AgentInboxPage",
   "modules/notification/pages/NotificationsPage",
   "modules/onboarding/OnboardingPage",
   "modules/onboarding/OnboardingRedirect",

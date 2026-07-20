@@ -1,0 +1,135 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import type { NotificationRendererCtx } from '@ziee/framework/notification'
+import { Stores } from '@ziee/framework/stores'
+import { Button, Card, Empty, ErrorState, Flex, Spin } from '@ziee/kit'
+import { NotificationItem } from '@ziee/notification-ui'
+
+import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+
+import { AGENT_INBOX_KINDS, resolveAgentInboxKinds } from '../agentInboxKinds'
+
+/**
+ * The "Background results" inbox — a FOCUSED, agent-scoped view over the shared
+ * `Stores.Notifications` inbox (ITEM-26 / DEC-65: a FE composition, NOT a forked
+ * store). It reuses the SDK notification store + actions + per-kind renderer seam
+ * verbatim; it only narrows the list to the agent/background kinds (a background
+ * sub-agent group finishing, a scheduled loop returning) so a user who kicked off
+ * unattended work sees the results when they land.
+ *
+ * The go-to-result affordance is the whole-row click: it marks the row read and
+ * routes through the app's `onNavigate` seam, which opens the `conversation_id`
+ * the result landed in (`/chat/:id`) — the JTBD.
+ */
+export function AgentInboxPage() {
+  // Reactive store reads (subscribe on the proxy getter — legal in render).
+  const { items, loading, error } = Stores.Notifications
+  const navigate = useNavigate()
+
+  // The effective agent/background kind set: the typed constant, augmented once
+  // from the live kind registry (`GET /api/notifications/kinds`) where a matching
+  // kind is advertised. Page-local UI state (the registry has no store); degrades
+  // to the constant on any fetch failure.
+  const [agentKinds, setAgentKinds] = useState<Set<string>>(
+    () => new Set<string>(AGENT_INBOX_KINDS),
+  )
+  useEffect(() => {
+    let alive = true
+    void resolveAgentInboxKinds().then(set => {
+      if (alive) setAgentKinds(set)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Refresh the shared inbox on entry (mirrors the sibling notifications page).
+  useEffect(() => {
+    void Stores.Notifications.load()
+  }, [])
+
+  const list = (items ?? []).filter(n => agentKinds.has(n.kind))
+  const unread = list.filter(n => !n.read_at).length
+
+  // Per-kind renderer context (seam). `close` is a no-op on a full page.
+  const ctx: NotificationRendererCtx = {
+    markRead: (id: string) => void Stores.Notifications.markRead(id),
+    remove: (id: string) => void Stores.Notifications.remove(id),
+    close: () => {},
+  }
+
+  // Whole-row select → mark read + the app-supplied navigation seam (opens the
+  // conversation the result landed in). `onNavigate` is undefined only if the app
+  // bound no seam — then rows aren't whole-row clickable (per-kind actions still
+  // work), matching the sibling inbox.
+  const onNavigate = Stores.Notifications.onNavigate
+  const onSelect = onNavigate
+    ? (id: string) => {
+        const n = list.find(r => r.id === id)
+        if (!n) return
+        void Stores.Notifications.markRead(id)
+        onNavigate(n, to => navigate(to))
+      }
+    : undefined
+
+  // Scoped "mark all read": only the background-result rows currently shown (the
+  // shared `markAllRead` would also clear unrelated notifications). Reuses the
+  // existing per-row `markRead` action — no forked store, no new endpoint.
+  const markAllBackgroundRead = () => {
+    for (const n of list) {
+      if (!n.read_at) void Stores.Notifications.markRead(n.id)
+    }
+  }
+
+  return (
+    <SettingsPageContainer
+      title="Background results"
+      subtitle="Results from the background sub-agents and scheduled loops you started — open one to jump to where it landed."
+      data-testid="agent-inbox-page"
+    >
+      <Flex className="mb-3 items-center justify-end">
+        <Button
+          data-testid="agent-inbox-mark-all"
+          variant="outline"
+          disabled={unread === 0}
+          onClick={markAllBackgroundRead}
+        >
+          {unread ? `Mark all read (${unread})` : 'Mark all read'}
+        </Button>
+      </Flex>
+
+      {loading && list.length === 0 ? (
+        <Flex className="justify-center py-12">
+          <Spin size="lg" label="Loading background results" />
+        </Flex>
+      ) : error && list.length === 0 ? (
+        <ErrorState
+          variant="page"
+          resource="background results"
+          details={error}
+          onRetry={() => void Stores.Notifications.load()}
+          data-testid="agent-inbox-error"
+        />
+      ) : list.length === 0 ? (
+        <Empty
+          description="No background results yet"
+          data-testid="agent-inbox-empty"
+        />
+      ) : (
+        <Flex className="flex-col gap-2">
+          {list.map(n => (
+            <Card key={n.id} data-testid={`agent-inbox-card-${n.id}`}>
+              <NotificationItem
+                n={n}
+                ctx={ctx}
+                testidPrefix="agent-notification"
+                onSelect={onSelect ? () => onSelect(n.id) : undefined}
+              />
+            </Card>
+          ))}
+        </Flex>
+      )}
+    </SettingsPageContainer>
+  )
+}

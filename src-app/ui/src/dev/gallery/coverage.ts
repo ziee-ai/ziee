@@ -432,6 +432,7 @@ export const GALLERY_COVERAGE = {
   "modules/memory/pages/MemorySettingsPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/notification/components/NotificationBellWidget": { kind: 'via', reason: 'slot-widget in notification (sidebarBottom)' },
   "modules/notification/components/NotificationToastListener": { kind: 'nonvisual', reason: 'context/provider/listener/types' },
+  "modules/notification/pages/AgentInboxPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/notification/pages/NotificationsPage": { kind: 'data-page', states: ['loaded', 'empty', 'error'] },
   "modules/onboarding/OnboardingPage": { kind: 'via', reason: 'rendered within the onboarding module page' },
   "modules/onboarding/OnboardingRedirect": { kind: 'via', reason: 'rendered within the onboarding module page' },
