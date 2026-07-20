@@ -9,27 +9,31 @@ import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyNamed } from '@/dev/gallery/support'
 import type { AgentAdminSettings } from '@/api-client/types'
 
+const MODELS = [
+  { id: '11111111-1111-1111-1111-111111111111', name: 'haiku', display_name: 'Claude Haiku', provider_id: 'p1' },
+  { id: '22222222-2222-2222-2222-222222222222', name: 'gpt-mini', display_name: 'GPT Mini', provider_id: 'p2' },
+]
+
 const SETTINGS: AgentAdminSettings = {
   default_sandbox_mode: 'workspace-write',
   unattended_approval_policy: 'on-request',
   reviewer_enabled: true,
-  reviewer_model_id: undefined,
+  reviewer_model_id: MODELS[0].id,
   reviewer_policy: 'Treat any write to a shared credential store as Critical.',
-  reviewer_risk_thresholds: {},
+  // A non-default band override so the structured threshold editor renders a
+  // concrete selection (High → Deny); Low/Critical fall back to the ladder.
+  reviewer_risk_thresholds: { high: 'deny' },
   per_run_token_cap: 5_000_000,
   per_step_token_cap: 2_000_000,
   default_max_steps: 30,
   fan_out_max_threads: 6,
   fan_out_max_depth: 1,
   fan_out_max_children_per_call: 8,
+  // Goal-seeking populated so its picker + turn cap render with values.
+  goal_eval_model_id: MODELS[1].id,
   goal_seek_max_turns: 10,
   updated_at: '2026-07-01T00:00:00.000Z',
 }
-
-const MODELS = [
-  { id: '11111111-1111-1111-1111-111111111111', name: 'haiku', display_name: 'Claude Haiku', provider_id: 'p1' },
-  { id: '22222222-2222-2222-2222-222222222222', name: 'gpt-mini', display_name: 'GPT Mini', provider_id: 'p2' },
-]
 
 const Section = lazyNamed(
   () => import('@/modules/agent/components/AgentSettingsSection'),

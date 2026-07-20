@@ -17,17 +17,19 @@ export type CandidateModelRow = Pick<
   'id' | 'name' | 'display_name' | 'provider_id'
 >
 
-// Widened patch type. The backend uses `Option<Option<T>>` for the model id +
+// Widened patch type. The backend uses `Option<Option<T>>` for the model-id +
 // policy fields — tri-state (absent = leave, null = clear, value = set). The TS
 // codegen strips the `null` arm, so widen it at the boundary; JSON.stringify
 // writes null-vs-absent correctly and the backend's deserialize_nullable_field
-// honors both.
+// honors both. `goal_eval_model_id` is the same tri-state nullable Uuid as
+// `reviewer_model_id` (DEC-61) — widen it identically.
 export type AgentAdminUpdatePatch = Omit<
   UpdateAgentAdminSettingsRequest,
-  'reviewer_model_id' | 'reviewer_policy'
+  'reviewer_model_id' | 'reviewer_policy' | 'goal_eval_model_id'
 > & {
   reviewer_model_id?: string | null
   reviewer_policy?: string | null
+  goal_eval_model_id?: string | null
 }
 
 const toRow = (m: LlmModel): CandidateModelRow => ({
