@@ -21,7 +21,7 @@ import {
   sseReplayResponse,
 } from '@ziee/gallery'
 import { Stores } from '@ziee/framework/stores'
-import { ApiEndpoints } from '@/api-client/types'
+import { ApiEndpoints } from '@/api-client/apiEndpoints'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import {

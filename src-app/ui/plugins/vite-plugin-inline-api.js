@@ -22,7 +22,24 @@ import { readFileSync } from 'node:fs'
 
 const PERM_RE = /\bPermissions\.([A-Za-z_$][\w$]*)/g
 const CALL_RE = /\bApiClient\.([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/g
+// A bare `ApiClient.<NS>` namespace reference (NOT `ApiClient.NS.method` — the
+// negative lookahead excludes a following `.word`) — e.g. passing a whole
+// namespace as an adapter. Inlined to an object literal of its methods.
+const NS_RE = /\bApiClient\.([A-Za-z_$][\w$]*)(?!\s*\.\s*[A-Za-z_$])/g
 const IMPORT_RE = /import\s+(type\s+)?\{([^}]*)\}\s+from\s+(['"])([^'"]*)\3\s*;?/g
+
+/** Build an inline object literal for a whole `ApiClient.<ns>` namespace:
+ *  `{ method: (...a) => callAsync("METHOD /url", ...a), ... }`. */
+function namespaceLiteral(ns, endpoints) {
+  const methods = []
+  for (const [key, url] of endpoints) {
+    const dot = key.indexOf('.')
+    if (key.slice(0, dot) !== ns) continue
+    const m = key.slice(dot + 1)
+    methods.push(`${JSON.stringify(m)}: (...a) => callAsync(${JSON.stringify(url)}, ...a)`)
+  }
+  return methods.length ? `{ ${methods.join(', ')} }` : null
+}
 
 /** Parse `export enum Permissions { Member = "perm::string", ... }`. */
 function loadPermissionMap(permsPath) {
@@ -85,8 +102,24 @@ export function inlineApiPlugin({ permissionsPath, endpointsPath }) {
       const clean = id.split('?')[0]
       if (!/\.(ts|tsx|mts|js|jsx)$/.test(clean)) return null
       if (clean.includes('/node_modules/')) return null
-      if (/\/api-client\/(types|index|permissions|apiEndpoints)\.ts$/.test(clean)) return null
       if (/\.(test|spec)\.[tj]sx?$/.test(clean)) return null
+
+      // The app's api-client barrel: once every ApiClient.NS.method() call is
+      // inlined, `export const ApiClient = createApiClient(ApiEndpoints)` is the
+      // only thing keeping the ApiEndpoints map alive (its export getter is
+      // retained even when unused). tsc/vitest still need the export in SOURCE,
+      // so strip its CONSTRUCTION only from the emitted build → the map
+      // tree-shakes. Only when ApiClient inlining is active (endpoints present).
+      if (endpoints && /\/api-client\/index\.ts$/.test(clean)) {
+        const s = new MagicString(code)
+        const re =
+          /export\s+const\s+ApiClient\s*=\s*(?:\/\*#__PURE__\*\/\s*)?createApiClient\s*<[^>]*>\s*\(\s*ApiEndpoints\s*\)\s*;?/
+        const m = re.exec(code)
+        if (!m) return null
+        s.overwrite(m.index, m.index + m[0].length, '')
+        return { code: s.toString(), map: s.generateMap({ hires: true }) }
+      }
+      if (/\/api-client\/(types|permissions|apiEndpoints)\.ts$/.test(clean)) return null
       const hasPerm = code.includes('Permissions.')
       const hasApi = endpoints && code.includes('ApiClient.')
       if (!hasPerm && !hasApi) return null
@@ -113,6 +146,14 @@ export function inlineApiPlugin({ permissionsPath, endpointsPath }) {
           const url = endpoints.get(`${m[1]}.${m[2]}`)
           if (!url) continue
           s.overwrite(m.index, m.index + m[0].length, `callAsync(${JSON.stringify(url)}, `)
+          didApi = true
+        }
+        // Bare `ApiClient.<NS>` (namespace passed as a value) → inline object literal.
+        NS_RE.lastIndex = 0
+        while ((m = NS_RE.exec(code))) {
+          const lit = namespaceLiteral(m[1], endpoints)
+          if (!lit) continue
+          s.overwrite(m.index, m.index + m[0].length, lit)
           didApi = true
         }
       }

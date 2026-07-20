@@ -253,6 +253,19 @@ update_check:
             ui_rel
         );
 
+        // Split-out sibling: `apiEndpoints.ts` (the ApiEndpoints map) must match.
+        let ep_golden_path = format!("{}/{}/src/api-client/apiEndpoints.ts", manifest, ui_rel);
+        let ep_golden = std::fs::read_to_string(&ep_golden_path)
+            .unwrap_or_else(|e| panic!("read {}: {}", ep_golden_path, e));
+        let ep_generated =
+            ziee_framework::openapi::emit_ts::generate_api_endpoints_ts_from_json(&openapi)
+                .expect("generate apiEndpoints");
+        assert_eq!(
+            ep_generated, ep_golden,
+            "{} apiEndpoints.ts parity mismatch — run `just openapi-regen`",
+            ui_rel
+        );
+
         if generated != golden {
             // Find the first differing line to make failures actionable.
             let g: Vec<&str> = generated.lines().collect();

@@ -1,9 +1,10 @@
 import {
-  ApiEndpoint,
   ApiEndpointParameters,
   ApiEndpointResponses,
-  ApiEndpoints,
 } from '@/api-client/types'
+// `ApiEndpoints` (value) + `ApiEndpoint` (type) split into their own module so
+// ApiClient calls inline and the map tree-shakes.
+import { ApiEndpoint, ApiEndpoints } from '@/api-client/apiEndpoints'
 import {
   createApiClient,
   getAuthToken,
