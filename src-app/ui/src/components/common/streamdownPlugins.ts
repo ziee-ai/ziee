@@ -1,3 +1,10 @@
+// These prebuilt stylesheets ride the LAZY Streamdown chunk (this module is
+// only ever imported dynamically, from LazyStreamdown's variant loaders), so
+// ~24 KB of KaTeX CSS + the Streamdown keyframes stay OFF the critical path and
+// load only when a markdown surface actually mounts. Moved here out of
+// `src/index.css` (they used to load eagerly on every page).
+import 'streamdown/styles.css'
+import 'katex/dist/katex.min.css'
 import { createCodePlugin } from '@streamdown/code'
 import { createMathPlugin } from '@streamdown/math'
 import { MermaidBlock } from '@/components/common/MermaidBlock'

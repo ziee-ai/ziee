@@ -1,12 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-/* Streamdown's streaming keyframes (sd-fadeIn / sd-blurIn / sd-slideUp), used
- * by <Streamdown isAnimating>. Ships as a ready-made stylesheet in v2. */
-@import "streamdown/styles.css";
-/* KaTeX styles for the @streamdown/math plugin (block/inline LaTeX). Without
- * this the KaTeX markup renders but is completely unstyled. */
-@import "katex/dist/katex.min.css";
+/* NOTE: the Streamdown keyframes stylesheet (`streamdown/styles.css`) and the
+ * KaTeX stylesheet (`katex/dist/katex.min.css`, ~24 KB) are NOT imported here —
+ * they are imported from the LAZY `streamdownPlugins.ts` module instead, so
+ * Vite splits them into the lazy Streamdown chunk. That keeps ~24 KB of math
+ * CSS off the critical path for every page that never renders markdown/math
+ * (login, most settings). They load the moment a <Streamdown> mounts. */
 
 @custom-variant dark (&:is(.dark *));
 

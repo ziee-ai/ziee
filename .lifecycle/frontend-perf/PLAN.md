@@ -63,6 +63,14 @@ Each item states its MEASURED target so the win is provable, not asserted.
   chunk count ≤ threshold), so a regression can't silently creep back. Wired into
   a check the repo already runs.
 
+- **ITEM-10**: Lazy-load the KaTeX (~24 KB) + Streamdown CSS — move the two
+  `@import`s out of the eager `src/index.css` into the lazy `streamdownPlugins.ts`
+  so Vite splits them into a `streamdownPlugins-*.css` chunk that loads only when
+  a `<Streamdown>` mounts. Completes ITEM-1 (JS was lazy, CSS was not). DONE:
+  critical CSS **41.4 → 32.8 KB gzip (−8.6 KB, −21%)**; math verified STILL
+  STYLED on the chat route (`.katex` → `font-family: KaTeX_Main`), login page
+  does not load the math CSS. Arose from a user question about CSS size.
+
 ## Pre-existing drift found while working (fix at the END, batched)
 
 These are NOT caused by this feature — they are pre-existing debt on main
