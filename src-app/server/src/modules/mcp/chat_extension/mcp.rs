@@ -347,6 +347,15 @@ fn recover_server_id_for_bare_name(
 /// servers advertise it, so auto-resolving could mis-dispatch a side-effecting
 /// tool). The advertised set is only in scope at the failure site, so it has to
 /// be rendered there or the information is lost.
+/// Cap on tools named in one diagnostic line. A deployment with many servers can
+/// advertise hundreds; a single unbounded log line helps nobody and bloats the
+/// log. The count is always reported, so truncation is visible rather than
+/// silent.
+const DIAGNOSTIC_TOOL_LIST_CAP: usize = 40;
+
+/// Cap on each rendered tool name — they come from third-party MCP servers.
+const DIAGNOSTIC_TOOL_NAME_CAP: usize = 64;
+
 fn describe_advertised_tools(map: &HashMap<String, Option<Uuid>>) -> String {
     if map.is_empty() {
         return "<none advertised this turn>".to_string();
@@ -356,13 +365,32 @@ fn describe_advertised_tools(map: &HashMap<String, Option<Uuid>>) -> String {
     // cannot.
     let mut entries: Vec<String> = map
         .iter()
-        .map(|(name, sid)| match sid {
-            Some(id) => format!("{name}={id}"),
-            None => format!("{name}=<ambiguous>"),
+        .map(|(name, sid)| {
+            // Tool names are THIRD-PARTY input (an MCP server chooses them), so
+            // they are sanitized before reaching the log: `sanitize_prompt_field`
+            // collapses control characters, which stops a name containing
+            // newlines from forging additional log lines.
+            let name = sanitize_prompt_field(name, DIAGNOSTIC_TOOL_NAME_CAP);
+            match sid {
+                Some(id) => format!("{name}={id}"),
+                None => format!("{name}=<ambiguous>"),
+            }
         })
         .collect();
     entries.sort();
-    format!("[{}]", entries.join(", "))
+
+    let total = entries.len();
+    if total > DIAGNOSTIC_TOOL_LIST_CAP {
+        entries.truncate(DIAGNOSTIC_TOOL_LIST_CAP);
+        format!(
+            "[{}, … {} more of {} total]",
+            entries.join(", "),
+            total - DIAGNOSTIC_TOOL_LIST_CAP,
+            total
+        )
+    } else {
+        format!("[{}]", entries.join(", "))
+    }
 }
 
 /// Resolve `(server_id, tool_name)` from a finalized tool-call wire name.
@@ -4694,6 +4722,33 @@ mod approval_loop_tests {
         );
         // (b) a name absent from this rendering is one the model invented.
         assert!(!rendered.contains("ghost_tool"));
+    }
+
+    /// The diagnostic renders THIRD-PARTY strings (an MCP server names its own
+    /// tools), so it must not become a log-forging or log-flooding vector.
+    #[test]
+    fn advertised_tools_diagnostic_is_bounded_and_escaped() {
+        // A newline-laden tool name must not forge extra log lines.
+        let mut map = HashMap::new();
+        map.insert(
+            "evil\n2026-01-01 ERROR forged log line".to_string(),
+            Some(Uuid::new_v4()),
+        );
+        let rendered = describe_advertised_tools(&map);
+        assert!(!rendered.contains('\n'), "no newline survives: {rendered:?}");
+
+        // A large advertised set is truncated, and says so — silent truncation
+        // would read as "that's all there was".
+        let mut big = HashMap::new();
+        for i in 0..100 {
+            big.insert(format!("tool_{i:03}"), None);
+        }
+        let rendered = describe_advertised_tools(&big);
+        assert!(
+            rendered.contains("60 more of 100 total"),
+            "truncation must be explicit: {rendered}"
+        );
+        assert!(rendered.len() < 4000, "line stays bounded");
     }
 
     #[test]
