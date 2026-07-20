@@ -1,5 +1,7 @@
+import { Tag } from '@ziee/kit'
 import { Permissions } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
+import { Bot } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import {
   effectiveAssistantId,
@@ -16,7 +18,18 @@ export function AssistantStatusChip() {
   const canRead = usePermission(Permissions.AssistantsRead)
   // Per-conversation selection (ITEM-5): `selectedAssistantId` is derived below
   // from `selectedByConversation[key]`, not read globally off the store.
-  const { selectedByConversation, availableAssistants } = Stores.AssistantPicker
+  // NOTE (deploy): this `Stores.AssistantPicker` access must stay ABOVE every
+  // early return. The picker store initializes LAZILY on first access, and this
+  // component's mount is what performs it — that access is what loads the
+  // assistant catalog `composeRequestFields` reads (synchronously) at send time.
+  // Returning null before it would leave the catalog empty for non-admins and
+  // silently drop `assistant_id` from their requests.
+  const { selectedByConversation, availableAssistants, clearAssistant } =
+    Stores.AssistantPicker
+  // DEPLOY-ONLY: the chip is ADMIN-ONLY — same scoping as the "Assistants"
+  // settings entry (see SettingsPage.tsx). Normal users still get the assistant
+  // applied to every chat; they just don't see or manage it.
+  const { user } = Stores.Auth
   // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
   const pane = useChatPaneOrNull()
   const key =
@@ -29,6 +42,8 @@ export function AssistantStatusChip() {
   )
 
   if (!canRead) return null
+  // DEPLOY-ONLY: hidden for non-admins (store access above already happened).
+  if (!user?.is_admin) return null
   if (!selectedAssistantId) return null
 
   const assistant = availableAssistants.find(
@@ -36,12 +51,16 @@ export function AssistantStatusChip() {
   )
   if (!assistant) return null
 
-  // DEPLOY-ONLY: render nothing. Everything ABOVE this line is deliberately
-  // UNCHANGED — the component must still mount and touch `Stores.AssistantPicker`,
-  // because that access is what lazily initializes the picker store and loads the
-  // assistant catalog that `composeRequestFields` reads (synchronously) at send
-  // time. Suppressing only the paint — rather than unregistering the slot — is
-  // what keeps the assistant functionally active while hiding the chip.
-  // See the matching note in ../extension.tsx.
-  return null
+  return (
+    <Tag variant="outline"
+      data-testid="assistant-status-chip"
+      tone="info"
+      icon={<Bot />}
+      onClose={() => clearAssistant(key)}
+      closeLabel="Remove"
+      className="m-0"
+    >
+      {assistant.name}
+    </Tag>
+  )
 }

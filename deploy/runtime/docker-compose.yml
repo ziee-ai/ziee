@@ -14,6 +14,18 @@
 #   3. Bring the stack up:  docker compose -f deploy/runtime/docker-compose.yml up -d --build
 #      Apply the seed:      docker compose -f deploy/runtime/docker-compose.yml run --rm ziee-seed
 #
+# ORDERING CONTRACT (do not "optimize" away): `web` depends on ziee-seed
+# completing successfully, so the public port is never bound before the first
+# admin exists (see the note on web.depends_on). Two consequences for whoever
+# drives the deploy:
+#   - The `up` step MUST include `web` (either bare `up -d`, or an explicit
+#     service list that names `web`). Compose then pulls in ziee-seed as a
+#     dependency and waits for its exit 0 before starting nginx.
+#   - Never bring `web` up with `--no-deps`, and never publish ziee-web's :9000
+#     directly — both re-open the setup window this gating closes.
+# The follow-up `run --rm ziee-seed` stays: it is a separate one-off container
+# that re-applies the (idempotent) seed on every deploy.
+#
 # Secrets arrive from the deploy env (${VAR:?} fails fast if unset). No secret
 # VALUES live in this file.
 name: ziee-web
@@ -75,6 +87,30 @@ services:
     depends_on:
       ziee-web:
         condition: service_healthy
+      # FIRST-ADMIN-SETUP WINDOW (security). The PUBLIC nginx must not serve
+      # until an admin EXISTS. `ziee-web: service_healthy` alone is NOT enough:
+      # the API turns healthy as soon as migrations finish, while `ziee-seed`
+      # (seed.sql step 5, which creates the first admin) is still running. On a
+      # FRESH/empty DB that gap let `GET /api/app/setup/status` answer
+      # `needs_setup=true` through the public port — and `POST
+      # /api/app/setup/admin` is PUBLIC, guarded only by `has_admin`, so whoever
+      # hit it first would have become root admin.
+      #
+      # Gating on the seed's SUCCESSFUL exit means the host port is never bound
+      # until the admin row is committed. `ziee-web` publishes no ports of its
+      # own, so the API is unreachable from outside until nginx starts.
+      #
+      # This does NOT stop the seed re-running each deploy — the opposite.
+      # Verified behaviour: on a steady-state redeploy `up` RESTARTS the exited
+      # ziee-seed container and waits for a fresh exit 0 (~6s), so the seed
+      # re-applies on every `up` as well as via the separate
+      # `compose run --rm ziee-seed` step (which is its own one-off container
+      # and is unaffected by this condition). Both are idempotent.
+      #
+      # Consequence to accept: if the seed FAILS, `web` does not start. That is
+      # deliberate — a visibly failed deploy beats a publicly exposed setup page.
+      ziee-seed:
+        condition: service_completed_successfully
     ports:
       # The public website. In-container 8080; host port configurable so it
       # never collides. NEVER 8080 on this host — pick a free one.

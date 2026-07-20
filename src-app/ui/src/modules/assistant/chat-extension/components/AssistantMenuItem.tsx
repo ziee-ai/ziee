@@ -24,8 +24,15 @@ export function AssistantMenuItem() {
   // Per-conversation selection (ITEM-5): the picker store keys the selected
   // assistant by conversation/pane, so `selectedAssistantId` is derived below
   // from `selectedByConversation[key]`, not read globally off the store.
+  // NOTE (deploy): keep this `Stores.AssistantPicker` access ABOVE every early
+  // return — the picker store initializes LAZILY on first access, and that
+  // access is what loads the catalog `composeRequestFields` reads at send time.
   const { availableAssistants, selectedByConversation, selectAssistant, clearAssistant, loading } =
     Stores.AssistantPicker
+  // DEPLOY-ONLY: the selector is ADMIN-ONLY — same scoping as the chip and the
+  // "Assistants" settings entry (SettingsPage.tsx). Normal users still get the
+  // assistant applied to every chat; they just don't see or manage it.
+  const { user } = Stores.Auth
   const { close } = usePlusDropdown()
   // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
   const pane = useChatPaneOrNull()
@@ -43,6 +50,8 @@ export function AssistantMenuItem() {
   )
 
   if (!canRead) return null
+  // DEPLOY-ONLY: hidden for non-admins (store access above already happened).
+  if (!user?.is_admin) return null
 
   const handleSelect = (id: string | null) => {
     if (id) selectAssistant(key, id)
