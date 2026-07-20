@@ -4,6 +4,7 @@ import {
   type BackgroundRunCancelAck,
   type BackgroundRunDetail,
   type BackgroundRunSummary,
+  Permissions,
   type RunNote,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
@@ -12,20 +13,6 @@ import { defineStore } from '@ziee/framework/store-kit'
 // `runDetailLoading` below is a `Set<string>` (mirrors `FileVersions.store`'s
 // per-id loading set); immer needs MapSet support enabled to draft it.
 enableMapSet()
-
-/**
- * `background::use` gates the `/api/background/runs` surface (backend
- * `BackgroundUse`, granted to the default Users group by migration
- * `202607191000_background_grant_permissions.sql`). It is present in
- * `openapi.json` but the current `api-client/types.ts` `Permissions` enum was
- * regenerated WITHOUT the entry (a regen gap — the enum jumps
- * `AuthProvidersRead` → `BranchesCreate`). Until a regen adds
- * `Permissions.BackgroundUse`, the leaf is spelled here as the raw permission
- * string, which `hasPermissionNow` and the slot/route `permission` fields accept
- * (framework `PermissionExpr` = bare `string`). Swap this for
- * `Permissions.BackgroundUse` once regen lands.
- */
-export const BACKGROUND_USE_PERMISSION = 'background::use'
 
 /**
  * Terminal run statuses (mirrors the backend `WorkflowRunStatus::is_terminal`).
@@ -72,7 +59,7 @@ export const BackgroundRuns = defineStore('BackgroundRuns', {
   actions: (set, get) => {
     const loadRuns = async (page?: number, pageSize?: number): Promise<void> => {
       // no-403 invariant: gate on the SAME permission the endpoint enforces.
-      if (!hasPermissionNow(BACKGROUND_USE_PERMISSION)) return
+      if (!hasPermissionNow(Permissions.BackgroundUse)) return
       const state = get()
       const nextPage = page ?? state.currentPage
       const nextPageSize = pageSize ?? state.pageSize
@@ -103,7 +90,7 @@ export const BackgroundRuns = defineStore('BackgroundRuns', {
     }
 
     const loadNotes = async (runId: string): Promise<void> => {
-      if (!hasPermissionNow(BACKGROUND_USE_PERMISSION)) return
+      if (!hasPermissionNow(Permissions.BackgroundUse)) return
       try {
         const notes = await ApiClient.Background.listRunNotes({ run_id: runId })
         set(draft => {
@@ -125,7 +112,7 @@ export const BackgroundRuns = defineStore('BackgroundRuns', {
      */
     const loadRunDetail = async (runId: string): Promise<void> => {
       // no-403 invariant: gate on the SAME permission the endpoint enforces.
-      if (!hasPermissionNow(BACKGROUND_USE_PERMISSION)) return
+      if (!hasPermissionNow(Permissions.BackgroundUse)) return
       const current = get()
       if (current.detailsByRun[runId] || current.runDetailLoading.has(runId)) return
       set(draft => {
