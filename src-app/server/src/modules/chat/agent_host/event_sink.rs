@@ -60,8 +60,9 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::modules::chat::core::types::streaming::{
-    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, SSEChatStreamSubAgentActivityData,
-    SSEChatStreamTaskListChangedData, SubAgentActivityChildDto, TaskListItemDto, Usage,
+    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, SSEChatStreamHistoryReplacedData,
+    SSEChatStreamSubAgentActivityData, SSEChatStreamTaskListChangedData, SubAgentActivityChildDto,
+    TaskListItemDto, Usage,
 };
 use crate::modules::chat::stream::{publish_frame, publish_raw_event, ChatStreamFrame};
 
@@ -240,11 +241,19 @@ impl EventSink for ChatEventSink {
             // not this sink.
             AgentEvent::Message(_msg) => {}
 
-            // No-op: chat has no user-facing "context compacted" SSE variant (the
-            // summarization/compaction path is silent to the token stream today);
-            // the workflow host surfaces this as a progress log line, chat does
-            // not. Left explicit so the intent is auditable.
-            AgentEvent::HistoryReplaced { .. } => {}
+            // The loop compacted the context (ITEM-61 / DEC-137). Forward it as a
+            // `historyReplaced` marker on the same raw/ephemeral side-channel as
+            // `taskListChanged` so the chat timeline can render a "context
+            // compacted" divider in place. Compaction is outbound-only (the stored
+            // message content is untouched), so this is a display signal only.
+            AgentEvent::HistoryReplaced { summary_upto } => {
+                let event =
+                    SSEChatStreamEvent::HistoryReplaced(SSEChatStreamHistoryReplacedData {
+                        conversation_id: self.conversation_id,
+                        summary_upto,
+                    });
+                publish_raw_event(self.owner_id, self.conversation_id, event.into());
+            }
 
             // No-op: the human-approval prompt is emitted by the HumanGate port
             // (the `McpApprovalRequired` / durable-elicit path), not the sink —

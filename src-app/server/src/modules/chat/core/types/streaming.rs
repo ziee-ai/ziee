@@ -241,6 +241,23 @@ pub struct SSEChatStreamTaskListChangedData {
     pub items: Vec<TaskListItemDto>,
 }
 
+/// Data for the `historyReplaced` SSE event (ITEM-61 / DEC-137). Emitted when the
+/// conversation's context is COMPACTED — either the agent loop's automatic
+/// compaction (`AgentEvent::HistoryReplaced`, forwarded by `event_sink.rs`) or the
+/// manual `POST /conversations/{id}/compact` affordance — so the chat timeline
+/// renders a "context compacted" marker in place. Compaction is OUTBOUND-ONLY (the
+/// stored `message_contents` are never rewritten/deleted; only the rolling
+/// `conversation_summaries` row is upserted), so this is a display signal, not a
+/// data mutation. Routed via `publish_raw_event` (the raw side-channel).
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct SSEChatStreamHistoryReplacedData {
+    /// The conversation whose context was compacted.
+    pub conversation_id: Uuid,
+    /// How many leading transcript messages were folded into the rolling summary
+    /// (0 when the manual endpoint summarized without a loop-relative index).
+    pub summary_upto: usize,
+}
+
 /// The live status of one delegated sub-agent on the wire (Group A / ITEM-4 /
 /// DEC-65). A thin server-side mirror of `agent_core::SubAgentChildStatus`
 /// (kept separate so it can `#[derive(schemars::JsonSchema)]` and keep the
@@ -351,6 +368,14 @@ pub enum SSEChatStreamEvent {
     /// extension, is its source (`event_sink.rs` maps
     /// `AgentEvent::SubAgentActivity` here).
     SubAgentActivity(SSEChatStreamSubAgentActivityData),
+
+    /// The conversation's context was COMPACTED (ITEM-61 / DEC-137) — the manual
+    /// `/compact` affordance or the loop's automatic compaction folded leading
+    /// history into the rolling summary. A CORE variant (its sources are the
+    /// agent-core loop's `AgentEvent::HistoryReplaced` via `event_sink.rs` and the
+    /// `POST /conversations/{id}/compact` handler), so the chat timeline can render
+    /// a "context compacted" marker in place.
+    HistoryReplaced(SSEChatStreamHistoryReplacedData),
 }
 
 // Generic implementation that works for all variants (including extension-added ones)

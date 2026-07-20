@@ -665,6 +665,16 @@ export interface CodeSandboxResourceLimits {
   vm_max_concurrent_execs: number
 }
 
+/** Request body for `POST /conversations/{id}/compact` (ITEM-61 / DEC-137). */
+export interface CompactConversationRequest {
+  /**
+   * Optional focus hint steering what the compaction should preserve. Advisory
+   *  today (the rolling summary is regenerated from the full active-branch
+   *  history); reserved for a future focus-aware summarizer.
+   */
+  focus?: string
+}
+
 /** A non-secret config field a provider needs — drives the generic admin UI. */
 export interface ConfigField {
   key: string
@@ -5091,6 +5101,7 @@ export type SSEChatStreamEvent = {
   error: SSEChatStreamErrorData
   taskListChanged: SSEChatStreamTaskListChangedData
   subAgentActivity: SSEChatStreamSubAgentActivityData
+  historyReplaced: SSEChatStreamHistoryReplacedData
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
@@ -5099,6 +5110,26 @@ export type SSEChatStreamEvent = {
   artifactCreated: SSEChatStreamArtifactCreatedData
   runJsApprovalRequired: SSEChatStreamRunJsApprovalRequiredData
   titleUpdated: SSEChatStreamTitleUpdatedData
+}
+
+/**
+ * Data for the `historyReplaced` SSE event (ITEM-61 / DEC-137). Emitted when the
+ *  conversation's context is COMPACTED — either the agent loop's automatic
+ *  compaction (`AgentEvent::HistoryReplaced`, forwarded by `event_sink.rs`) or the
+ *  manual `POST /conversations/{id}/compact` affordance — so the chat timeline
+ *  renders a "context compacted" marker in place. Compaction is OUTBOUND-ONLY (the
+ *  stored `message_contents` are never rewritten/deleted; only the rolling
+ *  `conversation_summaries` row is upserted), so this is a display signal, not a
+ *  data mutation. Routed via `publish_raw_event` (the raw side-channel).
+ */
+export interface SSEChatStreamHistoryReplacedData {
+  /** The conversation whose context was compacted. */
+  conversation_id: string
+  /**
+   * How many leading transcript messages were folded into the rolling summary
+   *  (0 when the manual endpoint summarized without a loop-relative index).
+   */
+  summary_upto: number
 }
 
 /** Event data for MCP tool approval required */
@@ -7954,6 +7985,7 @@ export const ApiEndpoints = {
   'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
   'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
   'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
+  'Conversation.compact': 'POST /api/conversations/{id}/compact',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
@@ -8394,6 +8426,7 @@ export type ApiEndpointParameters = {
   'CodeSandbox.setRootfsPin': SetPinRequest
   'CodeSandbox.subscribeRootfsInstallProgress': void
   'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
+  'Conversation.compact': { id: string } & CompactConversationRequest
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
@@ -8834,6 +8867,7 @@ export type ApiEndpointResponses = {
   'CodeSandbox.setRootfsPin': SetPinResponse
   'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent
   'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
+  'Conversation.compact': unknown
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation
