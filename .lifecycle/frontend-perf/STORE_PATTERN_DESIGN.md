@@ -263,11 +263,22 @@ machinery). Direct handles are the cleaner single pattern.
 
 ## 8. DECISIONS (resolved with the user)
 
-- **D1 — Read API: RETIRE `Stores.X` for direct-handle imports.** `import { Users }
-  from './Users.store'; Users.field`. One artifact = register + read + type; fixes
-  the editor `any`; no declaration-merging. Non-breaking **compat shim** keeps the
-  ~137 `Stores.X` sites (and their lifecycle) working during migration; a codemod
-  converts them; the shim is deleted at the end.
+- **D1 — Read API: KEEP `Stores.X` (REVERSED — do NOT retire).** Rationale
+  (user): the type augmentation (`chat/types.ts` etc.) is written entirely with
+  `import type` / `typeof` → **fully erased at build**, so `Stores.X` typing costs
+  ZERO runtime + ZERO bundle. And with per-action lazy + EAGER STATE, `Stores.X.field`
+  is never `undefined`, so there's no read-before-register hazard. Types are
+  "lazy" (erased, free); code is lazy (per-action / module). The two are orthogonal.
+  → **Drop the retire-`Stores.X` + 137-site codemod plan** — it was unnecessary
+  churn. The VSCode `any` it would have "fixed" is a workspace-TS-version setting,
+  not a real hole (tsc types it correctly). Direct-handle imports remain allowed
+  but optional; `Stores.X` stays the primary read API.
+- **D5 — Small chunks as anti-peek (user):** many tiny hashed chunks fragment the
+  code + lazy per-action loading means a viewer only ever receives the action code
+  they actually invoke (the full action surface is never shipped wholesale). This
+  is a real reduced-exposure/obfuscation benefit (NOT security — chunks are still
+  fetchable + reassemblable). It partially offsets the many-tiny-chunks cost and is
+  a legitimate reason to favor broader per-action splitting despite the ~0 byte win.
 - **D2 — Rollout: PROOF-FIRST.** Build the mechanism + convert ONE module (`user`)
   end-to-end, keep the shim, MEASURE the entry-chunk delta and confirm
   lifecycle/types/pages hold. Decide the full sweep after a real number.
