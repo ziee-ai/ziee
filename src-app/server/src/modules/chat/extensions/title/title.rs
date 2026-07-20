@@ -71,14 +71,31 @@ fn content_block_text(content: &MessageContent) -> Option<String> {
     }
 }
 
-/// True when `message` is an assistant turn that produced at least one
-/// non-empty text block — i.e. an actual answer, not a tool-call-only step.
-fn is_assistant_answer(message: &MessageWithContent) -> bool {
-    message.message.role == "assistant"
-        && message
-            .contents
-            .iter()
-            .any(|c| content_block_text(c).is_some_and(|t| !t.trim().is_empty()))
+/// True when `message` is an assistant turn that has produced user-visible
+/// output — either a non-empty text answer, or a `tool_result` whose content is
+/// itself the answer.
+///
+/// The `tool_result` arm is what allows an `audience:["user"]` tool (whose
+/// result IS the final answer, bypassing a second LLM round-trip) to be titled
+/// at all: the MCP extension appends those tool_results BEFORE returning
+/// `CompleteWithContent`, so the turn's answer is already on the row here.
+/// Without it such a conversation stays untitled forever.
+///
+/// It never fires on the FIRST iteration of a tool loop — streaming appends an
+/// intermediate iteration's tool_results AFTER this hook returns, so the
+/// assistant row carries `tool_use` blocks only. From the second iteration on it
+/// can fire, since the previous iteration's results are now persisted. That is
+/// intentional: the title is derived from the USER's first message, so an
+/// in-loop title is identical to the one computed at turn end, just available
+/// sooner. The `title.is_some()` guard keeps it single-shot either way.
+fn assistant_produced_output(message: &MessageWithContent) -> bool {
+    if message.message.role != "assistant" {
+        return false;
+    }
+    message.contents.iter().any(|c| {
+        content_block_text(c).is_some_and(|t| !t.trim().is_empty())
+            || c.content_type == "tool_result"
+    })
 }
 
 /// Decide whether the title extension should generate a title now.
@@ -119,7 +136,7 @@ fn should_generate_title(history: &[MessageWithContent], existing_title: Option<
     }
 
     let has_user = history.iter().any(|m| m.message.role == "user");
-    let has_answer = history.iter().any(is_assistant_answer);
+    let has_answer = history.iter().any(assistant_produced_output);
 
     has_user && has_answer
 }
@@ -547,6 +564,37 @@ mod tests {
             ),
         ];
         assert!(!should_generate_title(&history, None));
+    }
+
+    #[test]
+    fn fires_for_an_audience_user_tool_whose_result_is_the_answer() {
+        // The `audience:["user"]` shape (e.g. BioGnosia's `query_rag`): the tool
+        // result IS the final answer and the LLM is bypassed, so the assistant
+        // row never gets a text block for this turn. The MCP extension appends
+        // the tool_result BEFORE returning CompleteWithContent, so it is present
+        // when the title extension runs. Without this, such a conversation stays
+        // "Untitled Conversation" forever.
+        let history = vec![
+            message_with("user", vec![text("What does the KB say about TP53?")]),
+            message_with(
+                "assistant",
+                vec![
+                    serde_json::json!({
+                        "type": "tool_use",
+                        "id": "toolu_1",
+                        "name": "query_rag",
+                        "input": { "query": "TP53" }
+                    }),
+                    serde_json::json!({
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_1",
+                        "name": "query_rag",
+                        "content": "TP53 is the most frequently mutated gene…"
+                    }),
+                ],
+            ),
+        ];
+        assert!(should_generate_title(&history, None));
     }
 
     #[test]
