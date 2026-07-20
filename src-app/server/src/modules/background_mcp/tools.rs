@@ -6,13 +6,26 @@
 //! approval-bypassed). Ownership is enforced at every read via
 //! `repository::find_run_for_owner` (a cross-user `run_id` → 404, never leaks).
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use async_trait::async_trait;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use agent_core::{
+    AgentEvent, AgentTurnRequest, Budget, CancelToken, EventSink, GateAsk, GateOutcome, HumanGate,
+    ModelClient, ProviderModelClient, ReviewDecision, StopReason, ToolScope, TurnSeed,
+};
+use ai_providers::{ChatMessage, ContentBlock, Role};
+
 use crate::common::AppError;
+use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 use crate::modules::notification::models::NewNotification;
+use crate::modules::workflow::agent_dispatch::{build_detached_agent_core, DetachedAgentCoreArgs};
 use crate::modules::workflow::models::{CreateBackgroundRun, JobKind, WorkflowRunStatus};
+use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::runner::{self, BackgroundOutcome};
 
@@ -174,11 +187,33 @@ async fn spawn_background(
         .unwrap_or("")
         .to_string();
 
+    // Resolve the model the detached sub-agent runs on: the originating
+    // conversation's model (re-checked under the owner's RBAC at turn time by
+    // `create_provider_from_model_id`). A conversation with no model set — or a
+    // spawn with no conversation context — has nothing to run on, so reject
+    // clearly instead of launching a doomed run. Recorded on the run row so the
+    // choice is durable + auditable.
+    let model_id = match conversation_id {
+        Some(cid) => crate::core::Repos
+            .chat
+            .core
+            .get_conversation(cid, user_id)
+            .await?
+            .and_then(|c| c.model_id),
+        None => None,
+    };
+    let model_id = model_id.ok_or_else(|| {
+        AppError::bad_request(
+            "BACKGROUND_NO_MODEL",
+            "no model is available for the background sub-agent (the originating conversation has no model set)",
+        )
+    })?;
+
     let request = CreateBackgroundRun {
         job_kind,
         conversation_id,
         user_id,
-        model_id: None,
+        model_id: Some(model_id),
         sandbox_flavor: None,
         // An LLM tool call from a conversation (mirrors workflow_mcp's
         // `wf_<slug>` convention for a chat-model-driven run).
@@ -189,8 +224,8 @@ async fn spawn_background(
     // Capture the spec into the detached driver (ITEM-7 / ITEM-9). The driver
     // runs OUTSIDE any per-conversation single-flight lock — this is
     // fire-and-forget, so the foreground chat stays interactive.
-    let run_id = runner::spawn_background_run(pool, request, move |task_pool, run_id, _handle| async move {
-        execute_subagent_run(&task_pool, run_id, user_id, conversation_id, &system, &task).await
+    let run_id = runner::spawn_background_run(pool, request, move |task_pool, run_id, handle| async move {
+        execute_subagent_run(&task_pool, run_id, user_id, conversation_id, model_id, handle, &system, &task).await
     })
     .await?;
 
@@ -202,63 +237,245 @@ async fn spawn_background(
     }))
 }
 
+/// Quiet [`EventSink`] for a detached background sub-agent. Unlike the workflow
+/// `kind: agent` host (which streams `StepProgress` over a live SSE channel), a
+/// background run has no attached request stream — the foreground chat moved on —
+/// so loop events are dropped. (Surfacing progress into `step_progress_json` for
+/// `check_status` is a follow-up.) `check_status` / `collect_result` are the
+/// owner-scoped read surface for a background run's state + result.
+struct BackgroundEventSink;
+
+#[async_trait]
+impl EventSink for BackgroundEventSink {
+    async fn emit(&self, _ev: AgentEvent) {}
+}
+
+/// Unattended [`HumanGate`] for a detached background sub-agent (DEC-117). A
+/// background run has NO human to answer a prompt, so any call the approval
+/// policy / reviewer routes to the gate is DENIED — the denial is fed back to the
+/// model as an error `tool_result` and the agent CONTINUES without that tool
+/// (deny-and-continue), never parking the run `waiting` forever (no orphan
+/// pending). Read-only / trusted built-ins still auto-run (the approval policy
+/// returns `Auto` and never reaches the gate); only calls that would require
+/// human approval are dropped. This is the unattended safe-default: a background
+/// agent never silently auto-approves a mutating/external tool.
+struct UnattendedDenyGate;
+
+#[async_trait]
+impl HumanGate for UnattendedDenyGate {
+    async fn request(&self, _run_id: Uuid, _ask: GateAsk) -> Result<GateOutcome, AppError> {
+        Ok(GateOutcome::Decided(ReviewDecision::Denied))
+    }
+}
+
 /// The SubAgent background driver (ITEM-7 / ITEM-9).
 ///
-/// **NOTE — MINIMAL EXECUTOR (flagged; NOT faked silently).** This tranche wires
-/// the FULL durable run lifecycle end-to-end — a `workflow_runs` row → `running`
-/// + heartbeat → terminal `completed` + `final_output_json` → owner-scoped
-/// `SyncEntity::WorkflowRun` notify (all via `spawn_background_run`) → an ITEM-9
-/// `notification` inbox row + `SyncEntity::Notification`. The ONE piece that is a
-/// placeholder is the actual LLM turn: building a detached `AgentCore` (its 6
-/// injected ports + reviewer + model resolution) is large and can't be
-/// integration-tested in this pass, so instead of a real agent turn this records
-/// the received spec and returns an HONEST structured summary marked
-/// `executor:"minimal-placeholder"`. A follow-up replaces the body below with a
-/// real `AgentCore` turn built from the port impls in
-/// `workflow/agent_dispatch.rs` (the proven `kind: agent` host) — the run-row +
-/// notification + sync scaffolding here stays unchanged.
+/// Wires the FULL durable run lifecycle end-to-end — a `workflow_runs` row →
+/// `running` + heartbeat → terminal `completed` + `final_output_json` →
+/// owner-scoped `SyncEntity::WorkflowRun` notify (all via `spawn_background_run`)
+/// → an ITEM-9 `notification` inbox row + `SyncEntity::Notification` — and runs a
+/// REAL detached `AgentCore` turn for the actual work (via the shared
+/// `build_detached_agent_core` builder, the same one the proven workflow
+/// `kind: agent` host uses). The run-row + notification + sync scaffolding is
+/// unchanged from the backbone; only the executor body now drives a real turn.
 async fn execute_subagent_run(
     pool: &PgPool,
     run_id: Uuid,
     user_id: Uuid,
     conversation_id: Option<Uuid>,
+    model_id: Uuid,
+    handle: Arc<registry::RunHandle>,
     system: &str,
     task: &str,
 ) -> BackgroundOutcome {
-    // ── Placeholder work (see the NOTE above — the real AgentCore turn is a
-    //    follow-up). Produce an honest, self-describing summary. ──
-    let summary = format!(
-        "Background sub-agent received the task and recorded it. (Minimal executor: \
-         the detached agent turn is not yet wired — a follow-up runs a real AgentCore \
-         turn here.) Task: {task}"
-    );
+    let outcome = match drive_subagent_turn(
+        pool,
+        run_id,
+        user_id,
+        conversation_id,
+        model_id,
+        handle,
+        system,
+        task,
+    )
+    .await
+    {
+        Ok(o) => o,
+        Err(e) => BackgroundOutcome::Failed {
+            error: format!("background sub-agent: {e}"),
+        },
+    };
+
+    // ── ITEM-9: results-land-when-done. On COMPLETION post a durable inbox row so
+    //    an away user is told, and it live-pushes via the installed
+    //    `SyncEntity::Notification` emitter. (`spawn_background_run` separately
+    //    emits `SyncEntity::WorkflowRun` on the terminal transition, incl. for a
+    //    failed/cancelled run.) A notify failure must NOT fail the run — log and
+    //    continue, exactly like the scheduler's first-producer path. ──
+    if let BackgroundOutcome::Completed { final_output } = &outcome {
+        let summary = final_output
+            .as_ref()
+            .and_then(|v| v.get("final_text"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.chars().take(500).collect::<String>())
+            .unwrap_or_else(|| "Background task finished.".to_string());
+        let mut payload = serde_json::Map::new();
+        payload.insert("workflow_run_id".into(), json!(run_id));
+        if let Some(cid) = conversation_id {
+            payload.insert("conversation_id".into(), json!(cid));
+        }
+        let notif =
+            NewNotification::new(user_id, "background_run_result", "Background task finished")
+                .body(summary)
+                .payload(Value::Object(payload));
+        if let Err(e) = create_and_emit(pool, notif).await {
+            tracing::warn!(
+                "background_mcp: failed to create completion notification for run {run_id}: {e:?}"
+            );
+        }
+    }
+
+    outcome
+}
+
+/// Build + run ONE detached `AgentCore` turn on the run's model, collecting the
+/// final assistant text into a structured `final_output`. Errors (model resolve,
+/// loop failure) bubble up so the caller maps them to `BackgroundOutcome::Failed`.
+async fn drive_subagent_turn(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    model_id: Uuid,
+    handle: Arc<registry::RunHandle>,
+    system: &str,
+    task: &str,
+) -> Result<BackgroundOutcome, AppError> {
+    // Resolve the run's model → provider (under the owner's RBAC) → model client.
+    let (provider, model_name, ..) = create_provider_from_model_id(model_id, user_id).await?;
+    let model_client: Arc<dyn ModelClient> = Arc::new(ProviderModelClient::new(provider));
+
+    // Admin agent policy → per-RUN budget (DEC-6: reuse default_max_steps +
+    // per_run_token_cap for a background run). Sane defaults if the row is
+    // unreadable. `settings` also feeds the shared builder's reviewer / sandbox /
+    // fan-out limits below.
+    let settings = crate::core::Repos.agent.get_admin_settings().await.ok();
+    let (max_steps, per_run_cap) = settings
+        .as_ref()
+        .map(|s| (s.default_max_steps.max(1) as u32, s.per_run_token_cap.max(0) as u64))
+        .unwrap_or((30, 1_000_000));
+    let budget = Budget::new(max_steps, per_run_cap, per_run_cap);
+
+    // A detached background sub-agent is UNATTENDED (DEC-117): a quiet sink + a
+    // deny-and-continue gate (never parks `waiting`). Everything else (transcript,
+    // tools, approval policy, reviewer, compaction, task list) is built by the
+    // shared detached-core builder, identical to the workflow `kind: agent` host.
+    let core = build_detached_agent_core(DetachedAgentCoreArgs {
+        pool: pool.clone(),
+        user_id,
+        conversation_id,
+        run_id,
+        model_id,
+        model_name: model_name.clone(),
+        model_client,
+        cancel: handle.clone(),
+        sink: Arc::new(BackgroundEventSink),
+        gate: Arc::new(UnattendedDenyGate),
+        classifications: Arc::new(Mutex::new(HashMap::new())),
+        settings,
+        budget,
+    })
+    .await;
+
+    // Start fresh from the spec (no resume in this tranche): a `NewMessage(task)`
+    // seed + the optional `system` framing. Empty tool scope — a minimal reasoning
+    // turn; spec-driven `servers` is a follow-up. The unattended gate is the
+    // backstop if the model ever requests an approval-needing tool.
+    let system_blocks: Vec<ContentBlock> = if system.trim().is_empty() {
+        Vec::new()
+    } else {
+        vec![ContentBlock::Text { text: system.to_string() }]
+    };
+    let req = AgentTurnRequest {
+        run_id,
+        user_id,
+        seed: TurnSeed::NewMessage(ChatMessage::user(task.to_string())),
+        system: system_blocks,
+        tool_scope: ToolScope {
+            servers: Vec::new(),
+            allow_delegate: false,
+        },
+        start_iteration: 1,
+        inputs: Value::Null,
+    };
+
+    // Bridge the owner-cancel handle into the crate's cooperative token so a
+    // `check_status`-driven cancel (or a conversation delete) stops the turn.
+    let cancel_token = CancelToken::new();
+    let bridge = {
+        let ct = cancel_token.clone();
+        let h = handle.clone();
+        tokio::spawn(async move {
+            h.await_cancel().await;
+            ct.cancel();
+        })
+    };
+    let run_result = core.run(req, cancel_token).await;
+    bridge.abort();
+
+    let events = run_result?;
+
+    // Owner-cancel → the loop ends `Halted` with no gate.
+    let last_stop = events.iter().rev().find_map(|e| match e {
+        AgentEvent::Stopped(r) => Some(*r),
+        _ => None,
+    });
+    if last_stop == Some(StopReason::Halted) {
+        return Ok(BackgroundOutcome::Cancelled);
+    }
+
+    // The final answer is the loop's last assistant text.
+    let final_text = events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            AgentEvent::Message(msg) if msg.role == Role::Assistant => {
+                let text: String = msg
+                    .content
+                    .iter()
+                    .filter_map(|b| match b {
+                        ContentBlock::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("");
+                if text.is_empty() { None } else { Some(text) }
+            }
+            _ => None,
+        })
+        .unwrap_or_default();
+
+    let tokens: u64 = events
+        .iter()
+        .filter_map(|e| match e {
+            AgentEvent::Usage(u) => Some(u.total_tokens),
+            _ => None,
+        })
+        .sum();
+
     let final_output = json!({
-        "executor": "minimal-placeholder",
-        "status": "recorded",
-        "summary": summary,
+        "executor": "agent-core",
+        "status": "completed",
+        "final_text": final_text,
+        "tokens_used": tokens,
         "spec": { "system": system, "task": task },
     });
 
-    // ── ITEM-9: results-land-when-done. Post a durable inbox row so an away user
-    //    is told, and it live-pushes via the installed `SyncEntity::Notification`
-    //    emitter. (`spawn_background_run` separately emits `SyncEntity::WorkflowRun`
-    //    on the terminal transition.) A notify failure must NOT fail the run —
-    //    log and continue, exactly like the scheduler's first-producer path. ──
-    let mut payload = serde_json::Map::new();
-    payload.insert("workflow_run_id".into(), json!(run_id));
-    if let Some(cid) = conversation_id {
-        payload.insert("conversation_id".into(), json!(cid));
-    }
-    let notif = NewNotification::new(user_id, "background_run_result", "Background task finished")
-        .body(summary.clone())
-        .payload(Value::Object(payload));
-    if let Err(e) = create_and_emit(pool, notif).await {
-        tracing::warn!("background_mcp: failed to create completion notification for run {run_id}: {e:?}");
-    }
-
-    BackgroundOutcome::Completed {
+    Ok(BackgroundOutcome::Completed {
         final_output: Some(final_output),
-    }
+    })
 }
 
 /// `check_status{run_id}` — cheap owner-scoped read of the run's state +
@@ -362,6 +579,40 @@ mod tests {
         assert!(!background_call_needs_approval("collect_result"));
         // Fail-safe: an unrecognized tool requires approval.
         assert!(background_call_needs_approval("something_else"));
+    }
+
+    // TEST (DEC-117 — unattended safe default): a detached background sub-agent
+    // has NO human to answer a prompt, so the gate must DENY (deny-and-continue)
+    // any approval-needing call rather than `Suspend` the run `waiting` forever.
+    // This is the security-critical wiring: with `GateOutcome::Decided(Denied)`
+    // the core loop feeds an error result back and the agent proceeds without the
+    // tool (see `core.rs`'s `GateOutcome::Decided(_) => Act::Deny`), and never
+    // emits `GateOpened`, so no orphan `waiting` row is left behind.
+    #[tokio::test]
+    async fn unattended_gate_denies_never_suspends() {
+        use agent_core::ToolCall;
+
+        let gate = UnattendedDenyGate;
+        let ask = GateAsk {
+            call: ToolCall {
+                id: "tu_1".into(),
+                server: Some("some_server".into()),
+                name: "do_dangerous_thing".into(),
+                input: json!({}),
+            },
+            reason: "tool call requires approval".into(),
+        };
+        let outcome = gate
+            .request(Uuid::new_v4(), ask)
+            .await
+            .expect("unattended gate never errors");
+        match outcome {
+            GateOutcome::Decided(ReviewDecision::Denied) => {}
+            other => panic!(
+                "a background (unattended) gate must Deny (deny-and-continue), never \
+                 Suspend/Approve; got {other:?}"
+            ),
+        }
     }
 
     // TEST: the trio is advertised with the required-arg shapes.
