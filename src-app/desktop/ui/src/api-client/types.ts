@@ -1124,6 +1124,19 @@ export interface CreateProjectRequest {
   name?: string
 }
 
+/**
+ * Enqueue-a-steering-note request body
+ *  (`POST /api/background/runs/{run_id}/notes`). The note is capped + trimmed by
+ *  the handler before it reaches the durable queue.
+ */
+export interface CreateRunNote {
+  /**
+   * The steering note the running agent should pick up on its next turn
+   *  (non-empty; capped at 4000 characters by the handler).
+   */
+  note: string
+}
+
 /** Create-task request body. */
 export interface CreateScheduledTask {
   /**
@@ -4930,6 +4943,25 @@ export interface RunActionAck {
 }
 
 /**
+ * One durable STEERING NOTE queued against a running background run (ITEM-25 /
+ *  Group F). A user posts a note to a RUNNING background run (a detached
+ *  `JobKind::SubAgent` turn); the detached agent-core loop consumes pending notes
+ *  at its next iteration boundary and appends them to the transcript so the model
+ *  reads them on the next turn. `consumed_at` is NULL while pending, stamped when
+ *  the loop consumes it. Rows live in `background_run_notes`, FK'd to the run
+ *  (ON DELETE CASCADE) — deleting the run deletes its notes.
+ */
+export interface RunNote {
+  /** NULL while pending; set to the consume time once the loop reads it. */
+  consumed_at?: string
+  created_at: string
+  id: string
+  /** The steering text the running agent should pick up next turn. */
+  note: string
+  run_id: string
+}
+
+/**
  * A page of run history (ITEM-41) — the paged envelope the runs panel consumes.
  *  Mirrors `mcp/tool_calls`' page shape.
  */
@@ -7941,6 +7973,8 @@ export const ApiEndpoints = {
   'AuthProviders.test': 'POST /api/admin/auth-providers/{id}/test',
   'AuthProviders.testConfig': 'POST /api/admin/auth-providers/test-config',
   'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
+  'Background.listRunNotes': 'GET /api/background/runs/{run_id}/notes',
+  'Background.postRunNote': 'POST /api/background/runs/{run_id}/notes',
   'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
@@ -8402,6 +8436,8 @@ export type ApiEndpointParameters = {
   'AuthProviders.test': { id: string }
   'AuthProviders.testConfig': CreateAuthProviderRequest
   'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
+  'Background.listRunNotes': { run_id: string }
+  'Background.postRunNote': { run_id: string } & CreateRunNote
   'Branch.activate': { id: string; branch_id: string }
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
@@ -8863,6 +8899,8 @@ export type ApiEndpointResponses = {
   'AuthProviders.test': TestProviderResponse
   'AuthProviders.testConfig': TestProviderResponse
   'AuthProviders.update': AuthProviderResponse
+  'Background.listRunNotes': RunNote[]
+  'Background.postRunNote': RunNote
   'Branch.activate': void
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
