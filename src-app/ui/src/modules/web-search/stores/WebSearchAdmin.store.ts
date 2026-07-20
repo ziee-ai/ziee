@@ -1,111 +1,43 @@
-import { ApiClient } from '@/api-client'
-import {
-  Permissions,
-  type ProviderCatalogEntry,
-  type UpdateProviderRequest,
-  type UpdateWebSearchSettingsRequest,
-  type WebSearchSettings,
-} from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
+import {
+  webSearchAdminInitialState,
+  type WebSearchAdminState,
+} from './webSearchAdmin/types'
 
+/**
+ * WebSearchAdmin — PROOF of the per-action lazy-loading store pattern.
+ *
+ * The state lives here (eager, tiny, always present → `Stores.WebSearchAdmin.x`
+ * never `undefined`). Every ACTION lives in its own file under
+ * `webSearchAdmin/actions/` and is loaded as its OWN chunk on first call (or
+ * `preload()`), NOT baked into the entry chunk. All lazy actions are async.
+ *
+ * Inter-action calls (`load` → loadSettings/loadProviders) reach the sibling
+ * dispatchers through the runtime state (`get()`), which carries them.
+ */
 export const WebSearchAdmin = defineStore('WebSearchAdmin', {
   immer: true,
-  state: {
-    settings: null as WebSearchSettings | null,
-    providers: [] as ProviderCatalogEntry[],
-    loading: false,
-    /** Global settings (enable / chain / caps) save in flight. */
-    savingSettings: false,
-    /** Provider key being saved (its registry key), or null — scopes the spinner. */
-    savingProvider: null as string | null,
-    error: null as string | null,
+  state: webSearchAdminInitialState,
+  lazyActions: {
+    loadSettings: () => import('./webSearchAdmin/actions/loadSettings'),
+    loadProviders: () => import('./webSearchAdmin/actions/loadProviders'),
+    updateSettings: () => import('./webSearchAdmin/actions/updateSettings'),
+    updateProvider: () => import('./webSearchAdmin/actions/updateProvider'),
   },
-  actions: set => {
-    const loadSettings = async () => {
-      set(s => {
-        s.loading = true
-        s.error = null
-      })
-      try {
-        const row = await ApiClient.WebSearch.getSettings()
-        set(s => {
-          s.settings = row
-          s.loading = false
-        })
-      } catch (error) {
-        set(s => {
-          s.error =
-            error instanceof Error ? error.message : 'Failed to load web search settings'
-          s.loading = false
-        })
+  // A trivial composite that just fans out to two lazy loaders in parallel — a
+  // synchronous wrapper (no own chunk needed); it calls the dispatchers off the
+  // live state so each loads its own chunk.
+  actions: (_set, get) => ({
+    load: async (): Promise<void> => {
+      const s = get() as WebSearchAdminState & {
+        loadSettings: () => Promise<void>
+        loadProviders: () => Promise<void>
       }
-    }
-    const loadProviders = async () => {
-      try {
-        const res = await ApiClient.WebSearch.getProviders()
-        set(s => {
-          s.providers = res.providers
-        })
-      } catch (error) {
-        set(s => {
-          s.error =
-            error instanceof Error ? error.message : 'Failed to load search providers'
-        })
-      }
-    }
-    return {
-      loadSettings,
-      loadProviders,
-      load: async () => {
-        await Promise.all([loadSettings(), loadProviders()])
-      },
-      updateSettings: async (
-        patch: UpdateWebSearchSettingsRequest,
-      ): Promise<WebSearchSettings> => {
-        set(s => {
-          s.savingSettings = true
-          s.error = null
-        })
-        try {
-          const row = await ApiClient.WebSearch.updateSettings(patch)
-          set(s => {
-            s.settings = row
-            s.savingSettings = false
-          })
-          return row
-        } catch (error) {
-          set(s => {
-            s.error = error instanceof Error ? error.message : 'Update failed'
-            s.savingSettings = false
-          })
-          throw error
-        }
-      },
-      updateProvider: async (
-        provider: string,
-        body: UpdateProviderRequest,
-      ): Promise<void> => {
-        set(s => {
-          s.savingProvider = provider
-          s.error = null
-        })
-        try {
-          const res = await ApiClient.WebSearch.updateProvider({ provider, ...body })
-          set(s => {
-            s.providers = res.providers
-            s.savingProvider = null
-          })
-        } catch (error) {
-          set(s => {
-            s.error = error instanceof Error ? error.message : 'Update failed'
-            s.savingProvider = null
-          })
-          throw error
-        }
-      },
-    }
-  },
+      await Promise.all([s.loadSettings(), s.loadProviders()])
+    },
+  }),
   // Loaders hit `web_search::admin::read`-gated endpoints. Self-gate so
   // non-admins never generate 403s (incl. on the audience-agnostic reconnect).
   init: ({ on, actions }) => {
