@@ -381,3 +381,59 @@ all eager in the entry chunk and O(surface).
 
 Commits: sdk `chat` b5d5e81 (codegen); superproject 279acbdd7 (split+inline),
 8765aa0e0 (desktop tsconfig sibling mappings).
+
+---
+
+## FINALIZED PATTERN + Users reference (SHIPPED — commit 723a456a0, sdk 12a5394)
+
+Decision (per human): **ONE pattern, no variants.** Every store is lazy; every
+action is its own file. Uniformity is the hard constraint (future agents must not
+have to choose). The earlier "waterfall" objection to per-action-lazy is
+WITHDRAWN — an action chunk is fetched at perform-time (or hover-preload), which
+blocks nothing on the critical path; the only serialized case (load-on-mount) is
+covered by init-invocation.
+
+### The pattern (every store)
+```
+modules/<m>/stores/<store>/
+  state.ts            # State interface + initial state + UsersSet/UsersGet aliases
+  actions/<name>.ts   # one async action per file: export default (set,get)=>async(...)=>{}
+  index.ts            # defineStore({ state, lazyActions, init }) + registerLazyStore
+```
+- Whole-store-lazy (`registerLazyStore`) → store off the entry chunk.
+- Per-action-lazy (`lazyActions`, dynamic import) → each action its own chunk.
+  Wins: per-action **desktop override** (localOverride shadows one action file),
+  **conflict-free parallel edits** (one action = one file), deferred action code.
+- Readers use the direct handle `{ Store }` (retire `Stores.X`).
+
+### Prefetch gate (`check:action-prefetch`, in `npm run check`)
+Every action MUST be either (a) wired to a `.<action>.preload()` on its trigger's
+`onMouseEnter/onFocus`, or (b) invoked in the store's `init` (`actions.<action>()`,
+load-on-mount — already warm). No exempt marker: a programmatic action warms via
+`actions.<action>.preload()` in `init`. This FORCES agents to decide where every
+action's chunk is warmed. (Known imprecision: two stores with an identically-named
+action can cross-satisfy — errs toward false-PASS, never a false-FAIL.)
+
+### Users reference — verified
+- 9 actions split into `stores/users/actions/*`; old inline `Users.store.ts` deleted.
+- Hover-prefetch on Edit/Delete/Reset/Toggle row buttons + Create opener
+  (`AddButton.onMouseEnter`) + reg-settings row. `loadUsers` init-invoked;
+  `clearError` + `loadUserRegistrationSettings` warm in init.
+- ui+desktop tsc 0; `check:action-prefetch` green (13 actions incl. webSearchAdmin
+  brought into compliance); prod build emits 9 per-action chunks.
+- Runtime (:29182, admin → /settings/users): list renders (loadUsers executed),
+  `updateUser`/`deleteUser` NOT loaded on render (deferred), hovering Edit→
+  updateUser chunk fetched, hovering Delete→deleteUser chunk fetched, 0 console errors.
+- Entry chunk unchanged (473.9 KB) — Users was ALREADY whole-store-lazy, so this
+  step's win is action-deferral + override + parallel-edit, not entry bytes. The
+  entry-byte win comes from converting the ~120 stores still ON the entry chunk.
+
+### Sweep plan (next)
+1. Codemod (deterministic): for each store, extract inline actions → `actions/<name>.ts`
+   (factory shape), rewrite the store to `stores/<store>/index.ts` with `lazyActions` +
+   `registerLazyStore`, repoint importers, drop from `module.tsx stores:[]` + barrels.
+2. Qwen (coder.ziee/LiteLLM) fills residue + wires hover-prefetch on trigger controls,
+   behind `tsc + gate:ui + check:action-prefetch` per store; Claude reviews each diff.
+3. Phase order: boot-critical stores stay eager-by-consumer (their chrome mounts at
+   boot → first-access init); headless boot subscribers get an explicit boot `preload()`.
+   Convert admin/non-boot stores first (biggest entry-byte win), then the rest.
