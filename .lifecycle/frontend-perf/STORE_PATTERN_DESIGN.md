@@ -339,3 +339,45 @@ listRegisteredStores()   // → [{ name, refCount, initialized }]
 // D1 compat shim (deleted post-migration):
 Stores.Users             // returns the SAME proxy instance as `import { Users }`
 ```
+
+---
+
+## ADDENDUM — api-client types.ts split+inline (SHIPPED, verified both workspaces)
+
+Motivation (user): the entry chunk must stay FLAT as the API/permission surface
+grows to thousands of endpoints/permissions. `api-client/types.ts` carried the
+`PermissionDescriptions` map, `Permissions` enum, and `ApiEndpoints` map inline —
+all eager in the entry chunk and O(surface).
+
+**Mechanism (dev + prod, so bugs surface while developing):**
+- SDK codegen (`ziee-framework/src/openapi/emit_ts.rs` + `finish_and_emit`) now
+  emits 3 sibling modules next to types.ts: `permissionDescriptions.ts`,
+  `permissions.ts`, `apiEndpoints.ts`. types.ts no longer carries those symbols.
+- Golden parity guards (`types_ts_parity` + `_desktop`) assert all 4 generated
+  files match a fresh regen.
+- Build transform `ui/plugins/vite-plugin-inline-api.js` (`enforce:'pre'`):
+  - `Permissions.X` → the permission string literal.
+  - `ApiClient.NS.method(` → `callAsync("METHOD /url", `.
+  - bare `ApiClient.NS` (namespace-as-value) → inline object literal of methods.
+  - strips the now-unused import specifier; strips
+    `export const ApiClient = createApiClient(ApiEndpoints)` construction from the
+    barrel so the map tree-shakes (source keeps the export for tsc/vitest).
+- Codemod moved ~264 files' `Permissions` import from `.../api-client/types` →
+  `.../api-client/permissions`.
+- Desktop tsconfig: pinned the 3 siblings to the desktop copies (mirroring the
+  existing `@/api-client/types` pin) so tsc resolves desktop-only namespaces
+  (HostMount/RemoteAccess); the vite `localOverridePlugin` already did this at
+  build time.
+
+**Verified:**
+- UI tsc 0 errors; desktop tsc 0 errors; UI prod build success.
+- Entry chunk 482.0 → 473.9 KB gzip (−8.1 KB: PermDesc −2.1, Permissions −1.3,
+  ApiEndpoints −4.7).
+- Build proof: `createApiClient` = 0 in output (map construction gone); 2284
+  inline `/api/` URL literals at call sites; endpoint-map pairs = 0 in entry.
+- Runtime proof (prod preview :29182 → backend :29180): login page renders,
+  page-load ApiClient calls `/api/app/setup/status` + `/api/auth/providers` both
+  200 (inlined callAsync path), 0 console errors.
+
+Commits: sdk `chat` b5d5e81 (codegen); superproject 279acbdd7 (split+inline),
+8765aa0e0 (desktop tsconfig sibling mappings).
