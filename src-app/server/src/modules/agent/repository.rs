@@ -38,7 +38,8 @@ impl AgentRepository {
                    per_run_token_cap, per_step_token_cap, default_max_steps,
                    fan_out_max_threads, fan_out_max_depth,
                    fan_out_max_children_per_call,
-                   goal_eval_model_id, goal_seek_max_turns, updated_at
+                   goal_eval_model_id, goal_seek_max_turns, delegate_enabled,
+                   updated_at
             FROM agent_admin_settings
             WHERE id = TRUE
             "#,
@@ -83,6 +84,7 @@ impl AgentRepository {
                 fan_out_max_children_per_call = COALESCE($14, fan_out_max_children_per_call),
                 goal_eval_model_id          = CASE WHEN $15::bool THEN $16 ELSE goal_eval_model_id END,
                 goal_seek_max_turns         = COALESCE($17, goal_seek_max_turns),
+                delegate_enabled            = COALESCE($18, delegate_enabled),
                 updated_at                  = NOW()
             WHERE id = TRUE
             RETURNING default_sandbox_mode, unattended_approval_policy, reviewer_enabled,
@@ -90,7 +92,8 @@ impl AgentRepository {
                       per_run_token_cap, per_step_token_cap, default_max_steps,
                       fan_out_max_threads, fan_out_max_depth,
                       fan_out_max_children_per_call,
-                      goal_eval_model_id, goal_seek_max_turns, updated_at
+                      goal_eval_model_id, goal_seek_max_turns, delegate_enabled,
+                      updated_at
             "#,
         )
         .bind(patch.default_sandbox_mode.as_deref())
@@ -110,6 +113,7 @@ impl AgentRepository {
         .bind(goal_model_set)
         .bind(goal_model_val)
         .bind(patch.goal_seek_max_turns)
+        .bind(patch.delegate_enabled)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {

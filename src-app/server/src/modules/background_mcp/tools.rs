@@ -631,6 +631,11 @@ async fn drive_subagent_turn(
         system: system_blocks,
         tool_scope: ToolScope {
             servers: Vec::new(),
+            // ITEM-2 / DEC-2: a detached background sub-agent run stays
+            // `allow_delegate: false` unconditionally (NOT gated on the admin
+            // `delegate_enabled`) — a spawned sub-agent must never spawn its own
+            // sub-agents (the depth cap). Only the top-level chat/workflow hosts
+            // honor `delegate_enabled`.
             allow_delegate: false,
         },
         start_iteration: 1,

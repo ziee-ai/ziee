@@ -49,7 +49,8 @@ async fn agent_settings_roundtrip_bounds_and_sync() {
         .json(&json!({
             "default_max_steps": 42,
             "per_run_token_cap": 500_000,
-            "fan_out_max_children_per_call": 16
+            "fan_out_max_children_per_call": 16,
+            "delegate_enabled": true
         }))
         .send()
         .await
@@ -73,6 +74,9 @@ async fn agent_settings_roundtrip_bounds_and_sync() {
     assert_eq!(got["default_max_steps"].as_i64(), Some(42));
     // W2 (ITEM-3): the new per-`delegate`-call child cap round-trips.
     assert_eq!(got["fan_out_max_children_per_call"].as_i64(), Some(16));
+    // ITEM-2 / DEC-2: the on-demand `delegate` enable switch round-trips
+    // (default false; flipped to true above).
+    assert_eq!(got["delegate_enabled"].as_bool(), Some(true));
 
     // Bounds: out-of-range + a bad enum → 400.
     for bad in [

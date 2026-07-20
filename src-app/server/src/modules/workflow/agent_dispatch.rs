@@ -1000,6 +1000,15 @@ impl StepDispatcher for AgentDispatcher {
         // fan-out limits / reviewer. Fall back to sane defaults if unreadable.
         let settings = crate::core::Repos.agent.get_admin_settings().await.ok();
 
+        // ITEM-2 / DEC-2: on-demand delegation is a TOP-LEVEL-host privilege,
+        // gated by the admin `delegate_enabled` bool (default false). A workflow
+        // `kind: agent` step is a top-level host, so it may offer `delegate` when
+        // the admin has turned it on. Captured here because `settings` is moved
+        // into `build_detached_agent_core` below. Children stay false (the
+        // crate's `fanout.rs` caps `max_depth = 1`). Shared derivation so this
+        // host and the chat host agree.
+        let allow_delegate = AgentAdminSettings::top_level_allow_delegate(settings.as_ref());
+
         // The agent is ONE workflow step, so its whole-run token budget is bounded
         // by the per-STEP cap: it self-stops with `TokenCap` before it can breach
         // the runner's post-step `check_step_caps` (which would fail the run).
@@ -1134,7 +1143,7 @@ impl StepDispatcher for AgentDispatcher {
             system: system_blocks,
             tool_scope: ToolScope {
                 servers,
-                allow_delegate: false,
+                allow_delegate,
             },
             start_iteration: 1,
             inputs: serde_json::Value::Null,
@@ -1291,6 +1300,7 @@ mod tests {
             fan_out_max_children_per_call: 8,
             goal_eval_model_id: None,
             goal_seek_max_turns: 10,
+            delegate_enabled: false,
             updated_at: Utc::now(),
         }
     }

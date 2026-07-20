@@ -427,6 +427,17 @@ pub async fn start_generation_agent_core(
         })
     };
 
+    // ITEM-2 / DEC-2: on-demand delegation is gated by the admin `delegate_enabled`
+    // bool (default false). This surface (`start_generation_agent_core`) is reached
+    // ONLY on the agent-core chat path — `streaming.rs` routes here exclusively
+    // under `ZIEE_CHAT_AGENT_CORE=1`, and this path is `reviewer: None` by design —
+    // so enabling `delegate` here never touches the legacy chat loop. Children /
+    // fan-out stay false (the crate's `fanout.rs` caps `max_depth = 1`). Shared
+    // derivation so the chat host and the workflow host agree.
+    let allow_delegate = crate::modules::agent::models::AgentAdminSettings::top_level_allow_delegate(
+        crate::core::Repos.agent.get_admin_settings().await.ok().as_ref(),
+    );
+
     tokio::spawn(async move {
         // Group E / ITEM-21 / DEC-42: capture the run's unattended flag before
         // `request` is moved into the RegistryBridge — it gates the self-paced
@@ -471,10 +482,12 @@ pub async fn start_generation_agent_core(
             model_name,
             model_id,
             provider_id,
-            // The MCP bridge sets request.tools directly (its gathering), so an empty
-            // ToolScope is fine — ChatToolProvider still EXECUTES the chosen tool by
-            // its namespaced name. Tool-list gathering stays with the MCP extension.
-            tool_scope: ToolScope::default(),
+            // The MCP bridge sets request.tools directly (its gathering), so the
+            // ToolScope carries no `servers` — ChatToolProvider still EXECUTES the
+            // chosen tool by its namespaced name (tool-list gathering stays with the
+            // MCP extension). The core `delegate` tool is the exception: it is
+            // agent-core-injected, gated purely by `allow_delegate` (ITEM-2 / DEC-2).
+            tool_scope: ToolScope { allow_delegate, ..Default::default() },
             inputs: serde_json::Value::Null,
             cancel_token: cancel_token.clone(),
             sse_tx: Some(ext_tx.clone()),

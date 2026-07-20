@@ -53,7 +53,28 @@ pub struct AgentAdminSettings {
     /// (ITEM-24 / DEC-62). Default 10, range 1..=50; the `max_horizon_days`
     /// backstop is the other ceiling.
     pub goal_seek_max_turns: i32,
+    /// On-demand `delegate` enable switch (ITEM-2 / DEC-2). Default false. When
+    /// true, the TOP-LEVEL hosts (workflow `kind: agent` step + the agent-core
+    /// chat path behind `ZIEE_CHAT_AGENT_CORE`) set `ToolScope.allow_delegate`,
+    /// so agent-core offers the core `delegate` tool. Children / fan-out stay
+    /// false (`fanout.rs` caps `max_depth = 1`); a plain bool like
+    /// `reviewer_enabled` (no bounds).
+    pub delegate_enabled: bool,
     pub updated_at: DateTime<Utc>,
+}
+
+impl AgentAdminSettings {
+    /// ITEM-2 / DEC-2: whether a TOP-LEVEL host (the workflow `kind: agent` step
+    /// or the agent-core chat path behind `ZIEE_CHAT_AGENT_CORE`) offers the
+    /// core `delegate` tool — i.e. what it sets `ToolScope.allow_delegate` to.
+    /// Gated purely on the admin `delegate_enabled` bool; a missing settings row
+    /// (read failure) ⇒ `false` (fail-closed). Children / fan-out never call this
+    /// — they hardcode `allow_delegate = false` to enforce the crate's
+    /// `max_depth = 1` (`fanout.rs`), as does a detached background sub-agent run.
+    /// Single source of truth so both hosts derive the flag identically.
+    pub fn top_level_allow_delegate(settings: Option<&Self>) -> bool {
+        settings.map(|s| s.delegate_enabled).unwrap_or(false)
+    }
 }
 
 /// Partial-update request for the singleton. Every field optional (COALESCE
@@ -83,6 +104,9 @@ pub struct UpdateAgentAdminSettingsRequest {
     pub goal_eval_model_id: Option<Option<Uuid>>,
     /// Max goal-seeking turns (DEC-62), 1..=50.
     pub goal_seek_max_turns: Option<i32>,
+    /// On-demand `delegate` enable switch (ITEM-2 / DEC-2). Plain bool (no
+    /// bounds), COALESCE-patched like `reviewer_enabled`.
+    pub delegate_enabled: Option<bool>,
 }
 
 impl UpdateAgentAdminSettingsRequest {
@@ -266,6 +290,46 @@ mod tests {
                 .validate()
                 .is_ok()
         );
+    }
+
+    /// A settings row with a caller-chosen `delegate_enabled`; other fields are
+    /// plausible defaults irrelevant to the delegate gate under test.
+    fn settings_with_delegate(delegate_enabled: bool) -> AgentAdminSettings {
+        AgentAdminSettings {
+            default_sandbox_mode: "workspace-write".into(),
+            unattended_approval_policy: "on-request".into(),
+            reviewer_enabled: true,
+            reviewer_model_id: None,
+            reviewer_policy: None,
+            reviewer_risk_thresholds: serde_json::json!({}),
+            per_run_token_cap: 1_000_000,
+            per_step_token_cap: 500_000,
+            default_max_steps: 20,
+            fan_out_max_threads: 4,
+            fan_out_max_depth: 1,
+            fan_out_max_children_per_call: 8,
+            goal_eval_model_id: None,
+            goal_seek_max_turns: 10,
+            delegate_enabled,
+            updated_at: Utc::now(),
+        }
+    }
+
+    // ITEM-2 / DEC-2: the top-level-host `allow_delegate` derivation binds the
+    // admin `delegate_enabled` bool — enabled ⇒ the host offers `delegate`;
+    // default/disabled ⇒ it does not; a missing settings row fails closed.
+    #[test]
+    fn top_level_allow_delegate_binds_admin_bool() {
+        // Enabled ⇒ true (the top-level host sets ToolScope.allow_delegate = true).
+        assert!(AgentAdminSettings::top_level_allow_delegate(Some(
+            &settings_with_delegate(true)
+        )));
+        // Disabled (the column default) ⇒ false.
+        assert!(!AgentAdminSettings::top_level_allow_delegate(Some(
+            &settings_with_delegate(false)
+        )));
+        // Missing settings row (read failure) ⇒ false (fail-closed).
+        assert!(!AgentAdminSettings::top_level_allow_delegate(None));
     }
 
     #[test]
