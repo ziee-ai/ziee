@@ -47,7 +47,16 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | — | Batched openapi-regen #5 (BackgroundRunDetail + getRun) | — | `types_ts_parity{,_desktop}` PASS | (committed) | ✅ |
 | 29 (FE) | Inline background-run result view (getRun, by-kind render) | 8-detail-FE | `tsc` exit 0 + lints (parent-run) | (committed) | ✅ VERIFIED |
 | 28 | Sub-agent-activity SSE frame (agent-core + chat SSE) | 4-live | agent-core 97 + streaming 3 (parent-run); `cargo check` both | (committed) | ✅ VERIFIED |
-| — | Batched openapi-regen #6 (subAgentActivity frame + DTOs) | — | in flight | — | 🔄 |
+| — | Batched openapi-regen #6 (subAgentActivity frame + DTOs) | — | `types_ts_parity{,_desktop}` PASS | (committed) | ✅ |
+| 30 (FE) | Sub-agent-activity live handler (chat extension) | 4-live-FE | `tsc` exit 0 + lints (parent-run) | (committed) | ✅ VERIFIED |
+| 31 | Reviewer-thresholds binding test + recon (5/29 done, T1-drift stale) | (test) | agent-core 97 + agent_dispatch 2 (parent combined-run) | (committed) | ✅ VERIFIED |
+| 32 | Restore background::use to Permissions enum (root-cause: clobbered 403) | (perm-enum) | `cargo check -p ziee` + temp-gen proof (parent-run) | (committed) | ✅ VERIFIED |
+| — | Batched openapi-regen #7 (BackgroundUse enum + structured 403) | — | in flight | — | 🔄 |
+
+## Key recon outcomes (from T31)
+- **ITEM-5 (per-child track) + ITEM-29 (state-machine): ALREADY DONE** — descope-as-done. ITEM-5 = tranche-28 SubAgentActivity per-child snapshots + workflow rollup; ITEM-29 = tranche-5 backbone WorkflowRunStatus (incl. `waiting`=needs_input + boot reclaim). Evidence in T31 report.
+- **T1 reviewer-thresholds drift = STALE/RESOLVED** — tranche 7 already wired both detached hosts; T31 added the binding regression test. Chat is reviewer:None by design.
+- **ITEM-2 (delegate host-gate) = THE KEY REMAINING ITEM.** `delegate` is hardcoded `allow_delegate:false` at ALL hosts (workflow/background/chat) with NO admin enable — so on-demand delegation (problem area #1: the delegate tool + SubAgentActivityCard) is BUILT BUT UNREACHABLE. DEC-2's `delegate_enabled` admin bool exists only in DECISIONS.md. NEXT tranche (T33): add `delegate_enabled bool DEFAULT false` to agent_admin_settings (migration+model+validate) + wire `allow_delegate: settings.delegate_enabled` at the TOP-LEVEL host(s) (chat behind ZIEE_CHAT_AGENT_CORE; children stay false) + regen + a FE toggle (mirrors tranche-13 orphaned-settings surfacing). This activates area #1 end-to-end.
 
 ## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
 Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
