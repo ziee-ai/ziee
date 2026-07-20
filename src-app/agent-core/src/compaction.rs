@@ -53,6 +53,7 @@ use ziee_core::AppError;
 use crate::core::ModelClient;
 use crate::extension::{AgentExtension, Flow};
 use crate::ports::{EventSink, TranscriptStore};
+use crate::summarizer::{ModelSummarizer, SummaryInput, Summarizer};
 use crate::tokens::estimate_tokens;
 use crate::types::AgentEvent;
 
@@ -163,12 +164,15 @@ pub struct CompactionResult {
     pub summary_write: Option<(ChatMessage, usize)>,
 }
 
-/// The tiered, window-relative summarizer. Holds a `ModelClient` for the summary
-/// call + a [`CompactionConfig`] + an injectable [`TokenCounter`]. `fit` is pure
-/// w.r.t. side effects (no transcript / sink), so it is directly unit-testable
-/// with a fake model.
+/// The tiered, window-relative compactor. Its Tier-4 delegates the LLM summary
+/// to a [`Summarizer`] (DEC-128) — the ONE shared nine-section summarize seam —
+/// rather than hand-rolling a prompt + model call. Holds a [`CompactionConfig`]
+/// + an injectable [`TokenCounter`]. `fit` is pure w.r.t. side effects (no
+/// transcript / sink), so it is directly unit-testable with a fake summarizer.
 pub struct Compactor {
-    model: Arc<dyn ModelClient>,
+    /// The unified nine-section summarizer (Tier-4). Defaults to a
+    /// [`ModelSummarizer`] over the supplied `ModelClient` (see [`Compactor::new`]).
+    summarizer: Arc<dyn Summarizer>,
     /// Model name written into the summary `ChatRequest`.
     pub model_name: String,
     /// Window-relative + anti-thrash tunables (server-supplied DATA).
@@ -178,13 +182,32 @@ pub struct Compactor {
 }
 
 impl Compactor {
+    /// Construct with the default [`ModelSummarizer`] over `model` — the
+    /// contract-preserving constructor both the chat-agent and workflow hosts
+    /// use. The summary call now goes through the shared nine-section seam.
     pub fn new(
         model: Arc<dyn ModelClient>,
         model_name: impl Into<String>,
         config: CompactionConfig,
     ) -> Self {
+        let model_name = model_name.into();
+        Self::with_summarizer(
+            Arc::new(ModelSummarizer::new(model, model_name.clone())),
+            model_name,
+            config,
+        )
+    }
+
+    /// Construct with a caller-supplied [`Summarizer`] — the seam for a host that
+    /// wants an engine-backed summarizer (e.g. one that also persists to
+    /// `conversation_summaries`) instead of the default model call.
+    pub fn with_summarizer(
+        summarizer: Arc<dyn Summarizer>,
+        model_name: impl Into<String>,
+        config: CompactionConfig,
+    ) -> Self {
         Self {
-            model,
+            summarizer,
             model_name: model_name.into(),
             config,
             count: Arc::new(estimate_tokens),
@@ -504,34 +527,22 @@ impl Compactor {
             return Ok(cheap_result(cheap_changed, work));
         }
 
-        // Summarize `old` via the model. Freeform prompt for now — the structured
-        // 9-section template (ITEM-60) is a separate server-coordinated tranche.
+        // Summarize `old` via the ONE shared nine-section summarizer (DEC-127/128):
+        // the tier-orchestrator supplies the transcript; the `Summarizer` owns the
+        // prompt + model call. Full path (the Compactor re-derives from the whole
+        // history each turn, so it never carries a previous rolling summary).
         let joined = old
             .iter()
             .map(Self::message_text)
             .collect::<Vec<_>>()
             .join("\n\n");
-        let summary_req = ChatRequest {
-            model: self.model_name.clone(),
-            messages: vec![
-                ChatMessage::system(
-                    "Summarize the earlier conversation below concisely, preserving key facts, \
-                     decisions, and open tasks. Reply with the summary only.",
-                ),
-                ChatMessage::user(joined),
-            ],
-            ..Default::default()
-        };
-        let (summary_msg, _usage) = self.model.call(summary_req).await?;
-        let summary_text = summary_msg
-            .content
-            .iter()
-            .filter_map(|b| match b {
-                ContentBlock::Text { text } => Some(text.as_str()),
-                _ => None,
+        let summary_text = self
+            .summarizer
+            .summarize(SummaryInput {
+                transcript: joined,
+                previous_summary: None,
             })
-            .collect::<Vec<_>>()
-            .join("");
+            .await?;
 
         let upto = keep_start;
         let summary = ChatMessage::system(format!(

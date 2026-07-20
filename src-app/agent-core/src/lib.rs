@@ -24,6 +24,7 @@ pub mod guard;
 pub mod policy;
 pub mod ports;
 pub mod reviewer;
+pub mod summarizer;
 pub mod tasklist;
 pub mod tokens;
 pub mod types;
@@ -53,6 +54,9 @@ pub use ports::{
 pub use reviewer::{
     apply_authorization, map_risk, Authorization, ModelRiskClassifier, Reviewer, Risk,
     RiskAssessment, RiskCategory, RiskClassifier, RiskThresholds,
+};
+pub use summarizer::{
+    build_summary_request, ModelSummarizer, SummaryInput, Summarizer, SUMMARY_PROMPT_9_SECTION,
 };
 pub use tasklist::{
     task_tool_defs, TaskListExtension, TASK_CREATE_TOOL, TASK_GET_TOOL, TASK_LIST_ORDER,
