@@ -22,6 +22,15 @@ export interface AgentAdminSettings {
   default_max_steps: number
   default_sandbox_mode: string
   /**
+   * On-demand `delegate` enable switch (ITEM-2 / DEC-2). Default false. When
+   *  true, the TOP-LEVEL hosts (workflow `kind: agent` step + the agent-core
+   *  chat path behind `ZIEE_CHAT_AGENT_CORE`) set `ToolScope.allow_delegate`,
+   *  so agent-core offers the core `delegate` tool. Children / fan-out stay
+   *  false (`fanout.rs` caps `max_depth = 1`); a plain bool like
+   *  `reviewer_enabled` (no bounds).
+   */
+  delegate_enabled: boolean
+  /**
    * Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates
    *  with an explicit "capped at N" note. Threaded into the crate's
    *  `SubagentLimits.max_children_per_call`.
@@ -6385,6 +6394,11 @@ export interface UnreadCount {
 export interface UpdateAgentAdminSettingsRequest {
   default_max_steps?: number
   default_sandbox_mode?: string
+  /**
+   * On-demand `delegate` enable switch (ITEM-2 / DEC-2). Plain bool (no
+   *  bounds), COALESCE-patched like `reviewer_enabled`.
+   */
+  delegate_enabled?: boolean
   fan_out_max_children_per_call?: number
   fan_out_max_depth?: number
   fan_out_max_threads?: number

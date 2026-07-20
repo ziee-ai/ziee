@@ -26077,6 +26077,10 @@
           "default_sandbox_mode": {
             "type": "string"
           },
+          "delegate_enabled": {
+            "description": "On-demand `delegate` enable switch (ITEM-2 / DEC-2). Default false. When\n true, the TOP-LEVEL hosts (workflow `kind: agent` step + the agent-core\n chat path behind `ZIEE_CHAT_AGENT_CORE`) set `ToolScope.allow_delegate`,\n so agent-core offers the core `delegate` tool. Children / fan-out stay\n false (`fanout.rs` caps `max_depth = 1`); a plain bool like\n `reviewer_enabled` (no bounds).",
+            "type": "boolean"
+          },
           "fan_out_max_children_per_call": {
             "description": "Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates\n with an explicit \"capped at N\" note. Threaded into the crate's\n `SubagentLimits.max_children_per_call`.",
             "type": "integer",
@@ -26148,6 +26152,7 @@
           "fan_out_max_depth",
           "fan_out_max_children_per_call",
           "goal_seek_max_turns",
+          "delegate_enabled",
           "updated_at"
         ]
       },
@@ -43500,6 +43505,13 @@
           "default_sandbox_mode": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "delegate_enabled": {
+            "description": "On-demand `delegate` enable switch (ITEM-2 / DEC-2). Plain bool (no\n bounds), COALESCE-patched like `reviewer_enabled`.",
+            "type": [
+              "boolean",
               "null"
             ]
           },
