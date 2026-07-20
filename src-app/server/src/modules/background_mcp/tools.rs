@@ -23,7 +23,9 @@ use ai_providers::{ChatMessage, ContentBlock, Role};
 use crate::common::AppError;
 use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 use crate::modules::notification::models::NewNotification;
-use crate::modules::workflow::agent_dispatch::{build_detached_agent_core, DetachedAgentCoreArgs};
+use crate::modules::workflow::agent_dispatch::{
+    build_detached_agent_core, DetachedAgentCoreArgs, RunNoteSteerPort,
+};
 use crate::modules::workflow::models::{CreateBackgroundRun, JobKind, WorkflowRunStatus};
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
@@ -386,6 +388,10 @@ async fn drive_subagent_turn(
         classifications: Arc::new(Mutex::new(HashMap::new())),
         settings,
         budget,
+        // ITEM-25 / DEC-79: THIS is the run the `background/runs/{id}/notes` REST
+        // steers — wire the durable note-queue reader so queued notes reach the
+        // loop as `[steering]` messages on its next iteration.
+        steer: Some(Arc::new(RunNoteSteerPort { pool: pool.clone() })),
     })
     .await;
 

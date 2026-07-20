@@ -213,6 +213,9 @@ impl ChatAgentTurn {
             task_store: Some(Arc::new(
                 crate::modules::agent::task_list::PgTaskListStore::new(self.pool.clone()),
             )),
+            // ITEM-25 / DEC-79: interactive chat is not a background steer target
+            // → no steer channel (the loop's steer-read is skipped).
+            steer: None,
         };
 
         let req = AgentTurnRequest {

@@ -47,8 +47,8 @@ pub use extension::{sorted_extensions, AgentExtension, Flow, TurnContext};
 pub use guard::neutralize_untrusted;
 pub use policy::TrustedAutoApprovePolicy;
 pub use ports::{
-    ApprovalPolicy, EventSink, HumanGate, ModelResolver, TaskListStore, ToolProvider,
-    TranscriptStore,
+    ApprovalPolicy, EventSink, HumanGate, ModelResolver, SteerNotePort, TaskListStore,
+    ToolProvider, TranscriptStore,
 };
 pub use reviewer::{
     apply_authorization, map_risk, Authorization, ModelRiskClassifier, Reviewer, Risk,

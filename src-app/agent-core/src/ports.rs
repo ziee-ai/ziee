@@ -105,3 +105,26 @@ pub trait TaskListStore: Send + Sync {
 pub trait ModelResolver: Send + Sync {
     async fn resolve(&self, model_id: Uuid, user_id: Uuid) -> Result<Arc<Provider>, AppError>;
 }
+
+/// Deliver queued out-of-band STEERING notes to a RUNNING agent (Group F /
+/// ITEM-25 / DEC-79) — the loop-read side of tranche 16's durable note queue.
+/// [`AgentCore::run`] calls [`take_pending`](SteerNotePort::take_pending) at each
+/// iteration boundary (after cancel/budget, before contribute/load) and appends
+/// each returned note to the transcript as a `[steering]` user message, so it
+/// loads into `history` and reaches the model on the next call — nudging a
+/// long-running run without killing + restarting it.
+///
+/// **Only the detached background-run path wires a real impl** (the server backs
+/// it with `workflow::repository::consume_pending_run_notes`, which the
+/// `POST /api/background/runs/{id}/notes` REST feeds); every other construction
+/// site leaves [`AgentCore::steer`] as `None`, so the interactive chat + workflow
+/// paths stay byte-identical.
+///
+/// [`AgentCore::run`]: crate::core::AgentCore::run
+/// [`AgentCore::steer`]: crate::core::AgentCore::steer
+#[async_trait]
+pub trait SteerNotePort: Send + Sync {
+    /// Atomically take + return this run's pending steering notes, oldest-first
+    /// (empty when none). Idempotent per note — a note is delivered at most once.
+    async fn take_pending(&self, run_id: Uuid) -> Result<Vec<String>, AppError>;
+}

@@ -110,6 +110,10 @@ impl AgentCore {
 
             let mut child = self.clone();
             child.model = model_client;
+            // ITEM-25 / DEC-79: a child gets a FRESH `run_id` with no steer queue
+            // of its own — drop any inherited steer channel so it isn't queried
+            // per child iteration and children stay unsteerable (isolation).
+            child.steer = None;
 
             let child_req = AgentTurnRequest {
                 run_id: Uuid::new_v4(),
@@ -236,6 +240,7 @@ mod tests {
             extensions: vec![],
             reviewer: None,
             task_store: None,
+            steer: None,
             budget: Budget::new(4, 1_000_000, 1_000_000),
             limits: SubagentLimits {
                 max_depth: 1,

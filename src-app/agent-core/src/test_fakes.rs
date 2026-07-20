@@ -336,6 +336,39 @@ impl TaskListStore for FakeTaskStore {
 }
 
 // ---------------------------------------------------------------------------
+// Fake SteerNotePort (Group F / ITEM-25) — a scripted steering-note queue.
+// ---------------------------------------------------------------------------
+
+/// An in-memory [`SteerNotePort`] that returns a scripted batch of notes on the
+/// FIRST `take_pending` and empty thereafter (idempotent-once, mirroring the
+/// DB-backed `consume_pending_run_notes` stamp-consumed semantics). Records each
+/// `run_id` it was asked for so a test can assert which run was drained.
+pub struct FakeSteer {
+    pub pending: Mutex<VecDeque<Vec<String>>>,
+    pub asked: Mutex<Vec<Uuid>>,
+}
+
+impl FakeSteer {
+    /// Deliver `notes` exactly once (on the first drain), then always empty.
+    pub fn once(notes: Vec<String>) -> Self {
+        let mut q = VecDeque::new();
+        q.push_back(notes);
+        Self {
+            pending: Mutex::new(q),
+            asked: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl crate::ports::SteerNotePort for FakeSteer {
+    async fn take_pending(&self, run_id: Uuid) -> Result<Vec<String>, AppError> {
+        self.asked.lock().unwrap().push(run_id);
+        Ok(self.pending.lock().unwrap().pop_front().unwrap_or_default())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Fake HumanGate
 // ---------------------------------------------------------------------------
 
@@ -434,6 +467,7 @@ pub fn core_with(
         extensions: vec![],
         reviewer: None,
         task_store: None,
+        steer: None,
         budget: Budget::new(10, 1_000_000, 1_000_000),
         limits: SubagentLimits::default(),
         sandbox: SandboxMode::WorkspaceWrite { network: false },

@@ -31,8 +31,8 @@ use crate::extension::{
     run_before_model, run_contribute, sorted_extensions, AgentExtension, Flow, TurnContext,
 };
 use crate::ports::{
-    ApprovalPolicy, EventSink, HumanGate, ModelResolver, TaskListStore, ToolProvider,
-    TranscriptStore,
+    ApprovalPolicy, EventSink, HumanGate, ModelResolver, SteerNotePort, TaskListStore,
+    ToolProvider, TranscriptStore,
 };
 use crate::reviewer::Reviewer;
 use crate::types::{
@@ -267,6 +267,14 @@ pub struct AgentCore {
     /// construction site that doesn't wire a store passes `None`, so this field
     /// is additive for existing hosts. The server owns the DB-backed impl.
     pub task_store: Option<Arc<dyn TaskListStore>>,
+    /// Optional out-of-band steering-note channel (Group F / ITEM-25 / DEC-79).
+    /// When `Some`, the loop drains this run's pending steering notes at each
+    /// iteration boundary and appends each as a `[steering]` user message so it
+    /// reaches the model on the next call. `None` (interactive chat + the
+    /// workflow `kind: agent` step + every fan-out child) ⇒ ZERO behavior change:
+    /// only the detached background-run path wires an impl (backed by the durable
+    /// note queue). Additive for existing hosts.
+    pub steer: Option<Arc<dyn SteerNotePort>>,
     pub budget: Budget,
     pub limits: crate::types::SubagentLimits,
     pub sandbox: SandboxMode,
@@ -330,6 +338,22 @@ impl AgentCore {
             if let Some(reason) = budget.stop_before(iteration) {
                 self.push_emit(&mut events, AgentEvent::Stopped(reason)).await;
                 break;
+            }
+
+            // Steering notes (Group F / ITEM-25 / DEC-79): at the iteration
+            // boundary — AFTER the cancel/budget checks, BEFORE `run_contribute`
+            // / `self.transcript.load` — drain any out-of-band notes queued for
+            // this run and append each as a `[steering]` user message. Appending
+            // BEFORE the `load` below is what lands it in `history` so it reaches
+            // the model on THIS call. `None` (interactive + non-detached hosts)
+            // ⇒ this whole block is skipped, so the loop is byte-identical
+            // without a steer channel.
+            if let Some(steer) = &self.steer {
+                for note in steer.take_pending(req.run_id).await? {
+                    self.transcript
+                        .append(req.run_id, ChatMessage::user(format!("[steering] {note}")))
+                        .await?;
+                }
             }
 
             // Rebuild the per-turn context via the extension `contribute` phase.
@@ -833,6 +857,7 @@ mod tests {
             extensions: vec![],
             reviewer: None,
             task_store: None,
+            steer: None,
             budget: Budget::new(2, 1_000_000, 1_000_000),
             limits: Default::default(),
             sandbox: SandboxMode::WorkspaceWrite { network: false },
@@ -861,6 +886,83 @@ mod tests {
         assert_eq!(last_stop(&events), StopReason::NoToolCall);
         // No tool was executed.
         assert!(harness.transcript.journal.lock().unwrap().is_empty());
+    }
+
+    /// Group F / ITEM-25 / DEC-79: a `Some(SteerNotePort)` drains this run's
+    /// pending notes at the iteration boundary and appends each as a `[steering]`
+    /// user message into the transcript (so it loads into `history` and reaches
+    /// the model next call); a `None` port appends nothing (the interactive path
+    /// is byte-identical). Mirrors the crate's other loop tests + fake ports.
+    #[tokio::test]
+    async fn steer_notes_appended_as_user_messages() {
+        use crate::test_fakes::FakeSteer;
+
+        fn steering_msgs(list: &[ChatMessage]) -> Vec<String> {
+            list.iter()
+                .filter(|m| m.role == Role::User)
+                .flat_map(|m| m.content.iter())
+                .filter_map(|b| match b {
+                    ContentBlock::Text { text } if text.starts_with("[steering] ") => {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // --- Some(steer): the queued note becomes ONE `[steering]` user msg. ---
+        let steer = Arc::new(FakeSteer::once(vec!["do X".into()]));
+        let harness = core_with(
+            Arc::new(ScriptedModel::final_text("ok")),
+            true,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
+        let mut core = harness.core;
+        core.steer = Some(steer.clone());
+        let req = new_req();
+        let run_id = req.run_id;
+        core.run(req, CancelToken::new()).await.unwrap();
+
+        // The port was drained for THIS run's id.
+        assert_eq!(steer.asked.lock().unwrap().as_slice(), &[run_id]);
+        let with_steer = steering_msgs(
+            &harness
+                .transcript
+                .msgs
+                .lock()
+                .unwrap()
+                .get(&run_id)
+                .cloned()
+                .unwrap_or_default(),
+        );
+        assert_eq!(with_steer, vec!["[steering] do X".to_string()]);
+
+        // --- None (default): nothing appended (interactive path unchanged). ---
+        let harness2 = core_with(
+            Arc::new(ScriptedModel::final_text("ok")),
+            true,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
+        assert!(harness2.core.steer.is_none());
+        let req2 = new_req();
+        let run_id2 = req2.run_id;
+        harness2.core.run(req2, CancelToken::new()).await.unwrap();
+        let without_steer = steering_msgs(
+            &harness2
+                .transcript
+                .msgs
+                .lock()
+                .unwrap()
+                .get(&run_id2)
+                .cloned()
+                .unwrap_or_default(),
+        );
+        assert!(
+            without_steer.is_empty(),
+            "a None steer port must append no steering messages"
+        );
     }
 
     #[tokio::test]

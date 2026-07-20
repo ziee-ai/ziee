@@ -523,6 +523,7 @@ mod tests {
             extensions: vec![],
             reviewer: None,
             task_store: Some(store),
+            steer: None,
             budget: Budget::new(4, 1_000_000, 1_000_000),
             limits: SubagentLimits::default(),
             sandbox: SandboxMode::WorkspaceWrite { network: false },

@@ -1559,24 +1559,13 @@ pub async fn list_pending_run_notes(
 /// return them oldest-first. Idempotent per note — a second call returns only
 /// notes queued since (already-consumed rows are skipped).
 ///
-/// THIS IS THE SEAM THE FUTURE AGENT-CORE LOOP CALLS. Wiring (flagged follow-up,
-/// an agent-core edit reserved for a later tranche — NOT built here):
-///   1. add a `SteerNotePort` trait to `src-app/agent-core/src/ports.rs`
-///      (`async fn take_pending(&self, run_id: Uuid) -> Result<Vec<String>, AppError>`),
-///      and an `Option<Arc<dyn SteerNotePort>>` field on `AgentCore`;
-///   2. at the TOP of the `AgentCore::run` loop in
-///      `src-app/agent-core/src/core.rs` (after the cancel/budget checks, BEFORE
-///      `run_contribute` / `self.transcript.load`), call `take_pending(req.run_id)`
-///      and append each returned note to the transcript as a user message
-///      (`self.transcript.append(req.run_id, ChatMessage::user("[steering] …"))`)
-///      so it loads into `history` and reaches the model on the next call;
-///   3. impl `SteerNotePort` in `workflow::agent_dispatch` (where
-///      `build_detached_agent_core` lives) backed by THIS fn
-///      (`consume_pending_run_notes(pool, run_id)`), and pass it into
-///      `DetachedAgentCoreArgs` / `AgentCore`.
-// Seam (ITEM-25): no caller yet (the loop-read is a flagged follow-up). Shipped
-// + tested now so the future wiring is a pure agent-core edit.
-#[allow(dead_code)]
+/// THIS IS THE SEAM THE AGENT-CORE LOOP CALLS (ITEM-25 / DEC-79 — now WIRED).
+/// `agent_dispatch::RunNoteSteerPort` backs `agent_core::SteerNotePort` with this
+/// fn; `build_detached_agent_core` threads it into the `AgentCore` ONLY for the
+/// background sub-agent driver (`background_mcp::execute_subagent_run`). At each
+/// iteration boundary (after cancel/budget, before `run_contribute` /
+/// `transcript.load`) `AgentCore::run` drains the pending notes and appends each
+/// as a `[steering]` user message so it reaches the model on the next call.
 pub async fn consume_pending_run_notes(
     pool: &PgPool,
     run_id: Uuid,

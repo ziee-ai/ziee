@@ -31,8 +31,8 @@ use agent_core::{
     CompactionExtension, Compactor, Decision, EventSink, GateAsk, GateOutcome, GateTicket,
     HumanGate, IdempotencyKey, ModelClient, ModelClientFactory, ModelResolver,
     ModelRiskClassifier, ProviderModelClient, ProviderModelClientFactory, Reviewer, Risk, RiskAssessment,
-    RiskClassifier, SandboxMode, StopReason, SubagentLimits, ToolCall, ToolProvider, ToolResult,
-    ToolScope, TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
+    RiskClassifier, SandboxMode, SteerNotePort, StopReason, SubagentLimits, ToolCall, ToolProvider,
+    ToolResult, ToolScope, TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
 };
 use ai_providers::{ChatMessage, ContentBlock, Provider, Role, Tool};
 use async_trait::async_trait;
@@ -695,6 +695,31 @@ pub struct DetachedAgentCoreArgs {
     pub settings: Option<AgentAdminSettings>,
     /// The token/step budget (workflow: per-STEP cap; background: per-RUN cap).
     pub budget: Budget,
+    /// Out-of-band steering-note channel (Group F / ITEM-25 / DEC-79). ONLY the
+    /// background sub-agent driver (`background_mcp::execute_subagent_run`) passes
+    /// `Some(RunNoteSteerPort{..})` — that's the run the `background/runs/{id}/notes`
+    /// REST targets; the workflow `kind: agent` step passes `None` (it isn't a
+    /// steer target). `None` ⇒ the loop's steer-read is skipped entirely.
+    pub steer: Option<Arc<dyn SteerNotePort>>,
+}
+
+/// ITEM-25 / DEC-79 — the loop-read side of the durable steering-note queue.
+/// Backs [`agent_core::SteerNotePort`] with
+/// [`repository::consume_pending_run_notes`], so a detached background run drains
+/// its pending notes at each iteration boundary (atomically stamped consumed) and
+/// injects each as a `[steering]` user message. Wired ONLY for the background-run
+/// path; the workflow `kind: agent` step leaves [`DetachedAgentCoreArgs::steer`]
+/// `None`.
+pub struct RunNoteSteerPort {
+    pub pool: PgPool,
+}
+
+#[async_trait]
+impl SteerNotePort for RunNoteSteerPort {
+    async fn take_pending(&self, run_id: Uuid) -> Result<Vec<String>, AppError> {
+        let notes = repository::consume_pending_run_notes(&self.pool, run_id).await?;
+        Ok(notes.into_iter().map(|n| n.note).collect())
+    }
 }
 
 /// Assemble an [`AgentCore`] for a DETACHED (non-interactive) run on a
@@ -724,6 +749,7 @@ pub async fn build_detached_agent_core(args: DetachedAgentCoreArgs) -> AgentCore
         classifications,
         settings,
         budget,
+        steer,
     } = args;
 
     let transcript: Arc<dyn TranscriptStore> =
@@ -855,6 +881,9 @@ pub async fn build_detached_agent_core(args: DetachedAgentCoreArgs) -> AgentCore
         task_store: Some(Arc::new(
             crate::modules::agent::task_list::PgTaskListStore::new(pool),
         )),
+        // Group F / ITEM-25 / DEC-79: the steer channel (only the background path
+        // supplies `Some`; the workflow `kind: agent` step passes `None`).
+        steer,
     }
 }
 
@@ -973,6 +1002,9 @@ impl StepDispatcher for AgentDispatcher {
             classifications: classifications.clone(),
             settings,
             budget,
+            // ITEM-25 / DEC-79: a workflow `kind: agent` step is not a
+            // `background/runs/{id}/notes` steer target → no steer channel.
+            steer: None,
         })
         .await;
 
