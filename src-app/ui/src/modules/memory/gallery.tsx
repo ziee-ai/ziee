@@ -68,10 +68,15 @@ export const gallery: ModuleGallery = {
         'AuditLogSection',
       ),
       setup: async () => {
-        const { MemoryAudit } = await import(
-          '@/modules/memory/stores/MemoryAudit.store'
+        const { useMemoryAuditStore } = await import(
+          '@/modules/memory/stores/memoryAudit'
         )
-        const mk = (id: number, op: string, source: string, snapshot: string) => ({
+        const mk = (
+          id: number,
+          op: string,
+          source: string,
+          snapshot: string,
+        ) => ({
           id,
           op,
           source,
@@ -82,7 +87,7 @@ export const gallery: ModuleGallery = {
           user_id: 'u-1',
         })
         await holdPatch(() =>
-          MemoryAudit.store.setState({
+          useMemoryAuditStore.setState({
             entries: [
               mk(1, 'ADD', 'manual', 'Likes espresso'),
               mk(2, 'UPDATE', 'extraction', 'Works at Acme'),

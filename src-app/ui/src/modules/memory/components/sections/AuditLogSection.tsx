@@ -1,10 +1,20 @@
+import {
+  Button,
+  Card,
+  Empty,
+  ErrorState,
+  InputNumber,
+  Paragraph,
+  Spin,
+  Table,
+  Tag,
+  Text,
+} from '@ziee/kit'
 import { useState } from 'react'
-import { Button, Card, Empty, ErrorState, InputNumber, Spin } from '@ziee/kit'
-import { Table, Tag, Text, Paragraph } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
-import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import type { MemoryAuditEntry } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
+import { MemoryAudit } from '@/modules/memory/stores/memoryAudit'
 
 const READ_PERM = Permissions.MemoryRead
 
@@ -14,7 +24,7 @@ const READ_PERM = Permissions.MemoryRead
  */
 export function AuditLogSection() {
   const canRead = usePermission(READ_PERM)
-  const { entries, loading, limit, error } = Stores.MemoryAudit
+  const { entries, loading, limit, error } = MemoryAudit
   const [pendingLimit, setPendingLimit] = useState<number>(limit)
 
   if (!canRead) return null
@@ -22,9 +32,9 @@ export function AuditLogSection() {
   return (
     <Card title="Audit log" data-testid="memory-audit-card">
       <Paragraph type="secondary" className="!mb-3 text-sm">
-        Append-only record of every memory operation on your account.
-        Use this to audit what the auto-extractor captured, what the
-        assistant&rsquo;s tools added, and what you deleted (and when).
+        Append-only record of every memory operation on your account. Use this
+        to audit what the auto-extractor captured, what the assistant&rsquo;s
+        tools added, and what you deleted (and when).
       </Paragraph>
 
       <div className="mb-4 flex flex-nowrap items-center gap-2">
@@ -43,7 +53,8 @@ export function AuditLogSection() {
         />
         <Button
           data-testid="memory-audit-limit-apply"
-          onClick={() => Stores.MemoryAudit.setLimit(pendingLimit)}
+          onClick={() => MemoryAudit.setLimit(pendingLimit)}
+          onMouseEnter={() => void MemoryAudit.setLimit.preload()}
         >
           Apply
         </Button>
@@ -54,7 +65,7 @@ export function AuditLogSection() {
           resource="the audit log"
           description="Something went wrong while loading your memory audit log."
           details={error}
-          onRetry={() => Stores.MemoryAudit.load()}
+          onRetry={() => MemoryAudit.load()}
           data-testid="memory-audit-error"
         />
       ) : loading ? (
@@ -62,7 +73,10 @@ export function AuditLogSection() {
           <Spin label="Loading" />
         </div>
       ) : entries.length === 0 ? (
-        <Empty description="No audit entries yet" data-testid="memory-audit-empty" />
+        <Empty
+          description="No audit entries yet"
+          data-testid="memory-audit-empty"
+        />
       ) : (
         <Table<MemoryAuditEntry>
           data-testid="memory-audit-table"
@@ -78,7 +92,9 @@ export function AuditLogSection() {
               dataIndex: 'created_at',
               width: 180,
               render: (record: MemoryAuditEntry) => (
-                <Text type="secondary">{new Date(record.created_at).toLocaleString()}</Text>
+                <Text type="secondary">
+                  {new Date(record.created_at).toLocaleString()}
+                </Text>
               ),
             },
             {
@@ -96,7 +112,15 @@ export function AuditLogSection() {
                       : v === 'DELETE'
                         ? 'error'
                         : 'warning'
-                return <Tag variant="outline" data-testid={`memory-audit-status-${v}`} tone={tone}>{v}</Tag>
+                return (
+                  <Tag
+                    variant="outline"
+                    data-testid={`memory-audit-status-${v}`}
+                    tone={tone}
+                  >
+                    {v}
+                  </Tag>
+                )
               },
             },
             {
@@ -113,7 +137,11 @@ export function AuditLogSection() {
                       ? 'success'
                       : 'info'
                 return (
-                  <Tag variant="outline" data-testid={`memory-audit-source-${v}`} tone={tone}>
+                  <Tag
+                    variant="outline"
+                    data-testid={`memory-audit-source-${v}`}
+                    tone={tone}
+                  >
                     {v === 'mcp_tool' ? 'tool' : v}
                   </Tag>
                 )
@@ -125,7 +153,14 @@ export function AuditLogSection() {
               dataIndex: 'actor_kind',
               width: 100,
               render: (record: MemoryAuditEntry) => {
-                return <Tag variant="outline" data-testid={`memory-audit-actor-${record.actor_kind}`}>{record.actor_kind}</Tag>
+                return (
+                  <Tag
+                    variant="outline"
+                    data-testid={`memory-audit-actor-${record.actor_kind}`}
+                  >
+                    {record.actor_kind}
+                  </Tag>
+                )
               },
             },
             {

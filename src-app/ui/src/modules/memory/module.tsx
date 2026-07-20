@@ -1,12 +1,11 @@
+import { createModule } from '@ziee/framework'
 import { Brain } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
-import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useCoreMemoryBlocksStore } from './stores/CoreMemoryBlocks.store'
 import { useMemoriesStore } from './stores/Memories.store'
 import { useMemoryAdminStore } from './stores/MemoryAdmin.store'
-import { useMemoryAuditStore } from './stores/MemoryAudit.store'
 import { useMemorySettingsStore } from './stores/MemorySettings.store'
 import './types'
 
@@ -54,7 +53,6 @@ export default createModule({
     { name: 'Memories', store: useMemoriesStore },
     { name: 'MemorySettings', store: useMemorySettingsStore },
     { name: 'MemoryAdmin', store: useMemoryAdminStore },
-    { name: 'MemoryAudit', store: useMemoryAuditStore },
     { name: 'CoreMemoryBlocks', store: useCoreMemoryBlocksStore },
   ],
   slots: {
