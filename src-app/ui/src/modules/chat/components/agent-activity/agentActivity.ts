@@ -83,8 +83,11 @@ export function taskItemsFromFrame(frame: { items?: TaskItemVM[] | null }): Task
 // Sub-agent / delegate activity (Group A / ITEM-4)
 // ---------------------------------------------------------------------------
 
-/** A delegated child's status. `completed`/`failed` are terminal. */
-export type SubAgentChildStatus = 'running' | 'completed' | 'failed'
+/** A delegated child's status. `pending` = spawned but not yet started;
+ *  `completed`/`failed` are terminal. (`pending` mirrors the backend
+ *  `SubAgentActivityChildStatus` wire union; `subAgentChildToolStatus` maps it
+ *  → `running` at runtime via its unknown-status else-branch.) */
+export type SubAgentChildStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 /** One delegated sub-agent in a fan-out (a `delegate` call spawns N of these).
  *  `label` is the friendly per-child descriptor (its objective / role). */
