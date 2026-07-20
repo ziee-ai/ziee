@@ -117,6 +117,24 @@ Rolldown also emits: *"Some chunks are larger than 500 kB after minification"*.
   fails on PRE-EXISTING sdk-submodule drift unrelated to this diff — reverted, not
   ours to fix here.)
 
+### ITEM-2 (scope usePrefetchModules) + ITEM-5 (drawer shouldMount) + root-component gating — DONE, measured
+- `usePrefetchModules` now gates on auth + per-route permission + drops the forced
+  `{timeout:2000}`. Root always-mounted components (`LlmRepositoryDrawer`,
+  `LlmModelDownloadNotifications`, `NotificationToastListener`) gained shouldMount
+  gates (open-state / `llm_models::downloads_read` / `notifications::read`).
+- **Login page (logged out): 80 JS chunks → 2** (entry + RouterComponent only).
+  Total transfer 908.7 → 551.9 KB; FCP 896 → ~550 ms.
+- Prefetch scoping proven across 3 states: logged-out → 0 route chunks;
+  non-admin `tester` → 48 (admin pages excluded, NONE leaked ✓); admin → 80 (all
+  permitted), `/settings/general` renders on nav.
+- Root-component gates proven: logged-out mounts none of the 3; authenticated
+  users WITH the perm still mount them (admin + tester both mount toast+download
+  listeners — tester legitimately holds `downloads_read`+`notifications::read`
+  via the default Users group). Drawer's `GET /api/llm-repositories`-on-every-route
+  bug fixed (mounts only when open).
+- Regression: chat route renders code/math/mermaid identical to main, 0 errors.
+  `tsc` + guardrails + colors PASS.
+
 ## B5 — Runtime metrics (TTI / LCP / request waterfall)
 
 Login-page (prod, unauth) captured — baseline FCP 896 ms → 592 ms after ITEM-1.

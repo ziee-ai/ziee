@@ -1,6 +1,7 @@
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@ziee/framework'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { usePermission } from '@/core/permissions'
 
 import { NotificationBellWidget } from './components/NotificationBellWidget'
 import { useNotificationsStore } from './stores/Notifications.store'
@@ -38,6 +39,10 @@ export default createModule({
     {
       id: 'notification-toast-listener',
       component: NotificationToastListener,
+      // Gate: notifications are per-user (`notifications::read`, held by every
+      // authenticated user). A logged-out visitor has no notifications, so don't
+      // load the toast-listener chunk on the login page.
+      shouldMount: () => usePermission(Permissions.NotificationsRead),
       order: 90,
     },
   ],

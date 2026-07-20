@@ -19,6 +19,7 @@ import {
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/llm-provider/types'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
+import { usePermission } from '@/core/permissions'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
@@ -123,6 +124,11 @@ export default createModule({
       // always.
       id: 'llm-model-download-notifications',
       component: LlmModelDownloadNotifications,
+      // Gate: download activity is admin-managed (`llm_models::downloads_read`).
+      // A non-admin (and a logged-out visitor) can't see downloads, so don't
+      // load this listener's chunk for them — matches the DownloadIndicatorWidget
+      // slot's permission gate.
+      shouldMount: () => usePermission(Permissions.LlmModelsDownloadsRead),
       order: 102,
     },
   ],

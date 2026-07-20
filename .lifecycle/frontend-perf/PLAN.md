@@ -52,6 +52,11 @@ Each item states its MEASURED target so the win is provable, not asserted.
   (`date-fns` vs `dayjs`) and audit `@base-ui/react` (559 KB raw, largest single
   contributor) vs the coexisting `@radix-ui/*` (46 KB) for a removable overlap.
   Target: **measured entry-chunk gzip reduction**; no functional change.
+- **ITEM-9**: Gate lazy always-mounted ROOT components (ComponentRegistration,
+  not routes) on auth/permission via `shouldMount`, so their chunks don't load on
+  the logged-out login page (`LlmModelDownloadNotifications` →
+  `downloads_read`; `NotificationToastListener` → `notifications::read`). Arose
+  from FB-1. Target: login page ≤ 2 JS chunks. DONE.
 - **ITEM-8**: Add a committed, merge-durable **bundle/load budget check** (a
   product-tree script, NOT a `.lifecycle` artifact — rule B6) asserting the
   login-page critical path stays within budget (entry JS gzip ≤ threshold, login

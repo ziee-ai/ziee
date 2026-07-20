@@ -6,6 +6,8 @@ import { useLlmRepositoryStore } from '@/modules/llm-repository/stores/LlmReposi
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/llm-repository/types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useDelayedFalse } from '@/hooks/useDelayedFalse'
+import { Stores } from '@ziee/framework/stores'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const LlmRepositorySettings = lazyWithPreload(() =>
@@ -49,6 +51,11 @@ export default createModule({
     {
       id: 'llm-repository-drawer',
       component: LlmRepositoryDrawer,
+      // Gate: mount ONLY while the drawer is open (mirrors the sibling
+      // GroupLlmProvidersAssignmentDrawer). Without this the drawer's chunk +
+      // its `GET /api/llm-repositories` fetch fired on EVERY route (incl. the
+      // logged-out login page) for a component that is closed 99% of the time.
+      shouldMount: () => useDelayedFalse(() => Stores.LlmRepositoryDrawer.open),
       order: 100,
     },
   ],
