@@ -1,7 +1,7 @@
 import { Flex, Tabs } from '@ziee/kit'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Can } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { InstalledVersionsCard } from './InstalledVersionsCard'
 import { AvailableVersionsCard } from './AvailableVersionsCard'
 import { RuntimeDownloadDrawer } from './drawers/RuntimeDownloadDrawer'

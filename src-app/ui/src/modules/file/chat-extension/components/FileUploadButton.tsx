@@ -4,7 +4,7 @@ import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { composerPaneKey } from '@/modules/file/stores/File.store'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import {
   MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE,
   MAX_FILE_UPLOAD_LABEL,

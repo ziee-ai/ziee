@@ -12,7 +12,7 @@ import {
 import { z } from 'zod'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 

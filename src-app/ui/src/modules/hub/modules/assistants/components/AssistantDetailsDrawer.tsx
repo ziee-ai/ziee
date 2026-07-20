@@ -1,7 +1,8 @@
 import { Copy, Bot } from 'lucide-react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Button, Flex, Tag, Text, Title, Card } from '@ziee/kit'
-import { Permissions, type HubAssistant } from '@/api-client/types'
+import { type HubAssistant } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 
 interface AssistantDetailsDrawerProps {

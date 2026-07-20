@@ -15,7 +15,8 @@ import {
   message,
 } from '@ziee/kit'
 import { Trash2, Pencil, FlaskConical, Lock } from 'lucide-react'
-import { Permissions, type AuthProviderResponse } from '@/api-client/types'
+import { type AuthProviderResponse } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions/Can'
 import { AddProviderMenu } from './AddProviderMenu'

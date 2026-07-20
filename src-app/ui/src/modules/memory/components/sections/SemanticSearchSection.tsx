@@ -20,7 +20,7 @@ import { RotateCw } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 
 const READ_PERM = Permissions.MemoryAdminRead

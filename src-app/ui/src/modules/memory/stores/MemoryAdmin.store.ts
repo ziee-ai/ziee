@@ -1,12 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type FtsRebuildStatus,
-  type LlmModel,
-  type MemoryAdminSettings,
-  Permissions,
-  type RebuildStatus,
-  type UpdateMemoryAdminSettingsRequest,
-} from '@/api-client/types'
+import { type FtsRebuildStatus, type LlmModel, type MemoryAdminSettings, type RebuildStatus, type UpdateMemoryAdminSettingsRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import { emitMemoryAdminSettingsUpdated } from '@/modules/memory/events'

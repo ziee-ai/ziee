@@ -14,7 +14,7 @@ import { Wrench } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 export default function McpServersStep({ registerBeforeNext }: OnboardingStepProps) {
   const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds

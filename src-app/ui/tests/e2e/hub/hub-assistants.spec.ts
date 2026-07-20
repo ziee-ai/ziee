@@ -8,7 +8,7 @@ import {
   getAssistantCardStatus,
 } from './helpers/hub-assistants'
 import { loginWithPerms } from '../permissions/fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 
 test.describe('Hub Assistants', () => {
   test.beforeEach(async ({ page, testInfra }) => {

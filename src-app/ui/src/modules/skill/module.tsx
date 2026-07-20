@@ -1,5 +1,5 @@
 import { BookOpen } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'

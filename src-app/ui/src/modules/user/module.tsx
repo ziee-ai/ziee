@@ -1,5 +1,5 @@
 import { User as UserIcon, Users as UsersIcon } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { useUserGroupDrawerStore } from '@/modules/user/components/group/EditUserGroupDrawer.store'

@@ -1,7 +1,8 @@
 import { Download } from 'lucide-react'
 import { Button, Popover, message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
-import { Permissions, type File as FileEntity } from '@/api-client/types'
+import { type File as FileEntity } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 
 interface ExportFormat {

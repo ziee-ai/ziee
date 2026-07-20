@@ -239,6 +239,20 @@ update_check:
             ui_rel
         );
 
+        // Split-out sibling: `permissions.ts` (the Permissions enum) must match.
+        let perms_golden_path =
+            format!("{}/{}/src/api-client/permissions.ts", manifest, ui_rel);
+        let perms_golden = std::fs::read_to_string(&perms_golden_path)
+            .unwrap_or_else(|e| panic!("read {}: {}", perms_golden_path, e));
+        let perms_generated =
+            ziee_framework::openapi::emit_ts::generate_permissions_ts_from_json(&openapi)
+                .expect("generate permissions");
+        assert_eq!(
+            perms_generated, perms_golden,
+            "{} permissions.ts parity mismatch — run `just openapi-regen`",
+            ui_rel
+        );
+
         if generated != golden {
             // Find the first differing line to make failures actionable.
             let g: Vec<&str> = generated.lines().collect();

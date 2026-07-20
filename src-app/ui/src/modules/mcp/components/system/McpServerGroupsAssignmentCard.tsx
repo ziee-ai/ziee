@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
 import { emitMcpServerGroupsChanged } from '@/modules/mcp/events'
 

@@ -1,10 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type LlmModel,
-  Permissions,
-  type SummarizationAdminSettings,
-  type UpdateSummarizationAdminSettingsRequest,
-} from '@/api-client/types'
+import { type LlmModel, type SummarizationAdminSettings, type UpdateSummarizationAdminSettingsRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

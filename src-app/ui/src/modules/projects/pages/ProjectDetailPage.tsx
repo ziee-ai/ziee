@@ -4,7 +4,7 @@ import { Button, Card, Separator, Flex, Confirm, Result, Spin, Text, Title, Para
 import { ArrowLeft, CircleX, Copy, Pencil, Trash2 } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { Can, usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
 import { ProjectKnowledgeSection } from '@/modules/projects/components/ProjectKnowledgeSection'
 import { ProjectConversationsList } from '@/modules/projects/chat-extension/components/ProjectConversationsList'

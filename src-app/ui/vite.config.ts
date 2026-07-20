@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
+import { inlineApiPlugin } from './plugins/vite-plugin-inline-api.js'
 import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
 // @ts-ignore — self-contained JS plugins re-homed under @ziee/gallery (B4).
 import { galleryCoveragePlugin } from '@ziee/gallery/vite/vite-plugin-gallery-coverage.js'
@@ -26,6 +27,14 @@ export default defineConfig(async () => {
 
   return {
     plugins: [
+      // Inline generated map lookups (dev+prod, enforce:'pre'): Permissions.X →
+      // literal, ApiClient.NS.method() → callAsync (the latter activates once
+      // apiEndpoints.ts is split out). Keeps these maps call-site-granular so the
+      // entry chunk stays flat as the API/permission surface grows.
+      inlineApiPlugin({
+        permissionsPath: path.resolve(__dirname, 'src/api-client/permissions.ts'),
+        endpointsPath: path.resolve(__dirname, 'src/api-client/apiEndpoints.ts'),
+      }),
       // Instrument component/page source FIRST (enforce:'pre') so branch coverage
       // maps to real source lines, before react/oxc transpiles it.
       ...(coverage ? [galleryCoveragePlugin({ srcDir: path.resolve(__dirname, 'src') })] : []),

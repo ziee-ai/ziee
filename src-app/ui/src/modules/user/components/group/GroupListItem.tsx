@@ -9,7 +9,8 @@ import {
   Text,
   type DescriptionsItem,
 } from '@ziee/kit'
-import { Permissions, type Group } from '@/api-client/types'
+import { type Group } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission, evaluatePermission } from '@/core/permissions'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'

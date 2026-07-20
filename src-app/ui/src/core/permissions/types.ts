@@ -6,13 +6,13 @@
 // See .claude/PERMISSION_GATING.md for the gating pattern and the checklist for
 // new features.
 
-import type { Permissions } from '@/api-client/types'
+import type { Permissions } from '@/api-client/permissions'
 
 /**
  * A single permission, restricted to the `Permissions` enum emitted by the
  * OpenAPI type generator. Pass enum members for type-safety:
  *
- *   import { Permissions } from '@/api-client/types'
+ *   import { Permissions } from '@/api-client/permissions'
  *   permission: Permissions.UsersDelete
  */
 export type Permission = Permissions

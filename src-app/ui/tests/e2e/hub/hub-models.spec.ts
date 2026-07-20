@@ -12,7 +12,7 @@ import {
   findAuthRequiredCard,
 } from './helpers/hub-models'
 import { loginWithPerms } from '../permissions/fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 
 /** Extract the catalog `name` (the per-card testid suffix) from a model card. */
 async function modelNameOf(card: Locator): Promise<string> {

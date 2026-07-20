@@ -4,11 +4,8 @@ import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import {
-  Permissions,
-  type CreateLlmProviderRequest,
-  type UpdateLlmProviderRequest,
-} from '@/api-client/types'
+import { type CreateLlmProviderRequest, type UpdateLlmProviderRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const PROVIDER_TYPES = [
   { label: 'Local', value: 'local' },

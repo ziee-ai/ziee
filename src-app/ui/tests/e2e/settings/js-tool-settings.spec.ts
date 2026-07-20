@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 import { loginWithPerms } from '../permissions/fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 import { byTestId } from '../testid'
 
 /**

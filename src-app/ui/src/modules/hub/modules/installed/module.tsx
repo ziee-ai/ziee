@@ -1,6 +1,6 @@
 import { createModule } from '@ziee/framework'
 import { LayoutGrid } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 

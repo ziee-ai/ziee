@@ -1,15 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type LlmProvider as BaseLlmProvider,
-  type CreateLlmModelRequest,
-  type CreateLlmProviderRequest,
-  type DiscoveredModel,
-  type Group,
-  type LlmModel,
-  Permissions,
-  type UpdateLlmModelRequest,
-  type UpdateLlmProviderRequest,
-} from '@/api-client/types'
+import { type LlmProvider as BaseLlmProvider, type CreateLlmModelRequest, type CreateLlmProviderRequest, type DiscoveredModel, type Group, type LlmModel, type UpdateLlmModelRequest, type UpdateLlmProviderRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import {

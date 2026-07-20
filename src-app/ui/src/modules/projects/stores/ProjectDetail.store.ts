@@ -1,9 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type ConversationResponse,
-  Permissions,
-  type Project,
-} from '@/api-client/types'
+import { type ConversationResponse, type Project } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

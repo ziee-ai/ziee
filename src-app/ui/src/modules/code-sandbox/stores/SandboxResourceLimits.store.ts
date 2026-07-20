@@ -1,9 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type CodeSandboxResourceLimits,
-  Permissions,
-  type UpdateCodeSandboxResourceLimits,
-} from '@/api-client/types'
+import { type CodeSandboxResourceLimits, type UpdateCodeSandboxResourceLimits } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

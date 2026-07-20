@@ -1,12 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type DownloadFromRepositoryRequest,
-  type DownloadInstance,
-  type DownloadProgressUpdate,
-  Permissions,
-  type RepositoryFileListResponse,
-  type SSEDownloadProgressConnectedData,
-} from '@/api-client/types'
+import { type DownloadFromRepositoryRequest, type DownloadInstance, type DownloadProgressUpdate, type RepositoryFileListResponse, type SSEDownloadProgressConnectedData } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'

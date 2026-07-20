@@ -1,4 +1,4 @@
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 import { loginWithPerms } from '../permissions/fixtures'
 import { expect, test } from '../permissions/no-403'
 import { byTestId } from '../testid'

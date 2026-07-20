@@ -1,5 +1,5 @@
 import { Server } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
 import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'

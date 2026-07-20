@@ -4,7 +4,7 @@ import { Plug, Pencil } from 'lucide-react'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 /**
  * Widget that displays System MCP Servers assigned to a group.

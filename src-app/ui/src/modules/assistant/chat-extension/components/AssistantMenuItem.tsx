@@ -1,6 +1,6 @@
 import { Popover } from '@ziee/kit'
 import { Bot, ChevronRight } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'

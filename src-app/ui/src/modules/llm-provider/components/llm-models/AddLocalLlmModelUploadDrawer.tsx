@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react'
 import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { formatBytes } from '@/utils/downloadUtils'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
 

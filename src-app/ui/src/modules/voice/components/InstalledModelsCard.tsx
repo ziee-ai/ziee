@@ -1,6 +1,7 @@
 import { RotateCw, Star, Trash2 } from 'lucide-react'
 import { Fragment, useState } from 'react'
-import { Permissions, type VoiceModel } from '@/api-client/types'
+import { type VoiceModel } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { ListPagination } from '@/components/common/ListPagination'
 import {
   Button,

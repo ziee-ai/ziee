@@ -1,10 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type CreateGroupRequest,
-  type Group,
-  Permissions,
-  type UpdateGroupRequest,
-} from '@/api-client/types'
+import { type CreateGroupRequest, type Group, type UpdateGroupRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import {

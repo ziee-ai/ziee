@@ -1,10 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type CreateUserRequest,
-  Permissions,
-  type UpdateUserRequest,
-  type User,
-} from '@/api-client/types'
+import { type CreateUserRequest, type UpdateUserRequest, type User } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import { emitUserCreated, emitUserDeleted, emitUserUpdated } from '@/modules/user/events'

@@ -2,7 +2,7 @@ import { Dropdown, Tooltip, Skeleton } from '@ziee/kit'
 import { LogOut, User } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { useNavigate } from 'react-router-dom'
 
 function SidebarItem({

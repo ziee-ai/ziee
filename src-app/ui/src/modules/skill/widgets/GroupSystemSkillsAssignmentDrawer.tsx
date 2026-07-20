@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Tag } from '@ziee/kit'
 import type { Skill } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'

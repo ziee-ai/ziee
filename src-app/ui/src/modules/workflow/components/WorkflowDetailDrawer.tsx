@@ -13,7 +13,7 @@ import {
 } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useMemo, useState } from 'react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { DryRunPreviewDialog } from './DryRunPreviewDialog'

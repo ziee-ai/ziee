@@ -3,7 +3,8 @@ import { Button, Card, Flex, Spinner, Switch, Tag, Text, Title, message } from '
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type McpServer } from '@/api-client/types'
+import { type McpServer } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 /**
  * Drawer for assigning/removing system MCP servers to/from a group.

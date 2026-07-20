@@ -5,7 +5,7 @@
 // the SAME path so `module.tsx` (and the `types.ts` declaration merge) stay
 // unchanged.
 import { ApiClient } from '@/api-client'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import {
   createNotificationsStore,
   type NotificationApiPort,

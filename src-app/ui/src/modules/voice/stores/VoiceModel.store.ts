@@ -1,9 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  Permissions,
-  type VoiceModel as VoiceModelRow,
-  type VoiceModelStatus,
-} from '@/api-client/types'
+import { type VoiceModel as VoiceModelRow, type VoiceModelStatus } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import { Stores } from '@ziee/framework/stores'

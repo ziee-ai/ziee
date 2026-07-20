@@ -2,7 +2,7 @@ import { Search } from 'lucide-react'
 import { Input, Switch, Textarea, Tree, Text } from '@ziee/kit'
 import type { TreeProps } from '@ziee/kit'
 import { useMemo, useState } from 'react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 // Split out of types.ts so this label map loads only here (the picker), not eagerly.
 import { PermissionDescriptions } from '@/api-client/permissionDescriptions'
 

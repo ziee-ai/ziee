@@ -3,13 +3,8 @@ import { Combobox, Loading, message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import {
-  Permissions,
-  type Assistant,
-  type LlmModel,
-  type Project,
-  type UpdateProjectRequest,
-} from '@/api-client/types'
+import { type Assistant, type LlmModel, type Project, type UpdateProjectRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 interface ProjectDefaultsFormProps {
   project: Project

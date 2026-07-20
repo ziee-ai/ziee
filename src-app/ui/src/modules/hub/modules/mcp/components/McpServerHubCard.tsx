@@ -1,10 +1,7 @@
 import { Card, Tag, Tooltip, Text, Button, Flex, message } from '@ziee/kit'
 import { Download, Globe, GitBranch, Eye, Copy } from 'lucide-react'
-import {
-  Permissions,
-  type HubMCPServer,
-  type TransportType,
-} from '@/api-client/types'
+import { type HubMCPServer, type TransportType } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { useState } from 'react'
 import { McpServerDetailsDrawer } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer'
 import { Stores } from '@ziee/framework/stores'

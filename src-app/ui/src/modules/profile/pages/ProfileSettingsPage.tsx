@@ -19,7 +19,7 @@ import { z } from 'zod'
 import { User } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 

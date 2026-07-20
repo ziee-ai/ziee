@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Button, Card, Confirm, Flex, Tag, Text, Title, Tooltip } from '@ziee/kit'
 import { Pencil, Trash2 } from 'lucide-react'
 import { usePermission } from '@/core/permissions'
-import { type KnowledgeBase, Permissions } from '@/api-client/types'
+import { type KnowledgeBase } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { cn } from '@/lib/utils'
 
 interface Props {

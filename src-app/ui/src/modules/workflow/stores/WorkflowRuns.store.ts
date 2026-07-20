@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api-client'
-import { Permissions, type WorkflowRunSummary } from '@/api-client/types'
+import { type WorkflowRunSummary } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

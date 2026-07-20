@@ -1,6 +1,7 @@
 import { Bot, Eye, Copy } from 'lucide-react'
 import { Card, Tag, Button, Flex, Text, message } from '@ziee/kit'
-import { Permissions, type HubAssistant } from '@/api-client/types'
+import { type HubAssistant } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { useState } from 'react'
 import { AssistantDetailsDrawer } from '@/modules/hub/modules/assistants/components/AssistantDetailsDrawer'
 import { Stores } from '@ziee/framework/stores'

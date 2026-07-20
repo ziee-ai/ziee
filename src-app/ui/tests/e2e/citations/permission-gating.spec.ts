@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginWithPerms } from '../permissions/fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 import { byTestId } from '../testid'
 
 /**

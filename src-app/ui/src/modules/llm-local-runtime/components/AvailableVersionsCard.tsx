@@ -15,7 +15,7 @@ import {
 } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import type { DownloadSnapshot, GpuDetectionResponse } from '@/api-client/types'
 import type { RuntimeAvailableVersion, RuntimeEngine } from '../types'
 import { HoverRow, formatBytes } from './_engineVersionsShared'

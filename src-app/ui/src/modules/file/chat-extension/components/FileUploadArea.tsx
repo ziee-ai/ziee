@@ -9,7 +9,7 @@ import {
   MAX_FILE_UPLOAD_LABEL,
 } from '@/modules/file/constants'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 /**
  * FileUploadArea Component

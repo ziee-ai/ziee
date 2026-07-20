@@ -1,5 +1,5 @@
 import { createModule } from '@ziee/framework'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { History, Plus } from 'lucide-react'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

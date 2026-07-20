@@ -2,7 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import type { Page, Locator } from '@playwright/test'
 import { loginAsAdmin, getCurrentUserToken } from '../../common/auth-helpers'
 import { loginWithPerms } from '../permissions/fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 import { byTestId } from '../testid.ts'
 import {
   gotoRuntimeSettings,

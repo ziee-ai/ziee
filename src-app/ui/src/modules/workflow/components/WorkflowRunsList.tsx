@@ -2,7 +2,7 @@ import { Trash2 } from 'lucide-react'
 import { Button, Empty, List, Confirm, Space, Tag, Text, Link, message } from '@ziee/kit'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 

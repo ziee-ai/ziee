@@ -1,6 +1,6 @@
 import { Server } from 'lucide-react'
 import { createModule } from '@ziee/framework'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { useModelDetailsDrawerStore } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

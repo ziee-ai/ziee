@@ -1,10 +1,7 @@
 import { Download, RotateCw, Upload as UploadIcon } from 'lucide-react'
 import { useState } from 'react'
-import {
-  Permissions,
-  type SnapshotDto,
-  type VoiceCatalogModel,
-} from '@/api-client/types'
+import { type SnapshotDto, type VoiceCatalogModel } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { ListPagination } from '@/components/common/ListPagination'
 import {
   Button,

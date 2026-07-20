@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { getCurrentUserToken } from '../../common/auth-helpers'
 import { loginWithPerms } from '../permissions/fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 import { byTestId } from '../testid'
 
 // TEST-49 (ITEM-34, restricted-user / A10): a user LACKING knowledge_base::use

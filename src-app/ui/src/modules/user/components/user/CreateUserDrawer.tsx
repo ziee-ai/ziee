@@ -5,7 +5,7 @@ import { Stores } from '@ziee/framework/stores'
 import { Users } from '@/modules/user/stores/Users.store'
 import { usePermission } from '@/core/permissions'
 import type { CreateUserRequest } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
 import { EMAIL_RE } from '@/lib/validation'
 

@@ -1,6 +1,6 @@
 import { Upload as UploadIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import {
   Button,
   Card,

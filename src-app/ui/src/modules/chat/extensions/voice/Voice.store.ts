@@ -1,6 +1,7 @@
 import { message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
-import { Permissions, type VoiceCapability } from '@/api-client/types'
+import { type VoiceCapability } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { defineExtensionStore } from '@/modules/chat/core/extensions'

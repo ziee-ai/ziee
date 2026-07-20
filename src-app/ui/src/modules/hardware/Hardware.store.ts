@@ -1,5 +1,5 @@
 import { ApiClient } from '@/api-client'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import type {
   HardwareInfo,

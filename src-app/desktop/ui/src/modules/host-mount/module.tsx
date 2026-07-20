@@ -15,7 +15,7 @@ import { lazy } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { createModule, type AppModule } from '@ziee/ui-core'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 import { useProjectHostMountsStore } from './project-extension/stores/ProjectHostMounts.store'
 import { useConversationHostMountsStore } from './conversation-extension/stores/ConversationHostMounts.store'

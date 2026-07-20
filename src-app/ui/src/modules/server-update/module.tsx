@@ -4,7 +4,7 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { useServerUpdateStore } from '@/modules/server-update/stores/ServerUpdate.store'
 import { ServerUpdateBanner } from '@/modules/server-update/ServerUpdateBanner'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import '@/modules/layouts/app-layout/types' // Register the appBanners slot type
 

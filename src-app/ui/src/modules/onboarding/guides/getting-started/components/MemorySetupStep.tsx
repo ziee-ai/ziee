@@ -16,7 +16,7 @@ import { Lightbulb, Info, ArrowLeft, RotateCw, Plus } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 /**
  * MemorySetupStep — Plan §8 two-screen flow.

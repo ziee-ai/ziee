@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { ApiClient } from '@/api-client'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'

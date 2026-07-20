@@ -1,7 +1,7 @@
 import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
 import { Plug } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
 import { useMcpServerDetailsDrawerStore } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer.store'

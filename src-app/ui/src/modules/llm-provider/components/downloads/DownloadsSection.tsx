@@ -2,7 +2,8 @@ import { Card } from '@ziee/kit'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type DownloadInstance } from '@/api-client/types'
+import { type DownloadInstance } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 interface DownloadsSectionProps {
   providerId: string

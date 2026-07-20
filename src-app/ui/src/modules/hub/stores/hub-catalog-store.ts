@@ -5,7 +5,7 @@ import type {
   HubCategory,
   IndexItem,
 } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'

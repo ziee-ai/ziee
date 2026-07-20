@@ -12,7 +12,8 @@ import {
   message,
   useForm,
 } from '@ziee/kit'
-import { Permissions, type UpdateLitSearchSettingsRequest } from '@/api-client/types'
+import { type UpdateLitSearchSettingsRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Stores } from '@ziee/framework/stores'

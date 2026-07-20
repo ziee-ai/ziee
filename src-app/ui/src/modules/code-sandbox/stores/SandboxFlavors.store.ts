@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api-client'
-import { type EnvironmentInfo, Permissions } from '@/api-client/types'
+import { type EnvironmentInfo } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import type { StoreProxy } from '@ziee/framework/stores'

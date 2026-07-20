@@ -1,13 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type CreateScheduledTask,
-  Permissions,
-  type ScheduledTask,
-  type ScheduledTaskRun,
-  type TestFireRequest,
-  type TestFireResult,
-  type UpdateScheduledTask,
-} from '@/api-client/types'
+import { type CreateScheduledTask, type ScheduledTask, type ScheduledTaskRun, type TestFireRequest, type TestFireResult, type UpdateScheduledTask } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

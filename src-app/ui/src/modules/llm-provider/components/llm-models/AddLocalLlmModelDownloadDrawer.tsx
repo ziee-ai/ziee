@@ -16,12 +16,8 @@ import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
-import {
-  Permissions,
-  type FileFormat,
-  type EngineType,
-  type RepositoryFileListResponse,
-} from '@/api-client/types'
+import { type FileFormat, type EngineType, type RepositoryFileListResponse } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const formatForShape = (shape: string): FileFormat | undefined => {
   if (shape === 'gguf') return 'gguf'

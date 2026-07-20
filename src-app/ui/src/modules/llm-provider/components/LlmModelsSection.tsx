@@ -18,7 +18,8 @@ import { useState } from 'react'
 import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type LlmModel } from '@/api-client/types'
+import { type LlmModel } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 export function LlmModelsSection() {
   const { providerId } = useParams<{ providerId?: string }>()

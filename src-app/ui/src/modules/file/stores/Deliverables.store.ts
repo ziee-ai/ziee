@@ -1,6 +1,7 @@
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import { type File as FileEntity, Permissions } from '@/api-client/types'
+import { type File as FileEntity } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

@@ -1,13 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type CreateMcpServerRequest,
-  type McpServer,
-  type McpServerWithHealthWarning,
-  Permissions,
-  type TestMcpConnectionRequest,
-  type TestMcpConnectionResponse,
-  type UpdateMcpServerRequest,
-} from '@/api-client/types'
+import { type CreateMcpServerRequest, type McpServer, type McpServerWithHealthWarning, type TestMcpConnectionRequest, type TestMcpConnectionResponse, type UpdateMcpServerRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import {

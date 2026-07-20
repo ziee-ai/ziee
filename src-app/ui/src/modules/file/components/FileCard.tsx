@@ -8,7 +8,8 @@ import {
 import { Confirm } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type File as FileEntity } from '@/api-client/types'
+import { type File as FileEntity } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import type { FileUploadProgress } from '@/modules/file/stores/File.store'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 

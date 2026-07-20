@@ -1,7 +1,7 @@
 import { Button, message } from '@ziee/kit'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { Seam } from '@ziee/framework/overrides'
 
 /**

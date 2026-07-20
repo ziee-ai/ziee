@@ -14,7 +14,7 @@ import {
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const schema = z.object({
   idle_unload_secs: z.number().min(0).max(86400),

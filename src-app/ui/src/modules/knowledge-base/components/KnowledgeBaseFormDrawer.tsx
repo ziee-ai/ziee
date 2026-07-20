@@ -14,7 +14,8 @@ import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { type KnowledgeBase, Permissions } from '@/api-client/types'
+import { type KnowledgeBase } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 interface Values {
   name: string

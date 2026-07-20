@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginWithPerms } from '../permissions/fixtures'
 import { byTestId } from '../testid'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 
 /**
  * E2E — `hardware::monitor` permission gating of the live-monitoring controls.

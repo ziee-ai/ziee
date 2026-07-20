@@ -5,7 +5,7 @@ import { useHardwareStore } from '@/modules/hardware/Hardware.store'
 import '@/modules/hardware/types'
 import { BlankLayout } from '@/modules/layouts/blank' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const HardwareSettings = lazyWithPreload(() => import('./HardwareSettings'))

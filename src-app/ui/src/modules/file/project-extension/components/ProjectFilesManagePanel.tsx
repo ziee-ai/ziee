@@ -24,7 +24,7 @@ import {
 } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE } from '@/modules/file/constants'
 

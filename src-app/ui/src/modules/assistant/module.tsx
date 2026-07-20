@@ -8,7 +8,7 @@ import {
 } from '@/modules/assistant/stores'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/assistant/types'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 

@@ -10,7 +10,7 @@ import {
   message,
   useForm,
 } from '@ziee/kit'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'

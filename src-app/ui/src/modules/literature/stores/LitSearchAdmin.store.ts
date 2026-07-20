@@ -1,11 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type ConnectorCatalogEntry,
-  type LitSearchSettings,
-  Permissions,
-  type UpdateConnectorRequest,
-  type UpdateLitSearchSettingsRequest,
-} from '@/api-client/types'
+import { type ConnectorCatalogEntry, type LitSearchSettings, type UpdateConnectorRequest, type UpdateLitSearchSettingsRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

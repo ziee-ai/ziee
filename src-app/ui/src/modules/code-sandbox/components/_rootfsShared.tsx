@@ -1,11 +1,6 @@
 import { Button, Tooltip } from '@ziee/kit'
-import {
-  Permissions,
-  type DrainEntry,
-  type InstallTaskState,
-  type RootfsArtifact,
-  type RootfsRelease,
-} from '@/api-client/types'
+import { type DrainEntry, type InstallTaskState, type RootfsArtifact, type RootfsRelease } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 // ---------------------------------------------------------------------------
 // Shared constants + pure helpers + view-model for the rootfs-versions section.

@@ -1,9 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  Permissions,
-  type DownloadSnapshot2,
-  type DownloadVersionRequest2,
-} from '@/api-client/types'
+import { type DownloadSnapshot2, type DownloadVersionRequest2 } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import { Stores } from '@ziee/framework/stores'

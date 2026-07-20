@@ -4,7 +4,8 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
 import { Users } from '@/modules/user/stores/Users.store'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type UpdateUserRequest } from '@/api-client/types'
+import { type UpdateUserRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { useEffect } from 'react'
 
 const editUserSchema = z.object({

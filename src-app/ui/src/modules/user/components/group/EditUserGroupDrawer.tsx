@@ -4,7 +4,8 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type UpdateGroupRequest } from '@/api-client/types'
+import { type UpdateGroupRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
 
 const editUserGroupSchema = z.object({

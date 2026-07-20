@@ -1,12 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type CreateLlmRepositoryRequest,
-  type LlmRepository,
-  type LlmRepositoryWithHealthWarning,
-  Permissions,
-  type TestRepositoryConnectionRequest,
-  type UpdateLlmRepositoryRequest,
-} from '@/api-client/types'
+import { type CreateLlmRepositoryRequest, type LlmRepository, type LlmRepositoryWithHealthWarning, type TestRepositoryConnectionRequest, type UpdateLlmRepositoryRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import { useAuthStore } from '@/modules/auth/Auth.store'

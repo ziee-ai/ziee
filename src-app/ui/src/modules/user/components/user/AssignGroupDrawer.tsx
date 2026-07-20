@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const assignGroupSchema = z.object({
   group_ids: z.array(z.string()).min(1, 'Please select at least one group'),

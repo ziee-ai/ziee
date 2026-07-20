@@ -1,5 +1,5 @@
 import { Library } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import {

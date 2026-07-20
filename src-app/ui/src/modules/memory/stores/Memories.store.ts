@@ -5,7 +5,7 @@ import type {
   UpdateMemoryRequest,
   UserMemory,
 } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import {

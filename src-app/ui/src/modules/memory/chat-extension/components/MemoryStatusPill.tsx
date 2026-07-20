@@ -4,7 +4,7 @@ import { message } from '@ziee/kit'
 import { EyeOff, Lightbulb } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 
 type Mode = 'inherit' | 'on' | 'off'

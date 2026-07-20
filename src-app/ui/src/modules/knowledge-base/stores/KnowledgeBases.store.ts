@@ -1,11 +1,7 @@
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import {
-  type CreateKnowledgeBaseRequest,
-  type KnowledgeBase,
-  Permissions,
-  type UpdateKnowledgeBaseRequest,
-} from '@/api-client/types'
+import { type CreateKnowledgeBaseRequest, type KnowledgeBase, type UpdateKnowledgeBaseRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

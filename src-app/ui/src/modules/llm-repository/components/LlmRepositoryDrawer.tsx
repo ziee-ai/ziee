@@ -20,11 +20,8 @@ import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import {
-  Permissions,
-  type CreateLlmRepositoryRequest,
-  type UpdateLlmRepositoryRequest,
-} from '@/api-client/types'
+import { type CreateLlmRepositoryRequest, type UpdateLlmRepositoryRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const schema = z.object({
   name: z.string().min(1, 'Please enter a repository name'),

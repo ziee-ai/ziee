@@ -2,7 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import { loginWithPerms } from '../permissions/fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 import { byTestId } from '../testid.ts'
 import {
   assertAdminSkillsEmptyState,

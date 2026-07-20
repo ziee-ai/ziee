@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api-client'
-import { type HubMCPServer, type McpServer, Permissions } from '@/api-client/types'
+import { type HubMCPServer, type McpServer } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import { createStoreProxy } from '@ziee/framework/stores'

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Card, Empty, ErrorState, Combobox, Spin, Paragraph } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { CoreMemoryBlocksEditor } from '@/modules/memory/components/CoreMemoryBlocksEditor'
 
 const READ_PERM = Permissions.CoreMemoryRead

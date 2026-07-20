@@ -1,5 +1,5 @@
 import { Brain } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

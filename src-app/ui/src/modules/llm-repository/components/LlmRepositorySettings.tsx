@@ -18,7 +18,8 @@ import {
 import { Stores } from '@ziee/framework/stores'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
-import { Permissions, type LlmRepository } from '@/api-client/types'
+import { type LlmRepository } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 
 export function LlmRepositorySettings() {

@@ -1,4 +1,5 @@
-import { Permissions, type Group } from '@/api-client/types'
+import { type Group } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'

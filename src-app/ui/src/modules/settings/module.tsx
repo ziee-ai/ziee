@@ -1,6 +1,6 @@
 import { createModule } from '@ziee/framework'
 import { Settings as SettingsIcon } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { SettingsLayoutDef } from './SettingsLayout'
 
 // Bare /settings renders no content of its own — SettingsPage (provided by the

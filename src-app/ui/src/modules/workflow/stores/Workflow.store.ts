@@ -1,12 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type DryRunResult,
-  Permissions,
-  type TestRunResponse,
-  type ValidateWorkflowResponse,
-  type Workflow,
-  type WorkflowRunStartResponse,
-} from '@/api-client/types'
+import { type DryRunResult, type TestRunResponse, type ValidateWorkflowResponse, type Workflow, type WorkflowRunStartResponse } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 

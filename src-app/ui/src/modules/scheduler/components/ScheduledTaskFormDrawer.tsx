@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { z } from 'zod'
 
 import type { CreateScheduledTask, TestFireResult } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import {
   Alert,
   Button,

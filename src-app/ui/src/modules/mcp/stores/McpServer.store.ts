@@ -1,17 +1,7 @@
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import {
-  type CreateMcpServerRequest,
-  type McpServer,
-  type McpServerOAuthConfigResponse,
-  type McpServerWithHealthWarning,
-  Permissions,
-  type SandboxFlavorsResponse,
-  type SetMcpServerOAuthConfigRequest,
-  type TestMcpConnectionRequest,
-  type TestMcpConnectionResponse,
-  type UpdateMcpServerRequest,
-} from '@/api-client/types'
+import { type CreateMcpServerRequest, type McpServer, type McpServerOAuthConfigResponse, type McpServerWithHealthWarning, type SandboxFlavorsResponse, type SetMcpServerOAuthConfigRequest, type TestMcpConnectionRequest, type TestMcpConnectionResponse, type UpdateMcpServerRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import {

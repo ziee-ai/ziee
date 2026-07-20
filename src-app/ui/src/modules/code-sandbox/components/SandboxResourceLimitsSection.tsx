@@ -18,11 +18,8 @@ import { z } from 'zod'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import {
-  Permissions,
-  type CodeSandboxResourceLimits,
-  type UpdateCodeSandboxResourceLimits,
-} from '@/api-client/types'
+import { type CodeSandboxResourceLimits, type UpdateCodeSandboxResourceLimits } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const MANAGE_PERM = Permissions.CodeSandboxResourceLimitsManage
 const READ_PERM = Permissions.CodeSandboxResourceLimitsRead

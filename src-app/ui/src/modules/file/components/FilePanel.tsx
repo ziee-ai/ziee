@@ -14,7 +14,7 @@ import { DeliverablePinButton } from '@/modules/file/components/DeliverablePinBu
 import { editableKind } from '@/modules/file/utils/editableTypes'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 /** Hard cap on previewable file size — the SINGLE outer OOM backstop that
  *  prevents even fetching a pathological file. Files above this never trigger a

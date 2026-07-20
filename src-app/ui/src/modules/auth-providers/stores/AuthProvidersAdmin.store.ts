@@ -1,11 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type AuthProviderResponse,
-  type CreateAuthProviderRequest,
-  Permissions,
-  type TestProviderResponse,
-  type UpdateAuthProviderRequest,
-} from '@/api-client/types'
+import { type AuthProviderResponse, type CreateAuthProviderRequest, type TestProviderResponse, type UpdateAuthProviderRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import {

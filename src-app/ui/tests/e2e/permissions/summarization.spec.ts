@@ -12,7 +12,7 @@
  */
 import { test, expect } from './no-403'
 import { loginAsMember, loginWithPerms } from './fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 import { byTestId } from '../testid'
 
 test.describe('summarization-admin — permission gating', () => {

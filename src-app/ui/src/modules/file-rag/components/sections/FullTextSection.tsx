@@ -15,7 +15,7 @@ import { Stores } from '@ziee/framework/stores'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage

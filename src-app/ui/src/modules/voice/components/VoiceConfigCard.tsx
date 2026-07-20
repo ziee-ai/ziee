@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { z } from 'zod'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import {
   Alert,
   Card,

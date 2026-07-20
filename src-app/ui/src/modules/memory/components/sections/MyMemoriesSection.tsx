@@ -41,7 +41,7 @@ import {
 import { Stores } from '@ziee/framework/stores'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import type { UserMemory } from '@/api-client/types'
 
 const READ_PERM = Permissions.MemoryRead

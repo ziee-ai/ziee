@@ -5,7 +5,7 @@
 // auto-discovery glob and a direct import from citations/module.tsx.
 
 import { Book } from 'lucide-react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { projectExtensionRegistry } from '@/modules/projects/core/extensions'
 import { ProjectBibliographyInlinePreview } from './components/ProjectBibliographyInlinePreview'
 import { ProjectBibliographyManagePanel } from './components/ProjectBibliographyManagePanel'

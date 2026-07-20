@@ -1,4 +1,5 @@
-import { Permissions, type LlmProvider } from '@/api-client/types'
+import { type LlmProvider } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineLocalStore } from '@ziee/framework/store-kit'

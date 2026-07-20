@@ -1,18 +1,6 @@
 import { ApiClient } from '@/api-client'
-import {
-  type DrainEntry,
-  type InstallTaskState,
-  Permissions,
-  type RootfsArtifact,
-  type RootfsRelease,
-  type SandboxAvailability,
-  type SSEInstallCompleteData,
-  type SSEInstallConnectedData,
-  type SSEInstallFailedData,
-  type SSEInstallProgressData,
-  type SwapOutcome,
-  type VersionStatus,
-} from '@/api-client/types'
+import { type DrainEntry, type InstallTaskState, type RootfsArtifact, type RootfsRelease, type SandboxAvailability, type SSEInstallCompleteData, type SSEInstallConnectedData, type SSEInstallFailedData, type SSEInstallProgressData, type SwapOutcome, type VersionStatus } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import { reconcileInitialTask } from './installTaskReconcile'

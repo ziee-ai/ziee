@@ -22,7 +22,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
-import { Permissions, type LlmProvider } from '@/api-client/types'
+import { type LlmProvider } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const nameSchema = z.object({
   name: z.string().min(1, 'Name is required'),

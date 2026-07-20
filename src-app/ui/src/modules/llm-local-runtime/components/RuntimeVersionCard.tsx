@@ -13,7 +13,8 @@ import { Trash2, Star } from 'lucide-react'
 
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type RuntimeVersionResponse } from '@/api-client/types'
+import { type RuntimeVersionResponse } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 interface Props {
   version: RuntimeVersionResponse

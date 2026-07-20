@@ -21,17 +21,8 @@ import { McpToolCallsTab } from '@/modules/mcp/components/common/McpToolCallsTab
 import { useEffect, useMemo, useState } from 'react'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import {
-  Permissions,
-  type CreateMcpServerRequest,
-  type UpdateMcpServerRequest,
-  type TestMcpConnectionRequest,
-  type McpServer,
-  type EnvVarEntry,
-  type HeaderEntry,
-  type UsageMode,
-  type TransportType,
-} from '@/api-client/types'
+import { type CreateMcpServerRequest, type UpdateMcpServerRequest, type TestMcpConnectionRequest, type McpServer, type EnvVarEntry, type HeaderEntry, type UsageMode, type TransportType } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { KeyValueSecretEditor } from '@/modules/mcp/components/common/KeyValueSecretEditor'
 
 /// Form-state row shape for env vars and HTTP headers in this drawer.

@@ -5,7 +5,7 @@ import {
   login,
   loginAsAdmin,
 } from '../../common/auth-helpers'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 
 /**
  * Permission-scoped test-user helpers.

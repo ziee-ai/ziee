@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import {
   Alert,
   Button,

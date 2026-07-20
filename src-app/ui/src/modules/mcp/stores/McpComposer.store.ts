@@ -1,6 +1,7 @@
 import { enableMapSet } from 'immer'
 import { defineStore } from '@ziee/framework/store-kit'
-import { Permissions, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
+import { type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
 import {

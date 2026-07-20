@@ -17,7 +17,8 @@ import {
 } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions, type RuntimeVersionResponse2 } from '@/api-client/types'
+import { type RuntimeVersionResponse2 } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 /**
  * Installed whisper runtimes. Each row shows the version metadata plus

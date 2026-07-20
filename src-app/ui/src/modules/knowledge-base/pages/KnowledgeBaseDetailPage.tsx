@@ -18,7 +18,7 @@ import {
 } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { KnowledgeBaseDocumentsPanel } from '@/modules/knowledge-base/components/KnowledgeBaseDocumentsPanel'

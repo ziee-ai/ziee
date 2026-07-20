@@ -22,7 +22,7 @@ import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 const MIB = 1024 * 1024
 

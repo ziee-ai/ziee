@@ -1,6 +1,6 @@
 import { Bot } from 'lucide-react'
 import { createModule } from '@ziee/framework'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/assistants/types'

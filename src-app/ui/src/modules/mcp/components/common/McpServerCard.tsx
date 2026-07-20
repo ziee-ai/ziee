@@ -4,11 +4,8 @@ import { Pencil, Trash2, Plug } from 'lucide-react'
 import { message } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import {
-  Permissions,
-  type McpServer,
-  type TestMcpConnectionRequest,
-} from '@/api-client/types'
+import { type McpServer, type TestMcpConnectionRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 // System and user MCP servers gate on different permission namespaces.
 // `server.is_system` selects which set applies at render time. `test` maps to

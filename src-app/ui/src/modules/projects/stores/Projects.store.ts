@@ -1,12 +1,7 @@
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import {
-  type ConversationResponse,
-  type CreateProjectRequest,
-  Permissions,
-  type Project,
-  type UpdateProjectRequest,
-} from '@/api-client/types'
+import { type ConversationResponse, type CreateProjectRequest, type Project, type UpdateProjectRequest } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
 import {

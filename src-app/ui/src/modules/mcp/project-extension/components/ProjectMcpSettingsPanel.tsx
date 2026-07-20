@@ -2,11 +2,8 @@ import { Button, Card, Empty, Skeleton, Space, Tag, Text } from '@ziee/kit'
 import { Pencil } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
-import {
-  Permissions,
-  type AutoApprovedServer,
-  type DisabledServer,
-} from '@/api-client/types'
+import { type AutoApprovedServer, type DisabledServer } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
 
 /**

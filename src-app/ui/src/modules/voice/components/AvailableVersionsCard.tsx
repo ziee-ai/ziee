@@ -15,11 +15,8 @@ import {
 } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
-import {
-  Permissions,
-  type AvailableVersion2,
-  type DownloadSnapshot2,
-} from '@/api-client/types'
+import { type AvailableVersion2, type DownloadSnapshot2 } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 /** Human-readable byte sizes. */
 function formatBytes(n: number): string {

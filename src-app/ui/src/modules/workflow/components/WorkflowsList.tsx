@@ -1,7 +1,7 @@
 import { Import as ImportIcon, Workflow as WorkflowIcon } from 'lucide-react'
 import { Button, Card, Empty, ErrorState, Flex, Text } from '@ziee/kit'
 import { useState } from 'react'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { Can } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'

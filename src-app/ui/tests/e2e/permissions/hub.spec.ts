@@ -1,6 +1,6 @@
 import { test, expect } from './no-403'
 import { loginAsHubMcpOnly, loginAsMember, loginWithPerms } from './fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 import { byTestId } from '../testid'
 
 test.describe('hub module — permission gating', () => {

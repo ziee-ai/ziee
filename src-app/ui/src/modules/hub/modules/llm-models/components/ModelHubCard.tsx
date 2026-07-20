@@ -12,14 +12,8 @@ import {
   dialog,
 } from '@ziee/kit'
 import { formatSpeed, formatTime } from '@/utils/downloadUtils'
-import {
-  Permissions,
-  type DownloadInstance,
-  type HubLocalProvider,
-  type HubModel,
-  type ModelQuantization,
-  type ModelSource,
-} from '@/api-client/types'
+import { type DownloadInstance, type HubLocalProvider, type HubModel, type ModelQuantization, type ModelSource } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { useState } from 'react'
 import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
 import { Stores } from '@ziee/framework/stores'

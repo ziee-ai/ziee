@@ -15,7 +15,7 @@ import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/modules/assistant/stores'
 import { usePermission } from '@/core/permissions'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 
 // Template assistants vs user assistants gate on different permission
 // namespaces. `isTemplate` selects which set applies at render time.

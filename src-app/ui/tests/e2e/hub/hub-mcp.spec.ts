@@ -8,7 +8,7 @@ import {
   getMcpCardStatus,
 } from './helpers/hub-mcp'
 import { loginWithPerms } from '../permissions/fixtures'
-import { Permissions } from '../../../src/api-client/types'
+import { Permissions } from '../../../src/api-client/permissions'
 
 // A seeded hub MCP server with HTTP transport. User-scope ("install for me")
 // stdio installs are gated by code_sandbox (disabled in the test env), so the

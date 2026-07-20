@@ -3,7 +3,7 @@
  * ApiClient.ServerUpdate.getStatus() — notification only, no download/install.
  */
 import { ApiClient } from '@/api-client'
-import { Permissions } from '@/api-client/types'
+import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { type StoreProxy } from '@ziee/framework/stores'
 import { defineStore } from '@ziee/framework/store-kit'
