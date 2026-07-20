@@ -384,12 +384,36 @@ impl EventSink for WorkflowEventSink {
             AgentEvent::HistoryReplaced { summary_upto } => {
                 self.push_line(format!("context compacted ({summary_upto} messages summarized)"));
             }
+            // The agent's task list changed (ITEM-36 / DEC-56). The workflow run
+            // has no dedicated checklist surface (the inline `TaskListChecklist`
+            // is the CHAT host's job), so — per DEC-56's "per-run progress track"
+            // — we roll the full list up to ONE compact log line on the existing
+            // "agent" track (mirroring the `HistoryReplaced` line above) rather
+            // than streaming a rich frame. The line shows done/total plus the
+            // active item's present-continuous `active_form`.
+            AgentEvent::TaskListChanged { items, .. } => {
+                let total = items.len();
+                let completed = items
+                    .iter()
+                    .filter(|t| t.status == agent_core::TaskStatus::Completed)
+                    .count();
+                match items
+                    .iter()
+                    .find(|t| t.status == agent_core::TaskStatus::InProgress)
+                {
+                    Some(active) => self.push_line(format!(
+                        "tasks: {completed}/{total} — {}",
+                        active.active_form
+                    )),
+                    None => self.push_line(format!("tasks: {completed}/{total}")),
+                }
+            }
             // ContentDelta is the chat host's live token stream; the workflow
             // host surfaces only the finalized `Message`, so it's ignored here.
             AgentEvent::ContentDelta(_) => {}
             // Usage / GateOpened / Stopped are handled by the dispatcher's
             // result-folding + the gate's own ElicitationRequired emit.
-            AgentEvent::Usage(_) | AgentEvent::GateOpened(_) | AgentEvent::Stopped(_) | AgentEvent::TaskListChanged { .. } => {}
+            AgentEvent::Usage(_) | AgentEvent::GateOpened(_) | AgentEvent::Stopped(_) => {}
         }
     }
 }

@@ -175,6 +175,72 @@ pub struct SSEChatStreamErrorData {
     pub code: Option<String>,
 }
 
+/// The lifecycle status of one agent task-list item on the wire (ITEM-36 /
+/// DEC-54). A thin server-side mirror of `agent_core::TaskStatus` — kept
+/// separate so it can `#[derive(schemars::JsonSchema)]` (agent-core's enum
+/// deliberately does not depend on schemars) and so the crate boundary stays
+/// clean. Snake-case on the wire so `in_progress` reaches the FE
+/// `TaskItemStatus` union (`pending | in_progress | completed`) unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskListItemStatus {
+    Pending,
+    InProgress,
+    Completed,
+}
+
+impl From<agent_core::TaskStatus> for TaskListItemStatus {
+    fn from(s: agent_core::TaskStatus) -> Self {
+        match s {
+            agent_core::TaskStatus::Pending => Self::Pending,
+            agent_core::TaskStatus::InProgress => Self::InProgress,
+            agent_core::TaskStatus::Completed => Self::Completed,
+        }
+    }
+}
+
+/// One agent task-list item on the wire (ITEM-36 / DEC-54) — the server-side DTO
+/// mirror of `agent_core::TaskItem`. `content` is the imperative form
+/// ("Run tests"); `active_form` the present-continuous form ("Running tests")
+/// the FE emphasises while the item is `in_progress`. A thin DTO (with a
+/// `From<agent_core::TaskItem>`) rather than putting the agent-core type on the
+/// wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.
+/// Fields are snake_case to match the FE `TaskItemVM` (`agentActivity.ts`).
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct TaskListItemDto {
+    pub id: Uuid,
+    pub content: String,
+    pub active_form: String,
+    pub status: TaskListItemStatus,
+}
+
+impl From<agent_core::TaskItem> for TaskListItemDto {
+    fn from(t: agent_core::TaskItem) -> Self {
+        Self {
+            id: t.id,
+            content: t.content,
+            active_form: t.active_form,
+            status: t.status.into(),
+        }
+    }
+}
+
+/// Data for the `taskListChanged` SSE event (ITEM-36 / DEC-56). Emitted live
+/// during the turn each time the agent's `task_*` core tools mutate the durable
+/// list, carrying the FULL current list (small) so a surface — the chat
+/// `TaskListChecklist` — re-renders in place without a refetch. Mirrors the
+/// `mcpToolProgress` live side-channel event (routed via `publish_raw_event`,
+/// not the replay-buffered generation frames). The `run_id` keys the run-scoped
+/// surfaces; the chat FE additionally attaches it to the in-flight assistant
+/// message it is currently streaming.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct SSEChatStreamTaskListChangedData {
+    /// The agent run whose task list changed.
+    pub run_id: Uuid,
+    /// The full current task list (idempotent snapshot; not a delta).
+    pub items: Vec<TaskListItemDto>,
+}
+
 /// SSE event enum for chat streaming
 ///
 /// This enum represents all possible Server-Sent Events that can be streamed
@@ -206,6 +272,13 @@ pub enum SSEChatStreamEvent {
 
     /// Error event
     Error(SSEChatStreamErrorData),
+
+    /// The agent's live task list changed (ITEM-36 / DEC-56) — carries the full
+    /// current list so the `TaskListChecklist` re-renders in place. A CORE
+    /// variant (not an extension `SSEChatStreamEventVariants` one) because the
+    /// agent-core loop, not a chat extension, is its source (`event_sink.rs`
+    /// maps `AgentEvent::TaskListChanged` here).
+    TaskListChanged(SSEChatStreamTaskListChangedData),
 }
 
 // Generic implementation that works for all variants (including extension-added ones)
@@ -225,6 +298,7 @@ impl SSEChatStreamEvent {
             "Content" => "content",
             "Complete" => "complete",
             "Error" => "error",
+            "TaskListChanged" => "taskListChanged",
             // Extension variants: convert PascalCase to camelCase dynamically
             _ => {
                 // Convert first character to lowercase for camelCase
@@ -283,5 +357,69 @@ mod compose_guard {
         let _ = SSEChatStreamEvent::RunJsApprovalRequired;
         // chat-internal extension variant.
         let _ = SSEChatStreamEvent::TitleUpdated;
+        // ITEM-36 core variant (declared inline, not codegen'd — so it can't be
+        // dropped by stale codegen, but keep it named here for symmetry).
+        let _ = SSEChatStreamEvent::TaskListChanged;
+    }
+}
+
+#[cfg(test)]
+mod tasklist_frame {
+    //! ITEM-36 / DEC-56 wire contract: the `taskListChanged` SSE frame the FE
+    //! `TaskListChecklist` renders. Asserts the `agent_core::TaskItem` → wire
+    //! DTO conversion preserves every field, and that the composed frame
+    //! serializes to the exact shape the FE adapter (`taskItemsFromFrame`)
+    //! reads — internally `type`-tagged, snake_case `run_id` / `active_form`,
+    //! and the snake_case status token (`in_progress`).
+    use super::{
+        SSEChatStreamEvent, SSEChatStreamTaskListChangedData, TaskListItemDto,
+    };
+    use uuid::Uuid;
+
+    #[test]
+    fn task_item_converts_and_frame_serializes_to_fe_shape() {
+        let run_id = Uuid::from_u128(0xABCD);
+        let item_id = Uuid::from_u128(1);
+        let core_items = vec![
+            agent_core::TaskItem {
+                id: item_id,
+                content: "Run tests".into(),
+                active_form: "Running tests".into(),
+                status: agent_core::TaskStatus::InProgress,
+                owner: Some("planner".into()),
+                deps: vec![Uuid::from_u128(2)],
+            },
+            agent_core::TaskItem {
+                id: Uuid::from_u128(3),
+                content: "Write report".into(),
+                active_form: "Writing report".into(),
+                status: agent_core::TaskStatus::Pending,
+                owner: None,
+                deps: vec![],
+            },
+        ];
+
+        let data = SSEChatStreamTaskListChangedData {
+            run_id,
+            items: core_items.into_iter().map(TaskListItemDto::from).collect(),
+        };
+
+        // Conversion preserved every wire field.
+        assert_eq!(data.items.len(), 2);
+        assert_eq!(data.items[0].id, item_id);
+        assert_eq!(data.items[0].content, "Run tests");
+        assert_eq!(data.items[0].active_form, "Running tests");
+
+        let ev = SSEChatStreamEvent::TaskListChanged(data);
+        assert_eq!(ev.event_name(), "taskListChanged");
+
+        let v: serde_json::Value = serde_json::from_str(&ev.data().unwrap()).unwrap();
+        assert_eq!(v["type"], "taskListChanged");
+        assert_eq!(v["run_id"].as_str(), Some(run_id.to_string().as_str()));
+        assert_eq!(v["items"].as_array().map(|a| a.len()), Some(2));
+        assert_eq!(v["items"][0]["content"], "Run tests");
+        assert_eq!(v["items"][0]["active_form"], "Running tests");
+        assert_eq!(v["items"][0]["status"], "in_progress");
+        assert_eq!(v["items"][1]["status"], "pending");
     }
 }

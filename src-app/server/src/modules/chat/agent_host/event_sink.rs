@@ -60,7 +60,8 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::modules::chat::core::types::streaming::{
-    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, Usage,
+    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, SSEChatStreamTaskListChangedData,
+    TaskListItemDto, Usage,
 };
 use crate::modules::chat::stream::{publish_frame, publish_raw_event, ChatStreamFrame};
 
@@ -167,7 +168,23 @@ impl EventSink for ChatEventSink {
             // (dispatcher) now emits — it folds the turn's `Usage` events itself
             // (via `Self::fold_usage`), so the sink doesn't accumulate here.
             AgentEvent::Usage(_u) => {}
-            AgentEvent::TaskListChanged { .. } => {}
+
+            // The agent's live task list changed (ITEM-36 / DEC-56). Mirror the
+            // `mcpToolProgress` side-channel: build the `taskListChanged` frame
+            // (full current list, snake_case DTO the FE `TaskListChecklist`
+            // reads) and deliver it via `publish_raw_event` — NOT `self.publish`
+            // — so it rides the same raw/ephemeral channel as tool progress and
+            // is not appended to the per-conversation content replay buffer (it
+            // is not part of the assistant message content; a mid-join catches
+            // up on the next change, and the durable TaskListStore is the
+            // reload-time source of truth).
+            AgentEvent::TaskListChanged { run_id, items } => {
+                let event = SSEChatStreamEvent::TaskListChanged(SSEChatStreamTaskListChangedData {
+                    run_id,
+                    items: items.into_iter().map(TaskListItemDto::from).collect(),
+                });
+                publish_raw_event(self.owner_id, self.conversation_id, event.into());
+            }
 
             // No-op: the terminal `complete` frame is emitted by the HOST
             // (dispatcher) AFTER the extension-event channel is drained, so a
