@@ -16546,233 +16546,6 @@
         }
       }
     },
-    "/api/summarization/settings": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Read deployment-wide summarization settings",
-        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
-        "operationId": "SummarizationAdmin.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
-                        "name": "SummarizationSettingsRead",
-                        "value": "summarization::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Update deployment-wide summarization settings",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
-        "operationId": "SummarizationAdmin.update",
-        "requestBody": {
-          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/conversations/{id}/summary": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Get the active-branch summary for a conversation (null if none)",
-        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
-        "operationId": "Summarization.getConversationSummary",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConversationSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/_test/summarization/refresh": {
-      "post": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
-        "operationId": "SummarizationTest.refresh",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRefreshRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/memories": {
       "get": {
         "tags": [
@@ -17719,6 +17492,233 @@
                     ]
                   },
                   "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -38025,6 +38025,24 @@
             ]
           },
           {
+            "description": "A `delegate` fan-out's per-child status changed (ITEM-4 / DEC-65) —\n carries the full current sub-agent list so the timeline\n `SubAgentActivityCard` re-renders in place. A CORE variant (like\n `TaskListChanged`) because the agent-core loop's `fan_out`, not a chat\n extension, is its source (`event_sink.rs` maps\n `AgentEvent::SubAgentActivity` here).",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "subAgentActivity"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamSubAgentActivityData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
             "type": "object",
             "properties": {
               "type": {
@@ -38387,6 +38405,28 @@
         "required": [
           "conversation_id",
           "branch_id"
+        ]
+      },
+      "SSEChatStreamSubAgentActivityData": {
+        "description": "Data for the `subAgentActivity` SSE event (ITEM-4 / DEC-65). Emitted live\n during the turn when a `delegate` fan-out spawns its children (all\n running/pending) and again as each child settles (completed/failed),\n carrying the FULL current child list (idempotent last-wins snapshot, like\n `taskListChanged`) so the timeline `SubAgentActivityCard` re-renders in\n place. Delivered via `publish_raw_event` (the raw/ephemeral side-channel,\n not the replay-buffered generation frames). `run_id` is the PARENT agent\n run; the chat FE attaches it to the in-flight assistant message.",
+        "type": "object",
+        "properties": {
+          "children": {
+            "description": "The full current sub-agent list (idempotent snapshot; not a delta).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubAgentActivityChildDto"
+            }
+          },
+          "run_id": {
+            "description": "The parent agent run whose fan-out this is.",
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "run_id",
+          "children"
         ]
       },
       "SSEChatStreamTaskListChangedData": {
@@ -40670,6 +40710,36 @@
         },
         "required": [
           "styles"
+        ]
+      },
+      "SubAgentActivityChildDto": {
+        "description": "One delegated sub-agent on the wire (ITEM-4 / DEC-65) — the server-side DTO\n mirror of `agent_core::SubAgentChild`. `id` is the child's run id; `label`\n the friendly per-child descriptor (its objective / role). A thin DTO (with a\n `From<agent_core::SubAgentChild>`) rather than putting the agent-core type on\n the wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.\n Fields are snake_case to match the FE `SubAgentChildVM` (`agentActivity.ts`).",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SubAgentActivityChildStatus"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "status"
+        ]
+      },
+      "SubAgentActivityChildStatus": {
+        "description": "The live status of one delegated sub-agent on the wire (Group A / ITEM-4 /\n DEC-65). A thin server-side mirror of `agent_core::SubAgentChildStatus`\n (kept separate so it can `#[derive(schemars::JsonSchema)]` and keep the\n crate boundary clean). Snake-case so the FE `SubAgentChildStatus` union\n (`agentActivity.ts`) consumes it unchanged.",
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
         ]
       },
       "SummarizationAdminSettings": {

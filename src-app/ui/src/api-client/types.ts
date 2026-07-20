@@ -5081,6 +5081,7 @@ export type SSEChatStreamEvent = {
   complete: SSEChatStreamCompleteData
   error: SSEChatStreamErrorData
   taskListChanged: SSEChatStreamTaskListChangedData
+  subAgentActivity: SSEChatStreamSubAgentActivityData
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
@@ -5201,6 +5202,23 @@ export interface SSEChatStreamStartedData {
   conversation_id: string
   /** User message ID (None if resuming with tool approvals or regenerating) */
   user_message_id?: string
+}
+
+/**
+ * Data for the `subAgentActivity` SSE event (ITEM-4 / DEC-65). Emitted live
+ *  during the turn when a `delegate` fan-out spawns its children (all
+ *  running/pending) and again as each child settles (completed/failed),
+ *  carrying the FULL current child list (idempotent last-wins snapshot, like
+ *  `taskListChanged`) so the timeline `SubAgentActivityCard` re-renders in
+ *  place. Delivered via `publish_raw_event` (the raw/ephemeral side-channel,
+ *  not the replay-buffered generation frames). `run_id` is the PARENT agent
+ *  run; the chat FE attaches it to the in-flight assistant message.
+ */
+export interface SSEChatStreamSubAgentActivityData {
+  /** The full current sub-agent list (idempotent snapshot; not a delta). */
+  children: SubAgentActivityChildDto[]
+  /** The parent agent run whose fan-out this is. */
+  run_id: string
 }
 
 /**
@@ -5949,6 +5967,29 @@ export interface StreamError {
 export interface StylesResponse {
   styles: string[]
 }
+
+/**
+ * One delegated sub-agent on the wire (ITEM-4 / DEC-65) — the server-side DTO
+ *  mirror of `agent_core::SubAgentChild`. `id` is the child's run id; `label`
+ *  the friendly per-child descriptor (its objective / role). A thin DTO (with a
+ *  `From<agent_core::SubAgentChild>`) rather than putting the agent-core type on
+ *  the wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.
+ *  Fields are snake_case to match the FE `SubAgentChildVM` (`agentActivity.ts`).
+ */
+export interface SubAgentActivityChildDto {
+  id: string
+  label: string
+  status: SubAgentActivityChildStatus
+}
+
+/**
+ * The live status of one delegated sub-agent on the wire (Group A / ITEM-4 /
+ *  DEC-65). A thin server-side mirror of `agent_core::SubAgentChildStatus`
+ *  (kept separate so it can `#[derive(schemars::JsonSchema)]` and keep the
+ *  crate boundary clean). Snake-case so the FE `SubAgentChildStatus` union
+ *  (`agentActivity.ts`) consumes it unchanged.
+ */
+export type SubAgentActivityChildStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 /**
  * Deployment-wide summarization admin settings (singleton row).
