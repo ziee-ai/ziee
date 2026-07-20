@@ -3,8 +3,10 @@
 //! The uniform background-run surface (ITEM-17) on the `workflow_runs`-backed
 //! backbone: `spawn_background` (a WRITE — launches a detached run, routed
 //! through approval) + `check_status` / `collect_result` (owner-scoped READS,
-//! approval-bypassed). Ownership is enforced at every read via
-//! `repository::find_run_for_owner` (a cross-user `run_id` → 404, never leaks).
+//! approval-bypassed). Ownership + the background boundary are enforced at every
+//! read via `repository::find_background_run_for_owner` (a cross-user run — or a
+//! classic `job_kind='workflow'` run — → 404, never leaks, never reads a workflow
+//! run through the background surface).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -710,10 +712,12 @@ async fn drive_subagent_turn(
 }
 
 /// `check_status{run_id}` — cheap owner-scoped read of the run's state +
-/// progress. A foreign / missing id → 404 (never leaks another user's run).
+/// progress. A foreign / missing id — or a classic workflow run (background-only
+/// surface) — → 404 (never leaks another user's run, never reads a workflow run
+/// through the background surface).
 async fn check_status(pool: &PgPool, user_id: Uuid, args: &Value) -> Result<Value, AppError> {
     let run_id = parse_run_id(args)?;
-    let run = repository::find_run_for_owner(pool, run_id, user_id)
+    let run = repository::find_background_run_for_owner(pool, run_id, user_id)
         .await?
         .ok_or_else(|| AppError::not_found("background run not found"))?;
 
@@ -732,10 +736,11 @@ async fn check_status(pool: &PgPool, user_id: Uuid, args: &Value) -> Result<Valu
 
 /// `collect_result{run_id, offset?, max_chars?}` — idempotent, paged owner-scoped
 /// read of `final_output_json`. Not-yet-terminal → returns the current status
-/// (the model should retry). A foreign / missing id → 404.
+/// (the model should retry). A foreign / missing id — or a classic workflow run
+/// (background-only surface) — → 404.
 async fn collect_result(pool: &PgPool, user_id: Uuid, args: &Value) -> Result<Value, AppError> {
     let run_id = parse_run_id(args)?;
-    let run = repository::find_run_for_owner(pool, run_id, user_id)
+    let run = repository::find_background_run_for_owner(pool, run_id, user_id)
         .await?
         .ok_or_else(|| AppError::not_found("background run not found"))?;
 

@@ -167,8 +167,11 @@ pub async fn cancel_background_run(
 ) -> ApiResult<Json<BackgroundRunCancelAck>> {
     let user_id = auth.user.id;
 
-    // Owner-scope: a foreign / missing run → 404 (never leak — DEC-36 §1).
-    let run = wf_repo::find_run_for_owner(Repos.pool(), run_id, user_id)
+    // Owner-scope + background-only: a foreign / missing run — or a classic
+    // `job_kind='workflow'` run (mutating a workflow run through the background
+    // endpoint is out of bounds; `/api/workflows/*` owns those) — → 404 (never
+    // leak — DEC-36 §1). Mirrors `get_background_run_detail`'s filter.
+    let run = wf_repo::find_background_run_for_owner(Repos.pool(), run_id, user_id)
         .await?
         .ok_or_else(|| AppError::not_found("Background run"))?;
 

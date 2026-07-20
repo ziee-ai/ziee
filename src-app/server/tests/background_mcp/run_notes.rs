@@ -38,6 +38,37 @@ async fn insert_subagent_run(server: &TestServer, user_id: &str) -> Uuid {
     .expect("insert subagent run")
 }
 
+/// Insert a REAL classic workflow run (`job_kind='workflow'`) owned by `user_id`.
+/// A workflow-kind run requires a non-NULL `workflow_id` (the coherence guard), so
+/// a real `workflows` bundle row is inserted first. Used to prove the steering
+/// surface enforces the `job_kind <> 'workflow'` boundary (a caller's OWN workflow
+/// run must 404 — a workflow run can't be steered via the background surface).
+async fn insert_workflow_run(server: &TestServer, user_id: &str) -> Uuid {
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let owner = Uuid::parse_str(user_id).unwrap();
+    let workflow_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflows \
+            (id, name, extracted_path, bundle_sha256, bundle_size_bytes, file_count, entry_point, scope, owner_user_id) \
+         VALUES ($1, $2, '/tmp/bg-notes-boundary', 'deadbeef', 0, 0, 'workflow.yaml', 'user', $3)",
+    )
+    .bind(workflow_id)
+    .bind(format!("bg-notes-wf-{}", workflow_id.simple()))
+    .bind(owner)
+    .execute(&pool)
+    .await
+    .expect("insert workflow bundle");
+    sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO workflow_runs (workflow_id, user_id, job_kind, status) \
+         VALUES ($1, $2, 'workflow', 'running') RETURNING id",
+    )
+    .bind(workflow_id)
+    .bind(owner)
+    .fetch_one(&pool)
+    .await
+    .expect("insert workflow run")
+}
+
 fn notes_url(server: &TestServer, run_id: Uuid) -> String {
     server.api_url(&format!("/background/runs/{run_id}/notes"))
 }
@@ -130,6 +161,43 @@ async fn enqueue_then_list_roundtrip_owner() {
         .await
         .unwrap();
     assert_eq!(bad.status(), 400, "empty note must be 400");
+}
+
+#[tokio::test]
+async fn own_workflow_run_is_404_on_notes() {
+    let server = TestServer::start().await;
+    let owner = bg_user(&server, "bg_notes_wf_boundary").await;
+    // The caller's OWN classic workflow run — NOT a background run.
+    let run_id = insert_workflow_run(&server, &owner.user_id).await;
+    let client = reqwest::Client::new();
+
+    // Background-only boundary: a workflow run cannot be STEERED through the
+    // background notes surface (owner-scoped, but `job_kind <> 'workflow'`) → 404
+    // on both POST and GET.
+    let post = client
+        .post(notes_url(&server, run_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .json(&json!({ "note": "steer my own workflow run" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        post.status(),
+        404,
+        "steering one's OWN workflow run via the background notes endpoint must be 404"
+    );
+
+    let get = client
+        .get(notes_url(&server, run_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        get.status(),
+        404,
+        "listing notes of one's OWN workflow run via the background surface must be 404"
+    );
 }
 
 #[tokio::test]

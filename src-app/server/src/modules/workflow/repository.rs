@@ -515,21 +515,42 @@ pub async fn insert_background_run(
     Ok(row)
 }
 
-/// Owner-scoped run fetch for the background read seam (`check_status` /
-/// `collect_result` — the model-facing MCP trio is a later tranche). Returns the
-/// row (status + `job_kind` + `final_output_json`) ONLY when it belongs to
-/// `user_id`; a foreign or missing id yields `None` so the caller returns 404 —
-/// never leaking another user's run (DEC-36 / CODING_GUIDELINES §1). Works for
-/// every `job_kind`, including background runs with a NULL `workflow_id`.
-// Seam (ITEM-17): the read side of the model-facing check_status/collect_result
-// MCP trio (later tranche); the backbone ships + tests the owner-scoped read.
-#[allow(dead_code)]
+/// Owner-scoped run fetch. Returns the row ONLY when it belongs to `user_id`; a
+/// foreign or missing id yields `None` so the caller returns 404 — never leaking
+/// another user's run (DEC-36 / CODING_GUIDELINES §1). Works for every
+/// `job_kind`, including background runs with a NULL `workflow_id`. The
+/// background surface must NOT use this directly (it would read/steer a classic
+/// workflow run through `/api/background/*`) — it composes the background-only
+/// [`find_background_run_for_owner`] on top of this. Kept as the general
+/// owner-scope primitive.
 pub async fn find_run_for_owner(
     pool: &PgPool,
     run_id: Uuid,
     user_id: Uuid,
 ) -> Result<Option<WorkflowRun>, AppError> {
     Ok(find_run(pool, run_id).await?.filter(|r| r.user_id == user_id))
+}
+
+/// Background-only owner-scoped run fetch: like [`find_run_for_owner`] but ALSO
+/// enforces the background boundary (`job_kind <> 'workflow'`). A classic
+/// workflow run — even the caller's OWN — yields `None`, so the background
+/// surface returns 404 and a workflow run cannot be read (`check_status` /
+/// `collect_result`), cancelled, or steered (run notes) through
+/// `/api/background/*` or the background MCP tools (mirroring
+/// [`get_background_run_detail`]'s `job_kind <> 'workflow'` filter; DEC-36 /
+/// CODING_GUIDELINES §1 — classic workflow runs are served/managed by their own
+/// `/api/workflows/*` surface). A foreign or missing id still yields `None`
+/// (never leaks another user's run). This is the SINGLE choke point every
+/// background read/cancel/steer path resolves through, so the `job_kind` boundary
+/// the list/detail endpoints enforce also covers those paths consistently.
+pub async fn find_background_run_for_owner(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<WorkflowRun>, AppError> {
+    Ok(find_run_for_owner(pool, run_id, user_id)
+        .await?
+        .filter(|r| r.job_kind != JobKind::Workflow.as_str()))
 }
 
 /// Terminal-status write (H3). Guards against clobbering an already
@@ -962,13 +983,16 @@ pub async fn cancel_cas(
 /// started in the boot window after `cutoff` was captured.
 ///
 /// Disposition order (each step only touches rows still `pending`/`running`):
-///  1. `resumable_agent = TRUE` → `resumable` (a crash inside an `agent` step,
-///     ANY kind — re-driven from `agent_transcript_json`).
-///  2. any `JobKind` whose registered `orphan_sweep` is `Resumable` (subagent)
+///  1. `resumable_agent = TRUE` → `resumable` (a crash inside a workflow `agent`
+///     step — re-driven from `agent_transcript_json` via its workflow bundle).
+///  2. any `JobKind` whose registered `orphan_sweep` is `Resumable`
 ///     → `resumable` — decentralized: iterate the policy registry, no hardcoded
-///     kind list, so a new replayable kind auto-participates (ITEM-17/DEC-76).
-///  3. everything else (`workflow`, `sandbox_exec`, any `Fail`-policy or
-///     unknown kind — fail-closed) → `failed`.
+///     kind list, so a future replayable kind auto-participates (ITEM-17/DEC-76).
+///     NO built-in kind declares `Resumable` today (a background sub-agent has no
+///     bundle to replay → it is `Fail`), so this step is a no-op forward-compat
+///     seam until such a kind ships; step 1 remains the live `resumable` producer.
+///  3. everything else (`workflow`, `sandbox_exec`, `subagent`, any `Fail`-policy
+///     or unknown kind — fail-closed) → `failed`.
 pub async fn fail_orphaned_runs(
     pool: &PgPool,
     cutoff: time::OffsetDateTime,
@@ -994,11 +1018,14 @@ pub async fn fail_orphaned_runs(
     .map_err(AppError::database_error)?;
 
     // Step 2 — DEC-76 per-JobKind policy: spare every orphaned run whose kind
-    // declares a `Resumable` orphan-sweep (a sub-agent's work replays from its
-    // durable transcript). Decentralized: walk the registered policies rather
-    // than naming a kind, so a future replayable kind is swept correctly with no
-    // edit here. A `Fail`-policy kind (workflow / sandbox_exec) is left for the
-    // fail-sweep below; an UNKNOWN kind is fail-closed (never spared here).
+    // declares a `Resumable` orphan-sweep (work that replays from a durable
+    // checkpoint the boot path can reload). Decentralized: walk the registered
+    // policies rather than naming a kind, so a future replayable kind is swept
+    // correctly with no edit here. NO built-in kind is `Resumable` today (a
+    // background sub-agent has no workflow bundle for `resume_run` to replay → it
+    // is `Fail`), so this loop currently matches nothing — it's the forward-compat
+    // seam. A `Fail`-policy kind (workflow / sandbox_exec / subagent) is left for
+    // the fail-sweep below; an UNKNOWN kind is fail-closed (never spared here).
     for policy in super::job_kind::JOB_KIND_POLICIES.iter() {
         if policy.orphan_sweep == super::job_kind::OrphanSweepPolicy::Resumable {
             sqlx::query!(
@@ -1908,10 +1935,12 @@ mod tests {
     }
 
     // TEST-42 / TEST-133 (ITEM-29 / DEC-76): the boot orphan-sweep applies a
-    // PER-JobKind policy — a crashed `subagent` orphan is SPARED as `resumable`
-    // (replayable), a `sandbox_exec` orphan is `failed` (a killed subprocess
-    // can't replay). Both rows are aged past the cutoff so ONLY they are swept
-    // (the sweep is global; other tests' fresh rows are newer than the cutoff).
+    // PER-JobKind policy and always reaches a TERMINAL state. A crashed
+    // `subagent` orphan is `failed` (a background sub-agent has NO workflow bundle
+    // for `resume_run` to replay — leaving it `resumable` stranded it non-terminal
+    // forever), and a `sandbox_exec` orphan is `failed` (a killed subprocess can't
+    // replay). Both rows are aged past the cutoff so ONLY they are swept (the
+    // sweep is global; other tests' fresh rows are newer than the cutoff).
     #[tokio::test]
     async fn boot_sweep_is_per_job_kind() {
         let Some(pool) = connect().await else {
@@ -1944,13 +1973,107 @@ mod tests {
 
         let sub_after = find_run(&pool, sub.id).await.unwrap().unwrap();
         let sand_after = find_run(&pool, sand.id).await.unwrap().unwrap();
+
+        // A background subagent orphan reaches a TERMINAL `failed` (NOT the
+        // intermediate `resumable`): it has no bundle to replay, so it must be
+        // terminalized on boot or `check_status`/`collect_result` would hang.
         assert_eq!(
-            sub_after.status, "resumable",
-            "subagent orphan must be spared as resumable (transcript replay)"
+            sub_after.status, "failed",
+            "subagent orphan must be terminalized as failed (no bundle to replay)"
+        );
+        assert!(
+            WorkflowRunStatus::from_db_str(&sub_after.status).is_some_and(|s| s.is_terminal()),
+            "subagent orphan status must be terminal"
+        );
+        assert_eq!(
+            sub_after.error_message.as_deref(),
+            Some("server restart during execution"),
+            "the fail-sweep stamps the restart error on the subagent orphan"
         );
         assert_eq!(
             sand_after.status, "failed",
             "sandbox_exec orphan must fail (subprocess gone)"
+        );
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    // FINDING-2 (background-boundary): `find_background_run_for_owner` is the
+    // single choke point the background read/cancel/steer paths resolve through.
+    // It is owner-scoped (like `find_run_for_owner`) AND enforces the
+    // background-only boundary (`job_kind <> 'workflow'`): a caller's OWN classic
+    // workflow run resolves via `find_run_for_owner` but is EXCLUDED here (→ the
+    // handlers 404 it), so a workflow run cannot be read / cancelled / steered via
+    // the background surface. Cross-user is still excluded (never leak).
+    #[tokio::test]
+    async fn find_background_run_for_owner_excludes_workflow_kind() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+
+        // A background (subagent) run → visible through the background choke point.
+        let bg = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .expect("insert subagent run");
+        assert!(
+            find_background_run_for_owner(&pool, bg.id, user_id)
+                .await
+                .unwrap()
+                .is_some(),
+            "a background run is visible through the background owner-resolution"
+        );
+
+        // A REAL classic workflow run (job_kind='workflow' requires a bundle FK).
+        let workflow_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflows \
+                (id, name, extracted_path, bundle_sha256, bundle_size_bytes, file_count, entry_point, scope, owner_user_id) \
+             VALUES ($1, $2, '/tmp/bg-boundary-none', 'deadbeef', 0, 0, 'workflow.yaml', 'user', $3)",
+        )
+        .bind(workflow_id)
+        .bind(format!("bg-boundary-{}", workflow_id.simple()))
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("insert workflow");
+        let wf_run_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_runs (id, workflow_id, user_id, job_kind, status) \
+             VALUES ($1, $2, $3, 'workflow', 'running')",
+        )
+        .bind(wf_run_id)
+        .bind(workflow_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("insert workflow run");
+
+        // Owner CAN resolve it via the general owner-scope fetch …
+        assert!(
+            find_run_for_owner(&pool, wf_run_id, user_id)
+                .await
+                .unwrap()
+                .is_some(),
+            "the owner resolves its own workflow run via find_run_for_owner"
+        );
+        // … but the BACKGROUND choke point EXCLUDES it (job_kind='workflow') → 404.
+        assert!(
+            find_background_run_for_owner(&pool, wf_run_id, user_id)
+                .await
+                .unwrap()
+                .is_none(),
+            "a classic workflow run is excluded from the background surface (→ 404)"
+        );
+
+        // Cross-user is still excluded through the background choke point.
+        assert!(
+            find_background_run_for_owner(&pool, bg.id, Uuid::new_v4())
+                .await
+                .unwrap()
+                .is_none(),
+            "cross-user fetch must be None (404), never leak the row"
         );
 
         cleanup_user(&pool, user_id).await;

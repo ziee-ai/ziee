@@ -72,6 +72,37 @@ fn structured(body: &Json) -> &Json {
     &body["result"]["structuredContent"]
 }
 
+/// Insert a REAL classic workflow run (`job_kind='workflow'`) owned by `user_id`.
+/// A workflow-kind run requires a non-NULL `workflow_id` (the coherence guard), so
+/// a real `workflows` bundle row is inserted first. Used to prove the background
+/// MCP reads enforce the `job_kind <> 'workflow'` boundary (a caller's OWN
+/// workflow run must 404 from `check_status` / `collect_result`).
+async fn insert_workflow_run(server: &TestServer, user_id: &str) -> Uuid {
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let owner = Uuid::parse_str(user_id).unwrap();
+    let workflow_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflows \
+            (id, name, extracted_path, bundle_sha256, bundle_size_bytes, file_count, entry_point, scope, owner_user_id) \
+         VALUES ($1, $2, '/tmp/bg-mcp-boundary', 'deadbeef', 0, 0, 'workflow.yaml', 'user', $3)",
+    )
+    .bind(workflow_id)
+    .bind(format!("bg-mcp-wf-{}", workflow_id.simple()))
+    .bind(owner)
+    .execute(&pool)
+    .await
+    .expect("insert workflow bundle");
+    sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO workflow_runs (workflow_id, user_id, job_kind, status) \
+         VALUES ($1, $2, 'workflow', 'running') RETURNING id",
+    )
+    .bind(workflow_id)
+    .bind(owner)
+    .fetch_one(&pool)
+    .await
+    .expect("insert workflow run")
+}
+
 #[tokio::test]
 async fn spawn_background_runs_a_real_agent_turn_to_completion() {
     let server = TestServer::start().await;
@@ -158,5 +189,54 @@ async fn spawn_background_runs_a_real_agent_turn_to_completion() {
     assert!(
         chunk.contains("Hello from stub"),
         "final_text carries the stub model's real assistant answer: {chunk}"
+    );
+}
+
+/// FINDING-2 (background-boundary): the background MCP READS (`check_status` /
+/// `collect_result`) enforce the `job_kind <> 'workflow'` boundary — a caller's
+/// OWN classic workflow run is 404'd (surfaced as a JSON-RPC error), never read
+/// through the background surface (owner-scoped, so no cross-user leak either; the
+/// point is the workflow/background boundary). Mirrors the list/detail endpoints.
+#[tokio::test]
+async fn background_reads_reject_own_workflow_run() {
+    let server = TestServer::start().await;
+    let user = background_user(&server, "bg_mcp_wf_boundary").await;
+    // The caller's OWN classic workflow run — NOT a background run.
+    let run_id = insert_workflow_run(&server, &user.user_id).await;
+
+    // check_status → JSON-RPC error (404), no leaked result.
+    let status = jsonrpc(
+        &server,
+        &user.token,
+        None,
+        "tools/call",
+        json!({ "name": "check_status", "arguments": { "run_id": run_id.to_string() } }),
+    )
+    .await;
+    assert!(
+        !status["error"].is_null(),
+        "check_status of one's OWN workflow run must be a 404 error (background-only): {status}"
+    );
+    assert!(
+        status["result"].is_null(),
+        "no run state leaked for a workflow run via check_status: {status}"
+    );
+
+    // collect_result → JSON-RPC error (404), no leaked result.
+    let collect = jsonrpc(
+        &server,
+        &user.token,
+        None,
+        "tools/call",
+        json!({ "name": "collect_result", "arguments": { "run_id": run_id.to_string() } }),
+    )
+    .await;
+    assert!(
+        !collect["error"].is_null(),
+        "collect_result of one's OWN workflow run must be a 404 error (background-only): {collect}"
+    );
+    assert!(
+        collect["result"].is_null(),
+        "no result leaked for a workflow run via collect_result: {collect}"
     );
 }

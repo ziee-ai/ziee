@@ -3,9 +3,11 @@
 //! `POST /api/background/runs/{run_id}/notes` enqueues a durable steering note the
 //! detached sub-agent picks up on its next turn; `GET .../notes` lists the run's
 //! pending (not-yet-consumed) notes. Both are:
-//!   - **owner-scoped** — resolved via `workflow::repository::find_run_for_owner`,
-//!     so a foreign / missing run yields **404**, never leaking another user's run
-//!     (DEC-36 / CODING_GUIDELINES §1);
+//!   - **owner-scoped + background-only** — resolved via
+//!     `workflow::repository::find_background_run_for_owner`, so a foreign /
+//!     missing run — or a classic `job_kind='workflow'` run — yields **404**,
+//!     never leaking another user's run and never steering a workflow run through
+//!     the background surface (DEC-36 / CODING_GUIDELINES §1);
 //!   - **gated `background::use`** — the SAME permission the backbone's
 //!     model-facing reads (`check_status` / `collect_result`) use.
 //!
@@ -37,9 +39,12 @@ use super::permissions::BackgroundUse;
 /// document; bound it so the durable queue + the transcript injection stay cheap.
 const MAX_NOTE_CHARS: usize = 4000;
 
-/// Owner-scope a run for the acting user, 404 on foreign/missing (never leak).
+/// Owner-scope a BACKGROUND run for the acting user, 404 on foreign/missing —
+/// and on a classic `job_kind='workflow'` run (never leak, and never steer a
+/// workflow run through the background surface; DEC-36 §1). Mirrors the
+/// list/detail endpoints' `job_kind <> 'workflow'` boundary.
 async fn owned_run_status(run_id: Uuid, user_id: Uuid) -> Result<String, AppError> {
-    let run = wf_repo::find_run_for_owner(Repos.pool(), run_id, user_id)
+    let run = wf_repo::find_background_run_for_owner(Repos.pool(), run_id, user_id)
         .await?
         .ok_or_else(|| AppError::not_found("Background run"))?;
     Ok(run.status)

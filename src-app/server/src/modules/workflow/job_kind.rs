@@ -21,8 +21,13 @@ pub enum OrphanSweepPolicy {
     /// Mark `failed`: the underlying work cannot resume (a killed sandbox
     /// subprocess — its `Child` is gone, its stdout is lost). Fire-and-forget.
     Fail,
-    /// Mark `resumable`: the work is REPLAYABLE from a durable checkpoint (a
-    /// sub-agent's persisted transcript). The boot path re-drives it.
+    /// Mark `resumable`: the work is REPLAYABLE from a durable checkpoint the
+    /// boot path can re-drive (a persisted agent transcript backed by a workflow
+    /// bundle `resume_run` can reload). No built-in background *kind* declares
+    /// this today — a background sub-agent has NO bundle to reload, so it uses
+    /// `Fail`; the only live producer of the `resumable` STATUS is the workflow
+    /// `kind: agent` crash path (`resumable_agent` flag, `fail_orphaned_runs`
+    /// step 1). Reserved for a future kind that ships its own bundle-free replay.
     Resumable,
 }
 
@@ -93,15 +98,28 @@ pub static SANDBOX_EXEC_POLICY: JobKindPolicy = JobKindPolicy {
     retention_days: 0,
 };
 
-/// A detached agent-core turn (Option C). Its transcript is persisted, so a
-/// crash mid-loop is re-driven via transcript replay → `Resumable` (DEC-25/76).
-/// Flap-capped like the local-runtime supervisor (give up after 5 crashes / 60s).
+/// A detached agent-core turn (Option C). Its transcript is persisted, BUT a
+/// background sub-agent run has NO workflow bundle (`workflow_id = NULL`), so
+/// `runner::resume_run` cannot transcript-replay-resume it — it early-returns on
+/// the NULL bundle (that dedicated resume path is a later tranche). An orphan
+/// left `resumable` would therefore be stuck non-terminal FOREVER: nothing
+/// re-drives it and nothing terminalizes it, so `check_status`/`collect_result`
+/// never report completion and a poller hangs. Until a background-transcript
+/// resume path exists, a crash-interrupted background sub-agent must become
+/// TERMINAL on boot → `Fail` (a terminal `failed` "server restart during
+/// execution"), exactly like `sandbox_exec` (DEC-25/76).
+///
+/// NOTE: a crash INSIDE a workflow `kind: agent` step is a DIFFERENT path — that
+/// run is `job_kind='workflow'` WITH a bundle and is spared + replayed separately
+/// via the `resumable_agent` flag (`repository::fail_orphaned_runs` step 1),
+/// independent of this kind policy. Flap cap is `0` (a `Fail` kind is never
+/// re-driven, so the crash-restart loop's flap cap does not apply).
 #[distributed_slice(JOB_KIND_POLICIES)]
 pub static SUBAGENT_POLICY: JobKindPolicy = JobKindPolicy {
     job_kind: "subagent",
-    orphan_sweep: OrphanSweepPolicy::Resumable,
-    flap_max_restarts: 5,
-    flap_window_secs: 60,
+    orphan_sweep: OrphanSweepPolicy::Fail,
+    flap_max_restarts: 0,
+    flap_window_secs: 0,
     retention_days: 0,
 };
 
@@ -129,13 +147,17 @@ mod tests {
         let sandbox = policy_for("sandbox_exec").expect("sandbox_exec kind registered");
         let subagent = policy_for("subagent").expect("subagent kind registered");
 
-        // DEC-25/76 per-kind sweep policy: subagent replays, the rest fail.
-        assert_eq!(subagent.orphan_sweep, OrphanSweepPolicy::Resumable);
+        // DEC-25/76 per-kind sweep policy: EVERY built-in kind fail-closes on an
+        // orphaned boot. `subagent` was Resumable, but a background sub-agent has
+        // no workflow bundle for `resume_run` to replay, so leaving an orphan
+        // `resumable` stranded it non-terminal forever — it is now `Fail` (a
+        // terminal `failed`), like `sandbox_exec` + `workflow`.
+        assert_eq!(subagent.orphan_sweep, OrphanSweepPolicy::Fail);
         assert_eq!(sandbox.orphan_sweep, OrphanSweepPolicy::Fail);
         assert_eq!(workflow.orphan_sweep, OrphanSweepPolicy::Fail);
 
-        // Only the replayable kind carries a flap cap.
-        assert!(subagent.flap_max_restarts > 0);
+        // A `Fail` kind is never re-driven, so it carries no flap cap (0).
+        assert_eq!(subagent.flap_max_restarts, 0);
         assert_eq!(sandbox.flap_max_restarts, 0);
 
         // Unknown / unregistered kind → None (forward-compat, fail-closed).

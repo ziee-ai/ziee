@@ -63,6 +63,39 @@ async fn insert_bg_run(
     .expect("insert background run")
 }
 
+/// Insert a REAL classic workflow run (`job_kind='workflow'`) owned by `user_id`,
+/// returning its run id. A workflow-kind run requires a non-NULL `workflow_id`
+/// (the `workflow_runs_job_kind_workflow_id_check` coherence guard), so a real
+/// `workflows` bundle row is inserted first. Used to prove the background surface
+/// enforces the `job_kind <> 'workflow'` boundary (a caller's OWN workflow run
+/// must 404 from `/api/background/*`).
+async fn insert_workflow_run(server: &TestServer, user_id: &str, status: &str) -> Uuid {
+    let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
+    let owner = Uuid::parse_str(user_id).unwrap();
+    let workflow_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflows \
+            (id, name, extracted_path, bundle_sha256, bundle_size_bytes, file_count, entry_point, scope, owner_user_id) \
+         VALUES ($1, $2, '/tmp/bg-wf-boundary', 'deadbeef', 0, 0, 'workflow.yaml', 'user', $3)",
+    )
+    .bind(workflow_id)
+    .bind(format!("bg-wf-{}", workflow_id.simple()))
+    .bind(owner)
+    .execute(&pool)
+    .await
+    .expect("insert workflow bundle");
+    sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO workflow_runs (workflow_id, user_id, job_kind, status) \
+         VALUES ($1, $2, 'workflow', $3) RETURNING id",
+    )
+    .bind(workflow_id)
+    .bind(owner)
+    .bind(status)
+    .fetch_one(&pool)
+    .await
+    .expect("insert workflow run")
+}
+
 /// Read a run's status directly from the DB (deterministic cancel assertion).
 async fn db_status(server: &TestServer, run_id: Uuid) -> String {
     let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
@@ -306,6 +339,31 @@ async fn cancel_foreign_run_is_404() {
     assert_eq!(db_status(&server, run_id).await, "running");
 }
 
+#[tokio::test]
+async fn cancel_own_workflow_run_is_404() {
+    let server = TestServer::start().await;
+    let owner = bg_user(&server, "bg_runs_cancel_wf_boundary").await;
+    // The caller's OWN classic workflow run — NOT a background run.
+    let run_id = insert_workflow_run(&server, &owner.user_id, "running").await;
+    let client = reqwest::Client::new();
+
+    // The background surface must NOT cancel a workflow run (job_kind boundary):
+    // owner-scoped, but background-only → 404 (mirrors GET detail's filter).
+    let resp = client
+        .post(cancel_url(&server, run_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        404,
+        "cancelling one's OWN workflow run via the background endpoint must be 404"
+    );
+    // The workflow run is UNTOUCHED — never mutated through the background surface.
+    assert_eq!(db_status(&server, run_id).await, "running");
+}
+
 // ── GET /api/background/runs/{run_id} — single-run detail (incl. result) ─────
 
 #[tokio::test]
@@ -419,4 +477,27 @@ async fn detail_of_foreign_run_is_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 404, "cross-user detail must be 404 (never leak)");
+}
+
+#[tokio::test]
+async fn detail_of_own_workflow_run_is_404() {
+    let server = TestServer::start().await;
+    let owner = bg_user(&server, "bg_detail_wf_boundary").await;
+    // The caller's OWN classic workflow run.
+    let run_id = insert_workflow_run(&server, &owner.user_id, "completed").await;
+    let client = reqwest::Client::new();
+
+    // Background-only boundary: a workflow run is served by `/api/workflows/*`,
+    // never through the background detail endpoint → 404.
+    let resp = client
+        .get(detail_url(&server, run_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        404,
+        "reading one's OWN workflow run via the background detail endpoint must be 404"
+    );
 }

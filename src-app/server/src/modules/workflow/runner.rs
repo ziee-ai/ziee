@@ -1331,8 +1331,8 @@ pub enum BackgroundOutcome {
 /// those land in later tranches) and reports a [`BackgroundOutcome`]; the wrapper
 /// applies the terminal write + owner-scoped `SyncEntity::WorkflowRun` notify +
 /// registry unregister. Returns the run_id immediately; a caller that needs the
-/// result polls [`repository::find_run_for_owner`] (the `check_status` /
-/// `collect_result` read seam).
+/// result polls [`repository::find_background_run_for_owner`] (the background-only
+/// `check_status` / `collect_result` read seam).
 ///
 /// The MODEL-FACING `spawn_background` / `check_status` / `collect_result` MCP
 /// tools are a LATER tranche (they need the built-in-MCP checklist: a perm, both
