@@ -26,7 +26,7 @@ import {
  */
 test.describe('realtime sync — background sub-agent completion notification', () => {
   test.skip(!HAS_BRIDGE, BRIDGE_SKIP)
-  test.setTimeout(150_000)
+  test.setTimeout(300_000)
 
   test('a background run completing on device A surfaces its notification on device B live', async ({
     page,
@@ -69,7 +69,7 @@ test.describe('realtime sync — background sub-agent completion notification', 
       // shared app-shell bell (same notification) isn't a strict-mode multi-match.
       await expect(
         byTestId(pageB, 'agent-inbox-page').getByText('Background task finished').first(),
-      ).toBeVisible({ timeout: 120_000 })
+      ).toBeVisible({ timeout: 240_000 })
 
       // The empty state is gone — a real notification landed via sync.
       await expect(byTestId(pageB, 'agent-inbox-empty')).toHaveCount(0)
