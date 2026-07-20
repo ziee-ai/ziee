@@ -79,6 +79,9 @@ fn list_url(server: &TestServer) -> String {
 fn cancel_url(server: &TestServer, run_id: Uuid) -> String {
     server.api_url(&format!("/background/runs/{run_id}/cancel"))
 }
+fn detail_url(server: &TestServer, run_id: Uuid) -> String {
+    server.api_url(&format!("/background/runs/{run_id}"))
+}
 
 #[tokio::test]
 async fn list_and_cancel_require_auth() {
@@ -301,4 +304,119 @@ async fn cancel_foreign_run_is_404() {
     assert_eq!(resp.status(), 404, "cross-user cancel must be 404 (never leak)");
     // The run is untouched — still running.
     assert_eq!(db_status(&server, run_id).await, "running");
+}
+
+// ── GET /api/background/runs/{run_id} — single-run detail (incl. result) ─────
+
+#[tokio::test]
+async fn detail_requires_auth() {
+    let server = TestServer::start().await;
+    let user = bg_user(&server, "bg_detail_auth").await;
+    let run_id = insert_bg_run(&server, &user.user_id, "subagent", "completed", "t", true).await;
+    let client = reqwest::Client::new();
+
+    // No Authorization header → 401.
+    let resp = client.get(detail_url(&server, run_id)).send().await.unwrap();
+    assert_eq!(resp.status(), 401, "unauthenticated detail must be 401");
+}
+
+#[tokio::test]
+async fn detail_requires_background_use_permission() {
+    let server = TestServer::start().await;
+    let owner = bg_user(&server, "bg_detail_owner_perm").await;
+    let run_id = insert_bg_run(&server, &owner.user_id, "subagent", "completed", "t", true).await;
+
+    // Authenticated but WITHOUT `background::use` → 403 (the perm gate fires before
+    // ownership resolution). `background::use` is granted to the default Users group,
+    // so `create_user_with_no_permissions` (strips ALL group membership) is required.
+    let noperm = create_user_with_no_permissions(&server, "bg_detail_noperm").await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(detail_url(&server, run_id))
+        .header("Authorization", format!("Bearer {}", noperm.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 403, "missing background::use must 403 on detail");
+}
+
+#[tokio::test]
+async fn detail_returns_full_run_including_final_output() {
+    let server = TestServer::start().await;
+    let owner = bg_user(&server, "bg_detail_owner").await;
+    let run_id =
+        insert_bg_run(&server, &owner.user_id, "subagent", "completed", "detail task", true).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(detail_url(&server, run_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "owner detail of its own run must be 200");
+    let body: serde_json::Value = resp.json().await.unwrap();
+
+    // Identity / state / timing fields (mirror the summary).
+    assert_eq!(body["id"], run_id.to_string());
+    assert_eq!(body["job_kind"], "subagent");
+    assert_eq!(body["status"], "completed");
+    assert_eq!(body["label"], "detail task", "label derives from spec.task");
+    assert_eq!(body["has_result"], true, "a run with final_output_json has a result");
+    assert!(body.get("created_at").is_some(), "timings present");
+    assert!(body.get("updated_at").is_some(), "timings present");
+
+    // The DISTINGUISHING field: the full result body IS projected here (unlike the
+    // compact list). `insert_bg_run(..with_output=true)` writes `{final_text:"done"}`.
+    assert!(
+        body.get("final_output_json").is_some() && !body["final_output_json"].is_null(),
+        "detail includes final_output_json result body"
+    );
+    assert_eq!(
+        body["final_output_json"]["final_text"], "done",
+        "the collected result body round-trips verbatim"
+    );
+}
+
+#[tokio::test]
+async fn detail_of_running_run_has_null_result() {
+    let server = TestServer::start().await;
+    let owner = bg_user(&server, "bg_detail_running").await;
+    // A still-running run with no result yet.
+    let run_id =
+        insert_bg_run(&server, &owner.user_id, "subagent", "running", "in progress", false).await;
+    let client = reqwest::Client::new();
+
+    let body: serde_json::Value = client
+        .get(detail_url(&server, run_id))
+        .header("Authorization", format!("Bearer {}", owner.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["status"], "running");
+    assert_eq!(body["has_result"], false, "a running run has no result");
+    assert!(body["final_output_json"].is_null(), "no result body until terminal");
+}
+
+#[tokio::test]
+async fn detail_of_foreign_run_is_404() {
+    let server = TestServer::start().await;
+    let owner = bg_user(&server, "bg_detail_foreign_owner").await;
+    let other = bg_user(&server, "bg_detail_foreign_other").await;
+    let run_id =
+        insert_bg_run(&server, &owner.user_id, "subagent", "completed", "not yours", true).await;
+    let client = reqwest::Client::new();
+
+    // User B (has background::use, but not this run) → 404 (never leak).
+    let resp = client
+        .get(detail_url(&server, run_id))
+        .header("Authorization", format!("Bearer {}", other.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404, "cross-user detail must be 404 (never leak)");
 }

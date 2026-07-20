@@ -26,6 +26,13 @@ pub fn background_mcp_router() -> ApiRouter {
             "/background/runs",
             get_with(runs::list_background_runs, runs::list_background_runs_docs),
         )
+        // ITEM-8 (detail) — one background run's full detail incl. `final_output_json`.
+        // Typed REST (OpenAPI-documented), owner-scoped + background-only, gated
+        // `background::use` (a foreign/missing/workflow-kind run → 404).
+        .api_route(
+            "/background/runs/{run_id}",
+            get_with(runs::get_background_run, runs::get_background_run_docs),
+        )
         // ITEM-10 — cancel a RUNNING background run (owner-scoped; terminal → 409).
         .api_route(
             "/background/runs/{run_id}/cancel",

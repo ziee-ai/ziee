@@ -52,6 +52,61 @@ pub mod schedule;
 pub mod settings;
 pub mod tick;
 
+// ── Group F inbox: declare the scheduler's notification kinds ────────────────
+//
+// The scheduler writes a durable typed notification on every task firing
+// (`dispatch.rs::finalize_success` → kind `"scheduled_task_result"`;
+// `finalize_failure` → kind `"scheduled_task_failed"`). Declaring those kinds in
+// the SDK's per-module kind registry (`ziee_notification::registry`) makes
+// `GET /api/notifications/kinds` advertise them, so the unified agent-inbox FE
+// can build its scheduled-task filter + renderer from the registry (the same
+// closure `background_mcp` did for `"background_run_result"`). Additive
+// `#[distributed_slice]` — no OpenAPI change, no migration, data-only
+// introspection. This registration ONLY declares the kinds; the producers still
+// create rows directly via `create_and_emit` in `dispatch.rs` (untouched here).
+#[distributed_slice(ziee_notification::registry::NOTIFICATION_KINDS)]
+static SCHEDULED_TASK_RESULT_KIND: ziee_notification::registry::NotificationKindDescriptor =
+    ziee_notification::registry::NotificationKindDescriptor {
+        kind: "scheduled_task_result",
+        description: "A scheduled / recurring task fired; its result is ready in the inbox.",
+    };
+
+#[distributed_slice(ziee_notification::registry::NOTIFICATION_KINDS)]
+static SCHEDULED_TASK_FAILED_KIND: ziee_notification::registry::NotificationKindDescriptor =
+    ziee_notification::registry::NotificationKindDescriptor {
+        kind: "scheduled_task_failed",
+        description: "A scheduled / recurring task failed to run; it needs attention.",
+    };
+
+#[cfg(test)]
+mod kind_registration_tests {
+    // The scheduler's two firing-outcome notification kinds must be advertised by
+    // `GET /api/notifications/kinds` (via the `#[distributed_slice]` registry)
+    // so the agent-inbox filter is complete (Group F). Asserts the slice collects
+    // both scheduler kinds AND carries a description (the wire contract).
+    use ziee_notification::registry::{is_registered_kind, registered_kinds};
+
+    #[test]
+    fn scheduler_notification_kinds_are_registered() {
+        assert!(
+            is_registered_kind("scheduled_task_result"),
+            "scheduled_task_result must be advertised by /api/notifications/kinds"
+        );
+        assert!(
+            is_registered_kind("scheduled_task_failed"),
+            "scheduled_task_failed must be advertised by /api/notifications/kinds"
+        );
+        let kinds = registered_kinds();
+        for kind in ["scheduled_task_result", "scheduled_task_failed"] {
+            let d = kinds
+                .iter()
+                .find(|d| d.kind == kind)
+                .unwrap_or_else(|| panic!("{kind} descriptor present"));
+            assert!(!d.description.is_empty(), "{kind} carries a description");
+        }
+    }
+}
+
 #[distributed_slice(MODULE_ENTRIES)]
 static SCHEDULER_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
     name: "scheduler",

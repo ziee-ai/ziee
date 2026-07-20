@@ -1,6 +1,7 @@
 //! ITEM-8 / ITEM-10 — typed REST to VIEW + MANAGE the acting user's background
 //! runs:
 //!   - `GET  /api/background/runs`                 — list (paginated, filterable)
+//!   - `GET  /api/background/runs/{run_id}`        — one run's full detail (incl. result)
 //!   - `POST /api/background/runs/{run_id}/cancel` — cancel a running run
 //!
 //! Both are:
@@ -12,8 +13,11 @@
 //!     REST use.
 //!
 //! The list is a COMPACT projection (no heavy JSONB blobs, no `final_output_json`
-//! — that's read via `collect_result`); `has_result` flags whether a result is
-//! ready. Cancel reuses the EXISTING run-cancel mechanism — the status-guarded
+//! — that's read via the single-run detail getter, or the `collect_result` MCP
+//! tool); `has_result` flags whether a result is ready. The detail getter is
+//! owner-scoped + background-only (a classic workflow run → 404) and adds the
+//! `final_output_json` result body on top of the summary fields. Cancel reuses
+//! the EXISTING run-cancel mechanism — the status-guarded
 //! `repository::cancel_cas` (DB authority) + `registry::cancel` (the in-memory
 //! signal the detached sub-agent task observes via its `RunHandle` → the
 //! agent-core `CancelToken`). No new cancel primitive is introduced.
@@ -36,7 +40,7 @@ use crate::modules::workflow::events::emit_workflow_run;
 use crate::modules::workflow::models::WorkflowRunStatus;
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository as wf_repo;
-use crate::modules::workflow::types::BackgroundRunListResponse;
+use crate::modules::workflow::types::{BackgroundRunDetail, BackgroundRunListResponse};
 
 use super::permissions::BackgroundUse;
 
@@ -112,6 +116,40 @@ pub fn list_background_runs_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<BackgroundRunListResponse>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
         .response_with::<403, (), _>(|r| r.description("Missing background::use"))
+}
+
+#[debug_handler]
+pub async fn get_background_run(
+    auth: RequirePermissions<(BackgroundUse,)>,
+    Path(run_id): Path<Uuid>,
+) -> ApiResult<Json<BackgroundRunDetail>> {
+    // Owner-scope + background-only: a foreign / missing / classic-workflow-kind
+    // run → 404 (never leak; workflow runs are served by their own endpoint —
+    // DEC-36 §1).
+    let detail = wf_repo::get_background_run_detail(Repos.pool(), run_id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Background run"))?;
+    Ok((StatusCode::OK, Json(detail)))
+}
+
+pub fn get_background_run_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(BackgroundUse,)>(op)
+        .id("Background.getRun")
+        .tag("background")
+        .summary("Get one background run incl. its full result")
+        .description(
+            "Owner-scoped detail for a single background run (a detached sub-agent / \
+             sandbox-exec run — never a classic workflow run), including the full \
+             `final_output_json` result body plus status, error, timings, kind, and \
+             tokens. This is the getter the FE uses to render a COMPLETED run's result — \
+             the list endpoint returns only compact summaries with `has_result`. A \
+             foreign / missing / classic-workflow-kind run → 404 (never leaked; classic \
+             workflow runs are served by `GET /api/workflows/runs/{id}`).",
+        )
+        .response::<200, Json<BackgroundRunDetail>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Missing background::use"))
+        .response_with::<404, (), _>(|r| r.description("Run not found / not owned"))
 }
 
 /// Cancel-run acknowledgement.

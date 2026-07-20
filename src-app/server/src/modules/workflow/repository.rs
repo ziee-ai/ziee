@@ -11,7 +11,7 @@ use super::models::{
     CreateBackgroundRun, CreateWorkflow, CreateWorkflowRun, JobKind, RunNote, Workflow,
     WorkflowRun, WorkflowRunStatus,
 };
-use super::types::{BackgroundRunSummary, WorkflowRunSummary};
+use super::types::{BackgroundRunDetail, BackgroundRunSummary, WorkflowRunSummary};
 use crate::common::AppError;
 
 pub struct WorkflowRepository {
@@ -1549,6 +1549,54 @@ pub async fn list_background_runs_for_user(
     .count;
 
     Ok((rows, total))
+}
+
+/// Owner-scoped detail fetch for one BACKGROUND run (ITEM-8 follow-up) — the
+/// getter backing `GET /api/background/runs/{run_id}`. Unlike the compact list,
+/// this projects the `final_output_json` result body so the FE can render a
+/// completed run's output without a `collect_result` MCP round-trip.
+///
+/// Owner-scoped (`user_id = $2`) AND background-only (`job_kind <> 'workflow'`):
+/// a foreign, missing, OR classic-workflow-kind run yields `None` → the handler
+/// returns 404, never leaking another user's run and never serving a heavy
+/// workflow run through this endpoint (`GET /api/workflows/runs/{id}` owns those;
+/// DEC-36 / CODING_GUIDELINES §1). Serves the same identity/state/timing columns
+/// as the summary plus the result body — the workflow-only step/log/artifact
+/// blobs (which a background run never has) stay unprojected (§4 — no `SELECT *`).
+pub async fn get_background_run_detail(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<BackgroundRunDetail>, AppError> {
+    let row = sqlx::query_as!(
+        BackgroundRunDetail,
+        r#"
+        SELECT
+            id,
+            job_kind,
+            status,
+            conversation_id,
+            model_id,
+            NULLIF(left(inputs_json->>'task', 200), '') as "label?",
+            (final_output_json IS NOT NULL) as "has_result!",
+            final_output_json as "final_output_json: _",
+            error_message,
+            total_tokens,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflow_runs
+        WHERE id = $1
+          AND user_id = $2
+          AND job_kind <> 'workflow'
+        "#,
+        run_id,
+        user_id,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(row)
 }
 
 // ── ITEM-25: durable steering-note queue (Group F) ──────────────────────────

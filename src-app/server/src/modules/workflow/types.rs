@@ -141,6 +141,39 @@ pub struct BackgroundRunListResponse {
     pub total_pages: i64,
 }
 
+/// Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /
+/// sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`
+/// result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and
+/// adds the collected result, so the FE can render a completed run's output without a
+/// second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.
+/// The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still
+/// excluded — a background run has none, and a classic `workflow`-kind run is served
+/// by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct BackgroundRunDetail {
+    pub id: Uuid,
+    /// Background-run discriminator (`subagent` / `sandbox_exec`); never
+    /// `workflow` (the detail 404s on those).
+    pub job_kind: String,
+    pub status: String,
+    pub conversation_id: Option<Uuid>,
+    pub model_id: Option<Uuid>,
+    /// Short human label derived from the run's spec (the sub-agent `task`),
+    /// capped at 200 chars; `None` when the spec carried no task text.
+    pub label: Option<String>,
+    /// True when a `final_output_json` is present (a result was collected).
+    pub has_result: bool,
+    /// The full result body of a completed run (`None` until a result exists).
+    /// This is the field the compact [`BackgroundRunSummary`] deliberately omits.
+    pub final_output_json: Option<serde_json::Value>,
+    /// Terminal error text for a failed run (else `None`).
+    pub error_message: Option<String>,
+    pub total_tokens: i64,
+    pub created_at: DateTime<Utc>,
+    /// Last transition time — the effective "finished_at" for a terminal run.
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ElicitationResponseRequest {
     pub response: serde_json::Value,
