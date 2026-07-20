@@ -189,7 +189,9 @@
     "gallery:forms": "node scripts/capture-gallery-forms.mjs",
     "gallery:runtime": "node ../../sdk/packages/gallery/scripts/runtime-health.mjs",
     "gate:ui": "node ../../sdk/packages/gallery/scripts/gate-ui.mjs",
-    "check:action-prefetch": "node ../../sdk/packages/config/src/lint/action-prefetch.mjs --root=src --root=../desktop/ui/src"
+    "check:action-prefetch": "node ../../sdk/packages/config/src/lint/action-prefetch.mjs --root=src --root=../desktop/ui/src",
+    "gen:store-actions": "node ../../sdk/packages/config/src/lint/store-actions.mjs --root=src --root=../desktop/ui/src",
+    "check:store-actions": "node ../../sdk/packages/config/src/lint/store-actions.mjs --root=src --root=../desktop/ui/src --check"
   },
   "type": "module",
   "types": "./dist/index.d.ts"

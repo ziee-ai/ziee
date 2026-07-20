@@ -1,13 +1,11 @@
 import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
-import { memoryAuditState } from './state'
+import { memoryAuditState, type MemoryAuditState } from './state'
+import type { Actions } from './actions.gen'
 
-const MemoryAuditDef = defineStore('MemoryAudit', {
+const MemoryAuditDef = defineStore<MemoryAuditState, Actions>('MemoryAudit', {
   immer: true,
   state: memoryAuditState,
-  lazyActions: {
-    load: () => import('./actions/load'),
-    setLimit: () => import('./actions/setLimit'),
-  },
+  actions: import.meta.glob('./actions/*.ts'),
   init: ({ actions }) => {
     void actions.load()
   },

@@ -1,5 +1,6 @@
 import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
-import { usersState } from './state'
+import { usersState, type UsersState } from './state'
+import type { Actions } from './actions.gen'
 
 // UNIFIED LAZY STORE PATTERN
 // --------------------------
@@ -15,21 +16,11 @@ import { usersState } from './state'
 //   either invoked in `init` (load-on-mount, already warmed) OR wired to a
 //   `.preload()` (hover/intent). The two below with no click trigger are warmed
 //   in `init`; the click actions preload from their trigger buttons.
-const UsersStoreDef = defineStore('Users', {
+// Actions auto-register from `./actions/*.ts` by filename (no hand-written map).
+// Types come from the generated `./actions.gen.ts` (the `Actions` generic).
+const UsersStoreDef = defineStore<UsersState, Actions>('Users', {
   state: usersState,
-  lazyActions: {
-    loadUsers: () => import('./actions/loadUsers'),
-    createUser: () => import('./actions/createUser'),
-    updateUser: () => import('./actions/updateUser'),
-    resetUserPassword: () => import('./actions/resetUserPassword'),
-    toggleUserActiveStatus: () => import('./actions/toggleUserActiveStatus'),
-    deleteUser: () => import('./actions/deleteUser'),
-    clearError: () => import('./actions/clearError'),
-    loadUserRegistrationSettings: () =>
-      import('./actions/loadUserRegistrationSettings'),
-    updateUserRegistrationSettings: () =>
-      import('./actions/updateUserRegistrationSettings'),
-  },
+  actions: import.meta.glob('./actions/*.ts'),
   init: ({ on, set, actions }) => {
     on('user.updated', event => {
       set(state => ({
