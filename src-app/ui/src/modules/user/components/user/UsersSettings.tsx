@@ -17,6 +17,7 @@ import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect, useState } from 'react'
 import { Stores } from '@ziee/framework/stores'
+import { Users as UsersStore } from '@/modules/user/stores/Users.store'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type User } from '@/api-client/types'
@@ -38,7 +39,7 @@ export function UsersSettings() {
     pageSize: storePageSize,
     loading: loadingUsers,
     error: usersError,
-  } = Stores.Users
+  } = UsersStore
   const { error: groupsError } = Stores.UserGroups
   const { user: currentUser } = Stores.Auth
   // Which user's activate/deactivate confirmation is open (shared by the status
@@ -66,7 +67,7 @@ export function UsersSettings() {
     if (users.length === 0) return
     if (usersError) {
       message.error(usersError)
-      Stores.Users.clearError()
+      UsersStore.clearError()
     }
     if (groupsError) {
       message.error(groupsError)
@@ -76,7 +77,7 @@ export function UsersSettings() {
 
   const handleToggleActive = async (userId: string) => {
     try {
-      await Stores.Users.toggleUserActiveStatus(userId)
+      await UsersStore.toggleUserActiveStatus(userId)
       message.success('User status updated successfully')
     } catch (error) {
       console.error('Failed to update user status:', error)
@@ -86,7 +87,7 @@ export function UsersSettings() {
 
   const handleDelete = async (userId: string) => {
     try {
-      await Stores.Users.deleteUser(userId)
+      await UsersStore.deleteUser(userId)
       message.success('User deleted successfully')
     } catch (error) {
       console.error('Failed to delete user:', error)
@@ -209,7 +210,7 @@ export function UsersSettings() {
     const newPageSize = size || storePageSize
     const newPage = size && size !== storePageSize ? 1 : page // Reset to page 1 if page size changes
 
-    Stores.Users.loadUsers(newPage, newPageSize)
+    UsersStore.loadUsers(newPage, newPageSize)
   }
 
   return (
@@ -246,7 +247,7 @@ export function UsersSettings() {
                   resource="users"
                   description="The user list couldn't be loaded. Check your connection and try again."
                   details={usersError}
-                  onRetry={() => Stores.Users.loadUsers(storePage, storePageSize)}
+                  onRetry={() => UsersStore.loadUsers(storePage, storePageSize)}
                   data-testid="user-list-error"
                 />
               ) : (

@@ -1,6 +1,6 @@
 import { Card, Form, FormField, useForm, Switch, Text, message } from '@ziee/kit'
 import { useEffect } from 'react'
-import { Stores } from '@ziee/framework/stores'
+import { Users } from '@/modules/user/stores/Users.store'
 
 export function UserRegistrationSettings() {
   const form = useForm<{ enabled: boolean }>({
@@ -9,13 +9,13 @@ export function UserRegistrationSettings() {
 
   // Users store
   const { userRegistrationEnabled, loadingRegistrationSettings, error } =
-    Stores.Users
+    Users
 
   // Show errors
   useEffect(() => {
     if (error) {
       message.error(error)
-      Stores.Users.clearError()
+      Users.clearError()
     }
   }, [error])
 
@@ -26,7 +26,7 @@ export function UserRegistrationSettings() {
 
   const handleToggle = async (newValue: boolean) => {
     try {
-      await Stores.Users.updateUserRegistrationSettings(newValue)
+      await Users.updateUserRegistrationSettings(newValue)
       message.success(
         `User registration ${newValue ? 'enabled' : 'disabled'} successfully`,
       )

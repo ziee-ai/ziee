@@ -89,6 +89,32 @@ frontend win stays at the layers already shipped (ITEM-1/2/5/9/10) + the module-
 level split of admin stores (ITEM-3, ~43 KB gzip) — NOT per-action splitting of
 thin stores.
 
+## 0c. WHOLE-STORE-LAZY PROOF (Users store) — PASS, measured
+
+Built the mechanism + converted the `Users` store end-to-end:
+- Framework: `registerStore(name, proxy)` action on `useModuleSystemStore`
+  (idempotent) + `registerLazyStore(handle)` helper (`stores.ts`) — creates the
+  lifecycle proxy ONCE, self-registers it, returns it as the direct handle.
+  Additive; 89 other modules + `defineStore`'s `{name,store}` return untouched.
+- `Users.store.ts`: `export const Users = registerLazyStore(defineStore('Users', …))`.
+  Removed from `user/module.tsx` `stores:[]` + its static import; removed the
+  barrel re-export (would re-tether); type augmentation switched to a direct
+  `import type` (erased). 5 reader components → direct handle `import { Users }`
+  (UsersSettings aliases it `UsersStore` to dodge the lucide `Users` icon).
+
+**Measured:** the Users store code (`toggleUserActiveStatus`/`updateUserRegistrationSettings`)
+is **GONE from the entry chunk** → now in the lazy `UsersSettings-*.js` chunk.
+tsc clean. **Functional PASS** (prod build @29182): visiting `/settings/users` →
+`UsersSettings` chunk loads → store self-registers → first read fires `init` →
+`GET /api/users` executes → page renders → **0 errors**. The whole lazy lifecycle
+(import → register → first-access init → SSE+fetch → ref-counted destroy) rides
+the proxy exactly as before.
+
+**Single-store byte delta is small** (~1.5 KB gzip — Users is a small store), but
+the MECHANISM is proven + SCALES: the ~43 KB-gzip admin-store target (ITEM-3) is
+this exact pattern applied across all isolated admin stores. `Stores.X` compat
+shim is structurally intact (registerStore populates the registry Stores.X reads).
+
 ## 1. The problem (verified mechanism)
 
 Every one of ~90 stores is baked into the **482 KB gzip entry chunk**, not

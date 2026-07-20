@@ -6,10 +6,15 @@ import {
   type User,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import { emitUserCreated, emitUserDeleted, emitUserUpdated } from '@/modules/user/events'
 
-export const Users = defineStore('Users', {
+// WHOLE-STORE-LAZY (proof): this store is NOT registered by user/module.tsx.
+// It self-registers the moment its chunk is imported (by a direct-handle
+// consumer or the lazy Users page), so its whole code — state + actions — rides
+// that lazy chunk instead of the eager entry chunk. `Stores.Users` (shim) and
+// `import { Users }` return the SAME lifecycle proxy.
+const UsersStoreDef = defineStore('Users', {
   state: {
     users: [] as User[],
     total: 0,
@@ -229,4 +234,8 @@ export const Users = defineStore('Users', {
   },
 })
 
-export const useUsersStore = Users.store
+/** The direct-handle proxy — `import { Users }; Users.users` / `Users.loadUsers()`.
+ *  Importing this file self-registers the store (so `Stores.Users` resolves too). */
+export const Users = registerLazyStore(UsersStoreDef)
+/** Raw zustand store (kept for the type augmentation + any raw consumer). */
+export const useUsersStore = UsersStoreDef.store

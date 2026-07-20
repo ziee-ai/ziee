@@ -1,5 +1,8 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useUsersStore, useUserGroupsStore } from '@/modules/user/stores'
+// Direct type import (erased) — keeps the `Stores.Users` augmentation without
+// re-tethering the lazy Users store through the barrel.
+import type { useUsersStore } from '@/modules/user/stores/Users.store'
+import type { useUserGroupsStore } from '@/modules/user/stores'
 import type { useUserGroupDrawerStore } from '@/modules/user/components/group/EditUserGroupDrawer.store'
 import type { useGroupMembersDrawerStore } from '@/modules/user/components/group/GroupMembersDrawer.store'
 import type { useCreateUserDrawerStore } from '@/modules/user/components/user/CreateUserDrawer.store'

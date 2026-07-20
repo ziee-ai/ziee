@@ -9,7 +9,9 @@ import { useCreateUserDrawerStore } from '@/modules/user/components/user/CreateU
 import { useEditUserDrawerStore } from '@/modules/user/components/user/EditUserDrawer.store'
 import { useResetPasswordDrawerStore } from '@/modules/user/components/user/ResetPasswordDrawer.store'
 import { useUserGroupsDrawerStore } from '@/modules/user/components/user/UserGroupsDrawer.store'
-import { useUserGroupsStore, useUsersStore } from '@/modules/user/stores'
+import { useUserGroupsStore } from '@/modules/user/stores'
+// NOTE: the `Users` store is NOT imported/registered here — it is whole-store-lazy
+// (self-registers from its own chunk when a consumer imports it). See Users.store.ts.
 import '@/modules/user/types' // Import type augmentation
 import '@/modules/user/types/GroupWidget' // Register userGroup widget slot
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -50,10 +52,6 @@ export default createModule({
     },
   ],
   stores: [
-    {
-      name: 'Users',
-      store: useUsersStore,
-    },
     {
       name: 'UserGroups',
       store: useUserGroupsStore,

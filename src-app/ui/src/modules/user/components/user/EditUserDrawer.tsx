@@ -2,6 +2,7 @@ import { Button, Form, FormField, useForm, zodResolver, Input, Switch, message }
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
+import { Users } from '@/modules/user/stores/Users.store'
 import { usePermission } from '@/core/permissions'
 import { Permissions, type UpdateUserRequest } from '@/api-client/types'
 import { useEffect } from 'react'
@@ -49,7 +50,7 @@ export function EditUserDrawer() {
         is_active: values.is_active,
       }
 
-      await Stores.Users.updateUser(editingUser.id, updateData)
+      await Users.updateUser(editingUser.id, updateData)
 
       message.success('User updated successfully')
       Stores.EditUserDrawer.closeEditUserDrawer()

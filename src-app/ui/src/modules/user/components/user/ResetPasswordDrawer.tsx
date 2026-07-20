@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { Button, Form, FormField, useForm, zodResolver, PasswordInput, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
+import { Users } from '@/modules/user/stores/Users.store'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 
@@ -32,7 +33,7 @@ export function ResetPasswordDrawer() {
     if (!user) return
 
     try {
-      await Stores.Users.resetUserPassword(user.id, values.new_password)
+      await Users.resetUserPassword(user.id, values.new_password)
 
       message.success('Password reset successfully')
       Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
