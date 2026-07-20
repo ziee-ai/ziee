@@ -41,14 +41,14 @@ pub use core::{
 };
 pub use core_tools::{
     core_tool_defs, prepare_child_specs, CoreTool, DelegateChildSpec, DelegateInput,
-    DelegateToolScope, DELEGATE_TOOL,
+    DelegateToolScope, ScheduleNextInput, DELEGATE_TOOL, SCHEDULE_NEXT_TOOL,
 };
 pub use extension::{sorted_extensions, AgentExtension, Flow, TurnContext};
 pub use guard::neutralize_untrusted;
 pub use policy::TrustedAutoApprovePolicy;
 pub use ports::{
-    ApprovalPolicy, EventSink, HumanGate, ModelResolver, SteerNotePort, TaskListStore,
-    ToolProvider, TranscriptStore,
+    ApprovalPolicy, EventSink, HumanGate, ModelResolver, SchedulePort, SteerNotePort,
+    TaskListStore, ToolProvider, TranscriptStore,
 };
 pub use reviewer::{
     apply_authorization, map_risk, Authorization, ModelRiskClassifier, Reviewer, Risk,
@@ -60,7 +60,7 @@ pub use tasklist::{
 };
 pub use types::{
     AgentEvent, AgentTurnRequest, ApprovalMode, Decision, GateAsk, GateOutcome, GateTicket,
-    IdempotencyKey, ReviewDecision, SandboxMode, StopReason, SubagentLimits, SubagentSpec,
-    SubagentSummary, TaskItem, TaskItemCreate, TaskItemPatch, TaskStatus, ToolCall,
+    IdempotencyKey, ReviewDecision, SandboxMode, ScheduleProposal, StopReason, SubagentLimits,
+    SubagentSpec, SubagentSummary, TaskItem, TaskItemCreate, TaskItemPatch, TaskStatus, ToolCall,
     ToolCallRecord, ToolResult, ToolScope, TurnSeed, Usage,
 };

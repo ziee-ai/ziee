@@ -237,6 +237,26 @@ pub struct ToolScope {
     pub allow_delegate: bool,
 }
 
+/// A self-paced agent's proposed next-fire signal (Group E / DEC-42), produced
+/// by the model-facing `schedule_next` core tool and recorded through the
+/// [`SchedulePort`](crate::ports::SchedulePort). The host (the scheduler's
+/// self-paced dispatch) reads it AFTER the turn and feeds it to its existing
+/// clamp + write-back (`next_self_paced_fire` → `arm_self_paced`); the crate
+/// itself never clamps or persists.
+///
+/// * `stop == true` ends the self-paced loop (self-complete) — `delay_seconds`
+///   is then irrelevant.
+/// * otherwise `delay_seconds` is the model's requested wait until the next
+///   turn (`None` ⇒ "as soon as allowed"; the host floors it to its
+///   min-interval). `reason` is a short free-text rationale (surfaced by the
+///   host, not part of the clamp).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScheduleProposal {
+    pub delay_seconds: Option<u64>,
+    pub reason: Option<String>,
+    pub stop: bool,
+}
+
 /// How a turn is seeded — a new message, or a resume of a persisted transcript.
 #[derive(Debug, Clone)]
 pub enum TurnSeed {

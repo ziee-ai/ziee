@@ -275,6 +275,14 @@ pub struct AgentCore {
     /// only the detached background-run path wires an impl (backed by the durable
     /// note queue). Additive for existing hosts.
     pub steer: Option<Arc<dyn SteerNotePort>>,
+    /// Optional self-paced next-fire channel (Group E / ITEM-21 / DEC-42). When
+    /// `Some`, the model-facing `schedule_next` core tool is offered and its
+    /// proposal is recorded here for the host to read after the turn. `None`
+    /// (interactive chat, workflow steps, fan-out children, and any run the
+    /// scheduler did NOT mark unattended) ⇒ the tool is not offered and there is
+    /// ZERO behavior change: only the scheduler's unattended prompt-task path
+    /// wires an impl. Additive for existing hosts.
+    pub schedule: Option<Arc<dyn crate::ports::SchedulePort>>,
     pub budget: Budget,
     pub limits: crate::types::SubagentLimits,
     pub sandbox: SandboxMode,
@@ -373,6 +381,7 @@ impl AgentCore {
             tools.extend(crate::core_tools::core_tool_defs(
                 &tctx.tool_scope,
                 self.task_store.is_some(),
+                self.schedule.is_some(),
             ));
             let mut chat_req = ChatRequest {
                 model: self.model_name.clone(),
@@ -858,6 +867,7 @@ mod tests {
             reviewer: None,
             task_store: None,
             steer: None,
+            schedule: None,
             budget: Budget::new(2, 1_000_000, 1_000_000),
             limits: Default::default(),
             sandbox: SandboxMode::WorkspaceWrite { network: false },

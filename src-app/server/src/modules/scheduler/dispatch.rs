@@ -69,6 +69,10 @@ pub struct DispatchOutcome {
     /// failed / empty firing (⇒ the evaluator returns not_done without a model
     /// call). Transient (not persisted); consumed in-process by the write-back.
     pub result_text: Option<String>,
+    /// ITEM-21 / DEC-42: the self-paced agent's `schedule_next` proposal drained
+    /// off this firing (`None` when absent / failed). The tick feeds it to the
+    /// plain self-paced write-back instead of the default cadence.
+    pub schedule_proposal: Option<super::schedule::SelfPacedProposal>,
 }
 
 /// A successful target run, before change-detection/notification.
@@ -78,6 +82,10 @@ struct RawResult {
     conversation_id: Option<Uuid>,
     /// Tools skipped during a headless prompt run (ITEM-17); empty for workflow.
     skipped_tools: Vec<super::models::SkippedTool>,
+    /// ITEM-21 / DEC-42: the self-paced agent's `schedule_next` proposal, drained
+    /// off this firing's turn (`None` when the model didn't call the tool, or for
+    /// a workflow run). The tick feeds it to the self-paced write-back.
+    schedule_proposal: Option<super::schedule::SelfPacedProposal>,
 }
 
 /// ITEM-14/DEC-17: build the unattended run's `mcp_config.mcp_servers` attach set
@@ -146,9 +154,11 @@ pub(super) fn build_change_summary(outcome: &super::change::ChangeOutcome) -> se
 /// ITEM-21 / DEC-42/44/45: compute the self-paced WRITE-BACK outcome for a fired
 /// turn — clamp the model's proposed delay via `schedule::next_self_paced_fire`
 /// (honoring the min-interval floor, the max-horizon ceiling, and the absolute
-/// per-task expiry), or, when NO proposal was produced (the model-facing
-/// `schedule_next` tool is a later tranche), self-stop. Pure + unit-testable; the
-/// caller (`tick::fire_task`) applies the result via `repository::arm_self_paced`.
+/// per-task expiry), or, when NO proposal was produced (the self-paced agent did
+/// not call the `schedule_next` core tool, or the agent-core chat path isn't
+/// active), self-stop. Pure + unit-testable; the caller (`tick::fire_task`)
+/// drains the proposal via `proposal::take_proposal` and applies the result via
+/// `repository::arm_self_paced`.
 pub(super) fn self_paced_writeback(
     proposal: Option<&super::schedule::SelfPacedProposal>,
     min_interval_seconds: i64,
@@ -164,8 +174,8 @@ pub(super) fn self_paced_writeback(
             created_at,
             now,
         ),
-        // No proposal (tool not yet wired) ⇒ a fired self-paced turn self-completes
-        // rather than looping forever.
+        // No proposal (the agent didn't call `schedule_next`) ⇒ a fired self-paced
+        // turn self-completes rather than looping forever.
         None => super::schedule::SelfPacedOutcome::Disable,
     }
 }
@@ -249,6 +259,8 @@ async fn dispatch_workflow(pool: &PgPool, task: &ScheduledTask) -> Result<RawRes
                     workflow_run_id: Some(run_id),
                     conversation_id: None,
                     skipped_tools: Vec::new(),
+                    // Workflow runs don't drive an agent-core self-paced turn.
+                    schedule_proposal: None,
                 });
             }
             "failed" | "cancelled" => {
@@ -438,11 +450,18 @@ async fn dispatch_prompt(
         None => (String::new(), Vec::new()),
     };
 
+    // ITEM-21 / DEC-42: drain the self-paced `schedule_next` proposal the agent
+    // recorded during this turn (keyed by the assistant message = the agent-core
+    // `run_id`). `None` when the model didn't call the tool (or the agent-core
+    // chat path isn't active) ⇒ the tick keeps the default-cadence behavior.
+    let schedule_proposal = super::proposal::take_proposal(assistant_message_id);
+
     Ok(RawResult {
         text,
         workflow_run_id: None,
         conversation_id: Some(conversation_id),
         skipped_tools,
+        schedule_proposal,
     })
 }
 
@@ -470,6 +489,9 @@ async fn finalize_success(
     // evaluator (transient; capped when the evaluator builds its prompt). None
     // for an empty result → the evaluator returns not_done without a model call.
     let result_text = (!raw.text.trim().is_empty()).then(|| raw.text.clone());
+    // ITEM-21 / DEC-42: carry the self-paced proposal through to the tick's
+    // write-back (present on both the no_change and the notifying success paths).
+    let schedule_proposal = raw.schedule_proposal.clone();
 
     // on_change + nothing changed → record success, send NO notification —
     // UNLESS tools were skipped this firing. A skipped tool means the result is
@@ -490,6 +512,7 @@ async fn finalize_success(
             result_preview,
             change_summary,
             result_text,
+            schedule_proposal,
         };
     }
 
@@ -549,6 +572,7 @@ async fn finalize_success(
         result_preview,
         change_summary,
         result_text,
+        schedule_proposal,
     }
 }
 
@@ -597,6 +621,8 @@ async fn finalize_failure(
         result_preview: None,
         change_summary: None,
         result_text: None,
+        // A failed firing has no usable proposal ⇒ default write-back (Disable).
+        schedule_proposal: None,
     }
 }
 

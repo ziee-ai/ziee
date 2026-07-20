@@ -44,6 +44,7 @@ pub mod goal_eval;
 pub mod handlers;
 pub mod models;
 pub mod permissions;
+pub mod proposal;
 pub mod prune;
 pub mod repository;
 pub mod routes;

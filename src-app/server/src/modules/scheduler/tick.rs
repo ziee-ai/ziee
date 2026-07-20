@@ -325,10 +325,13 @@ pub async fn fire_task(
                 tracing::warn!("scheduler.tick: goal arm_self_paced {} failed: {e:?}", task.id);
             }
         } else {
-            // Plain self-paced: the model-facing `schedule_next` proposal tool is a
-            // later tranche; until it lands there is no proposal, so a fired
-            // self-paced turn self-completes ('completed').
-            let proposal: Option<schedule::SelfPacedProposal> = None;
+            // Plain self-paced (ITEM-21 / DEC-42): feed the model's `schedule_next`
+            // proposal — drained off this firing's turn — to the EXISTING clamp +
+            // write-back. `Some(delay)` re-arms at the clamped instant; `Some(stop)`
+            // self-completes; ABSENT (the model didn't call the tool, or the
+            // agent-core chat path isn't active) ⇒ the default-cadence behavior is
+            // unchanged (`self_paced_writeback(None) => Disable`, self-complete).
+            let proposal = outcome.schedule_proposal.clone();
             let sp_outcome = dispatch::self_paced_writeback(
                 proposal.as_ref(),
                 min_interval,

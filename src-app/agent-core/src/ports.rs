@@ -11,8 +11,8 @@ use uuid::Uuid;
 use ziee_core::AppError;
 
 use crate::types::{
-    AgentEvent, Decision, GateAsk, GateOutcome, IdempotencyKey, SandboxMode, TaskItem,
-    TaskItemCreate, TaskItemPatch, ToolCall, ToolCallRecord, ToolResult, ToolScope,
+    AgentEvent, Decision, GateAsk, GateOutcome, IdempotencyKey, SandboxMode, ScheduleProposal,
+    TaskItem, TaskItemCreate, TaskItemPatch, ToolCall, ToolCallRecord, ToolResult, ToolScope,
 };
 
 /// Turn history + the durable journal (chat: repos/`conversation_summaries`;
@@ -127,4 +127,31 @@ pub trait SteerNotePort: Send + Sync {
     /// Atomically take + return this run's pending steering notes, oldest-first
     /// (empty when none). Idempotent per note — a note is delivered at most once.
     async fn take_pending(&self, run_id: Uuid) -> Result<Vec<String>, AppError>;
+}
+
+/// Record a self-paced run's proposed NEXT-fire signal (Group E / ITEM-21 /
+/// DEC-42) — the write side of the `schedule_next` core tool. The model calls
+/// `schedule_next{delay_seconds?, reason?, stop?}` DURING a self-paced turn; the
+/// tool handler records the [`ScheduleProposal`] here, and the host (the
+/// scheduler's self-paced dispatch) reads it back AFTER the turn — keyed by
+/// `run_id` — and feeds it to its EXISTING clamp + write-back
+/// (`next_self_paced_fire` → `arm_self_paced`). The crate never clamps/persists.
+///
+/// **Only the scheduler's unattended prompt-task path wires a real impl** (backed
+/// by a process-wide keyed registry the scheduler drains); every other
+/// construction site leaves [`AgentCore::schedule`] as `None`, so the
+/// `schedule_next` tool is NOT even offered there and the interactive chat +
+/// workflow paths stay byte-identical (additive for existing hosts). A proposal
+/// recorded on a non-self-paced run is a documented no-op — the host that ran the
+/// turn simply never consults it.
+///
+/// [`AgentCore::schedule`]: crate::core::AgentCore::schedule
+#[async_trait]
+pub trait SchedulePort: Send + Sync {
+    /// Record this run's next-fire proposal (last-write-wins within a turn).
+    async fn propose_next(
+        &self,
+        run_id: Uuid,
+        proposal: ScheduleProposal,
+    ) -> Result<(), AppError>;
 }

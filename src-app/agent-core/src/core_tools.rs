@@ -36,6 +36,10 @@ use crate::types::{SubagentSpec, SubagentSummary, ToolCall, ToolResult, ToolScop
 /// The reserved, unprefixed name of the sub-agent `delegate` meta-tool.
 pub const DELEGATE_TOOL: &str = "delegate";
 
+/// The reserved, unprefixed name of the self-paced `schedule_next` meta-tool
+/// (Group E / ITEM-21 / DEC-42).
+pub const SCHEDULE_NEXT_TOOL: &str = "schedule_next";
+
 /// A core meta-tool the loop intercepts in-process (never routed to an MCP
 /// `ToolProvider`). Classify a tool name with [`CoreTool::from_name`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +54,8 @@ pub enum CoreTool {
     TaskGet,
     /// `task_list` — read back the whole task list (Group G / ITEM-34).
     TaskList,
+    /// `schedule_next` — a self-paced run proposes its next fire (Group E / DEC-42).
+    ScheduleNext,
 }
 
 impl CoreTool {
@@ -61,6 +67,7 @@ impl CoreTool {
             crate::tasklist::TASK_UPDATE_TOOL => Some(Self::TaskUpdate),
             crate::tasklist::TASK_GET_TOOL => Some(Self::TaskGet),
             crate::tasklist::TASK_LIST_TOOL => Some(Self::TaskList),
+            SCHEDULE_NEXT_TOOL => Some(Self::ScheduleNext),
             _ => None,
         }
     }
@@ -69,8 +76,14 @@ impl CoreTool {
 /// The core meta-tool definitions to APPEND to the model's tool list for a turn.
 /// `delegate` is offered iff `scope.allow_delegate` (false in children →
 /// structural `max_depth = 1`); the Group-G `task_*` tools are offered iff
-/// `task_list_enabled` (the host wired an `AgentCore::task_store`).
-pub fn core_tool_defs(scope: &ToolScope, task_list_enabled: bool) -> Vec<Tool> {
+/// `task_list_enabled` (the host wired an `AgentCore::task_store`); the Group-E
+/// `schedule_next` tool is offered iff `schedule_enabled` (the host wired an
+/// `AgentCore::schedule` — only the scheduler's unattended self-paced path does).
+pub fn core_tool_defs(
+    scope: &ToolScope,
+    task_list_enabled: bool,
+    schedule_enabled: bool,
+) -> Vec<Tool> {
     let mut out = Vec::new();
     if scope.allow_delegate {
         out.push(delegate_tool_def());
@@ -78,7 +91,49 @@ pub fn core_tool_defs(scope: &ToolScope, task_list_enabled: bool) -> Vec<Tool> {
     if task_list_enabled {
         out.extend(crate::tasklist::task_tool_defs());
     }
+    if schedule_enabled {
+        out.push(schedule_next_tool_def());
+    }
     out
+}
+
+/// The `schedule_next` tool definition (Group E / ITEM-21 / DEC-42). Offered only
+/// on a self-paced scheduled run (the host wired [`AgentCore::schedule`]); a
+/// self-paced agent calls it ONCE per turn to say when it should next run, or to
+/// stop the loop.
+///
+/// [`AgentCore::schedule`]: crate::core::AgentCore::schedule
+fn schedule_next_tool_def() -> Tool {
+    Tool::function(
+        SCHEDULE_NEXT_TOOL,
+        "Propose when THIS self-paced scheduled task should next run — or that it \
+         is finished. You are running unattended on a self-managed cadence: after \
+         you finish this turn's work, call `schedule_next` exactly once to set the \
+         next wake-up. Pass `delay_seconds` for how long to wait before the next \
+         run (omit it to run again as soon as allowed; the host enforces a \
+         minimum interval and a maximum horizon, clamping your value into range). \
+         Pass `stop: true` when the task is complete and should NOT run again — \
+         this ends the recurring loop. Optionally include a short `reason`. If you \
+         do not call this tool, the task self-completes and will not run again.",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "delay_seconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Seconds to wait before the next run (clamped to the host's min-interval / max-horizon). Omit to run again as soon as allowed. Ignored when `stop` is true."
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Optional short rationale for the chosen delay or for stopping."
+                },
+                "stop": {
+                    "type": "boolean",
+                    "description": "Set true to END the recurring loop (task complete; do not run again). Defaults to false."
+                }
+            }
+        }),
+    )
 }
 
 fn delegate_tool_def() -> Tool {
@@ -140,6 +195,18 @@ fn delegate_tool_def() -> Tool {
 pub struct DelegateInput {
     #[serde(default)]
     pub children: Vec<DelegateChildSpec>,
+}
+
+/// Parsed `schedule_next` input (Group E / DEC-42). All fields optional so a bare
+/// `{}` (run again as soon as allowed) and `{"stop": true}` both deserialize.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScheduleNextInput {
+    #[serde(default)]
+    pub delay_seconds: Option<u64>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub stop: Option<bool>,
 }
 
 /// One requested child in a `delegate` call.
@@ -265,6 +332,53 @@ impl AgentCore {
             CoreTool::TaskUpdate => Box::pin(self.handle_task_update(run_id, call)),
             CoreTool::TaskGet => Box::pin(self.handle_task_get(run_id, call)),
             CoreTool::TaskList => Box::pin(self.handle_task_list(run_id, call)),
+            // Group E self-paced next-fire tool (DEC-42), keyed by the turn's
+            // `run_id` — the scheduler reads the recorded proposal back by run_id.
+            CoreTool::ScheduleNext => Box::pin(self.handle_schedule_next(run_id, call)),
+        }
+    }
+
+    /// Handle a `schedule_next` call (Group E / ITEM-21 / DEC-42): parse the
+    /// model's `{delay_seconds?, reason?, stop?}` proposal and record it through
+    /// [`AgentCore::schedule`](crate::core::AgentCore::schedule) for the host (the
+    /// scheduler's self-paced dispatch) to read after the turn. It only sets a
+    /// value — the crate never clamps/persists; the host's existing
+    /// `next_self_paced_fire` → `arm_self_paced` does. A `None` schedule port
+    /// (the tool was never offered) yields an error result; recording never
+    /// terminates the turn.
+    async fn handle_schedule_next(&self, run_id: Uuid, call: &ToolCall) -> ToolResult {
+        let Some(port) = self.schedule.as_ref() else {
+            return error_tool_result(
+                "schedule_next: not available on this run (only self-paced scheduled tasks can propose their next run)",
+            );
+        };
+        let input: ScheduleNextInput = match serde_json::from_value(call.input.clone()) {
+            Ok(i) => i,
+            Err(e) => return error_tool_result(format!("schedule_next: invalid input: {e}")),
+        };
+        let proposal = crate::types::ScheduleProposal {
+            delay_seconds: input.delay_seconds,
+            reason: input.reason,
+            stop: input.stop.unwrap_or(false),
+        };
+        if let Err(e) = port.propose_next(run_id, proposal.clone()).await {
+            return error_tool_result(format!("schedule_next: failed to record proposal: {e}"));
+        }
+        let ack = if proposal.stop {
+            "Recorded: this task is complete and will not run again.".to_string()
+        } else {
+            match proposal.delay_seconds {
+                Some(s) => format!(
+                    "Recorded: next run requested in ~{s}s (the host clamps to its min-interval / max-horizon)."
+                ),
+                None => "Recorded: next run as soon as allowed (the host applies its min-interval).".to_string(),
+            }
+        };
+        ToolResult {
+            content: vec![ContentBlock::Text { text: ack }],
+            is_error: false,
+            structured_content: None,
+            terminal: false,
         }
     }
 
@@ -349,14 +463,25 @@ mod tests {
             servers: vec![],
             allow_delegate: false,
         };
-        assert!(core_tool_defs(&on, false)
+        assert!(core_tool_defs(&on, false, false)
             .iter()
             .any(|t| t.function.name == DELEGATE_TOOL));
-        assert!(core_tool_defs(&off, false).is_empty());
+        assert!(core_tool_defs(&off, false, false).is_empty());
         // Task tools appear iff the host wired a task_store (task_list_enabled).
-        assert!(core_tool_defs(&off, true)
+        assert!(core_tool_defs(&off, true, false)
             .iter()
             .any(|t| t.function.name == crate::tasklist::TASK_CREATE_TOOL));
+        // `schedule_next` appears iff the host wired a schedule port
+        // (schedule_enabled) — and only then (Group E / DEC-42).
+        assert!(core_tool_defs(&off, false, true)
+            .iter()
+            .any(|t| t.function.name == SCHEDULE_NEXT_TOOL));
+        assert!(
+            !core_tool_defs(&off, true, false)
+                .iter()
+                .any(|t| t.function.name == SCHEDULE_NEXT_TOOL),
+            "schedule_next must NOT be offered when the schedule port is absent"
+        );
     }
 
     #[test]
@@ -484,6 +609,7 @@ mod tests {
             reviewer: None,
             task_store: None,
             steer: None,
+            schedule: None,
             budget: Budget::new(4, 1_000_000, 1_000_000),
             limits: SubagentLimits::default(),
             sandbox: SandboxMode::WorkspaceWrite { network: false },
@@ -683,5 +809,164 @@ mod tests {
             .any(|b| matches!(b, ContentBlock::ToolResult { tool_use_id, is_error: Some(true), .. } if tool_use_id == "d1"));
         assert!(is_error, "empty delegate yields an is_error tool result");
         assert!(tc.tools.calls.lock().unwrap().is_empty());
+    }
+
+    // ----- Group E: schedule_next (DEC-42) ---------------------------------
+
+    /// Build a core wired with a [`crate::test_fakes::FakeSchedule`] so the
+    /// `schedule_next` tool is offered + records proposals.
+    fn build_core_with_schedule(
+        model: Arc<dyn ModelClient>,
+        schedule: Arc<crate::test_fakes::FakeSchedule>,
+    ) -> TestCore {
+        let mut tc = build_core(
+            model,
+            Arc::new(ProviderModelClientFactory),
+            Arc::new(FakeResolver::default()),
+        );
+        tc.core.schedule = Some(schedule);
+        tc
+    }
+
+    /// TEST (loop): `schedule_next` is offered to the model iff the host wired a
+    /// schedule port — and never otherwise (Group E / DEC-42).
+    #[tokio::test]
+    async fn schedule_next_offered_only_when_schedule_wired() {
+        // Wired → offered.
+        let model = Arc::new(RecordingModel {
+            offered: Mutex::new(Vec::new()),
+            reply: ChatMessage::assistant("done"),
+        });
+        let tc = build_core_with_schedule(model.clone(), Arc::new(crate::test_fakes::FakeSchedule::default()));
+        tc.core.run(req(false), CancelToken::new()).await.unwrap();
+        assert!(
+            model.offered.lock().unwrap()[0]
+                .iter()
+                .any(|n| n == SCHEDULE_NEXT_TOOL),
+            "schedule_next is offered when the schedule port is wired"
+        );
+
+        // Absent → not offered (the default interactive/workflow path).
+        let model2 = Arc::new(RecordingModel {
+            offered: Mutex::new(Vec::new()),
+            reply: ChatMessage::assistant("done"),
+        });
+        let tc2 = build_core(
+            model2.clone(),
+            Arc::new(ProviderModelClientFactory),
+            Arc::new(FakeResolver::default()),
+        );
+        tc2.core.run(req(false), CancelToken::new()).await.unwrap();
+        assert!(
+            !model2.offered.lock().unwrap()[0]
+                .iter()
+                .any(|n| n == SCHEDULE_NEXT_TOOL),
+            "schedule_next is NOT offered without a schedule port"
+        );
+    }
+
+    /// TEST (loop): a scripted model calling `schedule_next{delay, reason}` records
+    /// exactly that proposal on the port, keyed by the turn's run_id, and is
+    /// intercepted (never routed to the ToolProvider).
+    #[tokio::test]
+    async fn schedule_next_records_delay_proposal() {
+        let schedule = Arc::new(crate::test_fakes::FakeSchedule::default());
+        let parent = Arc::new(ScriptedModel::script(vec![
+            assistant_tool(
+                "s1",
+                "schedule_next",
+                serde_json::json!({ "delay_seconds": 3600, "reason": "await more data" }),
+            ),
+            ChatMessage::assistant("scheduled"),
+        ]));
+        let tc = build_core_with_schedule(parent, schedule.clone());
+        let request = req(false);
+        let run_id = request.run_id;
+        tc.core.run(request, CancelToken::new()).await.unwrap();
+
+        let recorded = schedule.recorded.lock().unwrap();
+        assert_eq!(recorded.len(), 1, "exactly one proposal recorded");
+        assert_eq!(recorded[0].0, run_id, "recorded under the turn's run_id");
+        assert_eq!(
+            recorded[0].1,
+            crate::types::ScheduleProposal {
+                delay_seconds: Some(3600),
+                reason: Some("await more data".into()),
+                stop: false,
+            }
+        );
+        // Intercepted in-process: the ToolProvider was never asked to call it.
+        assert!(
+            tc.tools.calls.lock().unwrap().iter().all(|c| c.name != "schedule_next"),
+            "schedule_next must be intercepted, never routed to ToolProvider::call"
+        );
+    }
+
+    /// TEST (loop): `schedule_next{stop:true}` records a self-stop; `delay_seconds`
+    /// omitted deserializes to `None` (run-as-soon-as-allowed).
+    #[tokio::test]
+    async fn schedule_next_stop_and_bare_proposals() {
+        // stop: true
+        let sched_stop = Arc::new(crate::test_fakes::FakeSchedule::default());
+        let stop_model = Arc::new(ScriptedModel::script(vec![
+            assistant_tool("s1", "schedule_next", serde_json::json!({ "stop": true })),
+            ChatMessage::assistant("done"),
+        ]));
+        build_core_with_schedule(stop_model, sched_stop.clone())
+            .core
+            .run(req(false), CancelToken::new())
+            .await
+            .unwrap();
+        let rec = sched_stop.recorded.lock().unwrap();
+        assert_eq!(rec.len(), 1);
+        assert!(rec[0].1.stop, "stop:true recorded as a self-stop");
+        assert_eq!(rec[0].1.delay_seconds, None);
+        drop(rec);
+
+        // bare `{}` → run again as soon as allowed (delay None, stop false).
+        let sched_bare = Arc::new(crate::test_fakes::FakeSchedule::default());
+        let bare_model = Arc::new(ScriptedModel::script(vec![
+            assistant_tool("s1", "schedule_next", serde_json::json!({})),
+            ChatMessage::assistant("done"),
+        ]));
+        build_core_with_schedule(bare_model, sched_bare.clone())
+            .core
+            .run(req(false), CancelToken::new())
+            .await
+            .unwrap();
+        let rec = sched_bare.recorded.lock().unwrap();
+        assert_eq!(
+            rec[0].1,
+            crate::types::ScheduleProposal { delay_seconds: None, reason: None, stop: false }
+        );
+    }
+
+    /// TEST: `schedule_next` is a no-op-with-error when NO schedule port is wired
+    /// (a run that isn't self-paced) — it's still intercepted, never routed out,
+    /// and yields an is_error tool result the model can read.
+    #[tokio::test]
+    async fn schedule_next_without_port_is_error_result() {
+        let parent = Arc::new(ScriptedModel::script(vec![
+            assistant_tool("s1", "schedule_next", serde_json::json!({ "stop": true })),
+            ChatMessage::assistant("done"),
+        ]));
+        // No schedule port wired (build_core sets schedule: None).
+        let tc = build_core(
+            parent,
+            Arc::new(ProviderModelClientFactory),
+            Arc::new(FakeResolver::default()),
+        );
+        tc.core.run(req(false), CancelToken::new()).await.unwrap();
+        let msgs = tc.transcript.msgs.lock().unwrap();
+        let is_error = msgs
+            .values()
+            .flatten()
+            .flat_map(|m| &m.content)
+            .any(|b| matches!(b, ContentBlock::ToolResult { tool_use_id, is_error: Some(true), .. } if tool_use_id == "s1"));
+        assert!(is_error, "schedule_next without a port yields an is_error result");
+        assert!(
+            tc.tools.calls.lock().unwrap().iter().all(|c| c.name != "schedule_next"),
+            "still intercepted (never routed to ToolProvider::call)"
+        );
     }
 }

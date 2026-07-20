@@ -79,6 +79,11 @@ pub struct ChatAgentTurn {
     /// Ordered context-injection extensions (assistant system prompt, params, tool
     /// attach, memory, …). Empty in the minimal loop-verification path.
     pub extensions: Vec<Arc<dyn agent_core::AgentExtension>>,
+    /// Group E / ITEM-21 / DEC-42: this is an UNATTENDED (scheduled) run, so wire
+    /// the self-paced `schedule_next` core tool. Interactive chat is never
+    /// unattended → the tool isn't offered there. The scheduler drains any
+    /// recorded proposal after the turn; only its `self_paced` tasks consult it.
+    pub unattended: bool,
 }
 
 impl ChatAgentTurn {
@@ -216,6 +221,14 @@ impl ChatAgentTurn {
             // ITEM-25 / DEC-79: interactive chat is not a background steer target
             // → no steer channel (the loop's steer-read is skipped).
             steer: None,
+            // Group E / ITEM-21 / DEC-42: offer the self-paced `schedule_next`
+            // tool ONLY on an unattended (scheduled) run; the recorded proposal is
+            // drained by the scheduler's self-paced dispatch after the turn.
+            // Interactive chat (`unattended == false`) ⇒ `None` (tool not offered),
+            // so this is byte-identical to before for normal chat.
+            schedule: self
+                .unattended
+                .then(crate::modules::scheduler::proposal::schedule_port),
         };
 
         let req = AgentTurnRequest {
@@ -415,6 +428,10 @@ pub async fn start_generation_agent_core(
     };
 
     tokio::spawn(async move {
+        // Group E / ITEM-21 / DEC-42: capture the run's unattended flag before
+        // `request` is moved into the RegistryBridge — it gates the self-paced
+        // `schedule_next` tool (only a scheduled/unattended run offers it).
+        let is_unattended = request.unattended;
         // The single `RegistryBridge` runs EVERY chat extension's `before_llm_call`
         // (system prompts + memory + MCP tool gathering + approval processing) inside
         // the loop, reusing their tested logic. Built only when a registry is present.
@@ -462,6 +479,7 @@ pub async fn start_generation_agent_core(
             cancel_token: cancel_token.clone(),
             sse_tx: Some(ext_tx.clone()),
             extensions,
+            unattended: is_unattended,
         };
         // Drop our local sender so the drain task's channel closes when the turn
         // (holding the remaining clones) finishes.

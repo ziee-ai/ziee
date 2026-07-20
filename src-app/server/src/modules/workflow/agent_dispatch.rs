@@ -884,6 +884,9 @@ pub async fn build_detached_agent_core(args: DetachedAgentCoreArgs) -> AgentCore
         // Group F / ITEM-25 / DEC-79: the steer channel (only the background path
         // supplies `Some`; the workflow `kind: agent` step passes `None`).
         steer,
+        // Group E / ITEM-21 / DEC-42: a workflow / background run does not drive a
+        // self-paced scheduled cadence, so it never offers `schedule_next`.
+        schedule: None,
     }
 }
 

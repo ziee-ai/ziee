@@ -27,7 +27,7 @@ pub enum ScheduleKind {
 }
 
 /// A self-paced turn's proposed next action (DEC-42), produced by the
-/// (later-tranche) model-facing `schedule_next` tool. `stop` ends the loop;
+/// model-facing `schedule_next` core tool (agent-core). `stop` ends the loop;
 /// otherwise `delay_seconds` is the model's requested wait until the next turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelfPacedProposal {
@@ -53,9 +53,11 @@ pub enum SelfPacedOutcome {
 ///     (the horizon in seconds is the ceiling) and cap the resulting instant at
 ///     the absolute expiry so a late task never over-runs its horizon.
 ///
-/// Pure + unit-tested (TEST-86). The model-facing tool that PRODUCES the proposal
-/// is a later tranche; the write-back path (`dispatch::self_paced_writeback` →
-/// `repository::arm_self_paced`) feeds this function's output back onto the row.
+/// Pure + unit-tested (TEST-86). The model-facing `schedule_next` core tool
+/// PRODUCES the proposal (agent-core); the scheduler drains it off the turn
+/// (`proposal::take_proposal`) and the write-back path
+/// (`dispatch::self_paced_writeback` → `repository::arm_self_paced`) feeds this
+/// function's output back onto the row.
 pub fn next_self_paced_fire(
     proposal: &SelfPacedProposal,
     min_interval_seconds: i64,

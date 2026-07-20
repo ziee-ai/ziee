@@ -15,13 +15,13 @@ use ziee_core::AppError;
 use crate::budget::Budget;
 use crate::core::{AgentCore, ModelClient, ModelClientFactory, ProviderModelClientFactory};
 use crate::ports::{
-    ApprovalPolicy, EventSink, HumanGate, ModelResolver, TaskListStore, ToolProvider,
+    ApprovalPolicy, EventSink, HumanGate, ModelResolver, SchedulePort, TaskListStore, ToolProvider,
     TranscriptStore,
 };
 use crate::types::{
-    AgentEvent, GateAsk, GateOutcome, GateTicket, ReviewDecision, SandboxMode, SubagentLimits,
-    TaskItem, TaskItemCreate, TaskItemPatch, TaskStatus, ToolCall, ToolCallRecord, ToolResult,
-    ToolScope, Usage,
+    AgentEvent, GateAsk, GateOutcome, GateTicket, ReviewDecision, SandboxMode, ScheduleProposal,
+    SubagentLimits, TaskItem, TaskItemCreate, TaskItemPatch, TaskStatus, ToolCall, ToolCallRecord,
+    ToolResult, ToolScope, Usage,
 };
 
 /// Build an assistant message carrying a single `ToolUse` block.
@@ -369,6 +369,27 @@ impl crate::ports::SteerNotePort for FakeSteer {
 }
 
 // ---------------------------------------------------------------------------
+// Fake SchedulePort — records every `schedule_next` proposal (Group E / DEC-42).
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+pub struct FakeSchedule {
+    pub recorded: Mutex<Vec<(Uuid, ScheduleProposal)>>,
+}
+
+#[async_trait]
+impl SchedulePort for FakeSchedule {
+    async fn propose_next(
+        &self,
+        run_id: Uuid,
+        proposal: ScheduleProposal,
+    ) -> Result<(), AppError> {
+        self.recorded.lock().unwrap().push((run_id, proposal));
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Fake HumanGate
 // ---------------------------------------------------------------------------
 
@@ -468,6 +489,7 @@ pub fn core_with(
         reviewer: None,
         task_store: None,
         steer: None,
+        schedule: None,
         budget: Budget::new(10, 1_000_000, 1_000_000),
         limits: SubagentLimits::default(),
         sandbox: SandboxMode::WorkspaceWrite { network: false },
