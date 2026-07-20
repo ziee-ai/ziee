@@ -1,3 +1,5 @@
+import { Inbox } from 'lucide-react'
+
 import { Permissions } from '@/api-client/types'
 import { createModule } from '@ziee/framework'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -57,6 +59,25 @@ export default createModule({
     },
   ],
   slots: {
+    sidebarNavigation: [
+      {
+        // Discoverable entry point to the agent/background inbox (ITEM-26).
+        // Mirrors the scheduler's `sidebarNavigation` entry exactly (id/icon/
+        // label/path/order/permission) — a top-level nav destination for the
+        // "Background results" page at `/notifications/background`.
+        id: 'agent-inbox',
+        icon: <Inbox />,
+        label: 'Background results',
+        path: '/notifications/background',
+        // Sits just after "Scheduled Tasks" (order 22) — background/agent work
+        // grouped together in the nav.
+        order: 24,
+        // Gate: SAME read perm as the `/notifications/background` route + the
+        // bell/inbox data (`notifications::read`). A user without the grant
+        // never sees the entry (and the page self-gates its fetch → no 403).
+        permission: Permissions.NotificationsRead,
+      },
+    ],
     sidebarBottom: [
       {
         id: 'notification-bell',
