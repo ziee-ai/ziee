@@ -72,3 +72,68 @@ export async function updateAgentAdminSettings(
   })
   expect(res.ok()).toBeTruthy()
 }
+
+/**
+ * Seed a real provider + a tool-capable bridge model + an (empty) conversation
+ * bound to that model, all owned by the acting user. Used by the background-run
+ * specs (ITEM-8/9/10), which need a conversation whose `model_id` the detached
+ * sub-agent runs on. Returns the ids the spec needs.
+ */
+export async function seedBridgeConversation(
+  page: Page,
+  apiURL: string,
+  token: string,
+  displayName: string,
+): Promise<{ modelId: string; conversationId: string }> {
+  // Imported lazily to keep this helper self-contained at the call sites.
+  const { createProviderViaAPI, assignProviderToAdministratorsGroup } =
+    await import('../../../common/provider-helpers')
+  const providerId = await createProviderViaAPI(apiURL, token, 'OpenAI', 'openai')
+  await assignProviderToAdministratorsGroup(apiURL, token, providerId)
+  const modelId = await createBridgeToolModel(page, apiURL, token, providerId, displayName)
+
+  const convRes = await page.request.post(`${apiURL}/api/conversations`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { title: `${displayName} conversation`, model_id: modelId },
+  })
+  expect(convRes.ok()).toBeTruthy()
+  const conversationId = (await convRes.json()).id as string
+  return { modelId, conversationId }
+}
+
+/**
+ * Launch a REAL detached background sub-agent by calling the built-in
+ * `background_mcp` server's JSON-RPC endpoint directly (`POST /api/background/mcp`
+ * with the `x-conversation-id` header the built-in reads). This drives the SAME
+ * production `spawn_background` → `runner::spawn_background_run` → real bridge
+ * sub-agent turn → terminal transition (`SyncEntity::WorkflowRun`) → completion
+ * `notification` (`SyncEntity::Notification`) path the chat model would trigger,
+ * but deterministically (no dependence on the model choosing to call the tool and
+ * no per-run approval click). Returns the opaque owner-scoped `run_id`.
+ */
+export async function spawnBackgroundSubagent(
+  page: Page,
+  apiURL: string,
+  token: string,
+  conversationId: string,
+  task: string,
+): Promise<string> {
+  const res = await page.request.post(`${apiURL}/api/background/mcp`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'x-conversation-id': conversationId,
+      'Content-Type': 'application/json',
+    },
+    data: {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'spawn_background', arguments: { kind: 'subagent', spec: { task } } },
+    },
+  })
+  expect(res.ok(), `spawn_background failed: ${res.status()} ${await res.text()}`).toBeTruthy()
+  const body = await res.json()
+  const runId = body?.result?.structuredContent?.run_id as string | undefined
+  expect(runId, `no run_id in spawn_background result: ${JSON.stringify(body)}`).toBeTruthy()
+  return runId as string
+}

@@ -495,6 +495,7 @@ pub fn core_with(
         sandbox: SandboxMode::WorkspaceWrite { network: false },
         model_name: "test-model".into(),
         resume_executes_pending: true,
+        isolate_children: false,
     };
     Harness {
         core,

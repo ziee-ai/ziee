@@ -213,6 +213,12 @@ impl ChatAgentTurn {
             sandbox: SandboxMode::ReadOnly { network: true },
             model_name: self.model_name.clone(),
             resume_executes_pending: false,
+            // Delegate child isolation: the chat host's transcript + extensions are
+            // bound to THIS turn's `assistant_message_id`, so a fan-out child (fresh
+            // run_id) must run isolated/ephemeral — never inheriting this turn's
+            // message-bound state. (`fanout.rs` swaps in a fresh transcript/sink and
+            // drops the inherited extensions when this is set.)
+            isolate_children: true,
             // Group G (DEC-49/50): the durable per-run task list, keyed by
             // `run_id` (chat's `assistant_message_id`).
             task_store: Some(Arc::new(

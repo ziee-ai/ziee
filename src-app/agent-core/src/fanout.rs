@@ -11,15 +11,17 @@
 use std::sync::Arc;
 
 use ai_providers::{ChatMessage, ContentBlock, Role};
+use async_trait::async_trait;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 use ziee_core::AppError;
 
 use crate::core::{AgentCore, CancelToken};
 use crate::guard::neutralize_untrusted;
+use crate::ports::{EventSink, TranscriptStore};
 use crate::types::{
     AgentEvent, AgentTurnRequest, SubAgentChild, SubAgentChildStatus, SubagentSpec,
-    SubagentSummary, ToolScope, TurnSeed,
+    SubagentSummary, ToolCallRecord, ToolScope, TurnSeed,
 };
 
 /// Build a concise, friendly per-child label (ITEM-4 / DEC-65) from the child's
@@ -40,6 +42,73 @@ fn subagent_label(system: &str) -> String {
     } else {
         first_line.to_string()
     }
+}
+
+// ---------------------------------------------------------------------------
+// Isolated-child primitives (delegate child isolation)
+//
+// When `AgentCore.isolate_children` is set (the chat host), each fan-out child
+// runs on THESE instead of inheriting the parent turn's message-bound
+// `transcript`/`sink`. The crate's fan-out contract is summary-only, so a child's
+// turn is EPHEMERAL — its transcript lives only for its own run and only its
+// neutralized summary returns to the parent.
+// ---------------------------------------------------------------------------
+
+/// A per-child, in-memory transcript. Never touches a DB or the parent's chat
+/// message (mirrors the in-memory shape of the loop's fake transcript). Keyed by
+/// `run_id` so a child's own multi-iteration turn stays coherent.
+#[derive(Default)]
+struct EphemeralTranscript {
+    msgs: std::sync::Mutex<std::collections::HashMap<Uuid, Vec<ChatMessage>>>,
+    journal: std::sync::Mutex<Vec<ToolCallRecord>>,
+}
+
+#[async_trait]
+impl TranscriptStore for EphemeralTranscript {
+    async fn load(&self, run_id: Uuid) -> Result<Vec<ChatMessage>, AppError> {
+        Ok(self.msgs.lock().unwrap().get(&run_id).cloned().unwrap_or_default())
+    }
+
+    async fn append(&self, run_id: Uuid, msg: ChatMessage) -> Result<(), AppError> {
+        self.msgs.lock().unwrap().entry(run_id).or_default().push(msg);
+        Ok(())
+    }
+
+    async fn replace_head(
+        &self,
+        run_id: Uuid,
+        summary: ChatMessage,
+        upto: usize,
+    ) -> Result<(), AppError> {
+        let mut g = self.msgs.lock().unwrap();
+        let v = g.entry(run_id).or_default();
+        let tail = v.split_off(upto.min(v.len()));
+        *v = std::iter::once(summary).chain(tail).collect();
+        Ok(())
+    }
+
+    async fn journal_tool_call(&self, _run_id: Uuid, rec: ToolCallRecord) -> Result<(), AppError> {
+        self.journal.lock().unwrap().push(rec);
+        Ok(())
+    }
+
+    async fn completed_tool_calls(
+        &self,
+        _run_id: Uuid,
+    ) -> Result<Vec<ToolCallRecord>, AppError> {
+        Ok(self.journal.lock().unwrap().clone())
+    }
+}
+
+/// A sink that drops every child event. A child's own loop events (thinking,
+/// text, tool activity) do NOT reach the browser; the PARENT emits the sub-agent
+/// activity card through ITS sink (see `emit_subagent_activity`). Mirrors the
+/// crate's `NoopDeltaSink`.
+struct NoopEventSink;
+
+#[async_trait]
+impl EventSink for NoopEventSink {
+    async fn emit(&self, _ev: AgentEvent) {}
 }
 
 /// How [`AgentCore::fan_out_inner`] treats a child that fails (model-resolution
@@ -194,6 +263,20 @@ impl AgentCore {
             // of its own — drop any inherited steer channel so it isn't queried
             // per child iteration and children stay unsteerable (isolation).
             child.steer = None;
+            // Delegate child isolation: a host whose parent-turn state is bound to
+            // the parent's run/message (the chat host — see `isolate_children`)
+            // must NOT let a child (fresh `run_id`) inherit that state, or the
+            // child corrupts/panics on the parent's message. Give it a fresh
+            // ephemeral transcript + no-op sink + no inherited extensions/ports —
+            // matching the summary-only fan-out contract. `false` (fakes, workflow)
+            // ⇒ byte-identical legacy child.
+            if self.isolate_children {
+                child.transcript = Arc::new(EphemeralTranscript::default());
+                child.sink = Arc::new(NoopEventSink);
+                child.extensions = Vec::new();
+                child.task_store = None;
+                child.schedule = None;
+            }
 
             let child_req = AgentTurnRequest {
                 run_id: child_id,
@@ -387,6 +470,7 @@ mod tests {
             sandbox: SandboxMode::WorkspaceWrite { network: false },
             model_name: "test".into(),
             resume_executes_pending: true,
+            isolate_children: false,
         }
     }
 
@@ -509,6 +593,107 @@ mod tests {
             .unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].summary, "the child's final answer");
+    }
+
+    /// Models the CHAT host's message-bound `ChatTranscript`: it is keyed to ONE
+    /// run (`bound_id`) and refuses any op for a different `run_id` — mirroring
+    /// `ChatTranscript`'s `debug_assert_eq!(run_id, assistant_message_id)`, but as
+    /// a returned error so a child's run fails cleanly (in release the real guard
+    /// compiles out and the child silently cross-writes the parent's message).
+    struct RunBoundTranscript {
+        bound_id: Uuid,
+    }
+
+    #[async_trait]
+    impl TranscriptStore for RunBoundTranscript {
+        async fn load(&self, run_id: Uuid) -> Result<Vec<ChatMessage>, AppError> {
+            if run_id != self.bound_id {
+                return Err(AppError::internal_error(
+                    "transcript is bound to a different run".to_string(),
+                ));
+            }
+            Ok(vec![])
+        }
+        async fn append(&self, run_id: Uuid, _msg: ChatMessage) -> Result<(), AppError> {
+            if run_id != self.bound_id {
+                return Err(AppError::internal_error(
+                    "transcript is bound to a different run".to_string(),
+                ));
+            }
+            Ok(())
+        }
+        async fn replace_head(
+            &self,
+            run_id: Uuid,
+            _summary: ChatMessage,
+            _upto: usize,
+        ) -> Result<(), AppError> {
+            if run_id != self.bound_id {
+                return Err(AppError::internal_error(
+                    "transcript is bound to a different run".to_string(),
+                ));
+            }
+            Ok(())
+        }
+        async fn journal_tool_call(
+            &self,
+            _run_id: Uuid,
+            _rec: ToolCallRecord,
+        ) -> Result<(), AppError> {
+            Ok(())
+        }
+        async fn completed_tool_calls(
+            &self,
+            _run_id: Uuid,
+        ) -> Result<Vec<ToolCallRecord>, AppError> {
+            Ok(vec![])
+        }
+    }
+
+    /// Regression for the delegate CHILD-ISOLATION bug (found by the real-LLM
+    /// e2e): a host whose transcript is bound to the parent turn's run/message
+    /// must set `isolate_children`, so a fan-out child — which runs with its OWN
+    /// fresh `run_id` — gets a fresh ephemeral transcript instead of inheriting
+    /// the parent's run-bound one. WITHOUT the isolation the children drive the
+    /// parent's `RunBoundTranscript`, its guard errors on the mismatched run_id,
+    /// and every child fails with an error-summary. This test FAILS if the
+    /// isolation seam is reverted (children then never reach "child answer").
+    #[tokio::test]
+    async fn isolate_children_runs_each_child_on_a_fresh_transcript() {
+        let parent_run = Uuid::new_v4();
+        let mut core = fanout_core(
+            Arc::new(ScriptedModel::final_text("child answer")),
+            Arc::new(FakeResolver::default()),
+            Arc::new(ProviderModelClientFactory),
+            6,
+        );
+        // The chat host's message-bound transcript + the isolation flag it sets.
+        core.transcript = Arc::new(RunBoundTranscript { bound_id: parent_run });
+        core.isolate_children = true;
+
+        // Two children, each with a fresh run_id != parent_run. Under
+        // `ErrorSummary` a failed child becomes an error-summary IN PLACE, so a
+        // reverted isolation surfaces as non-"child answer" summaries (not a panic).
+        let summaries = core
+            .fan_out_inner(
+                parent_run,
+                Uuid::new_v4(),
+                vec![spec(None, "a"), spec(None, "b")],
+                CancelToken::new(),
+                FailureMode::ErrorSummary,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(summaries.len(), 2, "both children returned a summary");
+        for s in &summaries {
+            assert_eq!(
+                s.summary, "child answer",
+                "an isolated child runs on its OWN ephemeral transcript and \
+                 completes; reverting the isolation makes it drive the parent's \
+                 run-bound transcript and fail with an error-summary"
+            );
+        }
     }
 
     #[tokio::test]

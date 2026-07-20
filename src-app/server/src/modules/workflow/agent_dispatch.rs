@@ -910,6 +910,9 @@ pub async fn build_detached_agent_core(args: DetachedAgentCoreArgs) -> AgentCore
         sandbox,
         model_name,
         resume_executes_pending: true,
+        // The workflow host's transcript is not keyed to a chat message with a
+        // run_id guard, so fan-out children keep the legacy `self.clone()` shape.
+        isolate_children: false,
         // Group G (DEC-49/50): the durable per-run task list, keyed by `run_id`.
         task_store: Some(Arc::new(
             crate::modules::agent::task_list::PgTaskListStore::new(pool),

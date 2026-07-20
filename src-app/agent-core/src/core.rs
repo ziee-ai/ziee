@@ -296,6 +296,23 @@ pub struct AgentCore {
     /// runs the MCP extension's `before_llm_call`, which itself executes the
     /// approved tools on resume — running both double-executes the tool.
     pub resume_executes_pending: bool,
+    /// Should `fan_out` run each delegated child in FULL ISOLATION from this
+    /// (parent) turn's message-bound state? A host whose `transcript` / persisting
+    /// `extensions` / `sink` are keyed to the parent's run/message (the CHAT host:
+    /// `ChatTranscript` guards `run_id == assistant_message_id`, and its
+    /// `RegistryBridge`/`CompactionExtension` persist onto the parent's chat
+    /// message) MUST set this `true` — otherwise a child, which runs with its OWN
+    /// fresh `run_id`, inherits that state via `self.clone()` and corrupts/panics
+    /// on the parent's message (debug: the transcript `debug_assert` fires;
+    /// release: the child silently writes its output onto the parent's message).
+    /// When `true`, each child gets a fresh ephemeral in-memory transcript, a
+    /// no-op sink (the parent still emits the activity card via its own `sink`),
+    /// no inherited extensions, and none of the run-keyed core-tool ports — which
+    /// matches the crate's summary-only fan-out contract. Hosts whose transcript
+    /// is NOT run-bound (the in-memory fakes, the workflow host) leave this
+    /// `false` ⇒ byte-identical legacy `self.clone()` children (zero behavior
+    /// change). Additive for existing hosts.
+    pub isolate_children: bool,
 }
 
 /// What to do with one tool call after the approval gate has decided.
@@ -883,6 +900,7 @@ mod tests {
             sandbox: SandboxMode::WorkspaceWrite { network: false },
             model_name: "test".into(),
             resume_executes_pending: true,
+            isolate_children: false,
         };
         core.run(new_req(), CancelToken::new()).await.unwrap();
         let deltas = sink
@@ -1079,6 +1097,7 @@ mod tests {
             sandbox: SandboxMode::WorkspaceWrite { network: false },
             model_name: "test".into(),
             resume_executes_pending: true,
+            isolate_children: false,
         };
         let events = core.run(new_req(), CancelToken::new()).await.unwrap();
 
