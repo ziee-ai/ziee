@@ -288,6 +288,34 @@ pub struct CreateBackgroundRun {
     pub inputs_json: serde_json::Value,
 }
 
+/// One durable STEERING NOTE queued against a running background run (ITEM-25 /
+/// Group F). A user posts a note to a RUNNING background run (a detached
+/// `JobKind::SubAgent` turn); the detached agent-core loop consumes pending notes
+/// at its next iteration boundary and appends them to the transcript so the model
+/// reads them on the next turn. `consumed_at` is NULL while pending, stamped when
+/// the loop consumes it. Rows live in `background_run_notes`, FK'd to the run
+/// (ON DELETE CASCADE) — deleting the run deletes its notes.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
+pub struct RunNote {
+    pub id: Uuid,
+    pub run_id: Uuid,
+    /// The steering text the running agent should pick up next turn.
+    pub note: String,
+    pub created_at: DateTime<Utc>,
+    /// NULL while pending; set to the consume time once the loop reads it.
+    pub consumed_at: Option<DateTime<Utc>>,
+}
+
+/// Enqueue-a-steering-note request body
+/// (`POST /api/background/runs/{run_id}/notes`). The note is capped + trimmed by
+/// the handler before it reaches the durable queue.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct CreateRunNote {
+    /// The steering note the running agent should pick up on its next turn
+    /// (non-empty; capped at 4000 characters by the handler).
+    pub note: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

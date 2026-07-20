@@ -8,8 +8,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::models::{
-    CreateBackgroundRun, CreateWorkflow, CreateWorkflowRun, JobKind, Workflow, WorkflowRun,
-    WorkflowRunStatus,
+    CreateBackgroundRun, CreateWorkflow, CreateWorkflowRun, JobKind, RunNote, Workflow,
+    WorkflowRun, WorkflowRunStatus,
 };
 use super::types::WorkflowRunSummary;
 use crate::common::AppError;
@@ -1475,6 +1475,130 @@ pub async fn list_runs_for_user(
     Ok(rows)
 }
 
+// ── ITEM-25: durable steering-note queue (Group F) ──────────────────────────
+//
+// A user posts a note to a RUNNING background run; the detached agent-core loop
+// consumes pending notes at its next iteration boundary. The REST enqueue/list
+// live in `background_mcp` (owns `/api/background/` + `background::use`); the
+// durable STORAGE + these repository fns are the backbone's (the run-notes table
+// FKs `workflow_runs`). Ownership is the CALLER'S job — every REST path resolves
+// the run via `find_run_for_owner` FIRST, so these fns are owner-agnostic
+// (mirrors `insert_background_run`).
+
+/// DEC-79 bounded depth: keep at most this many PENDING (unconsumed) notes per
+/// run. `enqueue_run_note` drop-oldest-trims to this bound on insert.
+pub const MAX_PENDING_RUN_NOTES: i64 = 8;
+
+/// Enqueue one steering note against a background run (ITEM-25). Honors DEC-79's
+/// bounded depth: within ONE txn it drop-oldest-trims the pending set to
+/// `MAX_PENDING_RUN_NOTES - 1` BEFORE inserting, so at most 8 notes stay pending
+/// (the newest win). Owner-agnostic — the REST handler resolves ownership first.
+pub async fn enqueue_run_note(
+    pool: &PgPool,
+    run_id: Uuid,
+    note: &str,
+) -> Result<RunNote, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // Drop-oldest: delete the oldest pending rows beyond the newest (MAX-1), so
+    // that after the insert below the pending count is exactly <= MAX.
+    sqlx::query!(
+        r#"DELETE FROM background_run_notes
+           WHERE id IN (
+               SELECT id FROM background_run_notes
+               WHERE run_id = $1 AND consumed_at IS NULL
+               ORDER BY created_at DESC OFFSET $2
+           )"#,
+        run_id,
+        (MAX_PENDING_RUN_NOTES - 1).max(0),
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    let row = sqlx::query_as!(
+        RunNote,
+        r#"INSERT INTO background_run_notes (run_id, note)
+           VALUES ($1, $2)
+           RETURNING id, run_id, note,
+                     created_at as "created_at: _",
+                     consumed_at as "consumed_at: _""#,
+        run_id,
+        note,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(row)
+}
+
+/// List a run's PENDING (unconsumed) steering notes, oldest-first. Owner-agnostic
+/// (the REST GET resolves the run's owner first). Backs the `GET` list endpoint.
+pub async fn list_pending_run_notes(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Vec<RunNote>, AppError> {
+    sqlx::query_as!(
+        RunNote,
+        r#"SELECT id, run_id, note,
+                  created_at as "created_at: _",
+                  consumed_at as "consumed_at: _"
+           FROM background_run_notes
+           WHERE run_id = $1 AND consumed_at IS NULL
+           ORDER BY created_at ASC"#,
+        run_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// CONSUME a run's pending steering notes: atomically stamp them consumed and
+/// return them oldest-first. Idempotent per note — a second call returns only
+/// notes queued since (already-consumed rows are skipped).
+///
+/// THIS IS THE SEAM THE FUTURE AGENT-CORE LOOP CALLS. Wiring (flagged follow-up,
+/// an agent-core edit reserved for a later tranche — NOT built here):
+///   1. add a `SteerNotePort` trait to `src-app/agent-core/src/ports.rs`
+///      (`async fn take_pending(&self, run_id: Uuid) -> Result<Vec<String>, AppError>`),
+///      and an `Option<Arc<dyn SteerNotePort>>` field on `AgentCore`;
+///   2. at the TOP of the `AgentCore::run` loop in
+///      `src-app/agent-core/src/core.rs` (after the cancel/budget checks, BEFORE
+///      `run_contribute` / `self.transcript.load`), call `take_pending(req.run_id)`
+///      and append each returned note to the transcript as a user message
+///      (`self.transcript.append(req.run_id, ChatMessage::user("[steering] …"))`)
+///      so it loads into `history` and reaches the model on the next call;
+///   3. impl `SteerNotePort` in `workflow::agent_dispatch` (where
+///      `build_detached_agent_core` lives) backed by THIS fn
+///      (`consume_pending_run_notes(pool, run_id)`), and pass it into
+///      `DetachedAgentCoreArgs` / `AgentCore`.
+// Seam (ITEM-25): no caller yet (the loop-read is a flagged follow-up). Shipped
+// + tested now so the future wiring is a pure agent-core edit.
+#[allow(dead_code)]
+pub async fn consume_pending_run_notes(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Vec<RunNote>, AppError> {
+    let mut rows = sqlx::query_as!(
+        RunNote,
+        r#"UPDATE background_run_notes
+           SET consumed_at = now()
+           WHERE run_id = $1 AND consumed_at IS NULL
+           RETURNING id, run_id, note,
+                     created_at as "created_at: _",
+                     consumed_at as "consumed_at: _""#,
+        run_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    // RETURNING order isn't guaranteed — deliver oldest-first (turn order).
+    rows.sort_by_key(|n| n.created_at);
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1715,6 +1839,112 @@ mod tests {
             sand_after.status, "failed",
             "sandbox_exec orphan must fail (subprocess gone)"
         );
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    // ── ITEM-25: steering-note queue ────────────────────────────────────────
+
+    /// enqueue → list-pending roundtrip, then consume marks them consumed
+    /// (idempotent: a second consume yields nothing, and list-pending empties).
+    #[tokio::test]
+    async fn run_notes_enqueue_list_consume_roundtrip() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+        let run = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .expect("insert subagent run");
+
+        // Two notes queue and list oldest-first, both pending.
+        let a = enqueue_run_note(&pool, run.id, "check the second table too")
+            .await
+            .expect("enqueue a");
+        let b = enqueue_run_note(&pool, run.id, "prefer the 2024 revision")
+            .await
+            .expect("enqueue b");
+        assert!(a.consumed_at.is_none() && b.consumed_at.is_none());
+
+        let pending = list_pending_run_notes(&pool, run.id).await.unwrap();
+        assert_eq!(pending.len(), 2, "both notes pending");
+        assert_eq!(pending[0].note, "check the second table too", "oldest-first");
+        assert_eq!(pending[1].note, "prefer the 2024 revision");
+
+        // Consume returns both, oldest-first, and stamps consumed_at.
+        let consumed = consume_pending_run_notes(&pool, run.id).await.unwrap();
+        assert_eq!(consumed.len(), 2);
+        assert_eq!(consumed[0].note, "check the second table too");
+        assert!(consumed.iter().all(|n| n.consumed_at.is_some()));
+
+        // Idempotent: pending is now empty; a second consume yields nothing.
+        assert!(list_pending_run_notes(&pool, run.id).await.unwrap().is_empty());
+        assert!(consume_pending_run_notes(&pool, run.id).await.unwrap().is_empty());
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    /// DEC-79 bounded depth: enqueuing past `MAX_PENDING_RUN_NOTES` drops the
+    /// OLDEST pending — only the newest 8 survive.
+    #[tokio::test]
+    async fn run_notes_enqueue_is_bounded_drop_oldest() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+        let run = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .expect("insert subagent run");
+
+        let over = MAX_PENDING_RUN_NOTES + 1; // 9
+        for i in 0..over {
+            enqueue_run_note(&pool, run.id, &format!("note-{i}"))
+                .await
+                .expect("enqueue");
+            // Distinct created_at so the drop-oldest ORDER BY is deterministic.
+            tokio::time::sleep(std::time::Duration::from_millis(3)).await;
+        }
+
+        let pending = list_pending_run_notes(&pool, run.id).await.unwrap();
+        assert_eq!(
+            pending.len() as i64,
+            MAX_PENDING_RUN_NOTES,
+            "pending is capped at MAX_PENDING_RUN_NOTES"
+        );
+        // note-0 (oldest) was dropped; note-1..note-8 remain, oldest-first.
+        assert_eq!(pending[0].note, "note-1", "oldest surviving is note-1 (note-0 dropped)");
+        assert_eq!(pending.last().unwrap().note, format!("note-{}", over - 1));
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    /// Deleting the run CASCADES its notes away (FK ON DELETE CASCADE).
+    #[tokio::test]
+    async fn run_notes_cascade_on_run_delete() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+        let run = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .expect("insert subagent run");
+        enqueue_run_note(&pool, run.id, "will be cascaded")
+            .await
+            .expect("enqueue");
+        assert_eq!(list_pending_run_notes(&pool, run.id).await.unwrap().len(), 1);
+
+        delete_run_row(&pool, run.id).await.expect("delete run");
+
+        let remaining: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM background_run_notes WHERE run_id = $1")
+                .bind(run.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(remaining, 0, "notes are deleted with their run (cascade)");
 
         cleanup_user(&pool, user_id).await;
     }

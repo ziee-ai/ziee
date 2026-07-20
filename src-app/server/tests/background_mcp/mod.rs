@@ -18,6 +18,8 @@
 //! the SAME shared `AgentCore` loop drives a workflow `kind: agent` step). Both
 //! hosts now build their core through `agent_dispatch::build_detached_agent_core`.
 
+mod run_notes;
+
 use std::time::{Duration, Instant};
 
 use serde_json::Value as Json;

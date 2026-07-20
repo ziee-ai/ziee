@@ -37,7 +37,28 @@ pub mod handlers;
 pub mod permissions;
 pub mod repository;
 pub mod routes;
+pub mod run_notes;
 pub mod tools;
+
+// ── ITEM-26 (inbox): declare the background-run completion notification kind ──
+//
+// The `notification` inbox already provides the full owner-scoped list /
+// mark-read / unread-count REST (in `ziee-notification`); background sub-agent
+// completions ALREADY write a durable typed row (`tools.rs`, kind
+// `"background_run_result"`, payload `{workflow_run_id, conversation_id}`). The
+// only backbone gap for a "unified agent inbox" was that this kind wasn't
+// DECLARED in the SDK's per-module kind registry, so `GET /api/notifications/kinds`
+// didn't advertise it and the FE couldn't build its agent/background filter +
+// renderer from the registry. Declaring it here (additive `#[distributed_slice]`,
+// no OpenAPI change) closes that gap. Everything else about the inbox is a
+// FRONTEND composition of the existing notification inbox + the existing
+// owner-scoped background-run list/SSE (DEC-65).
+#[distributed_slice(ziee_notification::registry::NOTIFICATION_KINDS)]
+static BACKGROUND_RUN_RESULT_KIND: ziee_notification::registry::NotificationKindDescriptor =
+    ziee_notification::registry::NotificationKindDescriptor {
+        kind: "background_run_result",
+        description: "A detached background sub-agent run finished; its result is ready to collect.",
+    };
 
 /// Deterministic UUID for the built-in background MCP server row. Stable across
 /// deployments. Mirrors `workflow_mcp_server_id` / `control_mcp_server_id`.
