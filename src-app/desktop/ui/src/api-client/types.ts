@@ -329,6 +329,61 @@ export interface BackendStatusResponse {
   version: string
 }
 
+/** Cancel-run acknowledgement. */
+export interface BackgroundRunCancelAck {
+  run_id: string
+  /**
+   * `"cancelled"` when the run was flipped; `"already_terminal"` on the benign
+   *  race where the run reached terminal between the ownership check and the CAS.
+   */
+  status: string
+}
+
+/**
+ * Paginated response for `GET /api/background/runs` (mirrors
+ *  `McpToolCallListResponse`).
+ */
+export interface BackgroundRunListResponse {
+  page: number
+  per_page: number
+  runs: BackgroundRunSummary[]
+  total: number
+  total_pages: number
+}
+
+/**
+ * Compact BACKGROUND-run summary (ITEM-8) — one detached sub-agent /
+ *  sandbox-exec run (`job_kind <> 'workflow'`) projected WITHOUT the heavy JSONB
+ *  blobs the full `WorkflowRun` carries (step outputs / logs / artifacts /
+ *  `final_output_json`). The full result is read separately via `collect_result`;
+ *  this row only tells the FE's "your background tasks" list what/when/state +
+ *  whether a result is ready. Backs `GET /api/background/runs`.
+ */
+export interface BackgroundRunSummary {
+  conversation_id?: string
+  created_at: string
+  /** Terminal error text for a failed run (else `None`). */
+  error_message?: string
+  /** True when a `final_output_json` is present (a result can be collected). */
+  has_result: boolean
+  id: string
+  /**
+   * Background-run discriminator (`subagent` / `sandbox_exec`); never
+   *  `workflow` (the list filters those out).
+   */
+  job_kind: string
+  /**
+   * Short human label derived from the run's spec (the sub-agent `task`),
+   *  capped at 200 chars; `None` when the spec carried no task text.
+   */
+  label?: string
+  model_id?: string
+  status: string
+  total_tokens: number
+  /** Last transition time — the effective "finished_at" for a terminal run. */
+  updated_at: string
+}
+
 /** The per-item batch report returned by import / verify. */
 export interface BatchReport {
   results: CitationItemResult[]
@@ -2797,6 +2852,20 @@ export interface ListAccessibleServersQuery {
  */
 export interface ListAuditLogQuery {
   limit?: number
+}
+
+/** Query params for `GET /api/background/runs`. */
+export interface ListBackgroundRunsQuery {
+  /** Filter to a single background job kind (`subagent` / `sandbox_exec`). */
+  kind?: string
+  page?: number
+  /** Page size; clamped to `1..=500` server-side (default 50). */
+  per_page?: number
+  /**
+   * Filter to a single run status (`pending` / `running` / `waiting` /
+   *  `resumable` / `completed` / `failed` / `cancelled`).
+   */
+  status?: string
 }
 
 /** `?project_id=` filter for listing. */
@@ -7973,7 +8042,9 @@ export const ApiEndpoints = {
   'AuthProviders.test': 'POST /api/admin/auth-providers/{id}/test',
   'AuthProviders.testConfig': 'POST /api/admin/auth-providers/test-config',
   'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
+  'Background.cancelRun': 'POST /api/background/runs/{run_id}/cancel',
   'Background.listRunNotes': 'GET /api/background/runs/{run_id}/notes',
+  'Background.listRuns': 'GET /api/background/runs',
   'Background.postRunNote': 'POST /api/background/runs/{run_id}/notes',
   'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
   'Branch.create': 'POST /api/conversations/{id}/branches',
@@ -8436,7 +8507,9 @@ export type ApiEndpointParameters = {
   'AuthProviders.test': { id: string }
   'AuthProviders.testConfig': CreateAuthProviderRequest
   'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
+  'Background.cancelRun': { run_id: string }
   'Background.listRunNotes': { run_id: string }
+  'Background.listRuns': { kind?: string; page?: number; per_page?: number; status?: string }
   'Background.postRunNote': { run_id: string } & CreateRunNote
   'Branch.activate': { id: string; branch_id: string }
   'Branch.create': { id: string } & CreateBranchRequest
@@ -8899,7 +8972,9 @@ export type ApiEndpointResponses = {
   'AuthProviders.test': TestProviderResponse
   'AuthProviders.testConfig': TestProviderResponse
   'AuthProviders.update': AuthProviderResponse
+  'Background.cancelRun': BackgroundRunCancelAck
   'Background.listRunNotes': RunNote[]
+  'Background.listRuns': BackgroundRunListResponse
   'Background.postRunNote': RunNote
   'Branch.activate': void
   'Branch.create': Branch

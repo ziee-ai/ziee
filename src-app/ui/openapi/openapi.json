@@ -14472,447 +14472,6 @@
         ]
       }
     },
-    "/api/code-sandbox/resource-limits": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Read the singleton sandbox resource-limits configuration",
-        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
-        "operationId": "CodeSandbox.getResourceLimits",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the sandbox resource limits configuration.",
-                        "name": "CodeSandboxResourceLimitsRead",
-                        "value": "code_sandbox::resource_limits::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Update the singleton sandbox resource-limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
-        "operationId": "CodeSandbox.updateResourceLimits",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
-                        "name": "CodeSandboxResourceLimitsManage",
-                        "value": "code_sandbox::resource_limits::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/flavors": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List selectable sandbox rootfs flavors + host command allowlist",
-        "description": "Powers the MCP server form's sandbox flavor picker AND the MCP user-policy admin card's flavor select. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
-        "operationId": "CodeSandbox.listFlavors",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List rootfs versions and watch install progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "REST response for the MCP-server form's sandbox flavor picker:\n the selectable rootfs flavors plus the host command allowlist.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SandboxFlavorsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List installed + available rootfs versions",
-        "description": "Returns the system-wide pin, every downloaded artifact, and (best-effort) the GitHub Releases catalog. The UI uses this single call to render the rootfs-versions admin page.",
-        "operationId": "CodeSandbox.listRootfsVersions",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List rootfs versions and watch install progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VersionStatus"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/install": {
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Spawn a background install task for a rootfs artifact",
-        "description": "Spawns a background task to download the matching artifact from the GitHub release, sha256 + cosign verify it, and record the row in `code_sandbox_rootfs_artifacts`. Returns 202 Accepted immediately with the task's initial state; live progress is available via `GET .../install/subscribe` (SSE).",
-        "operationId": "CodeSandbox.installRootfsVersion",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InstallVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "202": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstallTaskState"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/install/subscribe": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Subscribe to rootfs install task progress (SSE)",
-        "description": "Server-Sent Events stream of `connected | taskStarted | progress | complete | failed | taskState` events for every install task. On connect the stream emits a `connected` event then replays the current registry (recent terminal states + in-flight tasks) so a fresh subscriber doesn't have to wait for the next tick.",
-        "operationId": "CodeSandbox.subscribeRootfsInstallProgress",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List rootfs versions and watch install progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SSEInstallTaskEvent"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/set-pin": {
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Change the system-wide rootfs version pin",
-        "description": "Validates the target version exists on GitHub, updates the pin in `code_sandbox_settings`, then schedules a drain-then- evict task for every old-version mount. On a major version bump the workspace install-cache subdirs (`.local`, `.cache`, `.npm`, ...) are wiped across both per-conversation and per-MCP-server workspaces AFTER drain; minor + patch bumps preserve workspace state. Returns the swap outcome (draining-mount count + cache wipe policy) alongside the refreshed status snapshot.",
-        "operationId": "CodeSandbox.setRootfsPin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetPinRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetPinResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/rootfs/versions/{id}": {
-      "delete": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Delete an installed rootfs artifact",
-        "description": "Deletes the DB row + the on-disk artifact + sidecars. Refused with 409 when the row is the currently-pinned version (change the pin first).",
-        "operationId": "CodeSandbox.deleteRootfsVersion",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VersionStatus"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -16423,6 +15982,447 @@
         ]
       }
     },
+    "/api/code-sandbox/resource-limits": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Read the singleton sandbox resource-limits configuration",
+        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
+        "operationId": "CodeSandbox.getResourceLimits",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the sandbox resource limits configuration.",
+                        "name": "CodeSandboxResourceLimitsRead",
+                        "value": "code_sandbox::resource_limits::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Update the singleton sandbox resource-limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
+        "operationId": "CodeSandbox.updateResourceLimits",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
+                        "name": "CodeSandboxResourceLimitsManage",
+                        "value": "code_sandbox::resource_limits::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/flavors": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List selectable sandbox rootfs flavors + host command allowlist",
+        "description": "Powers the MCP server form's sandbox flavor picker AND the MCP user-policy admin card's flavor select. Returns the KNOWN_FLAVORS catalog (name / description / approximate size / cached) plus the host-path command allowlist a non-sandboxed stdio server must use.",
+        "operationId": "CodeSandbox.listFlavors",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "REST response for the MCP-server form's sandbox flavor picker:\n the selectable rootfs flavors plus the host command allowlist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxFlavorsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List installed + available rootfs versions",
+        "description": "Returns the system-wide pin, every downloaded artifact, and (best-effort) the GitHub Releases catalog. The UI uses this single call to render the rootfs-versions admin page.",
+        "operationId": "CodeSandbox.listRootfsVersions",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/install": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Spawn a background install task for a rootfs artifact",
+        "description": "Spawns a background task to download the matching artifact from the GitHub release, sha256 + cosign verify it, and record the row in `code_sandbox_rootfs_artifacts`. Returns 202 Accepted immediately with the task's initial state; live progress is available via `GET .../install/subscribe` (SSE).",
+        "operationId": "CodeSandbox.installRootfsVersion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallTaskState"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/install/subscribe": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to rootfs install task progress (SSE)",
+        "description": "Server-Sent Events stream of `connected | taskStarted | progress | complete | failed | taskState` events for every install task. On connect the stream emits a `connected` event then replays the current registry (recent terminal states + in-flight tasks) so a fresh subscriber doesn't have to wait for the next tick.",
+        "operationId": "CodeSandbox.subscribeRootfsInstallProgress",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List rootfs versions and watch install progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEInstallTaskEvent"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/set-pin": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Change the system-wide rootfs version pin",
+        "description": "Validates the target version exists on GitHub, updates the pin in `code_sandbox_settings`, then schedules a drain-then- evict task for every old-version mount. On a major version bump the workspace install-cache subdirs (`.local`, `.cache`, `.npm`, ...) are wiped across both per-conversation and per-MCP-server workspaces AFTER drain; minor + patch bumps preserve workspace state. Returns the swap outcome (draining-mount count + cache wipe policy) alongside the refreshed status snapshot.",
+        "operationId": "CodeSandbox.setRootfsPin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetPinResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/rootfs/versions/{id}": {
+      "delete": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Delete an installed rootfs artifact",
+        "description": "Deletes the DB row + the on-disk artifact + sidecars. Refused with 409 when the row is the currently-pinned version (change the pin first).",
+        "operationId": "CodeSandbox.deleteRootfsVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Snapshot returned by `status()` for the admin UI's \"Rootfs\n versions\" page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hardware": {
       "get": {
         "tags": [
@@ -17513,6 +17513,118 @@
         ]
       }
     },
+    "/api/agent/settings": {
+      "get": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Read the deployment-wide agent policy",
+        "description": "Returns the singleton deployment-wide agent policy (sandbox/approval mode, reviewer config, token caps, max steps, fan-out guardrails).",
+        "operationId": "AgentAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).",
+                        "name": "AgentSettingsRead",
+                        "value": "agent::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: agent::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide agent policy (singleton row, `id = true`).\n\n `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL\n means \"fall back to the run's own model / the compiled-in reviewer\n prompt\" (zero-config). The token caps + step/fan-out limits are the\n runtime-tunable knobs an operator adjusts per workload (DEC-6).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Update the deployment-wide agent policy",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null clears `reviewer_model_id` / `reviewer_policy` back to their defaults. Returns 400 on out-of-range or unknown-enum violations before any DB write.",
+        "operationId": "AgentAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton. Every field optional (COALESCE\n PATCH); the two nullable columns use the `Option<Option<T>>` tri-state:\n   missing  → `None`         → leave the column alone\n   `null`   → `Some(None)`   → clear the column back to its default\n   value    → `Some(Some(v))`→ set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).",
+                        "name": "AgentSettingsManage",
+                        "value": "agent::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: agent::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide agent policy (singleton row, `id = true`).\n\n `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL\n means \"fall back to the run's own model / the compiled-in reviewer\n prompt\" (zero-config). The token caps + step/fan-out limits are the\n runtime-tunable knobs an operator adjusts per workload (DEC-6).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token cap / max-steps / fan-out, unknown sandbox/approval mode, or oversized reviewer_policy)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/summarization/settings": {
       "get": {
         "tags": [
@@ -17731,118 +17843,6 @@
                 "schema": true
               }
             }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/agent/settings": {
-      "get": {
-        "tags": [
-          "Agent"
-        ],
-        "summary": "Read the deployment-wide agent policy",
-        "description": "Returns the singleton deployment-wide agent policy (sandbox/approval mode, reviewer config, token caps, max steps, fan-out guardrails).",
-        "operationId": "AgentAdmin.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).",
-                        "name": "AgentSettingsRead",
-                        "value": "agent::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: agent::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide agent policy (singleton row, `id = true`).\n\n `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL\n means \"fall back to the run's own model / the compiled-in reviewer\n prompt\" (zero-config). The token caps + step/fan-out limits are the\n runtime-tunable knobs an operator adjusts per workload (DEC-6).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Agent"
-        ],
-        "summary": "Update the deployment-wide agent policy",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null clears `reviewer_model_id` / `reviewer_policy` back to their defaults. Returns 400 on out-of-range or unknown-enum violations before any DB write.",
-        "operationId": "AgentAdmin.update",
-        "requestBody": {
-          "description": "Partial-update request for the singleton. Every field optional (COALESCE\n PATCH); the two nullable columns use the `Option<Option<T>>` tri-state:\n   missing  → `None`         → leave the column alone\n   `null`   → `Some(None)`   → clear the column back to its default\n   value    → `Some(Some(v))`→ set the column",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateAgentAdminSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).",
-                        "name": "AgentSettingsManage",
-                        "value": "agent::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: agent::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide agent policy (singleton row, `id = true`).\n\n `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL\n means \"fall back to the run's own model / the compiled-in reviewer\n prompt\" (zero-config). The token caps + step/fan-out limits are the\n runtime-tunable knobs an operator adjusts per workload (DEC-6).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentAdminSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token cap / max-steps / fan-out, unknown sandbox/approval mode, or oversized reviewer_policy)."
           }
         },
         "security": [
@@ -19088,6 +19088,162 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
           }
         },
         "security": [
@@ -20831,162 +20987,6 @@
         ]
       }
     },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/health": {
       "get": {
         "tags": [
@@ -21208,6 +21208,130 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/background/runs": {
+      "get": {
+        "tags": [
+          "background"
+        ],
+        "summary": "List the acting user's background runs",
+        "description": "Owner-scoped, newest-first, paginated list of the caller's background runs (detached sub-agent / sandbox-exec runs — never classic workflow runs). Optional `status` / `kind` filters; `page`/`per_page` clamped (default 50, cap 500). Compact summaries only — the full result is fetched separately via `collect_result`.",
+        "operationId": "Background.listRuns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "description": "Filter to a single background job kind (`subagent` / `sandbox_exec`).",
+            "schema": {
+              "description": "Filter to a single background job kind (`subagent` / `sandbox_exec`).",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "description": "Page size; clamped to `1..=500` server-side (default 50).",
+            "schema": {
+              "description": "Page size; clamped to `1..=500` server-side (default 50).",
+              "type": "integer",
+              "format": "int64",
+              "default": 50
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "description": "Filter to a single run status (`pending` / `running` / `waiting` /\n `resumable` / `completed` / `failed` / `cancelled`).",
+            "schema": {
+              "description": "Filter to a single run status (`pending` / `running` / `waiting` /\n `resumable` / `completed` / `failed` / `cancelled`).",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Missing background::use"
+          },
+          "200": {
+            "description": "Paginated response for `GET /api/background/runs` (mirrors\n `McpToolCallListResponse`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundRunListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/background/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "background"
+        ],
+        "summary": "Cancel a running background run",
+        "description": "Marks a non-terminal background run cancelled and signals the detached task to stop (reusing the run-cancel CAS + the in-memory `RunHandle` cancel). Owner-scoped (a foreign/missing run → 404); an already-finished run → 409.",
+        "operationId": "Background.cancelRun",
+        "responses": {
+          "403": {
+            "description": "Missing background::use"
+          },
+          "200": {
+            "description": "Cancel-run acknowledgement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundRunCancelAck"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Run not found / not owned"
+          },
+          "409": {
+            "description": "Run already finished"
           }
         },
         "security": [
@@ -21686,64 +21810,6 @@
         ]
       }
     },
-    "/api/app/setup/status": {
-      "get": {
-        "tags": [
-          "app"
-        ],
-        "description": "Check if initial admin setup is required",
-        "operationId": "App.getSetupStatus",
-        "responses": {
-          "200": {
-            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/app/setup/admin": {
-      "post": {
-        "tags": [
-          "app"
-        ],
-        "description": "Create the first administrator account",
-        "operationId": "App.setupAdmin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupAdminRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "no content"
-          }
-        }
-      }
-    },
     "/api/js-tool/settings": {
       "get": {
         "tags": [
@@ -21860,6 +21926,64 @@
             "bearerAuth": []
           }
         ]
+      }
+    },
+    "/api/app/setup/status": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "description": "Check if initial admin setup is required",
+        "operationId": "App.getSetupStatus",
+        "responses": {
+          "200": {
+            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/app/setup/admin": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "description": "Create the first administrator account",
+        "operationId": "App.setupAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "no content"
+          }
+        }
       }
     },
     "/api/scheduled-tasks": {
@@ -25483,6 +25607,130 @@
           "binary_ready",
           "available_backends",
           "prerelease"
+        ]
+      },
+      "BackgroundRunCancelAck": {
+        "description": "Cancel-run acknowledgement.",
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "description": "`\"cancelled\"` when the run was flipped; `\"already_terminal\"` on the benign\n race where the run reached terminal between the ownership check and the CAS.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "run_id"
+        ]
+      },
+      "BackgroundRunListResponse": {
+        "description": "Paginated response for `GET /api/background/runs` (mirrors\n `McpToolCallListResponse`).",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackgroundRunSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_pages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "runs",
+          "total",
+          "page",
+          "per_page",
+          "total_pages"
+        ]
+      },
+      "BackgroundRunSummary": {
+        "description": "Compact BACKGROUND-run summary (ITEM-8) — one detached sub-agent /\n sandbox-exec run (`job_kind <> 'workflow'`) projected WITHOUT the heavy JSONB\n blobs the full `WorkflowRun` carries (step outputs / logs / artifacts /\n `final_output_json`). The full result is read separately via `collect_result`;\n this row only tells the FE's \"your background tasks\" list what/when/state +\n whether a result is ready. Backs `GET /api/background/runs`.",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "description": "Terminal error text for a failed run (else `None`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_result": {
+            "description": "True when a `final_output_json` is present (a result can be collected).",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "job_kind": {
+            "description": "Background-run discriminator (`subagent` / `sandbox_exec`); never\n `workflow` (the list filters those out).",
+            "type": "string"
+          },
+          "label": {
+            "description": "Short human label derived from the run's spec (the sub-agent `task`),\n capped at 200 chars; `None` when the spec carried no task text.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "description": "Last transition time — the effective \"finished_at\" for a terminal run.",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "job_kind",
+          "status",
+          "has_result",
+          "total_tokens",
+          "created_at",
+          "updated_at"
         ]
       },
       "BatchReport": {
@@ -31948,6 +32196,39 @@
             "type": "integer",
             "format": "int64",
             "default": 100
+          }
+        }
+      },
+      "ListBackgroundRunsQuery": {
+        "description": "Query params for `GET /api/background/runs`.",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "Filter to a single background job kind (`subagent` / `sandbox_exec`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          },
+          "per_page": {
+            "description": "Page size; clamped to `1..=500` server-side (default 50).",
+            "type": "integer",
+            "format": "int64",
+            "default": 50
+          },
+          "status": {
+            "description": "Filter to a single run status (`pending` / `running` / `waiting` /\n `resumable` / `completed` / `failed` / `cancelled`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         }
       },
