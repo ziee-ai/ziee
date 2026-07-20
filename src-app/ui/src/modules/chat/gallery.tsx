@@ -259,16 +259,21 @@ export const gallery: ModuleGallery = {
       slug: 'deep-chat-tool-approval',
       title: 'Conversation — tool approval pending',
       conversationId: CHAT_DEEP_CONVERSATION_IDS.toolRunning,
-      note: 'McpComposer toolCall in pending_approval → the inline "Tool Approval Required" prompt (approve-once / approve-conv / deny)',
+      note: 'McpComposer toolCall in pending_approval → the inline "Tool Approval Required" prompt (ITEM-50 full-disclosure: data-egress host + full tool description + concrete args; approve-once / approve-conv / deny)',
       setup: async () => {
         await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolRunning)
         useMcpComposerStore.getState().addToolCall({
           tool_use_id: 'toolu_running_1',
-          server: 'code_sandbox',
+          server: 'Acme Weather',
           server_id: 'a1b2c3d4-0000-5000-8000-000000000001',
-          tool_name: 'execute_command',
+          tool_name: 'get_forecast',
           status: 'pending_approval',
-          input: { command: 'ls -la /workspace' },
+          input: { location: 'San Francisco, CA', units: 'metric', days: 5 },
+          // ITEM-50: external tool → surface the concrete destination host + the
+          // tool's full exact advertised description on the approval card.
+          dest_host: 'api.weather.example.com',
+          description:
+            'Fetch a multi-day weather forecast for a location from the Acme Weather API. The location is sent verbatim to the upstream service; results are not cached.',
         })
       },
     },

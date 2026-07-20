@@ -736,6 +736,12 @@ pub async fn send_approval_required_event(
     server: &str,
     server_id: &str,
     input: &serde_json::Value,
+    // ITEM-50 (full-disclosure): the external destination host (`None` for a
+    // built-in/loopback/stdio server) + the tool's full exact description
+    // (`None` when unresolved) — surfaced so the approval card can render a
+    // *data-egress* review, not just "this tool needs approval".
+    dest_host: Option<String>,
+    description: Option<String>,
 ) -> Result<(), AppError> {
     if let Some(tx) = tx {
         let event = SSEChatStreamEvent::McpApprovalRequired(SSEChatStreamMcpApprovalRequiredData {
@@ -744,6 +750,8 @@ pub async fn send_approval_required_event(
             server: server.to_string(),
             server_id: server_id.to_string(),
             input: input.clone(),
+            dest_host,
+            description,
         });
 
         tx.send(Ok(event.into()))

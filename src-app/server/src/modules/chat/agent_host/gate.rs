@@ -507,17 +507,32 @@ impl HumanGate for ChatHumanGate {
             server_id = resolve_bare_tool_server(self.user_id, &tool_name).await;
         }
 
-        // Resolve a human-friendly server name for the approval card. Mirrors
-        // mcp.rs (name from the server row, else the id/prefix string).
-        let server_name = match server_id {
-            Some(id) => crate::core::Repos
-                .mcp
-                .get_any_server(id)
-                .await?
-                .map(|s| s.name)
-                .unwrap_or_else(|| id.to_string()),
-            None => server_str.clone(),
+        // Resolve the server row ONCE: the human-friendly name AND — for a
+        // full-disclosure data-egress approval card (ITEM-50) — the external
+        // destination host. Mirrors mcp.rs (name from the row, else the
+        // id/prefix string).
+        let server_row = match server_id {
+            Some(id) => crate::core::Repos.mcp.get_any_server(id).await?,
+            None => None,
         };
+        let server_name = match (&server_row, server_id) {
+            (Some(s), _) => s.name.clone(),
+            (None, Some(id)) => id.to_string(),
+            (None, None) => server_str.clone(),
+        };
+        // ITEM-50: the EXTERNAL destination host (pure, derived from the already
+        // resolved internal row — no new SSRF/host logic) + the tool's FULL exact
+        // description (best-effort live `tools/list`). Both `None` for a
+        // built-in/loopback server or on failure → the card shows a local call.
+        let dest_host = server_row
+            .as_ref()
+            .and_then(crate::modules::mcp::agent_tool_call::resolve_dest_host);
+        let description = crate::modules::mcp::agent_tool_call::resolve_tool_description(
+            server_id,
+            self.user_id,
+            &tool_name,
+        )
+        .await;
 
         // Persist the pending approval (single row, batch API). tool_use_id =
         // the model's tool_use id (`call.id`); tool_input = the raw args.
@@ -549,6 +564,8 @@ impl HumanGate for ChatHumanGate {
             &server_name,
             &server_str,
             &ask.call.input,
+            dest_host,
+            description,
         )
         .await?;
 
@@ -563,6 +580,90 @@ impl HumanGate for ChatHumanGate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::mcp::agent_tool_call::resolve_dest_host;
+    use crate::modules::mcp::{McpServer, TransportType, UsageMode};
+
+    /// A minimal `McpServer` row for the ITEM-50 dest-host disclosure tests.
+    /// Mirrors the `client::stdio` test template; the caller overrides the fields
+    /// under test (transport / url / is_built_in / is_system).
+    fn server_row(transport: TransportType, url: Option<&str>) -> McpServer {
+        McpServer {
+            id: Uuid::new_v4(),
+            user_id: None,
+            name: "acme-remote".into(),
+            display_name: "Acme Remote".into(),
+            description: Some("An external MCP server".into()),
+            enabled: true,
+            is_system: false,
+            is_built_in: false,
+            transport_type: transport,
+            command: None,
+            args: serde_json::Value::Array(vec![]),
+            environment_variables: serde_json::Value::Object(Default::default()),
+            environment_variables_entries: Vec::new(),
+            url: url.map(String::from),
+            headers: serde_json::Value::Object(Default::default()),
+            headers_entries: Vec::new(),
+            timeout_seconds: 30,
+            supports_sampling: false,
+            usage_mode: UsageMode::Auto,
+            max_concurrent_sessions: None,
+            run_in_sandbox: false,
+            sandbox_flavor: "full".into(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            last_health_check_at: None,
+            last_health_check_status: "untested".into(),
+            last_health_check_reason: None,
+        }
+    }
+
+    // ---- ITEM-50 / TEST-182: full-disclosure approval-card dest host --------
+
+    #[test]
+    fn dest_host_names_external_http_host_only() {
+        // The approval card must NAME the concrete destination host so the human
+        // reviews a data-egress decision. Only the HOST is returned — never the
+        // path/query (no credential/path leak).
+        let s = server_row(
+            TransportType::Http,
+            Some("https://api.example.com/v1/mcp?key=abc"),
+        );
+        let host = resolve_dest_host(&s).expect("external http host resolved");
+        assert_eq!(host, "api.example.com");
+        assert!(!host.contains('/'), "host must not carry the URL path");
+        assert!(!host.contains("key="), "host must not carry the query string");
+    }
+
+    #[test]
+    fn dest_host_resolved_server_side_for_is_system_row_without_leaking_redacted_url() {
+        // An `is_system` server's `url` is redacted to `None` in the PUBLIC list
+        // view, but the gate resolves from the INTERNAL row (`get_any_server`),
+        // whose `url` is real — so the host is resolved server-side regardless of
+        // the redacted public view.
+        let mut s = server_row(TransportType::Sse, Some("https://mcp.internal-corp.net/sse"));
+        s.is_system = true;
+        let host = resolve_dest_host(&s).expect("is_system external host resolved");
+        assert_eq!(host, "mcp.internal-corp.net");
+    }
+
+    #[test]
+    fn dest_host_none_for_builtin_loopback_and_stdio() {
+        // Built-in servers are in-process loopback → no external destination,
+        // even with an http url set.
+        let mut builtin = server_row(TransportType::Http, Some("http://127.0.0.1:9100/mcp"));
+        builtin.is_built_in = true;
+        assert_eq!(resolve_dest_host(&builtin), None);
+
+        // A user-registered http server pointed at loopback is not a meaningful
+        // EXTERNAL destination either.
+        let loopback = server_row(TransportType::Http, Some("http://localhost:8080/mcp"));
+        assert_eq!(resolve_dest_host(&loopback), None);
+
+        // stdio: a local subprocess, no network destination.
+        let stdio = server_row(TransportType::Stdio, None);
+        assert_eq!(resolve_dest_host(&stdio), None);
+    }
 
     fn policy(mode: ApprovalMode) -> ChatApprovalPolicy {
         ChatApprovalPolicy {

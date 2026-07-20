@@ -2868,10 +2868,33 @@ impl ChatExtension for McpChatExtension {
 
             // Fan out the per-tool SSE events (keyed off the input list, not the
             // RETURNING order which is not guaranteed to match).
-            for ((tool_use_id, tool_name, server_id_str, input), (_, server_name)) in
+            for ((tool_use_id, tool_name, server_id_str, input), (server_id_opt, server_name)) in
                 tools_needing_approval.iter().zip(resolved.iter())
             {
-                helpers::send_approval_required_event(tx, tool_use_id, tool_name, server_name, server_id_str, input).await?;
+                // ITEM-50 (full-disclosure): the external destination host (from
+                // the already-loaded server row — no new SSRF/host logic) + the
+                // tool's full exact description (best-effort live tools/list), so
+                // the approval card renders a *data-egress* review.
+                let dest_host = (*server_id_opt)
+                    .and_then(|id| accessible_servers.iter().find(|s| s.id == id))
+                    .and_then(crate::modules::mcp::agent_tool_call::resolve_dest_host);
+                let description = crate::modules::mcp::agent_tool_call::resolve_tool_description(
+                    *server_id_opt,
+                    context.user_id,
+                    tool_name,
+                )
+                .await;
+                helpers::send_approval_required_event(
+                    tx,
+                    tool_use_id,
+                    tool_name,
+                    server_name,
+                    server_id_str,
+                    input,
+                    dest_host,
+                    description,
+                )
+                .await?;
             }
 
             // Do NOT pause here. A built-in tool (files/memory) can share the

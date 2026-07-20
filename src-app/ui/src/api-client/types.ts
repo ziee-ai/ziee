@@ -5103,6 +5103,20 @@ export type SSEChatStreamEvent = {
 
 /** Event data for MCP tool approval required */
 export interface SSEChatStreamMcpApprovalRequiredData {
+  /**
+   * ITEM-50 (full-disclosure): the tool's FULL, EXACT advertised description
+   *  (never summarized/truncated — poisoning hides in truncation). Best-effort
+   *  (`None` when the server is unreachable or advertises no description).
+   */
+  description?: string
+  /**
+   * ITEM-50 (full-disclosure): the EXTERNAL destination host the tool would
+   *  send data to (e.g. `api.example.com`), so the human reviews a
+   *  *data-egress* decision and not just a verb. `None` for built-in /
+   *  loopback / stdio servers, which have no meaningful external destination
+   *  (the card treats a `None` here as a local call).
+   */
+  dest_host?: string
   /** Tool input parameters */
   input: unknown
   /** MCP server requesting tool execution (display name) */
