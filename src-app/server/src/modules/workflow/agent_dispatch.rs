@@ -849,11 +849,13 @@ pub async fn build_detached_agent_core(args: DetachedAgentCoreArgs) -> AgentCore
                 map: classifications.clone(),
             };
             // ITEM-38 / DEC-83: thread the admin-configured per-band → decision
-            // overrides (`reviewer_risk_thresholds` jsonb) into the reviewer.
+            // overrides (`reviewer_risk_thresholds` jsonb) into the reviewer via
+            // the single `reviewer_thresholds` site (the fix for the T1 dead-config
+            // drift — the setting is live, not inert).
             Some(Reviewer::new_with_thresholds(
                 Arc::new(recording),
                 policy,
-                agent_core::RiskThresholds::from_json(&s.reviewer_risk_thresholds),
+                reviewer_thresholds(s),
             ))
         }
         _ => None,
@@ -919,6 +921,19 @@ pub async fn build_detached_agent_core(args: DetachedAgentCoreArgs) -> AgentCore
         // self-paced scheduled cadence, so it never offers `schedule_next`.
         schedule: None,
     }
+}
+
+/// Turn the singleton admin settings into the reviewer's per-band → decision
+/// ladder (ITEM-38 / DEC-83/84). The SINGLE site that reads
+/// `agent_admin_settings.reviewer_risk_thresholds` (the jsonb tranche-13
+/// surfaces in the admin UI) and hands it to the crate — so the admin knob is
+/// LIVE rather than inert. An empty `{}` / JSON-null / non-object value yields no
+/// overrides ⇒ the built-in ladder (`map_risk`) is used unchanged (preserving
+/// current behavior when the admin never set the knob). Both detached hosts
+/// build their reviewer through this fn, so a regression back to the crate
+/// default is caught by `tests::admin_thresholds_change_reviewer_decision`.
+pub(crate) fn reviewer_thresholds(s: &AgentAdminSettings) -> agent_core::RiskThresholds {
+    agent_core::RiskThresholds::from_json(&s.reviewer_risk_thresholds)
 }
 
 #[async_trait]
@@ -1245,6 +1260,80 @@ impl StepDispatcher for AgentDispatcher {
             parsed_as,
             tokens_used: tokens,
             ms_elapsed: started.elapsed().as_millis() as u64,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Guards that the admin `reviewer_risk_thresholds` setting is threaded into
+    //! the actual reviewer both detached hosts build — i.e. the setting is NOT
+    //! inert (closes the T1 dead-config drift). Mirrors the crate-level reviewer
+    //! tests, but binds the SERVER settings field → reviewer decision path.
+    use super::*;
+    use agent_core::{apply_authorization, Authorization};
+
+    /// A settings row with a caller-chosen `reviewer_risk_thresholds`; every
+    /// other field is a plausible default (irrelevant to the ladder under test).
+    fn settings_with(reviewer_risk_thresholds: serde_json::Value) -> AgentAdminSettings {
+        AgentAdminSettings {
+            default_sandbox_mode: "workspace-write".into(),
+            unattended_approval_policy: "on_request".into(),
+            reviewer_enabled: true,
+            reviewer_model_id: None,
+            reviewer_policy: None,
+            reviewer_risk_thresholds,
+            per_run_token_cap: 1_000_000,
+            per_step_token_cap: 500_000,
+            default_max_steps: 20,
+            fan_out_max_threads: 4,
+            fan_out_max_depth: 1,
+            fan_out_max_children_per_call: 8,
+            goal_eval_model_id: None,
+            goal_seek_max_turns: 10,
+            updated_at: Utc::now(),
+        }
+    }
+
+    /// The SAME `{High, authorization=Medium}` call resolves to a DIFFERENT
+    /// reviewer decision depending solely on the admin ladder read off the
+    /// settings row — the proof the knob is live. `apply_authorization ∘ resolve`
+    /// is exactly what `Reviewer::decide` computes.
+    #[test]
+    fn admin_thresholds_change_reviewer_decision() {
+        // Default ladder ({}): a well-authorized High is promoted to Auto.
+        let base = reviewer_thresholds(&settings_with(serde_json::json!({})));
+        assert_eq!(
+            apply_authorization(Risk::High, Authorization::Medium, base.resolve(Risk::High)),
+            Decision::Auto,
+            "default ladder: well-authorized High → Auto",
+        );
+        // Admin override {"high":"deny"}: the identical call is now Denied.
+        let overridden =
+            reviewer_thresholds(&settings_with(serde_json::json!({ "high": "deny" })));
+        assert_eq!(
+            apply_authorization(Risk::High, Authorization::Medium, overridden.resolve(Risk::High)),
+            Decision::Deny,
+            "admin `high:deny` override must flip the decision (setting is not inert)",
+        );
+    }
+
+    /// JSON-null / empty `{}` / non-object thresholds fall back to the built-in
+    /// ladder unchanged — the column default is `'{}'::jsonb`, so this is the
+    /// zero-config path.
+    #[test]
+    fn null_or_empty_thresholds_fall_back_to_ladder() {
+        for v in [
+            serde_json::Value::Null,
+            serde_json::json!({}),
+            serde_json::json!("not-an-object"),
+        ] {
+            let t = reviewer_thresholds(&settings_with(v.clone()));
+            assert!(t.is_empty(), "value {v} must yield the empty (default) ladder");
+            // The built-in ladder (map_risk) unchanged.
+            assert_eq!(t.resolve(Risk::Low), Decision::Auto);
+            assert_eq!(t.resolve(Risk::High), Decision::Prompt);
+            assert_eq!(t.resolve(Risk::Critical), Decision::Deny);
         }
     }
 }
