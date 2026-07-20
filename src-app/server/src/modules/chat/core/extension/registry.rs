@@ -383,24 +383,43 @@ impl ExtensionRegistry {
     }
 
     /// Call after_llm_call on all extensions
-    /// Returns first Continue action encountered, or Complete if all extensions return Complete
+    ///
+    /// Returns the first `Continue`/`CompleteWithContent` action encountered (it
+    /// decides the turn's control flow), or `Complete` if every extension
+    /// returned `Complete`.
+    ///
+    /// The control-flow decision is CAPTURED, not short-circuited: later
+    /// extensions still run for their side effects. Returning early instead
+    /// silently disabled every extension ordered after the deciding one — which
+    /// is how a conversation using an `audience:["user"]` tool ended up
+    /// permanently untitled. The MCP extension (order 30) returns
+    /// `CompleteWithContent` for such a tool, so the title extension (order 80)
+    /// was never reached on ANY turn of that conversation.
+    ///
+    /// Only the FIRST such action is honored; a later extension cannot override
+    /// the turn's control flow, so this cannot change how a turn terminates.
     pub async fn call_after_llm_call(
         &self,
         context: &StreamContext,
         final_message: &Message,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<ExtensionAction, AppError> {
+        let mut decided: Option<ExtensionAction> = None;
+
         for ext in self.inner.iter() {
             let action = ext.after_llm_call(context, final_message, tx).await?;
 
-            // If any extension returns Continue or CompleteWithContent, stop iterating and return it
-            if matches!(action, ExtensionAction::Continue { .. } | ExtensionAction::CompleteWithContent { .. }) {
-                return Ok(action);
+            if decided.is_none()
+                && matches!(
+                    action,
+                    ExtensionAction::Continue { .. } | ExtensionAction::CompleteWithContent { .. }
+                )
+            {
+                decided = Some(action);
             }
         }
 
-        // All extensions returned Complete
-        Ok(ExtensionAction::Complete)
+        Ok(decided.unwrap_or(ExtensionAction::Complete))
     }
 
     /// Process delta through extensions
@@ -624,5 +643,157 @@ impl ExtensionRegistry {
 impl Default for ExtensionRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod after_llm_call_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Records whether it ran, and returns a scripted action.
+    struct ProbeExtension {
+        name: &'static str,
+        action: fn() -> ExtensionAction,
+        ran: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl ChatExtension for ProbeExtension {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        async fn after_llm_call(
+            &self,
+            _context: &StreamContext,
+            _final_message: &Message,
+            _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+        ) -> Result<ExtensionAction, AppError> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok((self.action)())
+        }
+    }
+
+    fn probe(
+        name: &'static str,
+        action: fn() -> ExtensionAction,
+    ) -> (Arc<dyn ChatExtension>, Arc<AtomicBool>) {
+        let ran = Arc::new(AtomicBool::new(false));
+        (
+            Arc::new(ProbeExtension {
+                name,
+                action,
+                ran: ran.clone(),
+            }),
+            ran,
+        )
+    }
+
+    fn context(pool: PgPool) -> StreamContext {
+        StreamContext {
+            conversation_id: uuid::Uuid::new_v4(),
+            branch_id: uuid::Uuid::new_v4(),
+            message_id: None,
+            user_id: uuid::Uuid::new_v4(),
+            pool,
+            metadata: std::collections::HashMap::new(),
+            iteration: 1,
+        }
+    }
+
+    fn message() -> Message {
+        Message {
+            id: uuid::Uuid::new_v4(),
+            role: "assistant".to_string(),
+            originated_from_id: uuid::Uuid::new_v4(),
+            edit_count: 0,
+            model_id: None,
+            created_at: chrono::Utc::now(),
+        }
+    }
+
+    /// A deciding extension must NOT silently disable the ones after it.
+    ///
+    /// This is the regression guard for conversations using an
+    /// `audience:["user"]` tool: the MCP extension (order 30) returns
+    /// `CompleteWithContent`, and the title extension (order 80) was never
+    /// reached, so such a conversation stayed permanently untitled.
+    #[sqlx::test]
+    async fn later_extensions_still_run_after_a_deciding_action(pool: PgPool) {
+        for decider in [
+            (|| ExtensionAction::CompleteWithContent {
+                text: "final".to_string(),
+            }) as fn() -> ExtensionAction,
+            (|| ExtensionAction::Continue {
+                assistant_message_content: Vec::new(),
+            }) as fn() -> ExtensionAction,
+        ] {
+            let mut registry = ExtensionRegistry::new();
+            let (first, first_ran) = probe("first", || ExtensionAction::Complete);
+            let (deciding, deciding_ran) = probe("deciding", decider);
+            let (later, later_ran) = probe("later", || ExtensionAction::Complete);
+            registry.register(first);
+            registry.register(deciding);
+            registry.register(later);
+
+            let action = registry
+                .call_after_llm_call(&context(pool.clone()), &message(), None)
+                .await
+                .expect("hook must not error");
+
+            assert!(first_ran.load(Ordering::SeqCst));
+            assert!(deciding_ran.load(Ordering::SeqCst));
+            assert!(
+                later_ran.load(Ordering::SeqCst),
+                "an extension ordered AFTER the deciding one must still run"
+            );
+            // …and the turn's control flow is still the deciding extension's.
+            assert!(matches!(
+                action,
+                ExtensionAction::CompleteWithContent { .. } | ExtensionAction::Continue { .. }
+            ));
+        }
+    }
+
+    /// A later extension cannot hijack control flow from the first decider.
+    #[sqlx::test]
+    async fn the_first_deciding_action_wins(pool: PgPool) {
+        let mut registry = ExtensionRegistry::new();
+        let (first, _) = probe("first", || ExtensionAction::Continue {
+            assistant_message_content: Vec::new(),
+        });
+        let (second, second_ran) = probe("second", || ExtensionAction::CompleteWithContent {
+            text: "hijack".to_string(),
+        });
+        registry.register(first);
+        registry.register(second);
+
+        let action = registry
+            .call_after_llm_call(&context(pool), &message(), None)
+            .await
+            .expect("hook must not error");
+
+        assert!(second_ran.load(Ordering::SeqCst), "it still runs");
+        assert!(
+            matches!(action, ExtensionAction::Continue { .. }),
+            "but the FIRST decider owns the turn's control flow"
+        );
+    }
+
+    /// All-Complete still yields Complete.
+    #[sqlx::test]
+    async fn all_complete_yields_complete(pool: PgPool) {
+        let mut registry = ExtensionRegistry::new();
+        let (a, _) = probe("a", || ExtensionAction::Complete);
+        let (b, _) = probe("b", || ExtensionAction::Complete);
+        registry.register(a);
+        registry.register(b);
+
+        let action = registry
+            .call_after_llm_call(&context(pool), &message(), None)
+            .await
+            .expect("hook must not error");
+        assert!(matches!(action, ExtensionAction::Complete));
     }
 }
