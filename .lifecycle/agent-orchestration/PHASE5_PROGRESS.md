@@ -23,25 +23,30 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 8 | Group H reviewer/policy security core | 39, 42, 47 (41-persist, 40, 43-46 follow-ups) | pending | — | 🔄 in progress |
 | 8 | Group H reviewer/policy security core | 39, 42, 47 (41-persist, 40, 43-46 follow-ups) | `cargo check -p agent-core` +85/85; `cargo check -p ziee` PASS (agent_dispatch fan-in) | 5ebb1f0a8 | ✅ VERIFIED |
 | 9 | Group F goal-seeking backend (scheduler) | 24 (FE done-when deferred) | `cargo check -p ziee` PASS | aa981b56e | ✅ VERIFIED (agent hit weekly limit during its OWN verify; impl was complete) |
+| 10 | Backbone model-reachable + subagent-run lifecycle (background_mcp) | 17, 7, 9 (real LLM turn → 10b) | `cargo clean+check -p ziee` PASS (mig 202607191000; security posture parent-verified) | (committed) | ✅ VERIFIED |
+| 10b | Real detached AgentCore turn (replaces executor placeholder) | 7, 8, 10 | pending | — | 🔄 in progress |
+| 11 (FE) | Chat /loop + /schedule + goal-seek done-when | 18, 20, 24-FE | pending (npm run check) | — | 🔄 in progress |
 
-## ⚠️ Weekly API limit hit 2026-07-19 (resets Jul 24 8pm America/Detroit)
-Sub-agents share the account-wide weekly quota, so further sub-agent tranches will fail until reset.
-9 tranches (~21 items) are landed + verified + committed. Remaining work is tracked below and in the
-"Remaining tranche plan". Resume sub-agent driving after the reset (or continue via direct edits if the
-main-loop retains quota). openapi-regen fan-in batched at this checkpoint (WorkflowRun, scheduler
-self-paced/bound/max_horizon, fan_out_max_children, goal-seeking condition/eval fields).
+## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
+Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
+2bc4fe8a7 — WorkflowRun, scheduler self-paced/bound/max_horizon, fan_out_max_children, goal-seeking
+fields). Driving remaining ~40 items in dependency-ordered, file-disjoint tranches (1 server lane +
+1 FE lane; agent-core takes the server lane exclusively), then Phases 6→9.
 
 ## Accumulated drifts (reconcile into DRIFT-N.md at Phase-5 close)
 - **DRIFT (T1, impl-wins):** `Reviewer::new` kept backward-compatible + `new_with_thresholds` added (rather than changing the one server caller from another module). Server wiring TODO: `agent_dispatch.rs:787` → `new_with_thresholds(inner, policy, RiskThresholds::from_json(&settings.reviewer_risk_thresholds))`.
 - **DRIFT (T1, resolved):** injection-neutralize helper placed in a new `agent-core/src/guard.rs` (DEC-80 didn't name a home).
 - **DRIFT (T2, impl-wins → amend DEC-44):** self-paced self-stop sets `paused_reason='completed'` (FE badge convention, matches spent-`once` tasks) rather than null — a null would be indistinguishable from a user-disable in the UI. `is_active()` unaffected.
+- **DRIFT (T10, impl-wins → SECURITY-CORRECT, overrode literal instruction):** `background` is attached via `auto_attach_builtin_ids` but deliberately NOT added to `is_builtin_server_id` (the whole-server approval-bypass). Mirrors `control_mcp` (write-capable built-in): a per-tool `is_background` arm gates the WRITE `spawn_background` while bypassing the two reads. Adding it to `is_builtin_server_id` would auto-approve detached-compute spawning in the 5 non-per-tool paths (gate.rs/agent_dispatch.rs/agent_tool_call.rs/resolver.rs/js_tool). This REVISES the generic §11 "both mcp.rs edits" rule for write-capable built-ins — parent-verified at commit.
 
 ## Deferred / TODO wiring (later tranches, tracked so nothing is silently dropped)
 - **Server reviewer-thresholds wiring** (from T1 drift) — flip `agent_dispatch.rs` to `new_with_thresholds`; also wire the chat reviewer (LOCK-5, behind `ZIEE_CHAT_AGENT_CORE`).
 - **Model-facing `schedule_next{delay,reason,stop}` tool** (DEC-42) that produces the self-paced proposal — the clamp + arm/write-back path is done + tested; only the read-proposal-off-the-turn wiring remains.
 - **`agent_admin_settings.fan_out_max_children_per_call` column + wiring** — T3 added `SubagentLimits.max_children_per_call` (default 8) and the server literal now uses `..Default::default()`; a later tranche adds the admin column + threads it (like `fan_out_max_threads`).
 - **Group G server-side durable `TaskListStore` impl** — T4 does the agent-core side (tools via the seam + port trait + re-injection extension) with a fake store; server table + migration + port impl is a follow-up.
-- **openapi-regen fan-in** — after the backend-type tranches (scheduler already added `bound_conversation_id`/`?conversation_id`/`schedule_kind:self_paced`/`max_horizon_days`), run `just openapi-regen` BOTH workspaces before the FE tranches consume the types.
+- **openapi-regen fan-in** — DONE at commit 2bc4fe8a7 (both workspaces).
+- **Real detached subagent LLM turn** (T10b, IN FLIGHT) — replace `background_mcp::execute_subagent_run`'s `minimal-placeholder` with a real `AgentCore` turn reusing `agent_dispatch.rs`'s host construction + the unattended-approval policy.
+- **background_mcp integration test** — HTTP 401/403 + spawn→check→collect roundtrip in `tests/background_mcp/` (needs `integration_tests.rs` mod registration; T10 covered the contract via unit tests + backbone repo tests). Fold into Phase 8.
 
 ## Remaining tranche plan (dependency-ordered)
 - A (delegate host-gate 2/4/5 chat+workflow), E FE dialog (18/20 + 24 done-when UI) [needs openapi-regen], G task-list (34-37 agent-core, shares delegate interception seam), I compaction (56 unify + 57-61,63), H approval core (39/41/42/43/44/45/46 agent-core+mcp) + H external (47-55) + H admin per-tool UI (55), F (24 goal-seek backend / 25 steer / 26 inbox / 27 event-triggers / 29 state-machine), **backbone D (14/17/29)** → then **B (7-10)** + **C sandbox (11-13/30/31, sdk cross-repo)** → I sleep-time (62).
