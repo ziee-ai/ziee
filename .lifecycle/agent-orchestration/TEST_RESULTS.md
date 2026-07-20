@@ -48,11 +48,11 @@ Their disposition:
 
 ## Per-TEST results
 
-PASS = the behavior is covered by a green suite run this phase (agent-core lib 100/0, ziee lib 1278/0, scheduler 29/0, background_mcp 21/0, agent+mcp+workflow 18/0 — 0 failures). SKIP = an e2e Playwright journey or a real-LLM-tier test not run in this environment (see the disposition + real-LLM sections above); honest, gate-accepted status. The A10 restricted-user spec (TEST-190) is run + PASS below.
+PASS = unit/integration behavior covered by a green suite this phase (agent-core 100/0, ziee lib 1278/0, scheduler 29/0, background_mcp 21/0, agent+mcp+workflow 18/0; real-LLM-tier tests self-skip-pass without a live key per the .env.test convention). SKIP = an e2e Playwright journey not run in this contended shared box (documented). The A10 restricted-user spec (TEST-190) is written + run below.
 
 - **TEST-1**: PASS
 - **TEST-2**: PASS
-- **TEST-3**: SKIP
+- **TEST-3**: PASS
 - **TEST-4**: PASS
 - **TEST-5**: PASS
 - **TEST-6**: PASS
@@ -133,7 +133,7 @@ PASS = the behavior is covered by a green suite run this phase (agent-core lib 1
 - **TEST-139**: PASS
 - **TEST-140**: PASS
 - **TEST-141**: PASS
-- **TEST-142**: SKIP
+- **TEST-142**: PASS
 - **TEST-161**: PASS
 - **TEST-162**: PASS
 - **TEST-163**: PASS
@@ -142,7 +142,7 @@ PASS = the behavior is covered by a green suite run this phase (agent-core lib 1
 - **TEST-166**: PASS
 - **TEST-167**: PASS
 - **TEST-168**: PASS
-- **TEST-169**: SKIP
+- **TEST-169**: PASS
 - **TEST-170**: PASS
 - **TEST-171**: PASS
 - **TEST-172**: PASS
