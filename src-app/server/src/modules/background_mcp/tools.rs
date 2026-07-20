@@ -43,30 +43,39 @@ pub fn tool_list() -> Value {
         "tools": [
             {
                 "name": "spawn_background",
-                "description": "Launch a background sub-agent that works on a self-contained task DETACHED from this conversation — you keep chatting while it runs, then collect its result later with `collect_result`. Use for a bounded unit of work that may take a while (research a question, draft a section, analyze data) and whose answer you don't need inline right now. Returns an opaque `run_id`. Do NOT use for trivial things you can answer directly. This LAUNCHES work, so it requires approval before it starts.",
+                "description": "Launch background work DETACHED from this conversation — you keep chatting while it runs, then collect its result later with `collect_result`. Two kinds: 'subagent' runs a detached agent turn on a self-contained task (research a question, draft a section, analyze data); 'sandbox_exec' runs a shell command in this conversation's isolated code sandbox as a background job (a long build, a data crunch, a test suite) so it doesn't block the chat. Use for a bounded unit of work whose answer you don't need inline right now. Returns an opaque `run_id`. Do NOT use for trivial things you can answer directly. This LAUNCHES work, so it requires approval before it starts.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "kind": {
                             "type": "string",
-                            "enum": ["subagent"],
+                            "enum": ["subagent", "sandbox_exec"],
                             "default": "subagent",
-                            "description": "The background job kind. 'subagent' runs a detached agent turn on the spec."
+                            "description": "The background job kind. 'subagent' runs a detached agent turn on the spec; 'sandbox_exec' runs a shell command in this conversation's code sandbox as a background job."
                         },
                         "spec": {
                             "type": "object",
-                            "description": "What the background sub-agent should do.",
+                            "description": "What the background job should do. The required fields depend on `kind`: 'subagent' requires `task`; 'sandbox_exec' requires `command`.",
                             "properties": {
                                 "system": {
                                     "type": "string",
-                                    "description": "Optional system framing / role for the sub-agent."
+                                    "description": "(subagent) Optional system framing / role for the sub-agent."
                                 },
                                 "task": {
                                     "type": "string",
-                                    "description": "The concrete task the sub-agent must complete and report back on."
+                                    "description": "(subagent) The concrete task the sub-agent must complete and report back on."
+                                },
+                                "command": {
+                                    "type": "string",
+                                    "description": "(sandbox_exec) The shell command to run in the conversation's code sandbox. The same isolated workspace + attachments the foreground `execute_command` tool sees."
+                                },
+                                "flavor": {
+                                    "type": "string",
+                                    "enum": ["minimal", "full"],
+                                    "default": "minimal",
+                                    "description": "(sandbox_exec) The rootfs flavor to run in. Defaults to 'minimal'; matches the foreground execute_command flavor lock for this conversation."
                                 }
-                            },
-                            "required": ["task"]
+                            }
                         }
                     },
                     "required": ["spec"]
@@ -146,7 +155,9 @@ fn parse_run_id(args: &Value) -> Result<Uuid, AppError> {
 /// the given `JobKind`, returning an opaque owner-scoped `run_id` (DEC-36). The
 /// run is driven to terminal by [`runner::spawn_background_run`] (shared
 /// heartbeat + guarded transitions + `SyncEntity::WorkflowRun` completion
-/// notify); the kind-specific work runs in the `driver` closure below.
+/// notify). Dispatch on `kind`: each kind's spec-parse + driver wiring lives in
+/// its own `spawn_*` helper below, so adding a kind is additive (no central
+/// spec-shape god-fn).
 async fn spawn_background(
     pool: &PgPool,
     user_id: Uuid,
@@ -154,28 +165,30 @@ async fn spawn_background(
     args: &Value,
 ) -> Result<Value, AppError> {
     let kind_str = args.get("kind").and_then(|v| v.as_str()).unwrap_or("subagent");
-    let job_kind = match kind_str {
-        "subagent" => JobKind::SubAgent,
-        // The sandbox-exec background driver is cross-repo (sdk `ziee-sandbox`)
-        // and lands in a later tranche; reject it clearly rather than pretend.
-        "sandbox_exec" => {
-            return Err(AppError::bad_request(
-                "BACKGROUND_KIND_UNSUPPORTED",
-                "background kind 'sandbox_exec' is not available yet",
-            ));
-        }
-        other => {
-            return Err(AppError::bad_request(
-                "BACKGROUND_KIND_UNKNOWN",
-                format!("unknown background kind '{other}'"),
-            ));
-        }
-    };
-
     let spec = args
         .get("spec")
         .cloned()
         .ok_or_else(|| AppError::bad_request("BACKGROUND_SPEC_REQUIRED", "spec is required"))?;
+
+    match kind_str {
+        "subagent" => spawn_subagent(pool, user_id, conversation_id, spec).await,
+        "sandbox_exec" => spawn_sandbox_exec(pool, user_id, conversation_id, spec).await,
+        other => Err(AppError::bad_request(
+            "BACKGROUND_KIND_UNKNOWN",
+            format!("unknown background kind '{other}'"),
+        )),
+    }
+}
+
+/// `spawn_background{kind:'subagent'}` — launch a detached [`JobKind::SubAgent`]
+/// agent-core turn on `spec.{task,system}`.
+async fn spawn_subagent(
+    pool: &PgPool,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    spec: Value,
+) -> Result<Value, AppError> {
+    let job_kind = JobKind::SubAgent;
     let task = spec
         .get("task")
         .and_then(|v| v.as_str())
@@ -323,23 +336,230 @@ async fn execute_subagent_run(
             .filter(|s| !s.is_empty())
             .map(|s| s.chars().take(500).collect::<String>())
             .unwrap_or_else(|| "Background task finished.".to_string());
-        let mut payload = serde_json::Map::new();
-        payload.insert("workflow_run_id".into(), json!(run_id));
-        if let Some(cid) = conversation_id {
-            payload.insert("conversation_id".into(), json!(cid));
-        }
-        let notif =
-            NewNotification::new(user_id, "background_run_result", "Background task finished")
-                .body(summary)
-                .payload(Value::Object(payload));
-        if let Err(e) = create_and_emit(pool, notif).await {
-            tracing::warn!(
-                "background_mcp: failed to create completion notification for run {run_id}: {e:?}"
-            );
-        }
+        post_completion_notification(pool, user_id, run_id, conversation_id, summary).await;
     }
 
     outcome
+}
+
+/// ITEM-9/ITEM-13: post the durable "background task finished" inbox row on a
+/// completed background run, shared by EVERY background kind (sub-agent / sandbox
+/// exec). It live-pushes via the installed `SyncEntity::Notification` emitter;
+/// `spawn_background_run` separately emits `SyncEntity::WorkflowRun` on the
+/// terminal transition. A notify failure must NOT fail the run — log + continue
+/// (exactly like the scheduler's first-producer path).
+async fn post_completion_notification(
+    pool: &PgPool,
+    user_id: Uuid,
+    run_id: Uuid,
+    conversation_id: Option<Uuid>,
+    summary: String,
+) {
+    let mut payload = serde_json::Map::new();
+    payload.insert("workflow_run_id".into(), json!(run_id));
+    if let Some(cid) = conversation_id {
+        payload.insert("conversation_id".into(), json!(cid));
+    }
+    let notif = NewNotification::new(user_id, "background_run_result", "Background task finished")
+        .body(summary)
+        .payload(Value::Object(payload));
+    if let Err(e) = create_and_emit(pool, notif).await {
+        tracing::warn!(
+            "background_mcp: failed to create completion notification for run {run_id}: {e:?}"
+        );
+    }
+}
+
+/// Default rootfs flavor for a background sandbox command (matches the foreground
+/// `execute_command` tool's `default_flavor`).
+const DEFAULT_SANDBOX_FLAVOR: &str = "minimal";
+
+/// `spawn_background{kind:'sandbox_exec'}` — launch a detached
+/// [`JobKind::SandboxExec`] shell command in THIS conversation's code sandbox
+/// (ITEM-11/12/13, Group C).
+///
+/// The sandbox workspace is per-conversation, so a conversation context is
+/// REQUIRED (unlike a sub-agent, which only needs a model). Ownership is verified
+/// up front (fail fast — no doomed run row for a foreign conversation) AND again
+/// inside `execute_command_detached`'s `build_context` (defense-in-depth). No
+/// model is needed — this just runs a command.
+async fn spawn_sandbox_exec(
+    pool: &PgPool,
+    user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    spec: Value,
+) -> Result<Value, AppError> {
+    let conversation_id = conversation_id.ok_or_else(|| {
+        AppError::bad_request(
+            "BACKGROUND_NO_CONVERSATION",
+            "background sandbox exec requires a conversation context (the sandbox workspace is per-conversation)",
+        )
+    })?;
+    let command = spec
+        .get("command")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            AppError::bad_request(
+                "BACKGROUND_COMMAND_REQUIRED",
+                "spec.command must be a non-empty string",
+            )
+        })?
+        .to_string();
+    let flavor = spec
+        .get("flavor")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_SANDBOX_FLAVOR)
+        .to_string();
+
+    // Fail fast on a foreign / missing conversation (owner-scoped 404); the run
+    // row is only created for a conversation the caller actually owns.
+    crate::core::Repos
+        .chat
+        .core
+        .get_conversation(conversation_id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("conversation not found"))?;
+
+    let request = CreateBackgroundRun {
+        job_kind: JobKind::SandboxExec,
+        conversation_id: Some(conversation_id),
+        user_id,
+        model_id: None,
+        sandbox_flavor: Some(flavor.clone()),
+        invocation_source: "conversation".into(),
+        inputs_json: spec.clone(),
+    };
+
+    // Fire-and-forget: the driver runs OUTSIDE any per-conversation single-flight
+    // lock, so the foreground chat stays interactive while the command runs.
+    let run_id = runner::spawn_background_run(pool, request, move |task_pool, run_id, handle| async move {
+        execute_sandbox_run(&task_pool, run_id, user_id, conversation_id, handle, command, flavor).await
+    })
+    .await?;
+
+    Ok(json!({
+        "run_id": run_id,
+        "kind": JobKind::SandboxExec.as_str(),
+        "status": "pending",
+        "note": "Background sandbox command started. Poll check_status, then collect_result when it is complete."
+    }))
+}
+
+/// The SandboxExec background driver (ITEM-11/12/13).
+///
+/// Reuses the SAME durable run lifecycle scaffolding as the sub-agent driver —
+/// the `workflow_runs` row → `running` + heartbeat → terminal `completed` +
+/// `final_output_json` → owner-scoped `SyncEntity::WorkflowRun` notify (all via
+/// `spawn_background_run`) → the shared `post_completion_notification` inbox row.
+/// The ONLY kind-specific part is the body: it runs the command through the
+/// UNCHANGED `code_sandbox` execute path (`execute_command_detached`), so every
+/// hardening guard (`--clearenv`, seccomp, cgroup, PID-ns, prlimit caps, the
+/// per-command wall-clock cap) is preserved verbatim.
+///
+/// An owner cancel (via `check_status`/conversation-delete) is raced against the
+/// command: when it wins, dropping the exec future triggers the sandbox child's
+/// `kill_on_drop(true)` SIGKILL — a real cancel of the running command. (The
+/// cgroup-kill grandchild reap + idle reaper are the SDK ITEM-30/31 follow-up.)
+async fn execute_sandbox_run(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+    conversation_id: Uuid,
+    handle: Arc<registry::RunHandle>,
+    command: String,
+    flavor: String,
+) -> BackgroundOutcome {
+    let exec_fut = crate::modules::code_sandbox::handlers::execute_command_detached(
+        conversation_id,
+        user_id,
+        &command,
+        &flavor,
+    );
+    tokio::pin!(exec_fut);
+
+    let outcome = tokio::select! {
+        // Owner cancel landed first: drop the exec future → kill_on_drop reaps the
+        // sandbox child. Report Cancelled (no final_output, no completion inbox).
+        _ = handle.await_cancel() => BackgroundOutcome::Cancelled,
+        r = &mut exec_fut => match r {
+            Ok(exec) => BackgroundOutcome::Completed {
+                final_output: Some(build_sandbox_final_output(&command, &flavor, &exec)),
+            },
+            // The SANDBOX itself failed (not-initialized / workspace / ownership) —
+            // distinct from a command that ran but exited nonzero (that's a
+            // Completed run whose final_output carries the exit_code).
+            Err(e) => BackgroundOutcome::Failed {
+                error: format!("background sandbox exec: {e}"),
+            },
+        },
+    };
+
+    if let BackgroundOutcome::Completed { final_output } = &outcome {
+        let summary = final_output
+            .as_ref()
+            .map(sandbox_notification_summary)
+            .unwrap_or_else(|| "Background command finished.".to_string());
+        post_completion_notification(pool, user_id, run_id, Some(conversation_id), summary).await;
+    }
+
+    outcome
+}
+
+/// Project the `execute_command` result JSON (`{stdout, stderr, exit_code,
+/// timed_out, duration_ms, *_truncated, …}`) into the stable, collectible
+/// `final_output` envelope `collect_result` pages. Pure → unit-tested rootfs-free.
+/// A nonzero `exit_code` is DATA (the run still `completed`); only a sandbox-level
+/// error maps to a failed run.
+fn build_sandbox_final_output(command: &str, flavor: &str, exec: &Value) -> Value {
+    let timed_out = exec.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false);
+    let status = if timed_out { "timed_out" } else { "completed" };
+    json!({
+        "executor": "code-sandbox",
+        "kind": "sandbox_exec",
+        "status": status,
+        "command": command,
+        "flavor": flavor,
+        "exit_code": exec.get("exit_code").cloned().unwrap_or(Value::Null),
+        "timed_out": timed_out,
+        "stdout": exec.get("stdout").cloned().unwrap_or(Value::Null),
+        "stderr": exec.get("stderr").cloned().unwrap_or(Value::Null),
+        "duration_ms": exec.get("duration_ms").cloned().unwrap_or(Value::Null),
+        "stdout_truncated": exec.get("stdout_truncated").and_then(|v| v.as_bool()).unwrap_or(false),
+        "stderr_truncated": exec.get("stderr_truncated").and_then(|v| v.as_bool()).unwrap_or(false),
+    })
+}
+
+/// Human-readable completion summary for the notification inbox row. Pure →
+/// unit-tested rootfs-free.
+fn sandbox_notification_summary(final_output: &Value) -> String {
+    let head = |key: &str| {
+        final_output
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.chars().take(200).collect::<String>())
+    };
+    if final_output.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return "Background command timed out.".to_string();
+    }
+    match final_output.get("exit_code").and_then(|v| v.as_i64()) {
+        Some(0) => head("stdout")
+            .map(|o| format!("Command succeeded: {o}"))
+            .unwrap_or_else(|| "Background command finished (exit 0).".to_string()),
+        Some(code) => {
+            let detail = head("stderr")
+                .or_else(|| head("stdout"))
+                .map(|d| format!(": {d}"))
+                .unwrap_or_default();
+            format!("Background command exited with code {code}{detail}")
+        }
+        None => "Background command finished.".to_string(),
+    }
 }
 
 /// Build + run ONE detached `AgentCore` turn on the run's model, collecting the
@@ -642,5 +862,110 @@ mod tests {
             let t = tools.iter().find(|t| t["name"] == read).unwrap();
             assert_eq!(t["inputSchema"]["required"][0], "run_id");
         }
+    }
+
+    // TEST (Group C): the `kind` enum now advertises BOTH background kinds so the
+    // model can route a command into the sandbox. A regression that dropped
+    // `sandbox_exec` from the schema silently hides the whole feature.
+    #[test]
+    fn spawn_kind_enum_advertises_sandbox_exec() {
+        let list = tool_list();
+        let tools = list["tools"].as_array().unwrap();
+        let spawn = tools.iter().find(|t| t["name"] == "spawn_background").unwrap();
+        let kinds = spawn["inputSchema"]["properties"]["kind"]["enum"]
+            .as_array()
+            .expect("kind enum");
+        let kinds: Vec<&str> = kinds.iter().filter_map(|k| k.as_str()).collect();
+        assert!(kinds.contains(&"subagent"), "subagent kind still advertised");
+        assert!(kinds.contains(&"sandbox_exec"), "sandbox_exec kind advertised");
+    }
+
+    // TEST (rootfs-free executor wiring — ITEM-11/13): `build_sandbox_final_output`
+    // projects the `execute_command` result JSON into the stable, collectible
+    // `final_output` envelope. This is the serialization the `collect_result` read
+    // path pages, proven WITHOUT a live bwrap sandbox (mirrors how the subagent
+    // executor's wiring is provable without a live model).
+    #[test]
+    fn build_sandbox_final_output_projects_exec_result() {
+        // The shape `ziee_sandbox::tools::execute::execute_command` returns.
+        let exec = json!({
+            "stdout": "hi\n",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": false,
+            "duration_ms": 12,
+            "stdout_truncated": false,
+            "stderr_truncated": false,
+            "flavor": "minimal",
+        });
+        let out = build_sandbox_final_output("echo hi", "minimal", &exec);
+        assert_eq!(out["executor"], "code-sandbox");
+        assert_eq!(out["kind"], "sandbox_exec");
+        assert_eq!(out["status"], "completed");
+        assert_eq!(out["command"], "echo hi");
+        assert_eq!(out["flavor"], "minimal");
+        assert_eq!(out["exit_code"], json!(0));
+        assert_eq!(out["stdout"], "hi\n");
+        assert_eq!(out["timed_out"], json!(false));
+    }
+
+    // TEST: a NONZERO exit code is DATA, not a run failure — the command RAN, so
+    // the run still `completed`; the exit_code is carried in the envelope for the
+    // model to read. (A sandbox-level error is what maps to a Failed run — that
+    // path is the `Err(e)` arm in `execute_sandbox_run`, unreachable here.)
+    #[test]
+    fn nonzero_exit_is_completed_with_exit_code_preserved() {
+        let exec = json!({
+            "stdout": "", "stderr": "boom", "exit_code": 2,
+            "timed_out": false, "duration_ms": 5,
+            "stdout_truncated": false, "stderr_truncated": false,
+        });
+        let out = build_sandbox_final_output("false", "minimal", &exec);
+        assert_eq!(out["status"], "completed", "the command ran → completed run");
+        assert_eq!(out["exit_code"], json!(2));
+        assert_eq!(out["stderr"], "boom");
+    }
+
+    // TEST: a timed-out command is reported DISTINCTLY (DEC-74) — status
+    // `timed_out` + `timed_out:true` in the envelope, and the notification says so.
+    #[test]
+    fn timed_out_command_is_reported_distinctly() {
+        let exec = json!({
+            "stdout": "partial", "stderr": "", "exit_code": Value::Null,
+            "timed_out": true, "duration_ms": 600000,
+            "stdout_truncated": true, "stderr_truncated": false,
+        });
+        let out = build_sandbox_final_output("sleep 999", "minimal", &exec);
+        assert_eq!(out["status"], "timed_out");
+        assert_eq!(out["timed_out"], json!(true));
+        assert_eq!(out["stdout_truncated"], json!(true));
+        assert_eq!(
+            sandbox_notification_summary(&out),
+            "Background command timed out."
+        );
+    }
+
+    // TEST: the notification summary derives a legible one-liner per exit class.
+    #[test]
+    fn sandbox_notification_summary_by_exit_class() {
+        let ok = build_sandbox_final_output(
+            "echo done",
+            "minimal",
+            &json!({ "stdout": "done\n", "stderr": "", "exit_code": 0, "timed_out": false }),
+        );
+        assert!(
+            sandbox_notification_summary(&ok).starts_with("Command succeeded:"),
+            "success summary carries a stdout head: {}",
+            sandbox_notification_summary(&ok)
+        );
+
+        let failed = build_sandbox_final_output(
+            "false",
+            "minimal",
+            &json!({ "stdout": "", "stderr": "nope", "exit_code": 1, "timed_out": false }),
+        );
+        let s = sandbox_notification_summary(&failed);
+        assert!(s.contains("exited with code 1"), "failure summary names the code: {s}");
+        assert!(s.contains("nope"), "failure summary carries the stderr head: {s}");
     }
 }

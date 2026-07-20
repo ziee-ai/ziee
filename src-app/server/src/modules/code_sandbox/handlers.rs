@@ -825,6 +825,43 @@ async fn build_context(
     })
 }
 
+/// Detached (background-run) entry into the sandbox execute path
+/// (ITEM-11/12/13, Group C). Builds the SAME [`SandboxContext`] the chat MCP
+/// path uses — including the security-critical `assert_owns_conversation`
+/// ownership check, attachment staging, workspace-mode, and `/lit` binds — then
+/// runs the command SYNCHRONOUSLY to completion through the UNCHANGED
+/// `execute_command`. Every hardening guard is preserved verbatim because this
+/// reuses the identical context-build + execute path the chat tool uses:
+/// `--clearenv` (no env leak), `--unshare-user`, seccomp, cgroup, PID-ns,
+/// prlimit resource caps (from `code_sandbox_settings`), and the per-command
+/// wall-clock cap. Returns the same `{stdout, stderr, exit_code, timed_out,
+/// duration_ms, …}` JSON the chat tool returns.
+///
+/// The `background_mcp` sandbox-exec executor runs this INSIDE a
+/// `spawn_background_run` background task, so the originating chat turn is never
+/// blocked (RUN-level detachment). True MID-command streaming detach — keeping
+/// the `tokio::process::Child` alive in a run registry and paging a partial
+/// output ring while the command is still running (ITEM-11/12/30/31) — is the
+/// SDK-coordinated `ziee-sandbox` work (DEC-33/108) and is deliberately NOT done
+/// here (it would require editing the `sdk` submodule).
+pub(crate) async fn execute_command_detached(
+    conversation_id: Uuid,
+    user_id: Uuid,
+    command: &str,
+    flavor: &str,
+) -> Result<serde_json::Value, crate::common::AppError> {
+    let state = config::get_state().ok_or_else(|| {
+        crate::common::AppError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "SANDBOX_NOT_INITIALIZED",
+            "code_sandbox is not initialized (module disabled or not yet booted)",
+        )
+    })?;
+    // Reuses the ownership check + staging + workspace-mode inside build_context.
+    let ctx = build_context(&state, conversation_id, user_id).await?;
+    crate::modules::code_sandbox::tools::execute::execute_command(&ctx, command, flavor).await
+}
+
 /// Max size for copying an editable text file into the workspace (above this we
 /// leave it as a read-only bind to avoid copying large files in every turn).
 pub const WORKSPACE_COPYIN_MAX_BYTES: i64 = 5 * 1024 * 1024;

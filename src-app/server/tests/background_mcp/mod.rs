@@ -20,6 +20,13 @@
 
 mod run_notes;
 mod runs;
+// Group C — background sandbox code execution (ITEM-11/12/13). Rootfs-gated
+// (mirrors the code_sandbox tier6 pattern): the driver runs a REAL bwrap command,
+// so it needs a booted sandbox + a published rootfs. Linux is the reference
+// bwrap path. The rootfs-FREE executor wiring (row/notification/serialization) is
+// proven by the `background_mcp::tools` unit tests.
+#[cfg(target_os = "linux")]
+mod sandbox;
 
 use std::time::{Duration, Instant};
 
