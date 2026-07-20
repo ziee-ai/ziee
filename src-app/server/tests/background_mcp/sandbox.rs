@@ -6,7 +6,7 @@
 //! stdout + exit_code captured in `final_output_json` — collectible later via the
 //! same `check_status` / `collect_result` reads that serve every background kind.
 //!
-//! Rootfs-gated + `#[ignore]`'d, mirroring the code_sandbox tier6 tests: it runs a
+//! Rootfs-gated (SELF-SKIPS, not `#[ignore]`'d): it runs a
 //! REAL bwrap command, so it reuses the sandbox-enabled server harness
 //! (`code_sandbox::harness::enabled_test_server`) which self-skips cleanly when the
 //! host can't run the sandbox (no bwrap / no published rootfs for this arch). The
@@ -21,8 +21,11 @@ use uuid::Uuid;
 
 use super::{background_user, jsonrpc, structured};
 
+// NOT `#[ignore]`'d — it SELF-SKIPS cleanly via `enabled_test_server()` when the
+// host can't run the sandbox (no bwrap / no published rootfs for this arch), so it
+// runs in the normal suite and is a no-op where unsupported (the sanctioned pattern,
+// per `code_sandbox/mod.rs:45`), rather than a `#[ignore]` that hides it from the gate.
 #[tokio::test]
-#[ignore = "needs a booted code_sandbox + published rootfs (bwrap); mirrors tier6 — run explicitly"]
 async fn spawn_sandbox_exec_runs_a_command_to_completion() {
     // Sandbox-enabled server (fetches the pinned rootfs on first execute_command).
     // Skips cleanly when the host genuinely can't run the sandbox.
