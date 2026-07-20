@@ -263,16 +263,23 @@ machinery). Direct handles are the cleaner single pattern.
 
 ## 8. DECISIONS (resolved with the user)
 
-- **D1 — Read API: KEEP `Stores.X` (REVERSED — do NOT retire).** Rationale
-  (user): the type augmentation (`chat/types.ts` etc.) is written entirely with
-  `import type` / `typeof` → **fully erased at build**, so `Stores.X` typing costs
-  ZERO runtime + ZERO bundle. And with per-action lazy + EAGER STATE, `Stores.X.field`
-  is never `undefined`, so there's no read-before-register hazard. Types are
-  "lazy" (erased, free); code is lazy (per-action / module). The two are orthogonal.
-  → **Drop the retire-`Stores.X` + 137-site codemod plan** — it was unnecessary
-  churn. The VSCode `any` it would have "fixed" is a workspace-TS-version setting,
-  not a real hole (tsc types it correctly). Direct-handle imports remain allowed
-  but optional; `Stores.X` stays the primary read API.
+- **D1 — Read API: RETIRE `Stores.X` for direct-handle imports (FINAL).**
+  Goal is the WHOLE store lazy (state + actions + type), not just actions — and
+  `Stores.X`'s SYNCHRONOUS registry lookup structurally forces a store eager
+  (it must be registered = loaded before you can read it). Only an IMPORT can
+  trigger load+register at point-of-use, so whole-store laziness REQUIRES
+  `import { Users } from './Users.store'; Users.field`. Self-register-on-import;
+  placement emergent (eager only if an eager consumer imports it). Non-breaking
+  compat shim keeps `Stores.X` sites working during migration; codemod; delete shim.
+  - **Type nuance (be exact):** at RUNTIME types are always erased (0 bytes — there
+    is no runtime "type loading"). Retiring makes types lazy in the COMPILE/EDITOR
+    sense: direct import brings ONLY that store's type into the file that uses it,
+    vs the global `RegisteredStores` interface merging all ~90 store types into
+    every `Stores`-touching file. Local-per-import type resolution → also robustly
+    fixes the VSCode `any` (native resolution, no global declaration-merge).
+  - (Supersedes the earlier keep-`Stores.X` note; that only addressed runtime type
+    BYTES — which are zero either way — and did NOT achieve whole-store laziness,
+    the actual goal.)
 - **D5 — Small chunks as anti-peek (user):** many tiny hashed chunks fragment the
   code + lazy per-action loading means a viewer only ever receives the action code
   they actually invoke (the full action surface is never shipped wholesale). This
