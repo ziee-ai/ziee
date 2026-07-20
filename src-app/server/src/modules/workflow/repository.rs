@@ -11,7 +11,7 @@ use super::models::{
     CreateBackgroundRun, CreateWorkflow, CreateWorkflowRun, JobKind, RunNote, Workflow,
     WorkflowRun, WorkflowRunStatus,
 };
-use super::types::WorkflowRunSummary;
+use super::types::{BackgroundRunSummary, WorkflowRunSummary};
 use crate::common::AppError;
 
 pub struct WorkflowRepository {
@@ -1473,6 +1473,82 @@ pub async fn list_runs_for_user(
     .await
     .map_err(AppError::database_error)?;
     Ok(rows)
+}
+
+/// ITEM-8: the acting user's BACKGROUND runs (`job_kind <> 'workflow'`),
+/// newest-first, paginated, with optional `status` / `kind` filters — a COMPACT
+/// projection (no heavy JSONB blobs; `has_result` merely flags whether a
+/// `final_output_json` exists, read fully via `collect_result`). Owner-scoped
+/// (`user_id = $1`; a foreign run is simply absent — never leaked).
+///
+/// Index-friendly: the existing `(user_id, created_at DESC)` index
+/// (`idx_workflow_runs_user_created`) serves the scan + ordering; `job_kind` and
+/// `status` (both separately indexed) are residual filters. Returns
+/// `(rows, total)` for the paginated response. Pushes every filter to SQL (§4 —
+/// no in-memory filtering / N+1).
+pub async fn list_background_runs_for_user(
+    pool: &PgPool,
+    user_id: Uuid,
+    page: i64,
+    per_page: i64,
+    status: Option<&str>,
+    kind: Option<&str>,
+) -> Result<(Vec<BackgroundRunSummary>, i64), AppError> {
+    let per_page = per_page.clamp(1, 500);
+    let offset = (page - 1).max(0) * per_page;
+
+    let rows = sqlx::query_as!(
+        BackgroundRunSummary,
+        r#"
+        SELECT
+            id,
+            job_kind,
+            status,
+            conversation_id,
+            model_id,
+            NULLIF(left(inputs_json->>'task', 200), '') as "label?",
+            (final_output_json IS NOT NULL) as "has_result!",
+            error_message,
+            total_tokens,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflow_runs
+        WHERE user_id = $1
+          AND job_kind <> 'workflow'
+          AND ($2::text IS NULL OR status = $2)
+          AND ($3::text IS NULL OR job_kind = $3)
+        ORDER BY created_at DESC
+        LIMIT $4 OFFSET $5
+        "#,
+        user_id,
+        status,
+        kind,
+        per_page,
+        offset,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    let total = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM workflow_runs
+        WHERE user_id = $1
+          AND job_kind <> 'workflow'
+          AND ($2::text IS NULL OR status = $2)
+          AND ($3::text IS NULL OR job_kind = $3)
+        "#,
+        user_id,
+        status,
+        kind,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?
+    .count;
+
+    Ok((rows, total))
 }
 
 // ── ITEM-25: durable steering-note queue (Group F) ──────────────────────────

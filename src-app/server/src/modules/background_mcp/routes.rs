@@ -1,12 +1,13 @@
 //! background_mcp routes — the JSON-RPC endpoint at /api/background/mcp plus the
 //! typed ITEM-25 steering-note REST at /api/background/runs/{run_id}/notes.
 
-use aide::axum::routing::post_with;
+use aide::axum::routing::{get_with, post_with};
 use aide::axum::ApiRouter;
 use axum::routing::post;
 
 use super::handlers;
 use super::run_notes;
+use super::runs;
 
 pub fn background_mcp_router() -> ApiRouter {
     ApiRouter::new()
@@ -18,6 +19,17 @@ pub fn background_mcp_router() -> ApiRouter {
         .route(
             "/background/mcp",
             post(handlers::jsonrpc_handler).get(handlers::jsonrpc_handler_get),
+        )
+        // ITEM-8 — list the acting user's background runs (paginated, filterable).
+        // Typed REST (OpenAPI-documented), owner-scoped, gated `background::use`.
+        .api_route(
+            "/background/runs",
+            get_with(runs::list_background_runs, runs::list_background_runs_docs),
+        )
+        // ITEM-10 — cancel a RUNNING background run (owner-scoped; terminal → 409).
+        .api_route(
+            "/background/runs/{run_id}/cancel",
+            post_with(runs::cancel_background_run, runs::cancel_background_run_docs),
         )
         // ITEM-25 — steer a RUNNING background run. Typed REST (OpenAPI-documented),
         // owner-scoped, gated `background::use`.

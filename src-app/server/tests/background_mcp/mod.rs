@@ -19,6 +19,7 @@
 //! hosts now build their core through `agent_dispatch::build_detached_agent_core`.
 
 mod run_notes;
+mod runs;
 
 use std::time::{Duration, Instant};
 

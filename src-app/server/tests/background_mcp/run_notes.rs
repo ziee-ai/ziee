@@ -13,7 +13,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::common::TestServer;
-use crate::common::test_helpers::{create_user_with_permissions, TestUser};
+use crate::common::test_helpers::{
+    create_user_with_no_permissions, create_user_with_permissions, TestUser,
+};
 
 /// A user that can reach the background steering REST (`background::use`).
 async fn bg_user(server: &TestServer, name: &str) -> TestUser {
@@ -70,8 +72,11 @@ async fn post_run_note_requires_background_use_permission() {
     let run_id = insert_subagent_run(&server, &owner.user_id).await;
 
     // Authenticated but WITHOUT `background::use` → 403 (not 404 — the perm gate
-    // fires before ownership resolution).
-    let noperm = create_user_with_permissions(&server, "bg_notes_noperm", &[]).await;
+    // fires before ownership resolution). NOTE: `background::use` is granted to the
+    // default Users group (every registered user auto-joins), so an empty explicit
+    // grant still leaves the perm — must use `create_user_with_no_permissions`,
+    // which strips group membership.
+    let noperm = create_user_with_no_permissions(&server, "bg_notes_noperm").await;
     let resp = reqwest::Client::new()
         .post(notes_url(&server, run_id))
         .header("Authorization", format!("Bearer {}", noperm.token))

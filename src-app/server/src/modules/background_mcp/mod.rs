@@ -38,6 +38,7 @@ pub mod permissions;
 pub mod repository;
 pub mod routes;
 pub mod run_notes;
+pub mod runs;
 pub mod tools;
 
 // ── ITEM-26 (inbox): declare the background-run completion notification kind ──
