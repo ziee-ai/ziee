@@ -42,8 +42,9 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | — | Batched openapi-regen #4 (BackgroundRunSummary + listRuns/cancelRun) | — | `types_ts_parity{,_desktop}` PASS | (committed) | ✅ |
 | 24 (FE) | Background tasks page (/background-tasks: list/cancel/steer) | 8-FE, 25-FE | `tsc` exit 0 + lints (parent-run) | (committed) | ✅ VERIFIED |
 | 25 | Group C sandbox background-exec (JobKind::SandboxExec) | 11, 12, 13 (30/31 sdk flagged) | `cargo check -p ziee` + 8/8 unit (parent-run); JobKind pre-existed → reuse | (committed) | ✅ VERIFIED |
-| 26 | Group I summarizer-unify + 9-section (agent-core) | 56, 60 | pending | — | 🔄 in progress |
-| 27 | Run-detail REST + scheduler notif-kind (backend) | 8-detail, 26-kind | pending | — | 🔄 in progress |
+| 26 | Group I summarizer-unify + 9-section (agent-core) | 56, 60 | agent-core 17 + server 40 tests; `cargo check` both (parent combined-run) | (committed) | ✅ VERIFIED |
+| 27 | Run-detail REST + scheduler notif-kind (backend) | 8-detail, 26-kind | `cargo check -p ziee` + 13/13 background_mcp::runs (parent combined-run; T27 own-verify was cargo-lock-blocked) | (committed) | ✅ VERIFIED |
+| — | Batched openapi-regen #5 (BackgroundRunDetail + getRun) | — | in flight | — | 🔄 |
 
 ## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
 Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
@@ -71,6 +72,14 @@ fields). Driving remaining ~40 items in dependency-ordered, file-disjoint tranch
 - **Sub-agent-activity SSE frame (ITEM-4 live, DEC-65)** — needs a NEW AgentEvent variant (agent-core) for per-child status; deferred to an agent-core tranche (T12-FE built the presentational card already).
 - **Batched openapi-regen #3** — T16 (RunNote/CreateRunNote + Background.postRunNote/listRunNotes) needs regen before the steer FE. Batch with any T19 REST type. Run before steer/background-runs FE follow-ups.
 - **scheduler `scheduled_task_result` notification kind** — register into NOTIFICATION_KINDS in a scheduler-owning tranche (T16 did the background_run_result one; noted so the agent-inbox filter is complete).
+### End-game sequence (to Phase-5 close → 6/7/8/9)
+1. regen #5 (BackgroundRunDetail) → **T28** sub-agent-activity SSE frame (agent-core AgentEvent + event_sink + chat SSE variant) [needs regen #6] + **T29-FE** inline background-run result view (uses BackgroundRunDetail).
+2. **T30** backend cleanup (agent-core/server): reviewer-thresholds chat wiring (T1 drift) + event-triggers (27) + Group A host-gate (2)/per-child (5) + state-machine (29 — verify done vs backbone) + **permission-enum fix** (trace ziee-identity catalog, add BackgroundUse).
+3. regen #6 → FE: sub-agent-activity live handler + swap raw 'background::use' → Permissions.BackgroundUse.
+4. **Formally DESCOPE** (record approvals in DECISIONS.md): Group C sdk streaming (30/31, cross-repo sdk workstream) + anything else genuinely out-of-round — so the Phase-3 plan-coverage gate stays satisfied.
+5. Phase 6 blind audit (full `git diff main...HEAD` hunk coverage) → 7 fix loop → 8 tests → 9 human feedback.
+
+### remaining agent-core
 - **reviewer-thresholds chat wiring** (T1 drift, behind ZIEE_CHAT_AGENT_CORE) — remaining agent-core.
 - **Sub-agent-activity SSE frame (ITEM-4 live, DEC-65)** — new AgentEvent variant + event_sink + chat SSE variant + FE handler (makes T12-FE's SubAgentActivityCard live).
 - **event-triggers (27) + state-machine (29)** + **Group A host-gate (2) / per-child track (5)** — remaining smaller items.
