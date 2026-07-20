@@ -38,7 +38,10 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 19 | schedule_next self-paced model tool (agent-core + scheduler) | DEC-42 | agent-core 90/90 (4 new) + scheduler 18/18 (3 new) + ziee fan-in (parent-run) | (committed) | ✅ VERIFIED |
 | — | Batched openapi-regen #3 (RunNote/CreateRunNote) | — | `types_ts_parity{,_desktop}` PASS | (committed) | ✅ |
 | 22 (FE) | /loop task legibility (ScheduledTaskCard) + agent-inbox nav + 4 dead-link fixes | 18/20-list, 26-nav | `tsc` exit 0 + lints (parent-run) | (committed) | ✅ VERIFIED |
-| 21 | List/cancel background runs REST (Group B) | 8, 10 | pending | — | 🔄 in progress |
+| 21 | List/cancel background runs REST (Group B) | 8, 10 | `cargo check -p ziee` + 12/12 background_mcp runs+notes (parent-run); fixed a pre-existing broken 403 test | (committed) | ✅ VERIFIED |
+| — | Batched openapi-regen #4 (BackgroundRunSummary + listRuns/cancelRun) | — | `types_ts_parity{,_desktop}` PASS | (committed) | ✅ |
+| 24 (FE) | Background-runs panel (list/cancel/steer) | 8-FE, 25-FE | pending (tsc) | — | 🔄 in progress |
+| 25 | Group C sandbox background-exec (JobKind::SandboxExec) | 11, 12, 13 (30/31 sdk flagged) | pending | — | 🔄 in progress |
 
 ## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
 Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
