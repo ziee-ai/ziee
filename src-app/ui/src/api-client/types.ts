@@ -4939,6 +4939,7 @@ export type SSEChatStreamEvent = {
   content: ChatStreamChunk
   complete: SSEChatStreamCompleteData
   error: SSEChatStreamErrorData
+  taskListChanged: SSEChatStreamTaskListChangedData
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
@@ -5059,6 +5060,23 @@ export interface SSEChatStreamStartedData {
   conversation_id: string
   /** User message ID (None if resuming with tool approvals or regenerating) */
   user_message_id?: string
+}
+
+/**
+ * Data for the `taskListChanged` SSE event (ITEM-36 / DEC-56). Emitted live
+ *  during the turn each time the agent's `task_*` core tools mutate the durable
+ *  list, carrying the FULL current list (small) so a surface — the chat
+ *  `TaskListChecklist` — re-renders in place without a refetch. Mirrors the
+ *  `mcpToolProgress` live side-channel event (routed via `publish_raw_event`,
+ *  not the replay-buffered generation frames). The `run_id` keys the run-scoped
+ *  surfaces; the chat FE additionally attaches it to the in-flight assistant
+ *  message it is currently streaming.
+ */
+export interface SSEChatStreamTaskListChangedData {
+  /** The full current task list (idempotent snapshot; not a delta). */
+  items: TaskListItemDto[]
+  /** The agent run whose task list changed. */
+  run_id: string
 }
 
 /** Data for the TitleUpdated SSE event */
@@ -5579,6 +5597,22 @@ export interface ServerGroupsRequest {
   group_ids: string[]
 }
 
+/** GET response: the server's advertised tools, each with its effective mode. */
+export interface ServerToolApprovalsResponse {
+  /** Fallback applied to any tool without an explicit override. */
+  server_default_mode: ApprovalMode
+  server_id: string
+  /** Advertised tools (∪ any override-keyed tool not in the advertised set). */
+  tools: ToolApprovalEntry[]
+  /**
+   * True when the live `tools/list` probe failed — `tools` then lists only
+   *  tools that already carry an override (the advertised set is unknown).
+   */
+  tools_unreachable: boolean
+  /** Human reason when `tools_unreachable`. */
+  unreachable_reason?: string
+}
+
 /** Deployment-wide JWT session settings (singleton row). Returned by GET. */
 export interface SessionSettings {
   /** Access-token TTL in hours (1..=8760). */
@@ -5622,6 +5656,23 @@ export interface SetTimeoutRequest {
    *  match the `timeout_secs` used across the rest of the timeout surface.
    */
   timeout_secs: number
+}
+
+/** PUT body: the override to set, or `null`/omitted to CLEAR it. */
+export interface SetToolApprovalRequest {
+  /**
+   * `null` or omitted clears the override (the tool falls back to the server
+   *  default). Otherwise sets the per-tool override to this mode.
+   */
+  mode?: ApprovalMode
+}
+
+/** PUT response: the tool's effective mode after the change. */
+export interface SetToolApprovalResponse {
+  effective_mode: ApprovalMode
+  has_override: boolean
+  server_id: string
+  tool_name: string
 }
 
 export interface SetupAdminRequest {
@@ -5867,6 +5918,32 @@ export type SyncSseEvent = {
   sync: SyncEvent
 }
 
+/**
+ * One agent task-list item on the wire (ITEM-36 / DEC-54) — the server-side DTO
+ *  mirror of `agent_core::TaskItem`. `content` is the imperative form
+ *  ("Run tests"); `active_form` the present-continuous form ("Running tests")
+ *  the FE emphasises while the item is `in_progress`. A thin DTO (with a
+ *  `From<agent_core::TaskItem>`) rather than putting the agent-core type on the
+ *  wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.
+ *  Fields are snake_case to match the FE `TaskItemVM` (`agentActivity.ts`).
+ */
+export interface TaskListItemDto {
+  active_form: string
+  content: string
+  id: string
+  status: TaskListItemStatus
+}
+
+/**
+ * The lifecycle status of one agent task-list item on the wire (ITEM-36 /
+ *  DEC-54). A thin server-side mirror of `agent_core::TaskStatus` — kept
+ *  separate so it can `#[derive(schemars::JsonSchema)]` (agent-core's enum
+ *  deliberately does not depend on schemars) and so the crate boundary stays
+ *  clean. Snake-case on the wire so `in_progress` reaches the FE
+ *  `TaskItemStatus` union (`pending | in_progress | completed`) unchanged.
+ */
+export type TaskListItemStatus = 'pending' | 'in_progress' | 'completed'
+
 export type TaskStatus = 'running' | 'completed' | 'failed'
 
 export interface TestExtractRequest {
@@ -6036,6 +6113,18 @@ export interface ToolApprovalDecision {
   note?: string
   /** Tool use ID */
   tool_use_id: string
+}
+
+/** One advertised tool + its effective admin approval mode. */
+export interface ToolApprovalEntry {
+  /** Advertised tool description (absent for override-only / unreachable tools). */
+  description?: string
+  /** Effective admin mode = per-tool override ?? the server default. */
+  effective_mode: ApprovalMode
+  /** True when an explicit per-tool override is set (vs the server default). */
+  has_override: boolean
+  /** Advertised tool name. */
+  tool_name: string
 }
 
 export type ToolContent = any
@@ -7837,6 +7926,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpServerToolApprovals.get': 'GET /api/mcp/servers/{id}/tool-approvals',
+  'McpServerToolApprovals.set': 'PUT /api/mcp/servers/{id}/tool-approvals/{tool}',
   'McpToolCall.get': 'GET /api/mcp/tool-calls/{id}',
   'McpToolCall.list': 'GET /api/mcp/tool-calls',
   'McpUserPolicy.get': 'GET /api/mcp/user-policy',
@@ -8270,6 +8361,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpServerToolApprovals.get': { id: string }
+  'McpServerToolApprovals.set': { id: string; tool: string } & SetToolApprovalRequest
   'McpToolCall.get': { id: string }
   'McpToolCall.list': { conversation_id?: string; is_built_in?: boolean; page?: number; per_page?: number; server_id?: string }
   'McpUserPolicy.get': void
@@ -8703,6 +8796,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpServerToolApprovals.get': ServerToolApprovalsResponse
+  'McpServerToolApprovals.set': SetToolApprovalResponse
   'McpToolCall.get': McpToolCall
   'McpToolCall.list': McpToolCallListResponse
   'McpUserPolicy.get': McpUserPolicy

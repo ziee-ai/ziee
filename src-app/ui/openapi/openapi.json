@@ -14322,6 +14322,89 @@
         ]
       }
     },
+    "/api/mcp/servers/{id}/tool-approvals": {
+      "get": {
+        "tags": [
+          "MCP Servers - System"
+        ],
+        "summary": "List a system MCP server's tools + per-tool approval modes",
+        "description": "Return a SYSTEM MCP server's advertised tools (live `tools/list`, with an `tools_unreachable` fallback when the server can't be reached) and, per tool, the EFFECTIVE admin approval mode = the per-tool override if set, else the server default (`manual_approve`). Admin-only (`mcp_servers_admin::read`). A foreign / non-system id returns 404.",
+        "operationId": "McpServerToolApprovals.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          },
+          "200": {
+            "description": "GET response: the server's advertised tools, each with its effective mode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolApprovalsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/tool-approvals/{tool}": {
+      "put": {
+        "tags": [
+          "MCP Servers - System"
+        ],
+        "summary": "Set or clear a system MCP server tool's approval override",
+        "description": "Set (`mode`) or clear (`mode: null`) the ADMIN per-tool approval override for one tool of a SYSTEM MCP server. The override is consulted by the chat approval gate BEFORE the conversation / user default (override wins). Admin-only (`mcp_servers_admin::edit`). A foreign / non-system id returns 404.",
+        "operationId": "McpServerToolApprovals.set",
+        "requestBody": {
+          "description": "PUT body: the override to set, or `null`/omitted to CLEAR it.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetToolApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          },
+          "200": {
+            "description": "PUT response: the tool's effective mode after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetToolApprovalResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/elicitation/{elicitation_id}/respond": {
       "post": {
         "tags": [
@@ -21513,6 +21596,64 @@
         ]
       }
     },
+    "/api/app/setup/status": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "description": "Check if initial admin setup is required",
+        "operationId": "App.getSetupStatus",
+        "responses": {
+          "200": {
+            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/app/setup/admin": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "description": "Create the first administrator account",
+        "operationId": "App.setupAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "no content"
+          }
+        }
+      }
+    },
     "/api/scheduled-tasks": {
       "get": {
         "summary": "List your scheduled tasks",
@@ -22155,64 +22296,6 @@
             "bearerAuth": []
           }
         ]
-      }
-    },
-    "/api/app/setup/status": {
-      "get": {
-        "tags": [
-          "app"
-        ],
-        "description": "Check if initial admin setup is required",
-        "operationId": "App.getSetupStatus",
-        "responses": {
-          "200": {
-            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/app/setup/admin": {
-      "post": {
-        "tags": [
-          "app"
-        ],
-        "description": "Create the first administrator account",
-        "operationId": "App.setupAdmin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupAdminRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "no content"
-          }
-        }
       }
     },
     "/api/js-tool/settings": {
@@ -37394,6 +37477,24 @@
             ]
           },
           {
+            "description": "The agent's live task list changed (ITEM-36 / DEC-56) — carries the full\n current list so the `TaskListChecklist` re-renders in place. A CORE\n variant (not an extension `SSEChatStreamEventVariants` one) because the\n agent-core loop, not a chat extension, is its source (`event_sink.rs`\n maps `AgentEvent::TaskListChanged` here).",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "taskListChanged"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamTaskListChangedData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
             "type": "object",
             "properties": {
               "type": {
@@ -37756,6 +37857,28 @@
         "required": [
           "conversation_id",
           "branch_id"
+        ]
+      },
+      "SSEChatStreamTaskListChangedData": {
+        "description": "Data for the `taskListChanged` SSE event (ITEM-36 / DEC-56). Emitted live\n during the turn each time the agent's `task_*` core tools mutate the durable\n list, carrying the FULL current list (small) so a surface — the chat\n `TaskListChecklist` — re-renders in place without a refetch. Mirrors the\n `mcpToolProgress` live side-channel event (routed via `publish_raw_event`,\n not the replay-buffered generation frames). The `run_id` keys the run-scoped\n surfaces; the chat FE additionally attaches it to the in-flight assistant\n message it is currently streaming.",
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "The full current task list (idempotent snapshot; not a delta).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskListItemDto"
+            }
+          },
+          "run_id": {
+            "description": "The agent run whose task list changed.",
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "run_id",
+          "items"
         ]
       },
       "SSEChatStreamTitleUpdatedData": {
@@ -39509,6 +39632,48 @@
           "group_ids"
         ]
       },
+      "ServerToolApprovalsResponse": {
+        "description": "GET response: the server's advertised tools, each with its effective mode.",
+        "type": "object",
+        "properties": {
+          "server_default_mode": {
+            "description": "Fallback applied to any tool without an explicit override.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              }
+            ]
+          },
+          "server_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tools": {
+            "description": "Advertised tools (∪ any override-keyed tool not in the advertised set).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolApprovalEntry"
+            }
+          },
+          "tools_unreachable": {
+            "description": "True when the live `tools/list` probe failed — `tools` then lists only\n tools that already carry an override (the advertised set is unknown).",
+            "type": "boolean"
+          },
+          "unreachable_reason": {
+            "description": "Human reason when `tools_unreachable`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "server_id",
+          "server_default_mode",
+          "tools_unreachable",
+          "tools"
+        ]
+      },
       "SessionSettings": {
         "description": "Deployment-wide JWT session settings (singleton row). Returned by GET.",
         "type": "object",
@@ -39615,6 +39780,49 @@
         },
         "required": [
           "timeout_secs"
+        ]
+      },
+      "SetToolApprovalRequest": {
+        "description": "PUT body: the override to set, or `null`/omitted to CLEAR it.",
+        "type": "object",
+        "properties": {
+          "mode": {
+            "description": "`null` or omitted clears the override (the tool falls back to the server\n default). Otherwise sets the per-tool override to this mode.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        }
+      },
+      "SetToolApprovalResponse": {
+        "description": "PUT response: the tool's effective mode after the change.",
+        "type": "object",
+        "properties": {
+          "effective_mode": {
+            "$ref": "#/components/schemas/ApprovalMode"
+          },
+          "has_override": {
+            "type": "boolean"
+          },
+          "server_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tool_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "tool_name",
+          "effective_mode",
+          "has_override"
         ]
       },
       "SetupAdminRequest": {
@@ -40453,6 +40661,40 @@
           }
         ]
       },
+      "TaskListItemDto": {
+        "description": "One agent task-list item on the wire (ITEM-36 / DEC-54) — the server-side DTO\n mirror of `agent_core::TaskItem`. `content` is the imperative form\n (\"Run tests\"); `active_form` the present-continuous form (\"Running tests\")\n the FE emphasises while the item is `in_progress`. A thin DTO (with a\n `From<agent_core::TaskItem>`) rather than putting the agent-core type on the\n wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.\n Fields are snake_case to match the FE `TaskItemVM` (`agentActivity.ts`).",
+        "type": "object",
+        "properties": {
+          "active_form": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskListItemStatus"
+          }
+        },
+        "required": [
+          "id",
+          "content",
+          "active_form",
+          "status"
+        ]
+      },
+      "TaskListItemStatus": {
+        "description": "The lifecycle status of one agent task-list item on the wire (ITEM-36 /\n DEC-54). A thin server-side mirror of `agent_core::TaskStatus` — kept\n separate so it can `#[derive(schemars::JsonSchema)]` (agent-core's enum\n deliberately does not depend on schemars) and so the crate boundary stays\n clean. Snake-case on the wire so `in_progress` reaches the FE\n `TaskItemStatus` union (`pending | in_progress | completed`) unchanged.",
+        "type": "string",
+        "enum": [
+          "pending",
+          "in_progress",
+          "completed"
+        ]
+      },
       "TaskStatus": {
         "type": "string",
         "enum": [
@@ -40934,6 +41176,40 @@
         "required": [
           "tool_use_id",
           "decision"
+        ]
+      },
+      "ToolApprovalEntry": {
+        "description": "One advertised tool + its effective admin approval mode.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "description": "Advertised tool description (absent for override-only / unreachable tools).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effective_mode": {
+            "description": "Effective admin mode = per-tool override ?? the server default.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              }
+            ]
+          },
+          "has_override": {
+            "description": "True when an explicit per-tool override is set (vs the server default).",
+            "type": "boolean"
+          },
+          "tool_name": {
+            "description": "Advertised tool name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name",
+          "effective_mode",
+          "has_override"
         ]
       },
       "ToolContent": {
