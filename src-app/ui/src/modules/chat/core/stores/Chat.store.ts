@@ -7,35 +7,18 @@ import {
 } from '@ziee/framework/store-kit'
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import { ApiClient } from '@/api-client'
-import type {
-  Branch,
-  Conversation,
-  MessageContent,
-  MessageWithContent,
-} from '@/api-client/types'
-import type { SSEEvent } from '@/modules/chat/core/extensions/types'
+import type { Branch, Conversation, MessageWithContent } from '@/api-client/types'
+
 import {
   type ChatStreamClient,
   createChatStreamClient,
 } from '@/modules/chat/core/stream/ChatStreamClient'
-import {
-  computeChildAnchor,
-  computeParentAnchor,
-} from '@/modules/chat/core/utils/branchAnchor.utils'
-import {
-  appendWindow,
-  finalizeTailWindow,
-  firstMessageId,
-  lastMessageId,
-  mergeTailWindow,
-  prependWindow,
-  resumeOrFreshPlaceholder,
-  toOrderedMap,
-} from '@/modules/chat/core/stores/messageWindow'
+
+
 import { chatExtensionRegistry } from '@/modules/chat/extensions'
 
 /** Default page size for a message-history window (mirrors the backend default). */
-const MESSAGE_PAGE_SIZE = 30
+export const MESSAGE_PAGE_SIZE = 30
 
 // ── Right panel types ──────────────────────────────────────────────────────
 
@@ -178,7 +161,7 @@ const PANEL_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 // another's (ITEM-6).
 const CHAT_RESYNC_MIN_INTERVAL_MS = 5_000
 
-function loadAllPanelSnapshots(): Record<string, ConversationPanelSnapshot> {
+export function loadAllPanelSnapshots(): Record<string, ConversationPanelSnapshot> {
   try {
     const raw = localStorage.getItem(PANEL_STORAGE_KEY)
     if (!raw) return {}
@@ -230,7 +213,7 @@ function evictStaleSnapshots(
  * (user opens it daily but never touches the panel) would eventually be
  * evicted despite being actively used.
  */
-function touchPanelSnapshot(conversationId: string): void {
+export function touchPanelSnapshot(conversationId: string): void {
   const all = loadAllPanelSnapshots()
   const snap = all[conversationId]
   if (!snap) return
@@ -239,7 +222,7 @@ function touchPanelSnapshot(conversationId: string): void {
   saveAllPanelSnapshots(all)
 }
 
-function savePanelSnapshotForConversation(
+export function savePanelSnapshotForConversation(
   conversationId: string,
   tabs: RightPanelTab[],
   activeId: string | null,
@@ -269,7 +252,7 @@ function savePanelSnapshotForConversation(
  * the extension that owned them hasn't loaded yet (e.g. lazy-loaded module
  * not pulled in for this route), so the tab simply won't appear.
  */
-function rehydrateTabs(persisted: RightPanelTab[]): RightPanelTab[] {
+export function rehydrateTabs(persisted: RightPanelTab[]): RightPanelTab[] {
   return persisted.filter(t => panelRendererRegistry.has(t.type))
 }
 
@@ -289,7 +272,7 @@ interface ChatStateSnapshot {
   hasMoreAfter: boolean
 }
 
-interface ChatState {
+export interface ChatState {
   // Data
   conversation: Conversation | null
   messages: Map<string, MessageWithContent>
@@ -388,7 +371,7 @@ interface ChatState {
   // ── Conversation state management ────────────────────────────────────────
 
   saveConversationState: (conversationId: string) => void
-  loadConversationState: (conversationId: string) => boolean
+  loadConversationState: (conversationId: string) => Promise<boolean>
   scheduleCacheClear: (conversationId: string, delayMs?: number) => void
   cancelCacheClear: (conversationId: string) => void
   clearConversationCache: (conversationId: string) => void
@@ -567,18 +550,36 @@ const chatInitialState = {
     },
 }
 
+export type ChatInitialState = typeof chatInitialState
+export type ChatSet = StoreSet<ChatInitialState>
+
 const chatStoreConfig = {
   state: chatInitialState,
+  lazyActions: {
+    loadConversationState: () => import('./chat/actions/loadConversationState'),
+    createConversation: () => import('./chat/actions/createConversation'),
+    loadConversation: () => import('./chat/actions/loadConversation'),
+    loadMessages: () => import('./chat/actions/loadMessages'),
+    loadOlderMessages: () => import('./chat/actions/loadOlderMessages'),
+    loadNewerMessages: () => import('./chat/actions/loadNewerMessages'),
+    jumpToMessage: () => import('./chat/actions/jumpToMessage'),
+    reconcileTail: () => import('./chat/actions/reconcileTail'),
+    loadBranches: () => import('./chat/actions/loadBranches'),
+    activateBranch: () => import('./chat/actions/activateBranch'),
+    computeForkPoints: () => import('./chat/actions/computeForkPoints'),
+    startEditMessage: () => import('./chat/actions/startEditMessage'),
+    cancelEdit: () => import('./chat/actions/cancelEdit'),
+    startRegenerateMessage: () => import('./chat/actions/startRegenerateMessage'),
+    applyStreamFrame: () => import('./chat/actions/applyStreamFrame'),
+    sendMessage: () => import('./chat/actions/sendMessage'),
+    updateConversation: () => import('./chat/actions/updateConversation'),
+    reset: () => import('./chat/actions/reset'),
+  },
   actions: (
     set: StoreSet<typeof chatInitialState>,
     getRaw: () => typeof chatInitialState,
   ) => {
     const get = getRaw as () => ChatState
-    // Resolve the extension lifecycle target (ITEM-34): this pane's runtime when
-    // attached (split), else the global registry (single-pane, binds to the
-    // singleton). Every initialize/cleanup/injectExtensionStores call routes here.
-    const extLifecycle = (): import('../extensions/types').ExtensionLifecycle =>
-      get().extensionRuntime ?? chatExtensionRegistry
     return {
 
     /** Attach a per-pane extension runtime (ChatPaneProvider, on mount). */
@@ -614,38 +615,6 @@ const chatStoreConfig = {
       console.log(
         `[Chat.store] Saved conversation state for: ${conversationId}`,
       )
-    },
-
-    loadConversationState: (conversationId: string): boolean => {
-      const state = get()
-      const snapshot = state.conversationStateCache.get(conversationId)
-      if (!snapshot) {
-        console.log(
-          `[Chat.store] Cache miss for conversation: ${conversationId}`,
-        )
-        return false
-      }
-
-      set({
-        conversation: snapshot.conversation,
-        messages: new Map(snapshot.messages),
-        streamingMessage: snapshot.streamingMessage,
-        tempUserMessageId: snapshot.tempUserMessageId,
-        isStreaming: snapshot.isStreaming,
-        // Not snapshotted (transient live signals): a restored conversation is
-        // not a fresh interruption / mid-finalize, so clear them to avoid a
-        // stale suppression.
-        lastTurnInterrupted: false,
-        finalizingTurn: false,
-        hasMoreBefore: snapshot.hasMoreBefore ?? false,
-        hasMoreAfter: snapshot.hasMoreAfter ?? false,
-        loadingOlder: false,
-        loadingNewer: false,
-      })
-      console.log(
-        `[Chat.store] Cache hit - restored conversation state for: ${conversationId}`,
-      )
-      return true
     },
 
     scheduleCacheClear: (
@@ -700,519 +669,6 @@ const chatStoreConfig = {
       )
     },
 
-    // ── Core actions ───────────────────────────────────────────────────────
-
-    createConversation: async (
-      title?: string,
-      modelId?: string,
-      emitCreated: boolean = true,
-    ) => {
-      // Extensions can layer additional attribution onto the
-      // freshly-created conversation via the
-      // `afterCreateConversation` hook in sendMessage.
-      set({ loading: true, error: null })
-
-      try {
-        const conversation = await ApiClient.Conversation.create({
-          title: title,
-          model_id: modelId,
-        })
-        set({ conversation, loading: false })
-
-        if (emitCreated) {
-          const { Stores } = await import('@ziee/framework/stores')
-          await Stores.EventBus.emit({
-            type: 'conversation.created',
-            data: { conversation },
-          })
-        }
-
-        return conversation
-      } catch (error: any) {
-        set({
-          error: error.message || 'Failed to create conversation',
-          loading: false,
-        })
-        throw error
-      }
-    },
-
-    loadConversation: async (id: string) => {
-      // Scope this device's token stream to the conversation being opened, so
-      // it receives (only) this conversation's live assistant tokens — and a
-      // catch-up replay if it is mid-generation. Deduped for a no-op repeat.
-      void get().chatStreamClient?.setActiveConversation(id)
-
-      const currentConversation = get().conversation
-      const loadingId = get().loadingConversationId
-
-      if (currentConversation && currentConversation.id === id) {
-        console.log(`[Chat.store] Conversation ${id} already loaded, skipping`)
-        return
-      }
-
-      if (loadingId === id) {
-        console.log(
-          `[Chat.store] Conversation ${id} is already loading, skipping`,
-        )
-        return
-      }
-
-      if (currentConversation && currentConversation.id !== id) {
-        console.log(
-          `[Chat.store] Switching from ${currentConversation.id} to ${id} - saving current state`,
-        )
-        get().saveConversationState(currentConversation.id)
-        get().scheduleCacheClear(currentConversation.id)
-
-        // Save outgoing conversation's panel tabs to localStorage, then clear panel
-        const { rightPanel } = get()
-        savePanelSnapshotForConversation(
-          currentConversation.id,
-          rightPanel.tabs,
-          rightPanel.activeId,
-        )
-        set(state => ({
-          rightPanel: {
-            ...state.rightPanel,
-            tabs: [],
-            activeId: null,
-            mobileDrawerOpen: false,
-          },
-        }))
-
-        await extLifecycle().cleanup()
-        // Capture the OUTGOING message ids BEFORE clearing `messages` (ITEM-38):
-        // reading them after the `set({ messages: new Map() })` below yielded []
-        // — a no-op that leaked the outgoing conversation's collapse state.
-        const outgoingMessageIds = Array.from(get().messages.keys())
-        // Clear messages on switch so consumers never momentarily see the
-        // OUTGOING conversation's messages under the new conversation id.
-        // (Outgoing state was already saved via saveConversationState above;
-        // the cache-hit/miss paths below repopulate from cache or the API.)
-        // Without this, ConversationPage's first-load scroll latches against
-        // the stale Map and the new conversation gets an animated
-        // scroll-through that defeats inline-file lazy-loading.
-        set({
-          isStreaming: false,
-          sending: false,
-          streamingMessage: null,
-          tempUserMessageId: null,
-          streamingAbortController: null,
-          streamingMessageId: null,
-          lastTurnInterrupted: false,
-          finalizingTurn: false,
-          messages: new Map(),
-          hasMoreBefore: false,
-          hasMoreAfter: false,
-          loadingOlder: false,
-          loadingNewer: false,
-        })
-        // Drop the outgoing conversation's ephemeral per-row view state
-        // (show-more collapse) so the incoming conversation starts clean. Scoped
-        // to THIS store's own (now-captured) message ids so a split pane switching
-        // conversation never clears another pane's entries (ITEM-21/38).
-        useMessageViewStateStore
-          .getState()
-          .resetViewState(outgoingMessageIds)
-      }
-
-      get().cancelCacheClear(id)
-
-      const cacheHit = get().loadConversationState(id)
-      if (cacheHit) {
-        console.log(`[Chat.store] Cache hit for conversation: ${id}`)
-        await extLifecycle().initialize()
-
-        const { conversation } = get()
-        if (conversation) {
-          await chatExtensionRegistry.onConversationLoad(conversation)
-          await get().loadBranches(id)
-        }
-
-        // Restore panel tabs from localStorage (after initialize() so registry is populated)
-        const panelSnapshot = loadAllPanelSnapshots()[id]
-        if (panelSnapshot) {
-          const tabs = rehydrateTabs(panelSnapshot.tabs)
-          if (tabs.length > 0) {
-            set(state => ({
-              rightPanel: {
-                ...state.rightPanel,
-                tabs,
-                activeId: panelSnapshot.activeId,
-              },
-            }))
-          }
-          // Bump lastAccessedAt so the snapshot isn't evicted just because
-          // the user keeps revisiting without modifying the panel.
-          touchPanelSnapshot(id)
-        }
-        return
-      }
-
-      console.log(`[Chat.store] Cache miss for conversation: ${id}`)
-      set({ loading: true, loadingConversationId: id, error: null, lastLoadErrorStatus: null })
-      try {
-        const conversation = await ApiClient.Conversation.get({ id })
-        // Stale-result guard: if the user navigated away during the
-        // await (loadingConversationId changed), drop this response.
-        // Prevents the A→B→A race where A's slow response overwrites
-        // B's freshly-loaded conversation. (audit 04 HIGH-1 mitigation)
-        if (get().loadingConversationId !== id) {
-          console.log(`[Chat.store] Stale response for ${id}, dropping`)
-          return
-        }
-        set({ conversation, loading: false, loadingConversationId: null })
-
-        await get().loadMessages(id)
-        if (get().conversation?.id !== id) return
-        await get().loadBranches(id)
-        if (get().conversation?.id !== id) return
-
-        await extLifecycle().initialize()
-        await chatExtensionRegistry.onConversationLoad(conversation)
-
-        // Restore panel tabs from localStorage (after initialize() so registry is populated)
-        const panelSnapshot = loadAllPanelSnapshots()[id]
-        if (panelSnapshot) {
-          const tabs = rehydrateTabs(panelSnapshot.tabs)
-          if (tabs.length > 0) {
-            set(state => ({
-              rightPanel: {
-                ...state.rightPanel,
-                tabs,
-                activeId: panelSnapshot.activeId,
-              },
-            }))
-          }
-          touchPanelSnapshot(id)
-        }
-      } catch (error: any) {
-        // Only surface error if we're still on this conversation; an
-        // abort from navigation is not a user-facing error.
-        if (get().loadingConversationId === id) {
-          set({
-            error: error.message || 'Failed to load conversation',
-            loading: false,
-            loadingConversationId: null,
-            lastLoadErrorStatus:
-              typeof error?.status === 'number' ? error.status : null,
-          })
-        }
-      }
-    },
-
-    loadMessages: async (id: string) => {
-      set({ loading: true, error: null })
-      try {
-        // Newest page (tail): no cursor. Resets the window.
-        const page = await ApiClient.Message.getHistory({
-          id,
-          limit: MESSAGE_PAGE_SIZE,
-        })
-        set({
-          messages: toOrderedMap(page.messages),
-          hasMoreBefore: page.has_more_before,
-          hasMoreAfter: page.has_more_after,
-          loadingOlder: false,
-          loadingNewer: false,
-          loading: false,
-        })
-      } catch (error: any) {
-        set({
-          error: error.message || 'Failed to load messages',
-          loading: false,
-        })
-      }
-    },
-
-    loadOlderMessages: async () => {
-      const state = get()
-      const conversationId = state.conversation?.id
-      // Guard: nothing older, already fetching, mid-stream (the live buffer is
-      // authoritative), or empty window.
-      if (
-        !conversationId ||
-        !state.hasMoreBefore ||
-        state.loadingOlder ||
-        state.isStreaming
-      ) {
-        return
-      }
-      const oldestId = firstMessageId(state.messages)
-      if (!oldestId) return
-
-      set({ loadingOlder: true })
-      try {
-        const page = await ApiClient.Message.getHistory({
-          id: conversationId,
-          before: oldestId,
-          limit: MESSAGE_PAGE_SIZE,
-        })
-        // Drop the result if the user switched conversations mid-fetch.
-        if (get().conversation?.id !== conversationId) return
-        set(s => ({
-          messages: prependWindow(s.messages, page.messages),
-          hasMoreBefore: page.has_more_before,
-          loadingOlder: false,
-        }))
-        await get().computeForkPoints()
-      } catch (error: any) {
-        if (get().conversation?.id === conversationId) {
-          set({
-            error: error.message || 'Failed to load older messages',
-            loadingOlder: false,
-          })
-        }
-      }
-    },
-
-    loadNewerMessages: async () => {
-      const state = get()
-      const conversationId = state.conversation?.id
-      // Re-entrancy guard (`loadingNewer`) mirrors `loadingOlder`: the bottom
-      // sentinel can fire repeatedly, so drop overlapping same-cursor fetches.
-      if (
-        !conversationId ||
-        !state.hasMoreAfter ||
-        state.isStreaming ||
-        state.loadingNewer
-      ) {
-        return
-      }
-      const newestId = lastMessageId(state.messages)
-      if (!newestId) return
-
-      set({ loadingNewer: true })
-      try {
-        const page = await ApiClient.Message.getHistory({
-          id: conversationId,
-          after: newestId,
-          limit: MESSAGE_PAGE_SIZE,
-        })
-        if (get().conversation?.id !== conversationId) return
-        set(s => ({
-          messages: appendWindow(s.messages, page.messages),
-          hasMoreAfter: page.has_more_after,
-          loadingNewer: false,
-        }))
-        await get().computeForkPoints()
-      } catch (error: any) {
-        if (get().conversation?.id === conversationId) {
-          set({
-            error: error.message || 'Failed to load newer messages',
-            loadingNewer: false,
-          })
-        }
-      }
-    },
-
-    jumpToMessage: async (messageId: string): Promise<boolean> => {
-      const conversationId = get().conversation?.id
-      if (!conversationId) return false
-
-      // Already loaded → no fetch needed; caller scrolls to it.
-      if (get().messages.has(messageId)) return true
-
-      try {
-        const page = await ApiClient.Message.getHistory({
-          id: conversationId,
-          around: messageId,
-          limit: MESSAGE_PAGE_SIZE,
-        })
-        if (get().conversation?.id !== conversationId) return false
-        // Replace the window with the centered window.
-        set({
-          messages: toOrderedMap(page.messages),
-          hasMoreBefore: page.has_more_before,
-          hasMoreAfter: page.has_more_after,
-          loadingOlder: false,
-          loadingNewer: false,
-        })
-        await get().computeForkPoints()
-        return get().messages.has(messageId)
-      } catch (error: any) {
-        if (get().conversation?.id === conversationId) {
-          set({ error: error.message || 'Failed to jump to message' })
-        }
-        return false
-      }
-    },
-
-    reconcileTail: async (conversationId: string) => {
-      try {
-        const page = await ApiClient.Message.getHistory({
-          id: conversationId,
-          limit: MESSAGE_PAGE_SIZE,
-        })
-        // Only apply to the still-open conversation.
-        if (get().conversation?.id !== conversationId) return
-        if (get().hasMoreAfter) {
-          // The window is anchored MID-conversation (e.g. after an around=
-          // jump), so the loaded slice does NOT abut the real tail — a merge
-          // would splice the tail on after a gap. Snap to the tail instead.
-          set({
-            messages: toOrderedMap(page.messages),
-            hasMoreBefore: page.has_more_before,
-            hasMoreAfter: page.has_more_after,
-            loadingOlder: false,
-            loadingNewer: false,
-          })
-        } else {
-          // Window already includes the tail: merge so loaded older pages stay
-          // and the new turn appends at the bottom.
-          set(s => ({
-            messages: mergeTailWindow(s.messages, page.messages),
-            hasMoreAfter: false,
-          }))
-        }
-      } catch (error: any) {
-        if (get().conversation?.id === conversationId) {
-          set({ error: error.message || 'Failed to refresh messages' })
-        }
-      }
-    },
-
-    // ── Branch actions ─────────────────────────────────────────────────────
-
-    loadBranches: async (conversationId: string) => {
-      set({ branchesLoading: true })
-      try {
-        const branches = await ApiClient.Branch.list({ id: conversationId })
-
-        // Seed branchForkLevels from the persisted fork_level on each branch.
-        // This ensures computeForkPoints anchors the navigator correctly after page reload,
-        // without relying on in-memory state that is lost on refresh.
-        const branchForkLevels = new Map(
-          branches.map(b => [
-            b.id,
-            (b.fork_level ?? 'user') as 'user' | 'assistant',
-          ]),
-        )
-
-        set({ branches, branchForkLevels, branchesLoading: false })
-        await get().computeForkPoints()
-      } catch (err) {
-        console.error('[Chat.store] Failed to load branches:', err)
-        set({ branchesLoading: false })
-      }
-    },
-
-    activateBranch: async (conversationId: string, branchId: string) => {
-      await ApiClient.Branch.activate({
-        id: conversationId,
-        branch_id: branchId,
-      })
-
-      set(state => ({
-        conversation: state.conversation
-          ? { ...state.conversation, active_branch_id: branchId }
-          : null,
-      }))
-
-      await get().loadMessages(conversationId)
-
-      const { branches } = get()
-      if (!branches.find(b => b.id === branchId)) {
-        await get().loadBranches(conversationId)
-      } else {
-        await get().computeForkPoints()
-      }
-    },
-
-    computeForkPoints: async () => {
-      const state = get()
-      const { branches, branchForkLevels } = state
-      const conversation = state.conversation
-
-      if (!conversation || branches.length <= 1) {
-        set({ forkPoints: new Map() })
-        return
-      }
-
-      const activeBranchId = conversation.active_branch_id
-      const messages = [...state.messages.values()].sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-      )
-      const messageIds = new Set(messages.map(m => m.id))
-
-      const forkPoints = new Map<string, string[]>()
-
-      // Group child branches by composite key: `${created_from_message_id}__${forkLevel}`.
-      // A user message can be the fork origin for two independent sets of branches —
-      // one from Regenerate ('assistant' level) and one from Edit ('user' level).
-      // Grouping by both dimensions ensures each produces its own independent navigator.
-      const forkGroups = new Map<string, string[]>()
-      for (const branch of branches) {
-        if (branch.created_from_message_id) {
-          const forkLevel = branchForkLevels.get(branch.id) ?? 'user'
-          const key = `${branch.created_from_message_id}__${forkLevel}`
-          if (!forkGroups.has(key)) {
-            forkGroups.set(key, [])
-          }
-          forkGroups.get(key)!.push(branch.id)
-        }
-      }
-
-      const currentBranch = branches.find(b => b.id === activeBranchId)
-
-      for (const [groupKey, childBranchIds] of forkGroups) {
-        const separatorIdx = groupKey.lastIndexOf('__')
-        const forkMsgId = groupKey.slice(0, separatorIdx)
-        const forkLevel = groupKey.slice(separatorIdx + 2) as
-          | 'user'
-          | 'assistant'
-
-        const firstChild = branches.find(b => b.id === childBranchIds[0])
-        const parentBranchId = firstChild?.parent_branch_id
-
-        const groupBranchIds = parentBranchId
-          ? [parentBranchId, ...childBranchIds]
-          : childBranchIds
-
-        const groupBranches = groupBranchIds
-          .map(id => branches.find(b => b.id === id))
-          .filter(Boolean)
-          .sort(
-            (a, b) =>
-              new Date(a!.created_at).getTime() -
-              new Date(b!.created_at).getTime(),
-          )
-        const sortedGroupIds = groupBranches.map(b => b!.id)
-
-        if (sortedGroupIds.length <= 1) continue
-
-        let anchorMessageId: string | null = null
-
-        if (activeBranchId === parentBranchId) {
-          anchorMessageId = computeParentAnchor(
-            forkMsgId,
-            forkLevel,
-            messages,
-            messageIds,
-          )
-        } else if (
-          activeBranchId &&
-          childBranchIds.includes(activeBranchId) &&
-          currentBranch
-        ) {
-          anchorMessageId = computeChildAnchor(
-            activeBranchId,
-            currentBranch.created_at,
-            messages,
-            branchForkLevels,
-          )
-        }
-
-        if (anchorMessageId) {
-          forkPoints.set(anchorMessageId, sortedGroupIds)
-        }
-      }
-
-      set({ forkPoints })
-    },
-
     trimMessagesToForkPoint: (forkMessageId: string) => {
       set(state => {
         const sorted = [...state.messages.values()].sort(
@@ -1240,795 +696,6 @@ const chatStoreConfig = {
         pendingBranchForkLevel: null,
         editingMessage: null,
       })
-    },
-
-    startEditMessage: async (messageId: string) => {
-      const message = get().messages.get(messageId)
-      if (!message || message.role !== 'user') return
-
-      // Trim messages to fork point so UI shows clean branch base immediately
-      get().trimMessagesToForkPoint(messageId)
-
-      // Set editing state — extensions subscribe to editingMessage via
-      // useChatStore.subscribe() in their initialize() hooks
-      set({
-        editingMessage: message,
-        pendingBranchFromMessageId: messageId,
-        pendingBranchForkLevel: 'user',
-      })
-
-      // Pre-fill text input with message text content
-      const textContent = message.contents
-        .filter(c => c.content_type === 'text')
-        .map(c => (c.content as any).text as string)
-        .join('')
-      ;(get() as any).TextStore?.setText(textContent)
-    },
-
-    cancelEdit: async () => {
-      // Capture the edited message id BEFORE clearing so we can restore its
-      // neighborhood (not just the tail) when it was scrolled up mid-history.
-      const editedId = get().editingMessage?.id
-
-      // Clear text input first
-      ;(get() as any).TextStore?.clearText()
-
-      // Clear editing state — extensions react via their subscribe handlers
-      set({
-        editingMessage: null,
-        pendingBranchFromMessageId: null,
-        pendingBranchForkLevel: null,
-      })
-
-      // Restore what was trimmed by startEditMessage. If the edited message sat
-      // in the middle of a long (lazy-loaded) history, restore the window
-      // CENTERED on it (around=) rather than snapping to the tail; fall back to
-      // the tail if it can't be located on the active branch.
-      const conversationId = get().conversation?.id
-      if (!conversationId) return
-      if (editedId) {
-        const ok = await get().jumpToMessage(editedId)
-        if (!ok) await get().loadMessages(conversationId)
-      } else {
-        await get().loadMessages(conversationId)
-      }
-    },
-
-    startRegenerateMessage: async (assistantMessageId: string) => {
-      const sorted = [...get().messages.values()].sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-      )
-
-      const currentIndex = sorted.findIndex(m => m.id === assistantMessageId)
-      if (currentIndex <= 0) return
-
-      let precedingUserMsg = null
-      for (let i = currentIndex - 1; i >= 0; i--) {
-        if (sorted[i].role === 'user') {
-          precedingUserMsg = sorted[i]
-          break
-        }
-      }
-
-      if (!precedingUserMsg) return
-
-      const userText = (() => {
-        for (const content of precedingUserMsg.contents) {
-          const data = content.content as any
-          if (data?.type === 'text' && typeof data.text === 'string') {
-            return data.text
-          }
-        }
-        return ''
-      })()
-
-      // Fan out content-block restoration to every extension —
-      // each filters by its own content_type and rehydrates its
-      // store accordingly (file restores `file_attachment` blocks
-      // into its selectedFiles buffer; future extensions can do the
-      // same for their content types). Chat itself stays
-      // content-type-agnostic.
-      const { chatExtensionRegistry } = await import(
-        '@/modules/chat/core/extensions'
-      )
-      await chatExtensionRegistry.onMessageEditRestore(
-        precedingUserMsg.contents,
-      )
-
-      // Pre-fill text input with the original user message text. Skip only
-      // the pre-fill when the preceding user message is attachment-only (no
-      // text) — the regeneration itself must still proceed below.
-      if (userText) (get() as any).TextStore?.setText(userText)
-
-      // Mark as assistant-level fork so computeForkPoints anchors the
-      // navigator at the assistant bubble on both parent and child branches
-      set({
-        pendingBranchForkLevel: 'assistant',
-        pendingBranchFromMessageId: precedingUserMsg.id,
-      })
-
-      // Trim the user message and everything after so the UI shows a clean
-      // state during streaming
-      get().trimMessagesToForkPoint(precedingUserMsg.id)
-
-      await get().sendMessage()
-    },
-
-    // ── Send message with SSE streaming ───────────────────────────────────
-
-    // Route ONE live generation frame (from the per-user chat-token stream,
-    // tagged with its conversation) into the open conversation's streaming
-    // state. Runs on EVERY device — whether this device sent the message or
-    // another did — so a device with the conversation open renders live tokens
-    // regardless of origin. The server already scopes frames to the open
-    // conversation; the `conversationId` guards below drop a straggler that
-    // lands just after a switch. This is the relocated started/content/
-    // complete/error assembly that used to live inline in `sendMessage`.
-    applyStreamFrame: async (conversationId: string, event: any) => {
-      const type = event?.type
-
-      // SPLIT-VIEW ISOLATION (audit HIGH — both correctness + security angles):
-      // every pane's store subscribes to the shared `chat:token` bus, so pane B
-      // receives pane A's frames too. Only `started`/`content` guarded on the
-      // conversation id; `complete` (unconditional streaming-state reset),
-      // `error` (mismatch path cleared streaming + cache), and the raw-extension
-      // tail (`titleUpdated`/`mcp*` → this store's extensions) did NOT — so a
-      // sibling pane finishing / erroring / renaming corrupted THIS pane. One
-      // guard up front makes a frame for a conversation this store does not have
-      // open a true no-op. Single-pane: the client is subscription-scoped to the
-      // open conversation, so this never trips (the per-branch re-checks below
-      // still handle a switch that happens mid-await).
-      if (get().conversation?.id !== conversationId) return
-
-      // Mark the OPEN conversation as streaming on started/content. Critical for
-      // a RECEIVING device (one watching a generation another device started) —
-      // it never went through `sendMessage`, so without this its "generating"
-      // affordance never shows AND the reconnect/`reloadOpen` `isStreaming`
-      // guard wouldn't protect its live buffer from a refetch. Also capture the
-      // assistant message id (from content frames) so a receiver can stop too.
-      if (
-        (type === 'started' || type === 'content') &&
-        get().conversation?.id === conversationId
-      ) {
-        if (event?.message_id && !get().streamingMessageId) {
-          set({ isStreaming: true, streamingMessageId: event.message_id })
-        } else {
-          set({ isStreaming: true })
-        }
-      }
-
-      if (type === 'started') {
-        // Drop a straggler that lands just after a switch: everything below
-        // MUTATES the open conversation (branch id, temp-swap, extension stream
-        // state), so applying an off-screen frame would corrupt the open view.
-        if (get().conversation?.id !== conversationId) return
-
-        await chatExtensionRegistry.onStreamStart()
-
-        // Detect branch change (e.g. edit/regenerate created a new branch).
-        const currentBranchId = get().conversation?.active_branch_id
-        if (event.branch_id && event.branch_id !== currentBranchId) {
-          set(state => ({
-            conversation: state.conversation
-              ? { ...state.conversation, active_branch_id: event.branch_id }
-              : null,
-            branchChangedDuringStream: true,
-          }))
-          get().captureBranchForkLevel(event.branch_id)
-          const conversation = get().conversation
-          if (conversation) await get().loadBranches(conversation.id)
-        }
-
-        const sseEvent: SSEEvent = { event_type: 'started', data: event }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
-        if (handled) return
-
-        const state = get()
-        if (event.user_message_id && state.tempUserMessageId) {
-          // This device sent the message: reconcile the optimistic temp id.
-          // (Idempotent: the POST response may have already done this swap.)
-          const tempMessage = state.messages.get(state.tempUserMessageId)
-          if (tempMessage) {
-            set(state => {
-              const newMessages = new Map(state.messages)
-              newMessages.delete(state.tempUserMessageId!)
-              newMessages.set(event.user_message_id, {
-                ...tempMessage,
-                id: event.user_message_id,
-                contents: tempMessage.contents.map(content => ({
-                  ...content,
-                  message_id: event.user_message_id,
-                })),
-              })
-              return { messages: newMessages, tempUserMessageId: null }
-            })
-          }
-        } else if (
-          event.user_message_id &&
-          conversationId === get().conversation?.id &&
-          !get().messages.has(event.user_message_id)
-        ) {
-          // Receiving device (never had a temp): another device sent this
-          // message. Merge the tail so the user bubble renders before the
-          // assistant tokens fill in, without discarding loaded older pages.
-          // Covers a catch-up replay too.
-          await get().reconcileTail(conversationId)
-        }
-        return
-      }
-
-      if (type === 'content') {
-        // Drop a straggler before any side-effect (extension dispatch included),
-        // so an off-screen frame can't drive extension state for a conversation
-        // we've already switched away from.
-        if (get().conversation?.id !== conversationId) return
-
-        const data = event
-        const sseEvent: SSEEvent = { event_type: 'content', data }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
-        if (handled) return
-
-        const state = get()
-        if (data.content && Array.isArray(data.content)) {
-          if (!state.streamingMessage && data.content.length > 0) {
-            const placeholderId = data.message_id || `streaming-${Date.now()}`
-            set(state => {
-              const newMessages = new Map(state.messages)
-              // A tool-approval RESUME continues the SAME assistant message id.
-              // If a message with this id already exists (with accumulated
-              // text/tool_use content), REUSE it as the streaming buffer rather
-              // than overwriting it with an empty placeholder — otherwise the
-              // message renders empty for a beat (ChatMessage bails to null on
-              // zero blocks) and the bubble VANISHES then reappears (the
-              // resume-chain flicker). A genuinely-new turn has no existing row
-              // → a fresh empty placeholder, unchanged from before.
-              const placeholder = resumeOrFreshPlaceholder(
-                newMessages.get(placeholderId),
-                {
-                  id: placeholderId,
-                  role: 'assistant',
-                  contents: [],
-                  originated_from_id: '',
-                  edit_count: 0,
-                  created_at: new Date().toISOString(),
-                },
-              )
-              newMessages.set(placeholder.id, placeholder)
-              return { streamingMessage: placeholder, messages: newMessages }
-            })
-          }
-
-          for (const block of data.content) {
-            if (block.type === 'text_delta') {
-              const currentState = get()
-              const hasTextContent =
-                currentState.streamingMessage?.contents.some(
-                  c =>
-                    c.content_type === 'text' ||
-                    (c.content as any)?.type === 'text',
-                ) ?? false
-
-              if (!currentState.streamingMessage || !hasTextContent) {
-                const messageId =
-                  currentState.streamingMessage?.id ||
-                  data.message_id ||
-                  `streaming-${Date.now()}`
-                const initialContent =
-                  await chatExtensionRegistry.provideStreamingContent(
-                    'text',
-                    block.delta,
-                  )
-                if (initialContent) {
-                  const baseMessage = currentState.streamingMessage ?? {
-                    id: messageId,
-                    role: 'assistant' as const,
-                    contents: [],
-                    originated_from_id: '',
-                    edit_count: 0,
-                    created_at: new Date().toISOString(),
-                  }
-                  const newContent = {
-                    ...initialContent,
-                    id: `${messageId}-content-${baseMessage.contents.length}`,
-                    message_id: messageId,
-                    sequence_order: baseMessage.contents.length,
-                  }
-                  const newMessage: MessageWithContent = {
-                    ...baseMessage,
-                    id: messageId,
-                    contents: [...baseMessage.contents, newContent],
-                  }
-                  set(state => {
-                    const newMessages = new Map(state.messages)
-                    newMessages.set(newMessage.id, newMessage)
-                    return {
-                      streamingMessage: newMessage,
-                      messages: newMessages,
-                    }
-                  })
-                }
-              } else {
-                const delta = block.delta || ''
-                const incomingMessageId = data.message_id
-                set(currentState => {
-                  if (!currentState.streamingMessage) return {}
-                  const stableId = currentState.streamingMessage.id
-                  const dbId = incomingMessageId || stableId
-                  const existingContents =
-                    currentState.streamingMessage.contents
-                  const lastBlock =
-                    existingContents[existingContents.length - 1]
-                  const lastIsText =
-                    !!lastBlock &&
-                    (lastBlock.content_type === 'text' ||
-                      (lastBlock.content as any)?.type === 'text')
-
-                  let updatedContents: MessageContent[]
-                  if (lastIsText) {
-                    const currentText = (lastBlock.content as any)?.text || ''
-                    updatedContents = [...existingContents]
-                    updatedContents[existingContents.length - 1] = {
-                      ...lastBlock,
-                      content: {
-                        ...lastBlock.content,
-                        text: currentText + delta,
-                      } as any,
-                    }
-                  } else {
-                    const now = new Date().toISOString()
-                    updatedContents = [
-                      ...existingContents,
-                      {
-                        id: `${stableId}-content-${existingContents.length}`,
-                        message_id: dbId,
-                        content_type: 'text',
-                        content: { type: 'text', text: delta } as any,
-                        sequence_order: existingContents.length,
-                        created_at: now,
-                        updated_at: now,
-                      },
-                    ]
-                  }
-
-                  const updatedMessage: MessageWithContent = {
-                    ...currentState.streamingMessage,
-                    contents: updatedContents.map(c => ({
-                      ...c,
-                      message_id: dbId,
-                    })),
-                  }
-                  const newMessages = new Map(currentState.messages)
-                  newMessages.set(stableId, updatedMessage)
-                  return {
-                    streamingMessage: updatedMessage,
-                    messages: newMessages,
-                  }
-                })
-              }
-            }
-          }
-        }
-        return
-      }
-
-      if (type === 'complete') {
-        const sseEvent: SSEEvent = { event_type: 'complete', data: event }
-        const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
-        if (handled) return
-
-        const { streamingMessage } = get()
-        const isOnOriginalConversation =
-          get().conversation?.id === conversationId
-
-        // A user-cancelled turn arrives as a `complete` frame with
-        // finish_reason "cancelled" (start_generation) — that's an interrupted
-        // partial, not a genuine empty completion, so flag it to suppress the
-        // empty-completion notice on the (possibly reasoning-only) partial.
-        const cancelled = event.finish_reason === 'cancelled'
-
-        // A BACKGROUND conversation completing: tear down its live buffer and
-        // drop the streaming row (nothing on-screen to keep continuous), and
-        // never touch the on-screen `lastTurnInterrupted` (a single global
-        // signal). Unchanged from the original teardown.
-        if (!isOnOriginalConversation) {
-          set(state => {
-            const newMessages = new Map(state.messages)
-            if (state.streamingMessage) {
-              newMessages.delete(state.streamingMessage.id)
-            }
-            return {
-              isStreaming: false,
-              sending: false,
-              streamingMessage: null,
-              streamingAbortController: null,
-              streamingMessageId: null,
-              messages: newMessages,
-            }
-          })
-          get().clearConversationCache(conversationId)
-          return
-        }
-
-        // ── On-screen finalize: keep the streamed row, swap in persisted ────
-        // Clear the streaming CONTROL flags SYNCHRONOUSLY (as the original did),
-        // but do NOT delete the streamed assistant row from `messages`, and set
-        // `finalizingTurn` so the empty-completion notice stays suppressed until
-        // the persisted tail is merged in. The row is therefore continuously
-        // visible (no disappear/reappear + no false notice) WITHOUT holding
-        // `isStreaming` true across the awaited `getHistory` — so a conversation
-        // switch or a `saveConversationState` snapshot during that await can
-        // never observe a mid-stream state (which would strand the row as
-        // "generating" or clobber a background stream). Only the transient
-        // `finalizingTurn` is cleared AFTER the await, in the persisted swap.
-        const streamingRowId = streamingMessage?.id ?? null
-        // Capture BEFORE clearing: an edit/regenerate created a NEW branch during
-        // this stream, so the loaded window still holds the old branch's prefix —
-        // a merge would be inconsistent. Snap to the new branch's tail instead.
-        const branchChanged = get().branchChangedDuringStream
-        set({
-          isStreaming: false,
-          sending: false,
-          streamingMessage: null,
-          streamingAbortController: null,
-          streamingMessageId: null,
-          branchChangedDuringStream: false,
-          finalizingTurn: true,
-          lastTurnInterrupted: cancelled,
-        })
-
-        // Per-pane (ITEM v2): the completion runs in the OWNING pane's own store,
-        // so thread this pane's id to the extension hooks (the async-hook focus-race
-        // fix). The switched-away/background case already returned via the early bail
-        // above (`!isOnOriginalConversation`), so no extra guard is needed here.
-        if (streamingMessage) {
-          await chatExtensionRegistry.afterStreamComplete(streamingMessage, get().paneId)
-        }
-        const conversation = get().conversation
-
-        if (conversation) {
-          try {
-            const page = await ApiClient.Message.getHistory({
-              id: conversation.id,
-              limit: MESSAGE_PAGE_SIZE,
-            })
-            if (get().conversation?.id === conversation.id) {
-              set(state => {
-                // Snap-to-tail when the branch changed or the window is anchored
-                // mid-conversation (a merge would splice the tail after a gap);
-                // else merge so loaded older pages stay and the finalized turn
-                // replaces the streaming row IN PLACE (no empty frame). The
-                // sidebar message_count self-heals via the backend `Conversation`
-                // sync, so no optimistic count emit here.
-                const snapToTail = branchChanged || state.hasMoreAfter
-                if (snapToTail) {
-                  return {
-                    finalizingTurn: false,
-                    messages: toOrderedMap(page.messages),
-                    hasMoreBefore: page.has_more_before,
-                    hasMoreAfter: page.has_more_after,
-                    loadingOlder: false,
-                    loadingNewer: false,
-                  }
-                }
-                return {
-                  finalizingTurn: false,
-                  messages: finalizeTailWindow(
-                    state.messages,
-                    page.messages,
-                    streamingRowId,
-                  ),
-                  hasMoreAfter: false,
-                }
-              })
-            }
-            // else — switched away mid-fetch: do NOT touch finalizingTurn. The
-            // switch/reset that changed the conversation already cleared it
-            // (loadConversation cleanup / reset), and whatever conversation is now
-            // on-screen may own its OWN finalize; clearing it here would clobber
-            // that newer suppression.
-          } catch (error: any) {
-            // getHistory failed: the streamed row is still in `messages`, so it
-            // stays visible; clear the finalize flag + surface the error only if
-            // we're still on-screen (else the switch already cleared it).
-            if (get().conversation?.id === conversation.id) {
-              set({
-                finalizingTurn: false,
-                error: get().error || error.message || 'Failed to refresh messages',
-              })
-            }
-          }
-        } else {
-          set({ finalizingTurn: false })
-        }
-        await get().computeForkPoints()
-        return
-      }
-
-      if (type === 'error') {
-        const streamError = new Error(event.message || 'Stream error')
-        await chatExtensionRegistry.onStreamError(streamError, get().paneId)
-        const sseEvent: SSEEvent = { event_type: 'error', data: event }
-        await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
-
-        if (get().conversation?.id !== conversationId) {
-          set({
-            isStreaming: false,
-            sending: false,
-            streamingMessage: null,
-            streamingAbortController: null,
-            streamingMessageId: null,
-            finalizingTurn: false,
-          })
-          get().clearConversationCache(conversationId)
-          return
-        }
-
-        const state = get()
-        if (state.tempUserMessageId) {
-          set(state => {
-            const newMessages = new Map(state.messages)
-            newMessages.delete(state.tempUserMessageId!)
-            return {
-              messages: newMessages,
-              tempUserMessageId: null,
-              error: event.message || 'Stream error',
-              isStreaming: false,
-              sending: false,
-              streamingMessage: null,
-              streamingAbortController: null,
-              streamingMessageId: null,
-              finalizingTurn: false,
-              lastTurnInterrupted: true,
-            }
-          })
-        } else {
-          set({
-            error: event.message || 'Stream error',
-            isStreaming: false,
-            sending: false,
-            streamingMessage: null,
-            streamingAbortController: null,
-            streamingMessageId: null,
-            finalizingTurn: false,
-            lastTurnInterrupted: true,
-          })
-        }
-        return
-      }
-
-      // Extension events (titleUpdated, mcpToolStart/Complete/Progress,
-      // mcpApprovalRequired, mcpElicitationRequired, artifactCreated, …) —
-      // route through the extension registry exactly as the old inline
-      // `default` SSE handler did. The backend forwards these onto the
-      // chat-token stream alongside content frames.
-      const sseEvent: SSEEvent = { event_type: type, data: event }
-      await chatExtensionRegistry.handleSSEEvent(sseEvent, get, set)
-    },
-
-    sendMessage: async () => {
-      let { conversation } = get()
-
-      const beforeResult = await chatExtensionRegistry.beforeSendMessage()
-
-      if (beforeResult.cancel) {
-        console.log('[Chat.store] Message send cancelled by extension')
-        throw new Error(
-          beforeResult.errorMessage || 'Message send was cancelled',
-        )
-      }
-
-      // Collect all request fields from extensions. Pass THIS pane's
-      // conversation id so per-conversation composer selections (e.g. model)
-      // resolve to the sending pane (ITEM-5); null = a new-chat pane.
-      const allRequestFields = await chatExtensionRegistry.composeRequestFields({
-        conversationId: get().conversation?.id ?? null,
-        paneId: get().paneId,
-      })
-
-      // Inject branching fields directly (moved from branching extension)
-      const pendingBranchFromMessageId = get().pendingBranchFromMessageId
-      if (pendingBranchFromMessageId) {
-        allRequestFields.create_branch_from_message_id =
-          pendingBranchFromMessageId
-        allRequestFields.fork_level = get().pendingBranchForkLevel ?? 'user'
-      }
-
-      if (!conversation) {
-        // Deferred emission: extensions get to mutate the freshly
-        // created conversation BEFORE subscribers see the event.
-        // The `afterCreateConversation` hook can return a replacement
-        // shape; chat adopts it and emits the post-hook conversation.
-        conversation = await get().createConversation(
-          undefined,
-          allRequestFields.model_id as string | undefined,
-          /* emitCreated */ false,
-        )
-        const afterHook =
-          await chatExtensionRegistry.afterCreateConversation(conversation)
-        if (afterHook !== conversation) {
-          conversation = afterHook
-          set({ conversation })
-        }
-        const { Stores } = await import('@ziee/framework/stores')
-        await Stores.EventBus.emit({
-          type: 'conversation.created',
-          data: { conversation },
-        })
-        await extLifecycle().initialize()
-        await chatExtensionRegistry.onConversationLoad(conversation)
-      }
-
-      set({
-        sending: true,
-        isStreaming: true,
-        error: null,
-        lastTurnInterrupted: false,
-        finalizingTurn: false,
-      })
-
-      // If the window is anchored MID-conversation (after an around=/find/
-      // deep-link jump, so `hasMoreAfter` is true), the loaded slice does not
-      // abut the real tail. Snap to the tail first so the new turn's optimistic
-      // bubble appends at the actual end instead of after a gap of unloaded
-      // messages (reconciled again on `complete`, but this fixes the optimistic
-      // render order too).
-      if (get().hasMoreAfter) {
-        await get().loadMessages(conversation.id)
-      }
-
-      const userContents = await chatExtensionRegistry.provideUserContent(
-        (allRequestFields.content as string) || '',
-        allRequestFields,
-        get().paneId,
-      )
-
-      const tempUserMessage: MessageWithContent = {
-        id: `temp-${Date.now()}`,
-        role: 'user',
-        contents: userContents,
-        originated_from_id: '',
-        edit_count: 0,
-        created_at: new Date().toISOString(),
-      }
-
-      set(state => {
-        const newMessages = new Map(state.messages)
-        newMessages.set(tempUserMessage.id, tempUserMessage)
-        return {
-          messages: newMessages,
-          tempUserMessageId: tempUserMessage.id,
-        }
-      })
-
-      try {
-        // Subscribe this device's token stream to the (possibly just-created)
-        // conversation BEFORE kicking off generation, so it receives all of its
-        // own tokens. Idempotent/deduped for an already-open conversation.
-        await get().chatStreamClient?.setActiveConversation(conversation.id)
-
-        // Fire-and-forget: the assistant reply streams over the chat-token
-        // stream (applied by `applyStreamFrame` via the `chat:token` router),
-        // not this response.
-        const { user_message_id, assistant_message_id } =
-          await ApiClient.Message.send({
-            id: conversation.id,
-            branch_id: conversation.active_branch_id || '',
-            ...allRequestFields,
-          } as any)
-
-        // Remember the assistant message so the stop button can address it.
-        set({ streamingMessageId: assistant_message_id })
-
-        // Reconcile the optimistic temp user message to its real id. The
-        // `started` frame may also do this swap; both are idempotent.
-        if (user_message_id && get().tempUserMessageId) {
-          const tempId = get().tempUserMessageId!
-          const tempMessage = get().messages.get(tempId)
-          if (tempMessage) {
-            set(state => {
-              const newMessages = new Map(state.messages)
-              newMessages.delete(tempId)
-              newMessages.set(user_message_id, {
-                ...tempMessage,
-                id: user_message_id,
-                contents: tempMessage.contents.map(c => ({
-                  ...c,
-                  message_id: user_message_id,
-                })),
-              })
-              return { messages: newMessages, tempUserMessageId: null }
-            })
-          }
-        }
-
-        await chatExtensionRegistry.onMessageSent(get().paneId)
-        get().clearPendingBranch()
-        set({ sending: false })
-      } catch (error: any) {
-        const isAborted = error instanceof Error && error.name === 'AbortError'
-
-        if (!isAborted) {
-          await chatExtensionRegistry.onStreamError(
-            error instanceof Error
-              ? error
-              : new Error(error.message || 'Failed to send message'),
-            get().paneId,
-          )
-        }
-
-        const state = get()
-        const baseUpdate = {
-          error: isAborted ? null : error.message || 'Failed to send message',
-          sending: false,
-          isStreaming: false,
-          streamingMessage: null,
-          streamingAbortController: null,
-          streamingMessageId: null,
-          finalizingTurn: false,
-          // Aborted (user cancel) or a transport error — either way the turn's
-          // partial is not a genuine empty completion.
-          lastTurnInterrupted: true,
-        }
-
-        if (state.tempUserMessageId) {
-          set(state => {
-            const newMessages = new Map(state.messages)
-            newMessages.delete(state.tempUserMessageId!)
-            return {
-              messages: newMessages,
-              tempUserMessageId: null,
-              ...baseUpdate,
-            }
-          })
-        } else {
-          set(baseUpdate)
-        }
-
-        if (isAborted) {
-          const conversation = get().conversation
-          if (conversation) {
-            await get().loadMessages(conversation.id)
-          }
-        }
-      }
-    },
-
-    updateConversation: async (updates: { title?: string }) => {
-      const { conversation } = get()
-      if (!conversation) {
-        set({ error: 'No active conversation' })
-        return
-      }
-
-      try {
-        await ApiClient.Conversation.update({
-          id: conversation.id,
-          ...updates,
-        })
-
-        set(state => ({
-          conversation: state.conversation
-            ? { ...state.conversation, ...updates }
-            : null,
-        }))
-
-        if (updates.title !== undefined) {
-          const { Stores } = await import('@ziee/framework/stores')
-          await Stores.EventBus.emit({
-            type: 'conversation.titleUpdated',
-            data: {
-              conversationId: conversation.id,
-              title: updates.title,
-            },
-          })
-        }
-      } catch (error: any) {
-        set({
-          error: error.message || 'Failed to update conversation',
-        })
-        throw error
-      }
     },
 
     clearError: () => set({ error: null }),
@@ -2153,58 +820,6 @@ const chatStoreConfig = {
       set(state => ({ rightPanel: { ...state.rightPanel, panelWidth: width } }))
     },
 
-    reset: async () => {
-      // Leaving for a new chat: stop receiving any conversation's tokens.
-      void get().chatStreamClient?.setActiveConversation(null)
-      const { conversation } = get()
-      if (conversation) {
-        get().saveConversationState(conversation.id)
-        get().scheduleCacheClear(conversation.id)
-
-        // Save outgoing conversation's panel tabs to localStorage before clearing
-        const { rightPanel } = get()
-        savePanelSnapshotForConversation(
-          conversation.id,
-          rightPanel.tabs,
-          rightPanel.activeId,
-        )
-
-        await extLifecycle().cleanup()
-      }
-
-      set(state => ({
-        conversation: null,
-        messages: new Map<string, MessageWithContent>(),
-        loading: false,
-        loadingConversationId: null,
-        sending: false,
-        isStreaming: false,
-        finalizingTurn: false,
-        error: null,
-        hasMoreBefore: false,
-        hasMoreAfter: false,
-        loadingOlder: false,
-        loadingNewer: false,
-        streamingMessage: null,
-        tempUserMessageId: null,
-        streamingMessageId: null,
-        branches: [],
-        branchesLoading: false,
-        pendingBranchFromMessageId: null,
-        pendingBranchForkLevel: null,
-        branchForkLevels: new Map(),
-        branchChangedDuringStream: false,
-        forkPoints: new Map(),
-        editingMessage: null,
-        rightPanel: {
-          ...state.rightPanel,
-          tabs: [],
-          activeId: null,
-          mobileDrawerOpen: false,
-        },
-      }))
-    },
-
     // ── Lifecycle methods ──────────────────────────────────────────────────
 
     }
@@ -2216,6 +831,41 @@ const chatStoreConfig = {
     onCleanup,
   }: StoreInitCtx<typeof chatInitialState>) => {
     const get = getRaw as () => ChatState
+
+    // Warm the lazy-action chunks OFF the first-render path. `init` runs at first
+    // store access (during/after the initial render), and `.preload()` only kicks
+    // off a background dynamic import — it never blocks paint. The render-critical
+    // + streaming actions warm immediately so the first send/stream has no hop;
+    // the rest warm on idle so they're ready for interaction without competing
+    // with first paint. Chunks are module-global, so priming via the singleton
+    // (`useChatStore`) warms them for every pane. Typed `.preload()` comes from
+    // the inferred lazy-dispatcher type (ChatState declares plain fns).
+    const cs = useChatStore.getState()
+    void cs.loadConversation.preload()
+    void cs.loadMessages.preload()
+    void cs.loadConversationState.preload()
+    void cs.reconcileTail.preload()
+    void cs.applyStreamFrame.preload()
+    void cs.sendMessage.preload()
+    const warmIdle = (cb: () => void) => {
+      if (typeof requestIdleCallback !== 'undefined') requestIdleCallback(cb)
+      else setTimeout(cb, 200)
+    }
+    warmIdle(() => {
+      const c = useChatStore.getState()
+      void c.createConversation.preload()
+      void c.updateConversation.preload()
+      void c.loadOlderMessages.preload()
+      void c.loadNewerMessages.preload()
+      void c.jumpToMessage.preload()
+      void c.loadBranches.preload()
+      void c.activateBranch.preload()
+      void c.computeForkPoints.preload()
+      void c.startEditMessage.preload()
+      void c.cancelEdit.preload()
+      void c.startRegenerateMessage.preload()
+      void c.reset.preload()
+    })
 
     // Idempotent: `__init__.__store__` can be invoked more than once per instance
     // (a local pane self-inits via `.use()`, and the `Stores.Chat` proxy's lazy
