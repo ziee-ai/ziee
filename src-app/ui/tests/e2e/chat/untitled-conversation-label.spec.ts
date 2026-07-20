@@ -1,6 +1,11 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
+import {
+  createProviderViaAPI,
+  createModelViaAPI,
+  assignProviderToAdministratorsGroup,
+} from '../../common/provider-helpers'
 
 /**
  * An untitled conversation must be labelled by what the USER actually asked,
@@ -22,10 +27,19 @@ const PREVIEW = 'What does the knowledge base say about TP53 mutations'
 const REAL_TITLE = 'BRCA1 Role in Hereditary Breast Cancer'
 const PLACEHOLDER = 'Untitled Conversation'
 
-/** Create a conversation via the API, optionally titled, optionally with a first user message. */
+/**
+ * Create a conversation via the API, optionally titled, optionally with a first
+ * user message.
+ *
+ * `model_id` is REQUIRED by `SendMessageRequest`, so a model must exist even
+ * though this test does not care about the assistant's reply — the send
+ * persists the USER message (which is all the preview reads) before the
+ * provider call, so the provider being a stub that never answers is fine.
+ */
 async function seedConversation(
   apiURL: string,
   token: string,
+  modelId: string,
   opts: { title?: string; firstMessage?: string },
 ): Promise<string> {
   const res = await fetch(`${apiURL}/api/conversations`, {
@@ -37,16 +51,29 @@ async function seedConversation(
   if (opts.firstMessage) {
     // The preview reads the first USER message on the active branch. Seeding it
     // through the normal message path keeps this honest — no direct DB write.
-    await fetch(`${apiURL}/api/conversations/${conv.id}/messages`, {
+    const sent = await fetch(`${apiURL}/api/conversations/${conv.id}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         content: opts.firstMessage,
         branch_id: conv.active_branch_id,
+        model_id: modelId,
       }),
     })
+    // Fail loudly here rather than letting a 422 surface later as a confusing
+    // "row shows Untitled" assertion failure.
+    if (!sent.ok) {
+      throw new Error(`seed message failed: ${sent.status} ${await sent.text()}`)
+    }
   }
   return conv.id
+}
+
+/** Provider + model + group grant, so `model_id` can be supplied on a send. */
+async function seedModel(apiURL: string, token: string): Promise<string> {
+  const providerId = await createProviderViaAPI(apiURL, token, 'OpenAI', 'openai')
+  await assignProviderToAdministratorsGroup(apiURL, token, providerId)
+  return await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
 }
 
 /** The sidebar row for a conversation, by its stable per-id testid. */
@@ -66,13 +93,14 @@ test.describe('untitled conversation display label', () => {
   }) => {
     const { apiURL, baseURL } = testInfra
     const token = await getAdminToken(apiURL)
+    const modelId = await seedModel(apiURL, token)
 
-    const untitled = await seedConversation(apiURL, token, { firstMessage: PREVIEW })
-    const titled = await seedConversation(apiURL, token, {
+    const untitled = await seedConversation(apiURL, token, modelId, { firstMessage: PREVIEW })
+    const titled = await seedConversation(apiURL, token, modelId, {
       title: REAL_TITLE,
       firstMessage: 'some other question entirely',
     })
-    const empty = await seedConversation(apiURL, token, {})
+    const empty = await seedConversation(apiURL, token, modelId, {})
 
     // FULL reload — the client message cache is cold, so the label can only come
     // from the list response's `first_message_preview`.
@@ -94,9 +122,10 @@ test.describe('untitled conversation display label', () => {
   test('the derived label does not overflow the row at 390px', async ({ page, testInfra }) => {
     const { apiURL, baseURL } = testInfra
     const token = await getAdminToken(apiURL)
+    const modelId = await seedModel(apiURL, token)
     const long =
       'What does the knowledge base say about the role of TP53 in cell cycle regulation and apoptosis across tumour types'
-    const id = await seedConversation(apiURL, token, { firstMessage: long })
+    const id = await seedConversation(apiURL, token, modelId, { firstMessage: long })
 
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(`${baseURL}/chats`)
@@ -120,7 +149,8 @@ test.describe('untitled conversation display label', () => {
   }) => {
     const { apiURL, baseURL } = testInfra
     const token = await getAdminToken(apiURL)
-    const id = await seedConversation(apiURL, token, { firstMessage: PREVIEW })
+    const modelId = await seedModel(apiURL, token)
+    const id = await seedConversation(apiURL, token, modelId, { firstMessage: PREVIEW })
 
     await page.goto(`${baseURL}/chats`)
     await page.reload()
@@ -142,7 +172,8 @@ test.describe('untitled conversation display label', () => {
   }) => {
     const { apiURL, baseURL } = testInfra
     const token = await getAdminToken(apiURL)
-    const id = await seedConversation(apiURL, token, { firstMessage: PREVIEW })
+    const modelId = await seedModel(apiURL, token)
+    const id = await seedConversation(apiURL, token, modelId, { firstMessage: PREVIEW })
 
     await page.goto(`${baseURL}/chats/${id}`)
 
