@@ -1,6 +1,6 @@
 import { Card, Form, FormField, useForm, Switch, Text, message } from '@ziee/kit'
 import { useEffect } from 'react'
-import { Users } from '@/modules/user/stores/Users.store'
+import { Users } from '@/modules/user/stores/users'
 
 export function UserRegistrationSettings() {
   const form = useForm<{ enabled: boolean }>({
@@ -39,7 +39,10 @@ export function UserRegistrationSettings() {
   return (
     <Card title="User Registration" data-testid="user-registration-card">
       <Form form={form} onSubmit={() => {}} data-testid="user-registration-form">
-        <div className="flex justify-between items-center">
+        <div
+          className="flex justify-between items-center"
+          onMouseEnter={() => void Users.updateUserRegistrationSettings.preload()}
+        >
           <div>
             <Text strong>Enable User Registration</Text>
             <div>

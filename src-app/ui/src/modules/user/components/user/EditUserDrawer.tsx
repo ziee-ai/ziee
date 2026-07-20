@@ -2,7 +2,7 @@ import { Button, Form, FormField, useForm, zodResolver, Input, Switch, message }
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@ziee/framework/stores'
-import { Users } from '@/modules/user/stores/Users.store'
+import { Users } from '@/modules/user/stores/users'
 import { usePermission } from '@/core/permissions'
 import { type UpdateUserRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'

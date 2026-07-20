@@ -49,6 +49,12 @@ export const WebSearchAdmin = defineStore('WebSearchAdmin', {
     on('sync:web_search_settings', reload)
     on('sync:reconnect', reload)
     reload()
+    // Warm the mutation chunks so a save is instant. This is an admin-only
+    // surface (the store loads only on the web-search settings page), so
+    // front-loading these two on init is cheap; the sweep may later move them to
+    // hover-prefetch on the Save buttons.
+    void actions.updateSettings.preload()
+    void actions.updateProvider.preload()
   },
 })
 

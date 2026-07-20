@@ -17,7 +17,7 @@ import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect, useState } from 'react'
 import { Stores } from '@ziee/framework/stores'
-import { Users as UsersStore } from '@/modules/user/stores/Users.store'
+import { Users as UsersStore } from '@/modules/user/stores/users'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
 import { type User } from '@/api-client/types'
@@ -129,7 +129,7 @@ export function UsersSettings() {
             cancelText="Cancel"
             data-testid={`user-toggle-active-confirm-${user.id}`}
           >
-            <Button variant="ghost" size="default" data-testid={`user-toggle-active-button-${user.id}`}>
+            <Button variant="ghost" size="default" onMouseEnter={() => void UsersStore.toggleUserActiveStatus.preload()} data-testid={`user-toggle-active-button-${user.id}`}>
               {user.is_active ? 'Deactivate' : 'Activate'}
             </Button>
           </Confirm>
@@ -144,6 +144,7 @@ export function UsersSettings() {
           variant="ghost"
           icon={<Pencil />}
           onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
+          onMouseEnter={() => void UsersStore.updateUser.preload()}
           data-testid={`user-edit-button-${user.id}`}
         >
           Edit
@@ -160,6 +161,7 @@ export function UsersSettings() {
           onClick={() =>
             Stores.ResetPasswordDrawer.openResetPasswordDrawer(user)
           }
+          onMouseEnter={() => void UsersStore.resetUserPassword.preload()}
           data-testid={`user-reset-password-button-${user.id}`}
         >
           Reset Password
@@ -195,6 +197,7 @@ export function UsersSettings() {
               variant="ghost"
               icon={<Trash2 aria-hidden="true" />}
               aria-label={`Delete ${user.username}`}
+              onMouseEnter={() => void UsersStore.deleteUser.preload()}
               data-testid={`user-delete-button-${user.id}`}
             >
               Delete
@@ -235,6 +238,7 @@ export function UsersSettings() {
                 <AddButton
                   label="Create user"
                   onClick={() => Stores.CreateUserDrawer.openCreateUserDrawer()}
+                  onMouseEnter={() => void UsersStore.createUser.preload()}
                   data-testid="user-create-open-button"
                 />
               </Can>
