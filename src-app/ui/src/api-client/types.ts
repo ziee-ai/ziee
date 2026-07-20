@@ -313,6 +313,46 @@ export interface BackgroundRunCancelAck {
 }
 
 /**
+ * Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /
+ *  sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`
+ *  result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and
+ *  adds the collected result, so the FE can render a completed run's output without a
+ *  second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.
+ *  The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still
+ *  excluded — a background run has none, and a classic `workflow`-kind run is served
+ *  by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).
+ */
+export interface BackgroundRunDetail {
+  conversation_id?: string
+  created_at: string
+  /** Terminal error text for a failed run (else `None`). */
+  error_message?: string
+  /**
+   * The full result body of a completed run (`None` until a result exists).
+   *  This is the field the compact [`BackgroundRunSummary`] deliberately omits.
+   */
+  final_output_json?: unknown
+  /** True when a `final_output_json` is present (a result was collected). */
+  has_result: boolean
+  id: string
+  /**
+   * Background-run discriminator (`subagent` / `sandbox_exec`); never
+   *  `workflow` (the detail 404s on those).
+   */
+  job_kind: string
+  /**
+   * Short human label derived from the run's spec (the sub-agent `task`),
+   *  capped at 200 chars; `None` when the spec carried no task text.
+   */
+  label?: string
+  model_id?: string
+  status: string
+  total_tokens: number
+  /** Last transition time — the effective "finished_at" for a terminal run. */
+  updated_at: string
+}
+
+/**
  * Paginated response for `GET /api/background/runs` (mirrors
  *  `McpToolCallListResponse`).
  */
@@ -7814,6 +7854,7 @@ export const ApiEndpoints = {
   'AuthProviders.testConfig': 'POST /api/admin/auth-providers/test-config',
   'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
   'Background.cancelRun': 'POST /api/background/runs/{run_id}/cancel',
+  'Background.getRun': 'GET /api/background/runs/{run_id}',
   'Background.listRunNotes': 'GET /api/background/runs/{run_id}/notes',
   'Background.listRuns': 'GET /api/background/runs',
   'Background.postRunNote': 'POST /api/background/runs/{run_id}/notes',
@@ -8253,6 +8294,7 @@ export type ApiEndpointParameters = {
   'AuthProviders.testConfig': CreateAuthProviderRequest
   'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
   'Background.cancelRun': { run_id: string }
+  'Background.getRun': { run_id: string }
   'Background.listRunNotes': { run_id: string }
   'Background.listRuns': { kind?: string; page?: number; per_page?: number; status?: string }
   'Background.postRunNote': { run_id: string } & CreateRunNote
@@ -8692,6 +8734,7 @@ export type ApiEndpointResponses = {
   'AuthProviders.testConfig': TestProviderResponse
   'AuthProviders.update': AuthProviderResponse
   'Background.cancelRun': BackgroundRunCancelAck
+  'Background.getRun': BackgroundRunDetail
   'Background.listRunNotes': RunNote[]
   'Background.listRuns': BackgroundRunListResponse
   'Background.postRunNote': RunNote
