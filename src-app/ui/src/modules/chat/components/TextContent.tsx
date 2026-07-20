@@ -6,7 +6,6 @@ import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdown
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { citationTokenize } from '@/modules/chat/core/utils/citationTokenize'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
-import { chatMarkdownPlugins } from '@/modules/chat/core/utils/chatMarkdownPlugins'
 
 interface TextContentProps {
   content: MessageContent
@@ -35,9 +34,8 @@ export const TextContent = memo(function TextContent({
     <div className="w-full overflow-x-auto pt-2">
       <StreamdownErrorBoundary fallbackText={textData.text}>
         <Streamdown
+          variant="chat"
           isAnimating={isStreaming}
-          shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']}
-          plugins={chatMarkdownPlugins}
           components={components}
           urlTransform={streamdownUrlTransform}
         >

@@ -6,7 +6,6 @@ import { Stores } from '@ziee/framework/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
-import { chatMarkdownPlugins } from '@/modules/chat/core/utils/chatMarkdownPlugins'
 import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 import { citationTokenize } from '@/modules/chat/core/utils/citationTokenize'
 
@@ -41,9 +40,8 @@ export const TextContent = memo(function TextContent({
     )}>
       <StreamdownErrorBoundary fallbackText={textData.text}>
         <Streamdown
+          variant="chat"
           isAnimating={!isUser && isStreaming}
-          shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']}
-          plugins={chatMarkdownPlugins}
           components={components}
           urlTransform={streamdownUrlTransform}
         >
