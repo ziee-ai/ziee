@@ -20,8 +20,16 @@ export function SkillMenuItem() {
   // mirrors McpMenuItem) — otherwise opening skills in pane B keyed the drawer to
   // pane A's conversation.
   const pane = useChatPaneOrNull()
+  // DEPLOY-ONLY: the per-conversation skills opt-out is ADMIN-ONLY. Note this
+  // entry is gated on `conversation?.id` below, so it only ever appeared INSIDE
+  // a conversation — never on the new-chat view. That asymmetry is why it
+  // survived the first pass of deploy hides.
+  const { user } = Stores.Auth
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
   const conversation = chat.conversation
+
+  // Placed after every hook + store read above, per the deploy-hide pattern.
+  if (!user?.is_admin) return null
 
   if (!conversation?.id) return null
   const conversationId = conversation.id

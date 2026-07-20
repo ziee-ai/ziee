@@ -59,6 +59,10 @@ export function MicButton() {
   // an unpermitted user. (The store ALSO skips the capability fetch when this
   // perm is absent, and the endpoint 403s — this is the explicit third layer.)
   const canDictate = usePermission(Permissions.VoiceTranscribe)
+  // DEPLOY-ONLY: dictation is admin-only in this deployment. Read here, at the
+  // top with the other store accesses — a `Stores.X` proxy read fires a
+  // useEffect, so it must never sit below a conditional return.
+  const { user } = Stores.Auth
   const [hintOpen, setHintOpen] = useState(
     () => typeof localStorage !== 'undefined' && localStorage.getItem(PRIVACY_HINT_KEY) == null,
   )
@@ -74,6 +78,10 @@ export function MicButton() {
 
   // PERMISSION gate first: no `voice::transcribe` → no affordance whatsoever.
   if (!canDictate) return null
+
+  // DEPLOY-ONLY: hidden for non-admins (the unmount-cancel effect above still
+  // registers, so a pane that was recording as an admin still cleans up).
+  if (!user?.is_admin) return null
 
   // Hidden: feature off, capability not yet known, or recording unsupported.
   if (!capabilityLoaded || !capability || !capability.enabled) return null

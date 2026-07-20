@@ -51,15 +51,23 @@ export default function SettingsPage() {
   const isAllowed = (item: SettingsPageSlot) =>
     !item.permission || evaluatePermission(user, permissions, item.permission)
 
-  // DEPLOY-ONLY: hide the "Assistants" user-settings NAV ENTRY from non-admins.
-  // The deployment ships one template assistant applied to every chat, so the
-  // per-user assistant page is operator-facing here. Admins keep it. This hides
-  // the menu entry ONLY — the `/settings/assistants` route and its
-  // `assistants::read` permission are untouched (and it is deliberately NOT
-  // folded into `isAllowed`, so a deep link still resolves as before rather
-  // than rendering the "forbidden" Result).
+  // DEPLOY-ONLY: hide operator-facing user-settings NAV ENTRIES from non-admins.
+  //   assistants          — one template assistant is applied to every chat, so
+  //                         the per-user assistant page is operator-facing here.
+  //   mcp-servers         — biognosia is the one data server, auto-assigned to
+  //                         the Users group; users have nothing to manage.
+  //   user-llm-providers  — users only use the free models the admin configures.
+  // Admins keep all three. This hides the menu entry ONLY — the routes and their
+  // permissions are untouched (and it is deliberately NOT folded into
+  // `isAllowed`, so a deep link still resolves as before rather than rendering
+  // the "forbidden" Result).
+  const DEPLOY_HIDDEN_USER_PAGE_IDS = [
+    'assistants',
+    'mcp-servers',
+    'user-llm-providers',
+  ]
   const isHiddenUserPage = (item: SettingsPageSlot) =>
-    item.id === 'assistants' && !user?.is_admin
+    DEPLOY_HIDDEN_USER_PAGE_IDS.includes(item.id) && !user?.is_admin
 
   // Get, sort, and permission-filter user settings from slots
   const userSettingsItems = (slots.get('settingsUserPages') || [])
@@ -145,25 +153,30 @@ export default function SettingsPage() {
         ]
       : []),
     // Help + onboarding guidance (reserved keys handled in onSelect).
-    { type: 'divider' as const },
-    {
-      key: '__onboarding__',
-      label: (
-        <Flex className={'gap-2 items-center'}>
-          <Compass />
-          Onboarding guide
-        </Flex>
-      ),
-    },
-    {
-      key: '__help__',
-      label: (
-        <Flex className={'gap-2 items-center'}>
-          <BookOpen />
-          Help &amp; documentation
-        </Flex>
-      ),
-    },
+    // DEPLOY-ONLY: admin-only, mirroring the pinned desktop block below.
+    ...(user?.is_admin
+      ? [
+          { type: 'divider' as const },
+          {
+            key: '__onboarding__',
+            label: (
+              <Flex className={'gap-2 items-center'}>
+                <Compass />
+                Onboarding guide
+              </Flex>
+            ),
+          },
+          {
+            key: '__help__',
+            label: (
+              <Flex className={'gap-2 items-center'}>
+                <BookOpen />
+                Help &amp; documentation
+              </Flex>
+            ),
+          },
+        ]
+      : []),
   ]
 
   // For permission checks on deep-linked URLs we need the flat valid section keys.
@@ -303,30 +316,35 @@ export default function SettingsPage() {
             <ScrollArea axis="y" className="flex-1 min-h-0">
               <SettingsMenu />
             </ScrollArea>
-            {/* Help + onboarding guidance, pinned to the bottom of the nav. */}
-            <div className="border-t border-border p-2 flex flex-col gap-1">
-              <Button
-                data-testid="settings-onboarding-link"
-                variant="ghost"
-                size="default"
-                icon={<Compass />}
-                className="justify-start"
-                onClick={() => navigate('/onboarding')}
-              >
-                Onboarding guide
-              </Button>
-              <Link
-                data-testid="settings-help-link"
-                href={HELP_DOCS_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 px-2 py-1 text-sm"
-              >
-                <BookOpen className="h-4 w-4" />
-                Help &amp; documentation
-                <ExternalLink className="h-3 w-3" />
-              </Link>
-            </div>
+            {/* Help + onboarding guidance, pinned to the bottom of the nav.
+                DEPLOY-ONLY: the whole bottom block is admin-only — onboarding is
+                operator-facing here, and the help link points at the upstream
+                ziee README rather than anything BioGnosia-specific. */}
+            {user?.is_admin && (
+              <div className="border-t border-border p-2 flex flex-col gap-1">
+                <Button
+                  data-testid="settings-onboarding-link"
+                  variant="ghost"
+                  size="default"
+                  icon={<Compass />}
+                  className="justify-start"
+                  onClick={() => navigate('/onboarding')}
+                >
+                  Onboarding guide
+                </Button>
+                <Link
+                  data-testid="settings-help-link"
+                  href={HELP_DOCS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 px-2 py-1 text-sm"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Help &amp; documentation
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+            )}
           </div>
         )}
 

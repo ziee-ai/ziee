@@ -24,11 +24,19 @@ export function McpMenuItem() {
   // non-focused split pane's "+" menu must point the modal at THIS pane's
   // conversation, else the toggle edits the focused pane's config (ITEM-47).
   const pane = useChatPaneOrNull()
+  // DEPLOY-ONLY: the "MCP tools & servers" entry is ADMIN-ONLY — same scoping
+  // as the "MCP Servers" settings page (see SettingsPage.tsx) and the chip's
+  // close affordance (McpStatusRow.tsx). biognosia is auto-selected for every
+  // chat, so there is nothing here for a normal user to configure.
+  const { user } = Stores.Auth
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
   const paneId = pane?.paneId ?? null
   const conversation = chat.conversation
 
   const enabledServers = servers.filter(s => s.enabled)
+
+  // Placed after every hook + store read above, per the deploy-hide pattern.
+  if (!user?.is_admin) return null
 
   if (enabledServers.length === 0 && !loading) {
     return null
