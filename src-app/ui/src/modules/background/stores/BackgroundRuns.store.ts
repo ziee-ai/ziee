@@ -1,11 +1,17 @@
+import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import {
   type BackgroundRunCancelAck,
+  type BackgroundRunDetail,
   type BackgroundRunSummary,
   type RunNote,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore } from '@ziee/framework/store-kit'
+
+// `runDetailLoading` below is a `Set<string>` (mirrors `FileVersions.store`'s
+// per-id loading set); immer needs MapSet support enabled to draft it.
+enableMapSet()
 
 /**
  * `background::use` gates the `/api/background/runs` surface (backend
@@ -52,6 +58,16 @@ export const BackgroundRuns = defineStore('BackgroundRuns', {
      * steer composer is opened (avoids an N-fetch fan-out across the page).
      */
     notesByRun: {} as Record<string, RunNote[]>,
+    /**
+     * Full run detail (incl. `final_output_json`) keyed by run id, fetched
+     * lazily when a row's result view is expanded (`GET /api/background/runs/{id}`)
+     * and cached — a terminal run's result is immutable, so it's fetched once.
+     */
+    detailsByRun: {} as Record<string, BackgroundRunDetail>,
+    /** Run ids whose detail request is in flight (drives the per-row `Spin`). */
+    runDetailLoading: new Set<string>(),
+    /** Per-run detail-fetch error message (rendered inline; never swallowed). */
+    detailErrorByRun: {} as Record<string, string>,
   },
   actions: (set, get) => {
     const loadRuns = async (page?: number, pageSize?: number): Promise<void> => {
@@ -99,9 +115,49 @@ export const BackgroundRuns = defineStore('BackgroundRuns', {
       }
     }
 
+    /**
+     * Lazily fetch a single run's full detail (incl. `final_output_json`) for the
+     * inline result view, keyed + cached by run id. Called when a row's result
+     * view is expanded. Idempotent: a cached detail or an in-flight request is a
+     * no-op, so re-expanding never refetches (a terminal run's result is fixed).
+     * A failure is recorded to `detailErrorByRun` (rendered inline) and clears the
+     * loading flag, so a later expand retries cleanly.
+     */
+    const loadRunDetail = async (runId: string): Promise<void> => {
+      // no-403 invariant: gate on the SAME permission the endpoint enforces.
+      if (!hasPermissionNow(BACKGROUND_USE_PERMISSION)) return
+      const current = get()
+      if (current.detailsByRun[runId] || current.runDetailLoading.has(runId)) return
+      set(draft => {
+        const ls = new Set(draft.runDetailLoading)
+        ls.add(runId)
+        draft.runDetailLoading = ls
+        delete draft.detailErrorByRun[runId]
+      })
+      try {
+        const detail = await ApiClient.Background.getRun({ run_id: runId })
+        set(draft => {
+          draft.detailsByRun[runId] = detail
+          const ls = new Set(draft.runDetailLoading)
+          ls.delete(runId)
+          draft.runDetailLoading = ls
+        })
+      } catch (error) {
+        set(draft => {
+          draft.detailErrorByRun[runId] =
+            error instanceof Error ? error.message : 'Failed to load the result'
+          const ls = new Set(draft.runDetailLoading)
+          ls.delete(runId)
+          draft.runDetailLoading = ls
+        })
+        console.error('Background run detail load failed:', runId, error)
+      }
+    }
+
     return {
       loadRuns,
       loadNotes,
+      loadRunDetail,
       setPage: (page: number, pageSize?: number): void => {
         void loadRuns(page, pageSize)
       },

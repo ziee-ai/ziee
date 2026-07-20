@@ -1,14 +1,16 @@
-import { ExternalLink, MessageSquare, XCircle } from 'lucide-react'
+import { ExternalLink, FileText, MessageSquare, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import type { BackgroundRunSummary } from '@/api-client/types'
 import {
+  Alert,
   Button,
   Card,
   Confirm,
   Flex,
   message,
+  Spin,
   Tag,
   type TagTone,
   Text,
@@ -17,6 +19,7 @@ import {
 import { Stores } from '@ziee/framework/stores'
 
 import { isTerminalRunStatus } from '../stores/BackgroundRuns.store'
+import { BackgroundRunResult } from './BackgroundRunResult'
 
 // Status → Tag tone. `cancelled` stays neutral (`default`), never the red
 // `error` of `failed` — mirrors the tool-call history convention so a
@@ -69,11 +72,28 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
   const [steerOpen, setSteerOpen] = useState(false)
   const [note, setNote] = useState('')
   const [posting, setPosting] = useState(false)
+  const [resultOpen, setResultOpen] = useState(false)
 
   const terminal = isTerminalRunStatus(run.status)
   // Reactive read (subscribes) — the row re-renders when its notes load / change.
   const notes = Stores.BackgroundRuns.notesByRun[run.id] ?? []
   const pendingNotes = notes.filter(n => !n.consumed_at)
+
+  // Reactive reads for the inline result view (subscribe → re-render on fetch).
+  // `runDetailLoading` is the store's internal fetch-dedup guard; here the panel
+  // derives its loading state from `detail` being absent (no error) instead.
+  const detail = Stores.BackgroundRuns.detailsByRun[run.id]
+  const detailError = Stores.BackgroundRuns.detailErrorByRun[run.id]
+
+  const toggleResult = () => {
+    setResultOpen(open => {
+      const next = !open
+      // Lazy-fetch the result body only when the view is first opened; the store
+      // caches it, so re-expanding a terminal run never refetches.
+      if (next) void Stores.BackgroundRuns.loadRunDetail(run.id)
+      return next
+    })
+  }
 
   const toggleSteer = () => {
     setSteerOpen(open => {
@@ -156,6 +176,19 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
               onClick={() => navigate(`/chat/${run.conversation_id}`)}
             >
               Open conversation
+            </Button>
+          )}
+          {terminal && (
+            <Button
+              variant="ghost"
+              icon={<FileText />}
+              aria-expanded={resultOpen}
+              aria-controls={`background-run-result-panel-${run.id}`}
+              aria-label={resultOpen ? 'Hide result' : 'View result'}
+              data-testid={`background-run-result-toggle-${run.id}`}
+              onClick={toggleResult}
+            >
+              {resultOpen ? 'Hide result' : 'View result'}
             </Button>
           )}
           {!terminal && (
@@ -247,6 +280,30 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
                 Send note
               </Button>
             </Flex>
+          </Flex>
+        )}
+
+        {/* Inline result view (terminal runs only) — lazily fetched on expand. */}
+        {terminal && resultOpen && (
+          <Flex
+            id={`background-run-result-panel-${run.id}`}
+            className="flex-col gap-2 rounded-md border p-3"
+            data-testid={`background-run-result-panel-${run.id}`}
+          >
+            {detailError ? (
+              <Alert
+                tone="error"
+                title="Couldn't load the result"
+                description={detailError}
+                data-testid={`background-run-result-error-${run.id}`}
+              />
+            ) : detail ? (
+              <BackgroundRunResult detail={detail} />
+            ) : (
+              <Flex className="justify-center py-4">
+                <Spin label="Loading result" />
+              </Flex>
+            )}
           </Flex>
         )}
       </Flex>
