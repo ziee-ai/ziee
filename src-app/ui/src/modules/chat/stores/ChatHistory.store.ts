@@ -347,10 +347,13 @@ export const ChatHistory = defineStore('ChatHistory', {
       bulkDelete: async () => {
         const state = get()
         if (state.selectedIds.size === 0) return
+        // Capture before the `set` below clears the selection — the post-delete
+        // broadcast still needs the ids.
+        const deletedIds = Array.from(state.selectedIds)
         set({ deleting: true, error: null })
         try {
           await Promise.all(
-            Array.from(state.selectedIds).map(id => ApiClient.Conversation.delete({ id })),
+            deletedIds.map(id => ApiClient.Conversation.delete({ id })),
           )
           set(draft => {
             const selectedIds = Array.from(draft.selectedIds)
@@ -376,6 +379,16 @@ export const ChatHistory = defineStore('ChatHistory', {
             draft.deleting = false
           })
           await refillRecentIfEmptied()
+          // Broadcast each deletion, same as the single-delete path — without this
+          // a bulk delete left split panes holding a deleted conversation stale and
+          // nothing could navigate an open `/chat/:id` away from a dead id (#168).
+          const { Stores } = await import('@ziee/framework/stores')
+          for (const id of deletedIds) {
+            await Stores.EventBus.emit({
+              type: 'conversation.deleted',
+              data: { conversationId: id },
+            })
+          }
         } catch (error) {
           console.error('[ChatHistory] Failed to bulk delete conversations:', error)
           set({ error: 'Failed to delete selected conversations', deleting: false })
