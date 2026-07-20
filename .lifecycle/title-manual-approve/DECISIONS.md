@@ -141,11 +141,42 @@ brief.
 flow needs `oai_capture_stub` + `MockMcpServer`, which is exactly how `title_audience_test.rs` is
 already split out as its own file. A third file for the approval variant follows that established split.
 
+### DEC-20: What does the live gpt-oss diagnosis conclude? (resolves ITEM-4/5/6)
+**Resolution:** There is **no ziee defect to fix**. ITEM-4 ships as a diagnostics improvement only;
+**ITEM-5 and ITEM-6 are DESCOPED** under DEC-1's pre-approved split gate.
+**Basis:** live evidence from the review container (`:18140`, real gpt-oss-120b + real BioGnosia
+registered as a system MCP server), plus code archaeology:
+
+1. **The model behavior IS real and was reproduced.** gpt-oss-120b emitted the tool name WITHOUT the
+   `<server_id>__` prefix — bare `query_rag`, exactly as reported.
+2. **ziee already handles it.** The run logged
+   `[mcp] Recovered server_id for prefix-less tool name 'query_rag' -> 'query_rag': 8a5d68f7-…`;
+   the tool routed, executed, returned, and the turn terminated normally with a title.
+   `grep -c 'no valid server_id prefix'` over the whole container log = **0**.
+3. **The fix the brief proposed already exists**, landed in **b5a4fa7e8 (2026-07-10)** —
+   `resolve_server_and_tool` (`mcp.rs:354-373`) — which is an ancestor of this branch.
+4. **H1 disproved for `query_rag`:** probing all three user MCP servers on the live `:8080` deployment
+   shows `query_rag` is advertised by BioGnosia ALONE, so it is uniquely recoverable.
+5. **H2 disproved:** the two early `Continue` returns fire only when no tools are advertised, so the
+   model would have nothing to call.
+6. **No stall mechanism remains:** unroutable tool_uses already get synthetic error `tool_result`s
+   (`mcp.rs:2894-2918`, `:2922-2943`, `:930-952`) and `max_iteration` defaults to **10**, not unlimited.
+7. **The original evidence is unavailable:** the prior worker's conversations lived on the
+   `ziee-review-title` stack at `:18133`, which no longer runs.
+
+Shipping ITEM-6 anyway would change agentic-loop termination for EVERY model in order to fix a stall
+that cannot be reproduced and whose mechanism is bounded — speculative risk with no confirmed defect.
+The one genuine latent case found (`validate_input_file` IS advertised by both RCPA `:9004` and DSCC
+`:9006`, so it is correctly marked ambiguous and refused) is arguably CORRECT behavior: auto-resolving
+it could mis-dispatch a side-effecting tool to the wrong server.
+
 ---
 
 ## Descope dispositions
 
-None yet. If DEC-1's split gate fires after the live diagnosis, ITEM-5 is descoped here as:
-`- DESCOPED: ITEM-5 — <cause found>, larger or model-side than a scoped fix [approved: khoi — split gate pre-approved 2026-07-20]`
-and PLAN.md's ITEM-5 line is marked `[DESCOPED]`. The gate is pre-approved by the lead, so firing it is
-a recorded decision, not a silent cut.
+- DESCOPED: ITEM-5 — the live repro shows gpt-oss prefix-less names ALREADY resolve correctly (recovery landed in b5a4fa7e8); there is no reproducible defect to fix, and the reported stall mechanism is bounded by max_iteration=10 [approved: khoi — split gate pre-approved 2026-07-20, see DEC-1]
+- DESCOPED: ITEM-6 — a repeated-unroutable-call terminator would change agentic-loop termination for ALL models to fix an unreproducible stall; unroutable calls already emit synthetic error tool_results and the loop is already capped [approved: khoi — split gate pre-approved 2026-07-20, see DEC-1]
+
+Both are recorded decisions backed by live evidence (DEC-20), not silent cuts. ITEM-4 still ships: the
+warn site now names the advertised tool set and its ambiguity state, so the next live report is
+diagnosable in one run instead of three hypotheses.

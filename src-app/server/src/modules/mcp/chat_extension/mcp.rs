@@ -338,6 +338,33 @@ fn recover_server_id_for_bare_name(
     map.get(bare).copied().flatten()
 }
 
+/// Render the per-message bare-name map for a diagnostic, naming each advertised
+/// tool and whether it was uniquely attributable.
+///
+/// When recovery fails there are three causes, indistinguishable from the failed
+/// name alone but needing different fixes: nothing was advertised this turn, the
+/// model named a tool that was not advertised, or the name is ambiguous (≥2
+/// servers advertise it, so auto-resolving could mis-dispatch a side-effecting
+/// tool). The advertised set is only in scope at the failure site, so it has to
+/// be rendered there or the information is lost.
+fn describe_advertised_tools(map: &HashMap<String, Option<Uuid>>) -> String {
+    if map.is_empty() {
+        return "<none advertised this turn>".to_string();
+    }
+    // Sorted so the line is stable across runs (HashMap order is not) — a
+    // diagnostic you can diff between two reports is worth more than one you
+    // cannot.
+    let mut entries: Vec<String> = map
+        .iter()
+        .map(|(name, sid)| match sid {
+            Some(id) => format!("{name}={id}"),
+            None => format!("{name}=<ambiguous>"),
+        })
+        .collect();
+    entries.sort();
+    format!("[{}]", entries.join(", "))
+}
+
 /// Resolve `(server_id, tool_name)` from a finalized tool-call wire name.
 ///
 /// A well-formed name is `<server_uuid>__<tool>` — split on the FIRST `__` into a
@@ -3669,10 +3696,20 @@ impl ChatExtension for McpChatExtension {
                     sid.to_string()
                 }
                 None => {
+                    // Report WHY recovery failed, not just that it did. The three
+                    // causes need different fixes and are indistinguishable from
+                    // the bare name alone:
+                    //   - the map is EMPTY  → no tools were advertised this turn
+                    //   - the name is absent → the model invented/renamed a tool
+                    //   - the name maps to `None` → ≥2 servers advertise it, so
+                    //     auto-resolving could mis-dispatch a side-effecting tool
+                    // Diagnosing a live report previously meant guessing between
+                    // them; the advertised set is only in scope right here.
                     tracing::warn!(
                         "[mcp] Tool name has no valid server_id prefix and is not uniquely \
-                         recoverable: {}",
-                        full_name
+                         recoverable: '{}' (advertised this turn: {})",
+                        full_name,
+                        describe_advertised_tools(&bare_name_map)
                     );
                     String::new()
                 }
@@ -4570,7 +4607,8 @@ mod builtin_tests {
 #[cfg(test)]
 mod approval_loop_tests {
     use super::{
-        recover_server_id_for_bare_name, resolve_server_and_tool, resolve_unique_tool_use_id,
+        describe_advertised_tools, recover_server_id_for_bare_name, resolve_server_and_tool,
+        resolve_unique_tool_use_id,
     };
     use std::collections::{HashMap, HashSet};
     use uuid::Uuid;
@@ -4626,6 +4664,36 @@ mod approval_loop_tests {
         let (got_sid, tool) = resolve_server_and_tool("get__weather", &map);
         assert_eq!(got_sid, None, "must not recover to the unrelated `weather` server");
         assert_eq!(tool, "get__weather");
+    }
+
+    /// TEST-9 — the failure diagnostic must distinguish the three causes.
+    ///
+    /// Recovery failing tells you nothing on its own; these three cases need
+    /// different fixes and previously produced the SAME log line, which is why a
+    /// live report could not be diagnosed without guessing.
+    #[test]
+    fn advertised_tools_diagnostic_distinguishes_the_three_causes() {
+        // (a) nothing advertised — MCP was off / no accessible server.
+        assert_eq!(
+            describe_advertised_tools(&HashMap::new()),
+            "<none advertised this turn>"
+        );
+
+        let sid = Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap();
+        let mut map = HashMap::new();
+        map.insert("query_rag".to_string(), Some(sid));
+        // (c) advertised by >=2 servers → deliberately not auto-resolved.
+        map.insert("validate_input_file".to_string(), None);
+
+        let rendered = describe_advertised_tools(&map);
+        assert_eq!(
+            rendered,
+            "[query_rag=11111111-1111-4111-8111-111111111111, validate_input_file=<ambiguous>]",
+            "must name each advertised tool AND mark the ambiguous ones; \
+             sorted so two reports can be diffed"
+        );
+        // (b) a name absent from this rendering is one the model invented.
+        assert!(!rendered.contains("ghost_tool"));
     }
 
     #[test]

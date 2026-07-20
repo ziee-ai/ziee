@@ -31,9 +31,14 @@ already-gated `GET /conversations`, which enforces existing conversation ownersh
 
 ## ITEM-4 / ITEM-5 / ITEM-6 — gpt-oss tool-name routing
 
-- **TEST-9** (tier: unit) [covers: ITEM-4] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: the diagnostic emitted at the unresolved-name site reports the bare-name map's keys AND their ambiguity state (`Some(sid)` vs `None`), so one repro run distinguishes hypothesis H1 (ambiguous) from H2 (map empty) from H3 (name absent). Asserts on the rendered diagnostic payload, not on log plumbing.
-- **TEST-10** (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: the resolution behavior for whichever cause the live repro identifies, alongside the existing `resolve_server_and_tool` / `recover_server_id_for_bare_name` cases. **Written only after the diagnosis**; if the split gate fires (cause is large or model-side), ITEM-5 and this test move to the follow-up PR and are recorded as a DESCOPE in DECISIONS.md.
-- **TEST-11** (tier: unit) [covers: ITEM-6] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: a `tool_use` that is unroutable AND repeats a name already answered with a routing error this turn terminates with `ExtensionAction::Complete`; AND the negative control — a legitimately repeated tool call that RESOLVES (same name, different arguments) still returns `Continue` and is not caught by the terminator.
+- **TEST-9** (tier: unit) [covers: ITEM-4] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: `describe_advertised_tools` renders each advertised tool with its ambiguity state (`name=<uuid>` vs `name=<ambiguous>`), and `<none advertised this turn>` for an empty map — so one repro run distinguishes H1 (ambiguous) from H2 (map empty) from H3 (name absent). Output is sorted so two reports can be diffed. Asserts on the rendered payload, not on log plumbing. **Implemented and passing** (`advertised_tools_diagnostic_distinguishes_the_three_causes`).
+- **TEST-10** [DESCOPED with ITEM-5] (tier: unit) [covers: ITEM-5] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: the resolution behavior for whichever cause the live repro identifies, alongside the existing `resolve_server_and_tool` / `recover_server_id_for_bare_name` cases. **Written only after the diagnosis**; if the split gate fires (cause is large or model-side), ITEM-5 and this test move to the follow-up PR and are recorded as a DESCOPE in DECISIONS.md.
+- **TEST-11** [DESCOPED with ITEM-6] (tier: unit) [covers: ITEM-6] file: `src-app/server/src/modules/mcp/chat_extension/mcp.rs` — asserts: a `tool_use` that is unroutable AND repeats a name already answered with a routing error this turn terminates with `ExtensionAction::Complete`; AND the negative control — a legitimately repeated tool call that RESOLVES (same name, different arguments) still returns `Continue` and is not caught by the terminator.
+
+> **TEST-10 / TEST-11 are DESCOPED** along with ITEM-5 / ITEM-6 — see DECISIONS DEC-20. The live
+> repro on the review container showed gpt-oss's prefix-less `query_rag` ALREADY resolves correctly
+> (`[mcp] Recovered server_id for prefix-less tool name 'query_rag' -> …`, zero warnings), so there is
+> no defect for them to cover. ITEM-4 (TEST-9) still ships.
 
 ## ITEM-7 / ITEM-8 / ITEM-10 — untitled display label
 

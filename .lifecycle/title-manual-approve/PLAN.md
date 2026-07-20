@@ -46,10 +46,10 @@ the hook is never reached at all.
   by ≥2 servers → marked ambiguous; H2 map never built because `before_llm_call` returned `Continue`
   at `mcp.rs:1820`/`:1878` before the map block at `:2174`; H3 model emits a name matching no
   advertised bare name).
-- **ITEM-5**: Fix the cause ITEM-4 identifies. **Split gate:** if the diagnosis reveals a large cause,
+- **ITEM-5**: [DESCOPED] Fix the cause ITEM-4 identifies. **Split gate:** if the diagnosis reveals a large cause,
   or one that is model-side rather than a ziee bug, ITEM-5 moves to its own PR and this PR ships
   ITEMs 1-3 + 6-9.
-- **ITEM-6**: Harden the loop independent of cause — detect a `tool_use` that is unroutable AND repeats
+- **ITEM-6**: [DESCOPED] Harden the loop independent of cause — detect a `tool_use` that is unroutable AND repeats
   a name already answered with a routing error this turn, and terminate with `ExtensionAction::Complete`
   instead of feeding the model another identical error and burning iterations. Kills the
   "spins and never terminates" class even if the root cause is model-side.
