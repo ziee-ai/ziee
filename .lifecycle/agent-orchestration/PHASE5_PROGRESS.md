@@ -44,7 +44,10 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 25 | Group C sandbox background-exec (JobKind::SandboxExec) | 11, 12, 13 (30/31 sdk flagged) | `cargo check -p ziee` + 8/8 unit (parent-run); JobKind pre-existed → reuse | (committed) | ✅ VERIFIED |
 | 26 | Group I summarizer-unify + 9-section (agent-core) | 56, 60 | agent-core 17 + server 40 tests; `cargo check` both (parent combined-run) | (committed) | ✅ VERIFIED |
 | 27 | Run-detail REST + scheduler notif-kind (backend) | 8-detail, 26-kind | `cargo check -p ziee` + 13/13 background_mcp::runs (parent combined-run; T27 own-verify was cargo-lock-blocked) | (committed) | ✅ VERIFIED |
-| — | Batched openapi-regen #5 (BackgroundRunDetail + getRun) | — | in flight | — | 🔄 |
+| — | Batched openapi-regen #5 (BackgroundRunDetail + getRun) | — | `types_ts_parity{,_desktop}` PASS | (committed) | ✅ |
+| 29 (FE) | Inline background-run result view (getRun, by-kind render) | 8-detail-FE | `tsc` exit 0 + lints (parent-run) | (committed) | ✅ VERIFIED |
+| 28 | Sub-agent-activity SSE frame (agent-core + chat SSE) | 4-live | agent-core 97 + streaming 3 (parent-run); `cargo check` both | (committed) | ✅ VERIFIED |
+| — | Batched openapi-regen #6 (subAgentActivity frame + DTOs) | — | in flight | — | 🔄 |
 
 ## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
 Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
