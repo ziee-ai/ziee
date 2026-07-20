@@ -31,6 +31,11 @@
     "ignoreDeprecations": "6.0",
     "paths": {
       "@/api-client/types": ["./src/api-client/types.ts"],
+      "@/api-client/permissions": ["./src/api-client/permissions.ts"],
+      "@/api-client/permissionDescriptions": [
+        "./src/api-client/permissionDescriptions.ts"
+      ],
+      "@/api-client/apiEndpoints": ["./src/api-client/apiEndpoints.ts"],
       "@ziee/desktop": ["./src"],
       "@ziee/desktop/*": ["./src/*"],
       "@/*": ["../../ui/src/*"],
