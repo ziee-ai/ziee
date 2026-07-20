@@ -21,6 +21,8 @@ const SETTINGS: AgentAdminSettings = {
   default_max_steps: 30,
   fan_out_max_threads: 6,
   fan_out_max_depth: 1,
+  fan_out_max_children_per_call: 8,
+  goal_seek_max_turns: 10,
   updated_at: '2026-07-01T00:00:00.000Z',
 }
 

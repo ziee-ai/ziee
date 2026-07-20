@@ -83,6 +83,7 @@ export const gallery: ModuleGallery = {
       max_active_tasks_per_user: 20,
       max_consecutive_failures: 5,
       min_interval_seconds: 300,
+      max_horizon_days: 7,
       notification_retention_days: 30,
       updated_at: '2026-01-01T00:00:00.000Z',
     },
