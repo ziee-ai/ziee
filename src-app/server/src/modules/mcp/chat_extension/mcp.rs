@@ -2267,10 +2267,25 @@ impl ChatExtension for McpChatExtension {
             );
         }
 
-        // Add tools to ChatRequest
+        // Add tools to ChatRequest.
         if !all_tools.is_empty() {
             tracing::info!("Adding {} tools to ChatRequest", all_tools.len());
-            request.tools = all_tools;
+            // MERGE (don't REPLACE): agent-core appends its core tools (`task_*`, `delegate`)
+            // onto `request.tools` in `core.rs` BEFORE this MCP-collector extension runs. A plain
+            // `request.tools = all_tools` silently DROPPED them — and since built-in MCP servers
+            // always auto-attach (so `all_tools` is never empty), the self-managed task-list and
+            // on-demand delegation were dead in the agent-core chat path whenever any built-in was
+            // attached (i.e. always). Keep the MCP tools AND any request tool not shadowed by an
+            // MCP tool of the same name (the agent-core core tools). MCP tools win on a name clash.
+            let mcp_names: std::collections::HashSet<String> =
+                all_tools.iter().map(|t| t.function.name.clone()).collect();
+            let mut merged = all_tools;
+            for carried in std::mem::take(&mut request.tools) {
+                if !mcp_names.contains(&carried.function.name) {
+                    merged.push(carried);
+                }
+            }
+            request.tools = merged;
 
             // On the first iteration, nudge the model to prefer tools over training knowledge.
             // This is a soft hint — the model can still answer directly if no tool is relevant.
