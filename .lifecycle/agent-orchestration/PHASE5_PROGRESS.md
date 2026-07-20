@@ -34,8 +34,9 @@ The formal **DRIFT-N.md** + **INFRA_INTEGRATION.md** are assembled once all tran
 | 15 (FE) | Task-list live handler + per-tool approval UI | 36-live-FE, 55-FE | `tsc --noEmit` exit 0 + 3 lints (parent-run) | (committed) | ✅ VERIFIED |
 | 16 | Group F inbox kind + steer note-queue (backend) | 26-be, 25-storage | `cargo clean+check -p ziee` + 3 repo DB tests (parent-run) | (committed) | ✅ VERIFIED |
 | 17 | Steer loop-read seam (SteerNotePort, agent-core) | 25-loop | `cargo check -p agent-core` + -p ziee + steer unit (parent-run); amended 3 missed fan-in files | (committed) | ✅ VERIFIED |
-| 18 (FE) | Agent inbox surface (notification composition) | 26-FE | pending (tsc) | — | 🔄 in progress |
-| 19 | schedule_next self-paced model tool (agent-core + scheduler) | DEC-42 | pending | — | 🔄 in progress |
+| 18 (FE) | Agent inbox surface (/notifications/background) | 26-FE | `tsc` exit 0 + lints (parent-run) | (committed) | ✅ VERIFIED |
+| 19 | schedule_next self-paced model tool (agent-core + scheduler) | DEC-42 | agent-core 90/90 (4 new) + scheduler 18/18 (3 new) + ziee fan-in (parent-run) | (committed) | ✅ VERIFIED |
+| — | Batched openapi-regen #3 (RunNote/CreateRunNote) | — | in flight | — | 🔄 |
 
 ## Quota RESUMED 2026-07-19 — autonomous drive to 9/9
 Weekly limit lifted; sub-agent tranche loop resumed. openapi-regen fan-in already batched (commit
