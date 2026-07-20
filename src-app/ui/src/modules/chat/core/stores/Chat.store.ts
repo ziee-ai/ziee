@@ -259,7 +259,7 @@ export function rehydrateTabs(persisted: RightPanelTab[]): RightPanelTab[] {
 /**
  * Snapshot of conversation state for caching
  */
-interface ChatStateSnapshot {
+export interface ChatStateSnapshot {
   conversation: Conversation | null
   messages: Map<string, MessageWithContent>
   streamingMessage: MessageWithContent | null
@@ -370,11 +370,11 @@ export interface ChatState {
 
   // ── Conversation state management ────────────────────────────────────────
 
-  saveConversationState: (conversationId: string) => void
+  saveConversationState: (conversationId: string) => Promise<void>
   loadConversationState: (conversationId: string) => Promise<boolean>
-  scheduleCacheClear: (conversationId: string, delayMs?: number) => void
-  cancelCacheClear: (conversationId: string) => void
-  clearConversationCache: (conversationId: string) => void
+  scheduleCacheClear: (conversationId: string, delayMs?: number) => Promise<void>
+  cancelCacheClear: (conversationId: string) => Promise<void>
+  clearConversationCache: (conversationId: string) => Promise<void>
 
   // ── Core actions ──────────────────────────────────────────────────────────
 
@@ -406,7 +406,7 @@ export interface ChatState {
   sendMessage: () => Promise<void>
   applyStreamFrame: (conversationId: string, event: any) => Promise<void>
   updateConversation: (updates: { title?: string }) => Promise<void>
-  clearError: () => void
+  clearError: () => Promise<void>
   reset: () => void
 
   // ── Branch actions ────────────────────────────────────────────────────────
@@ -414,9 +414,9 @@ export interface ChatState {
   loadBranches: (conversationId: string) => Promise<void>
   activateBranch: (conversationId: string, branchId: string) => Promise<void>
   computeForkPoints: () => Promise<void>
-  trimMessagesToForkPoint: (forkMessageId: string) => void
-  captureBranchForkLevel: (branchId: string) => void
-  clearPendingBranch: () => void
+  trimMessagesToForkPoint: (forkMessageId: string) => Promise<void>
+  captureBranchForkLevel: (branchId: string) => Promise<void>
+  clearPendingBranch: () => Promise<void>
 
   /**
    * Enter edit mode for a user message.
@@ -453,10 +453,10 @@ export interface ChatState {
   /** Attach a per-pane extension runtime (called by ChatPaneProvider on mount). */
   attachExtensionRuntime: (
     runtime: import('../extensions/types').ExtensionLifecycle | null,
-  ) => void
+  ) => Promise<void>
   /** Set this pane's stable id (called by ChatPaneProvider on mount). */
-  setPaneId: (paneId: string | null) => void
-  stopStreaming: () => void
+  setPaneId: (paneId: string | null) => Promise<void>
+  stopStreaming: () => Promise<void>
 
   // ── Right panel ───────────────────────────────────────────────────────────
 
@@ -466,17 +466,17 @@ export interface ChatState {
     activeId: string | null
     mobileDrawerOpen: boolean
   }
-  displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => void
+  displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => Promise<void>
   /** Patch an existing right-panel tab's `data` in place (no-op if the tab is
    *  gone) and re-persist the conversation snapshot. `displayInRightPanel` only
    *  upserts/focuses; this is how an open panel (e.g. literature screening)
    *  saves evolving state so it survives reload. */
-  updateRightPanelTab: <T extends PanelType>(id: string, data: PanelRendererMap[T]) => void
-  setActiveRightPanelTab: (id: string) => void
-  closeRightPanelTab: (id: string) => void
-  closeAllRightPanelTabs: () => void
-  closeMobileDrawer: () => void
-  setRightPanelWidth: (width: number) => void
+  updateRightPanelTab: <T extends PanelType>(id: string, data: PanelRendererMap[T]) => Promise<void>
+  setActiveRightPanelTab: (id: string) => Promise<void>
+  closeRightPanelTab: (id: string) => Promise<void>
+  closeAllRightPanelTabs: () => Promise<void>
+  closeMobileDrawer: () => Promise<void>
+  setRightPanelWidth: (width: number) => Promise<void>
 
   // ── Lifecycle methods ─────────────────────────────────────────────────────
 
@@ -556,7 +556,13 @@ export type ChatSet = StoreSet<ChatInitialState>
 const chatStoreConfig = {
   state: chatInitialState,
   lazyActions: {
+    attachExtensionRuntime: () => import('./chat/actions/attachExtensionRuntime'),
+    setPaneId: () => import('./chat/actions/setPaneId'),
+    saveConversationState: () => import('./chat/actions/saveConversationState'),
     loadConversationState: () => import('./chat/actions/loadConversationState'),
+    scheduleCacheClear: () => import('./chat/actions/scheduleCacheClear'),
+    cancelCacheClear: () => import('./chat/actions/cancelCacheClear'),
+    clearConversationCache: () => import('./chat/actions/clearConversationCache'),
     createConversation: () => import('./chat/actions/createConversation'),
     loadConversation: () => import('./chat/actions/loadConversation'),
     loadMessages: () => import('./chat/actions/loadMessages'),
@@ -567,262 +573,25 @@ const chatStoreConfig = {
     loadBranches: () => import('./chat/actions/loadBranches'),
     activateBranch: () => import('./chat/actions/activateBranch'),
     computeForkPoints: () => import('./chat/actions/computeForkPoints'),
+    trimMessagesToForkPoint: () => import('./chat/actions/trimMessagesToForkPoint'),
+    captureBranchForkLevel: () => import('./chat/actions/captureBranchForkLevel'),
+    clearPendingBranch: () => import('./chat/actions/clearPendingBranch'),
     startEditMessage: () => import('./chat/actions/startEditMessage'),
     cancelEdit: () => import('./chat/actions/cancelEdit'),
     startRegenerateMessage: () => import('./chat/actions/startRegenerateMessage'),
     applyStreamFrame: () => import('./chat/actions/applyStreamFrame'),
     sendMessage: () => import('./chat/actions/sendMessage'),
     updateConversation: () => import('./chat/actions/updateConversation'),
+    clearError: () => import('./chat/actions/clearError'),
+    stopStreaming: () => import('./chat/actions/stopStreaming'),
+    displayInRightPanel: () => import('./chat/actions/displayInRightPanel'),
+    updateRightPanelTab: () => import('./chat/actions/updateRightPanelTab'),
+    setActiveRightPanelTab: () => import('./chat/actions/setActiveRightPanelTab'),
+    closeRightPanelTab: () => import('./chat/actions/closeRightPanelTab'),
+    closeAllRightPanelTabs: () => import('./chat/actions/closeAllRightPanelTabs'),
+    closeMobileDrawer: () => import('./chat/actions/closeMobileDrawer'),
+    setRightPanelWidth: () => import('./chat/actions/setRightPanelWidth'),
     reset: () => import('./chat/actions/reset'),
-  },
-  actions: (
-    set: StoreSet<typeof chatInitialState>,
-    getRaw: () => typeof chatInitialState,
-  ) => {
-    const get = getRaw as () => ChatState
-    return {
-
-    /** Attach a per-pane extension runtime (ChatPaneProvider, on mount). */
-    attachExtensionRuntime: (
-      runtime: import('../extensions/types').ExtensionLifecycle | null,
-    ) => {
-      set({ extensionRuntime: runtime })
-    },
-
-    /** Set this pane's stable id (ChatPaneProvider, on mount). */
-    setPaneId: (paneId: string | null) => {
-      set({ paneId })
-    },
-
-    // ── Conversation state management ──────────────────────────────────────
-
-    saveConversationState: (conversationId: string) => {
-      const state = get()
-      const snapshot: ChatStateSnapshot = {
-        conversation: state.conversation,
-        messages: new Map(state.messages),
-        streamingMessage: state.streamingMessage,
-        tempUserMessageId: state.tempUserMessageId,
-        isStreaming: state.isStreaming,
-        hasMoreBefore: state.hasMoreBefore,
-        hasMoreAfter: state.hasMoreAfter,
-      }
-      set(state => {
-        const newCache = new Map(state.conversationStateCache)
-        newCache.set(conversationId, snapshot)
-        return { conversationStateCache: newCache }
-      })
-      console.log(
-        `[Chat.store] Saved conversation state for: ${conversationId}`,
-      )
-    },
-
-    scheduleCacheClear: (
-      conversationId: string,
-      delayMs: number = 5 * 60 * 1000,
-    ) => {
-      get().cancelCacheClear(conversationId)
-
-      const timer = setTimeout(() => {
-        get().clearConversationCache(conversationId)
-        console.log(
-          `[Chat.store] Auto-cleared cache for conversation: ${conversationId}`,
-        )
-      }, delayMs)
-
-      set(state => {
-        const newTimers = new Map(state.cacheClearTimers)
-        newTimers.set(conversationId, timer)
-        return { cacheClearTimers: newTimers }
-      })
-      const delayMinutes = Math.round(delayMs / 60000)
-      console.log(
-        `[Chat.store] Scheduled cache clear for ${conversationId} in ${delayMinutes} minute(s)`,
-      )
-    },
-
-    cancelCacheClear: (conversationId: string) => {
-      const state = get()
-      const timer = state.cacheClearTimers.get(conversationId)
-      if (timer) {
-        clearTimeout(timer)
-        set(state => {
-          const newTimers = new Map(state.cacheClearTimers)
-          newTimers.delete(conversationId)
-          return { cacheClearTimers: newTimers }
-        })
-        console.log(
-          `[Chat.store] Cancelled cache clear for conversation: ${conversationId}`,
-        )
-      }
-    },
-
-    clearConversationCache: (conversationId: string) => {
-      get().cancelCacheClear(conversationId)
-      set(state => {
-        const newCache = new Map(state.conversationStateCache)
-        newCache.delete(conversationId)
-        return { conversationStateCache: newCache }
-      })
-      console.log(
-        `[Chat.store] Cleared cache for conversation: ${conversationId}`,
-      )
-    },
-
-    trimMessagesToForkPoint: (forkMessageId: string) => {
-      set(state => {
-        const sorted = [...state.messages.values()].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-        )
-        const forkIndex = sorted.findIndex(m => m.id === forkMessageId)
-        if (forkIndex === -1) return {}
-        const newMessages = new Map(state.messages)
-        sorted.slice(forkIndex).forEach(m => newMessages.delete(m.id))
-        return { messages: newMessages }
-      })
-    },
-
-    captureBranchForkLevel: (branchId: string) => {
-      const level = get().pendingBranchForkLevel
-      const newLevels = new Map(get().branchForkLevels)
-      newLevels.set(branchId, level ?? 'user')
-      set({ branchForkLevels: newLevels, pendingBranchForkLevel: null })
-    },
-
-    clearPendingBranch: () => {
-      set({
-        pendingBranchFromMessageId: null,
-        pendingBranchForkLevel: null,
-        editingMessage: null,
-      })
-    },
-
-    clearError: () => set({ error: null }),
-
-    stopStreaming: () => {
-      // Generation runs server-side (detached); cancel it via the stop
-      // endpoint. The detached task emits a `complete` (cancelled) frame which
-      // `applyStreamFrame` then reconciles.
-      const conversation = get().conversation
-      const messageId = get().streamingMessageId
-      if (conversation && messageId) {
-        void ApiClient.Message.stopGeneration({
-          conversation_id: conversation.id,
-          assistant_message_id: messageId,
-        })
-      }
-    },
-
-    displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => {
-      set(state => {
-        const exists = state.rightPanel.tabs.some(t => t.id === entry.id)
-        if (exists) {
-          return {
-            rightPanel: {
-              ...state.rightPanel,
-              activeId: entry.id,
-              mobileDrawerOpen: true,
-            },
-          }
-        }
-        return {
-          rightPanel: {
-            ...state.rightPanel,
-            tabs: [...state.rightPanel.tabs, entry as RightPanelTab],
-            activeId: entry.id,
-            mobileDrawerOpen: true,
-          },
-        }
-      })
-      const { rightPanel, conversation } = get()
-      if (conversation) {
-        savePanelSnapshotForConversation(
-          conversation.id,
-          rightPanel.tabs,
-          rightPanel.activeId,
-        )
-      }
-    },
-
-    updateRightPanelTab: <T extends PanelType>(id: string, data: PanelRendererMap[T]) => {
-      set(state => {
-        const idx = state.rightPanel.tabs.findIndex(t => t.id === id)
-        if (idx === -1) return state
-        const tabs = state.rightPanel.tabs.slice()
-        tabs[idx] = { ...tabs[idx], data: data as RightPanelTab['data'] }
-        return { rightPanel: { ...state.rightPanel, tabs } }
-      })
-      const { rightPanel, conversation } = get()
-      if (conversation) {
-        savePanelSnapshotForConversation(
-          conversation.id,
-          rightPanel.tabs,
-          rightPanel.activeId,
-        )
-      }
-    },
-
-    setActiveRightPanelTab: (id: string) => {
-      set(state => {
-        if (!state.rightPanel.tabs.some(t => t.id === id)) return state
-        return { rightPanel: { ...state.rightPanel, activeId: id } }
-      })
-    },
-
-    closeRightPanelTab: (id: string) => {
-      set(state => {
-        const tabs = state.rightPanel.tabs.filter(t => t.id !== id)
-        let activeId = state.rightPanel.activeId
-        if (activeId === id) {
-          const closedIndex = state.rightPanel.tabs.findIndex(t => t.id === id)
-          const next = tabs[closedIndex] ?? tabs[closedIndex - 1] ?? null
-          activeId = next?.id ?? null
-        }
-        const mobileDrawerOpen =
-          tabs.length > 0 ? state.rightPanel.mobileDrawerOpen : false
-        return {
-          rightPanel: { ...state.rightPanel, tabs, activeId, mobileDrawerOpen },
-        }
-      })
-      const { rightPanel, conversation } = get()
-      if (conversation) {
-        savePanelSnapshotForConversation(
-          conversation.id,
-          rightPanel.tabs,
-          rightPanel.activeId,
-        )
-      }
-    },
-
-    closeAllRightPanelTabs: () => {
-      set(state => ({
-        rightPanel: {
-          ...state.rightPanel,
-          tabs: [],
-          activeId: null,
-          mobileDrawerOpen: false,
-        },
-      }))
-      const { conversation } = get()
-      if (conversation) {
-        savePanelSnapshotForConversation(conversation.id, [], null)
-      }
-    },
-
-    closeMobileDrawer: () => {
-      set(state => ({
-        rightPanel: { ...state.rightPanel, mobileDrawerOpen: false },
-      }))
-    },
-
-    setRightPanelWidth: (width: number) => {
-      set(state => ({ rightPanel: { ...state.rightPanel, panelWidth: width } }))
-    },
-
-    // ── Lifecycle methods ──────────────────────────────────────────────────
-
-    }
   },
   init: ({
     set,
@@ -832,20 +601,17 @@ const chatStoreConfig = {
   }: StoreInitCtx<typeof chatInitialState>) => {
     const get = getRaw as () => ChatState
 
-    // Warm the lazy-action chunks OFF the first-render path. `init` runs at first
-    // store access (during/after the initial render), and `.preload()` only kicks
-    // off a background dynamic import — it never blocks paint. The render-critical
-    // + streaming actions warm immediately so the first send/stream has no hop;
-    // the rest warm on idle so they're ready for interaction without competing
-    // with first paint. Chunks are module-global, so priming via the singleton
-    // (`useChatStore`) warms them for every pane. Typed `.preload()` comes from
-    // the inferred lazy-dispatcher type (ChatState declares plain fns).
+    // Warm the lazy-action chunks OFF the first-render path (init runs at first
+    // store access, post-initial-render; `.preload()` only starts a background
+    // import, never blocking paint). Render-critical + streaming actions warm
+    // immediately; the rest on idle. Chunks are module-global, primed via the
+    // singleton for every pane. Also satisfies the prefetch gate for all actions.
     const cs = useChatStore.getState()
-    void cs.loadConversation.preload()
-    void cs.loadMessages.preload()
-    void cs.loadConversationState.preload()
-    void cs.reconcileTail.preload()
     void cs.applyStreamFrame.preload()
+    void cs.loadConversation.preload()
+    void cs.loadConversationState.preload()
+    void cs.loadMessages.preload()
+    void cs.reconcileTail.preload()
     void cs.sendMessage.preload()
     const warmIdle = (cb: () => void) => {
       if (typeof requestIdleCallback !== 'undefined') requestIdleCallback(cb)
@@ -853,18 +619,36 @@ const chatStoreConfig = {
     }
     warmIdle(() => {
       const c = useChatStore.getState()
+      void c.activateBranch.preload()
+      void c.attachExtensionRuntime.preload()
+      void c.cancelCacheClear.preload()
+      void c.cancelEdit.preload()
+      void c.captureBranchForkLevel.preload()
+      void c.clearConversationCache.preload()
+      void c.clearError.preload()
+      void c.clearPendingBranch.preload()
+      void c.closeAllRightPanelTabs.preload()
+      void c.closeMobileDrawer.preload()
+      void c.closeRightPanelTab.preload()
+      void c.computeForkPoints.preload()
       void c.createConversation.preload()
-      void c.updateConversation.preload()
-      void c.loadOlderMessages.preload()
-      void c.loadNewerMessages.preload()
+      void c.displayInRightPanel.preload()
       void c.jumpToMessage.preload()
       void c.loadBranches.preload()
-      void c.activateBranch.preload()
-      void c.computeForkPoints.preload()
-      void c.startEditMessage.preload()
-      void c.cancelEdit.preload()
-      void c.startRegenerateMessage.preload()
+      void c.loadNewerMessages.preload()
+      void c.loadOlderMessages.preload()
       void c.reset.preload()
+      void c.saveConversationState.preload()
+      void c.scheduleCacheClear.preload()
+      void c.setActiveRightPanelTab.preload()
+      void c.setPaneId.preload()
+      void c.setRightPanelWidth.preload()
+      void c.startEditMessage.preload()
+      void c.startRegenerateMessage.preload()
+      void c.stopStreaming.preload()
+      void c.trimMessagesToForkPoint.preload()
+      void c.updateConversation.preload()
+      void c.updateRightPanelTab.preload()
     })
 
     // Idempotent: `__init__.__store__` can be invoked more than once per instance
@@ -1010,7 +794,10 @@ const chatStoreConfig = {
         // creation (ITEM-35) — no global `chat:token` / `chat:stream-reconnect`
         // EventBus subscription, so a same-conversation split never double-applies.
     })()
-    onCleanup(() => {
+    // async: teardown awaits the lazy `saveConversationState` before clearing
+    // state, so the pane's conversation is persisted for restore-on-reopen.
+    // `onCleanup` fire-and-forgets it (the store instance outlives the await).
+    onCleanup(async () => {
       console.log('[Chat.store] Destroying - cleaning up resources')
 
       // Stop this instance's own stream client (its own SSE connection). The
@@ -1056,7 +843,7 @@ const chatStoreConfig = {
       }
 
       if (state.conversation) {
-        get().saveConversationState(state.conversation.id)
+        await get().saveConversationState(state.conversation.id)
 
         // Route through THIS pane's runtime (ITEM-34) so a pane's teardown cleans
         // up its OWN extension subscriptions, not the singleton's; single-pane

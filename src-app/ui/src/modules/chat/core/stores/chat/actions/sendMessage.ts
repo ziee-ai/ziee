@@ -145,7 +145,7 @@ export default (set: ChatSet, getRaw: () => ChatInitialState) => {
         }
 
         await chatExtensionRegistry.onMessageSent(get().paneId)
-        get().clearPendingBranch()
+        await get().clearPendingBranch()
         set({ sending: false })
       } catch (error: any) {
         const isAborted = error instanceof Error && error.name === 'AbortError'

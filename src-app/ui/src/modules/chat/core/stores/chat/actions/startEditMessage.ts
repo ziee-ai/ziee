@@ -7,7 +7,7 @@ export default (set: ChatSet, getRaw: () => ChatInitialState) => {
       if (!message || message.role !== 'user') return
 
       // Trim messages to fork point so UI shows clean branch base immediately
-      get().trimMessagesToForkPoint(messageId)
+      await get().trimMessagesToForkPoint(messageId)
 
       // Set editing state — extensions subscribe to editingMessage via
       // useChatStore.subscribe() in their initialize() hooks

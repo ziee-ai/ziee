@@ -58,7 +58,7 @@ export default (set: ChatSet, getRaw: () => ChatInitialState) => {
               : null,
             branchChangedDuringStream: true,
           }))
-          get().captureBranchForkLevel(event.branch_id)
+          await get().captureBranchForkLevel(event.branch_id)
           const conversation = get().conversation
           if (conversation) await get().loadBranches(conversation.id)
         }

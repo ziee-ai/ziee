@@ -34,7 +34,7 @@ export default (set: ChatSet, getRaw: () => ChatInitialState) => {
         console.log(
           `[Chat.store] Switching from ${currentConversation.id} to ${id} - saving current state`,
         )
-        get().saveConversationState(currentConversation.id)
+        await get().saveConversationState(currentConversation.id)
         get().scheduleCacheClear(currentConversation.id)
 
         // Save outgoing conversation's panel tabs to localStorage, then clear panel

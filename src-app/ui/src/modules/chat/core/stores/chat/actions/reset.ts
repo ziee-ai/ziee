@@ -12,7 +12,7 @@ export default (set: ChatSet, getRaw: () => ChatInitialState) => {
       void get().chatStreamClient?.setActiveConversation(null)
       const { conversation } = get()
       if (conversation) {
-        get().saveConversationState(conversation.id)
+        await get().saveConversationState(conversation.id)
         get().scheduleCacheClear(conversation.id)
 
         // Save outgoing conversation's panel tabs to localStorage before clearing

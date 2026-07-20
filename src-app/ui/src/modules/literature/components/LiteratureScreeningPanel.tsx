@@ -41,7 +41,10 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
       (chat.$.rightPanel.tabs.find(t => t.id === data.sessionId)?.data as
         | LiteratureScreeningData
         | undefined) ?? data
-    chat.updateRightPanelTab<'literature'>(data.sessionId, {
+    // The lazy-action dispatcher erases the `<T extends PanelType>` generic, so
+    // the explicit `<'literature'>` type arg is dropped; `data` widens to the
+    // panel-data union, of which LiteratureScreeningData is a member.
+    chat.updateRightPanelTab(data.sessionId, {
       ...current,
       ...update(current),
     })

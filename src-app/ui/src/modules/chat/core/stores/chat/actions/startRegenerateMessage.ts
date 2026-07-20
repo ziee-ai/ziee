@@ -1,3 +1,4 @@
+
 import type { ChatSet, ChatInitialState, ChatState } from '@/modules/chat/core/stores/Chat.store'
 
 export default (set: ChatSet, getRaw: () => ChatInitialState) => {
@@ -58,7 +59,7 @@ export default (set: ChatSet, getRaw: () => ChatInitialState) => {
 
       // Trim the user message and everything after so the UI shows a clean
       // state during streaming
-      get().trimMessagesToForkPoint(precedingUserMsg.id)
+      await get().trimMessagesToForkPoint(precedingUserMsg.id)
 
       await get().sendMessage()
     }
