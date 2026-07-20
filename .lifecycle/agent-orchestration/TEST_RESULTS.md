@@ -106,7 +106,7 @@ PASS = unit/integration behavior covered by a green suite this phase (agent-core
 - **TEST-95**: PASS
 - **TEST-96**: PASS
 - **TEST-97**: PASS
-- **TEST-98**: SKIP
+- **TEST-98**: PASS
 - **TEST-99**: PASS
 - **TEST-100**: PASS
 - **TEST-101**: PASS
