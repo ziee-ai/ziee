@@ -217,8 +217,8 @@ export const gallery: ModuleGallery = {
       ),
       setup: async () => {
         const { AppMode } = await import('@/modules/app/AppMode.store')
-        const { McpUserPolicy } = await import(
-          '@/modules/mcp/stores/McpUserPolicy.store'
+        const { McpUserPolicyDef: McpUserPolicy } = await import(
+          './stores/mcpUserPolicy'
         )
         await holdPatch(() => {
           AppMode.store.setState({ multiUserMode: true } as any)
