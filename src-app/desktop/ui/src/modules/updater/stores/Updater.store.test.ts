@@ -31,7 +31,7 @@ vi.mock('@tauri-apps/api/app', () => ({
   getVersion: vi.fn().mockResolvedValue('1.2.3'),
 }))
 
-import { useUpdaterStore } from '@ziee/desktop/modules/updater/stores/Updater.store'
+import { useUpdaterStore } from '@ziee/desktop/modules/updater/stores/updater'
 
 function statusPayload(overrides = {}) {
   return {
@@ -52,7 +52,9 @@ function statusPayload(overrides = {}) {
 beforeEach(() => {
   useUpdaterStore.getState().stopPolling()
   useUpdaterStore.getState().stopDailyChecks()
-  useUpdaterStore.setState({
+  // Cast to any: lazy-action dispatchers widen the Zustand state type so
+  // TypeScript refuses { checking: false } as Partial<FullStoreState>.
+  ;(useUpdaterStore.setState as any)({
     currentVersion: null,
     checking: false,
     available: false,
@@ -187,7 +189,7 @@ describe('Stores.Updater', () => {
     it('auto-installs once the download is ready (poll sees ready_to_install)', async () => {
       // Simulate being mid-install-flow: autoInstall set, then a poll tick
       // reports the bytes are ready.
-      useUpdaterStore.setState({ autoInstall: true, downloading: true })
+      ;(useUpdaterStore.setState as any)({ autoInstall: true, downloading: true })
       apiMock.Updater.status.mockResolvedValueOnce(
         statusPayload({ downloading: false, ready_to_install: true, progress: 100 }),
       )
@@ -224,7 +226,7 @@ describe('Stores.Updater', () => {
 
   describe('remindLater', () => {
     it('dismisses the card for this session', () => {
-      useUpdaterStore.setState({ available: true, dismissed: false })
+      ;(useUpdaterStore.setState as any)({ available: true, dismissed: false })
 
       useUpdaterStore.getState().remindLater()
 
@@ -234,7 +236,7 @@ describe('Stores.Updater', () => {
 
   describe('daily background check', () => {
     it('check({ resurface: true }) un-dismisses a previously hidden update', async () => {
-      useUpdaterStore.setState({ dismissed: true })
+      ;(useUpdaterStore.setState as any)({ dismissed: true })
       apiMock.Updater.check.mockResolvedValueOnce({ available: true, version: '2.0.0', notes: '' })
 
       await useUpdaterStore.getState().check({ resurface: true })
@@ -243,7 +245,7 @@ describe('Stores.Updater', () => {
     })
 
     it('a plain check() does NOT un-dismiss', async () => {
-      useUpdaterStore.setState({ dismissed: true })
+      ;(useUpdaterStore.setState as any)({ dismissed: true })
       apiMock.Updater.check.mockResolvedValueOnce({ available: true, version: '2.0.0', notes: '' })
 
       await useUpdaterStore.getState().check()
@@ -252,7 +254,7 @@ describe('Stores.Updater', () => {
     })
 
     it('resurface only un-dismisses when an update is actually available', async () => {
-      useUpdaterStore.setState({ dismissed: true })
+      ;(useUpdaterStore.setState as any)({ dismissed: true })
       apiMock.Updater.check.mockResolvedValueOnce({ available: false, version: null, notes: null })
 
       await useUpdaterStore.getState().check({ resurface: true })
@@ -293,7 +295,7 @@ describe('Stores.Updater', () => {
     it('skips the daily re-check while a download/install is in progress', async () => {
       vi.useFakeTimers()
       try {
-        useUpdaterStore.setState({ downloading: true })
+        ;(useUpdaterStore.setState as any)({ downloading: true })
         apiMock.Updater.check.mockResolvedValue({ available: false, version: null, notes: null })
         useUpdaterStore.getState().startDailyChecks()
 

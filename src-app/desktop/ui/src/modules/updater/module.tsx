@@ -14,7 +14,7 @@ import { lazy } from 'react'
 import { Info } from 'lucide-react'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 
-import { useUpdaterStore } from '@ziee/desktop/modules/updater/stores/Updater.store'
+import { useUpdaterStore } from '@ziee/desktop/modules/updater/stores/updater'
 import { UpdateBanner } from './components/UpdateBanner'
 
 const AboutPage = lazy(() =>
