@@ -3,7 +3,7 @@ import { Button, Select, Tooltip } from '@ziee/kit'
 import { TriangleAlert } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import type { ProviderWithModels } from '@/api-client/types'
-import { newChatModelKey } from '@/modules/user-llm-providers/ModelPicker.store'
+import { newChatModelKey } from '@/modules/user-llm-providers/modelPicker'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
 

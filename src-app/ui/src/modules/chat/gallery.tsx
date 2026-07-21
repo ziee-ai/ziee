@@ -23,7 +23,7 @@ import { chatCassette } from '@/dev/gallery/fixtures/chat'
 import { useChatStore } from '@/modules/chat/core/stores/chat'
 import { useFileStore } from '@/modules/file/stores/File.store'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
-import { ModelPicker } from '@/modules/user-llm-providers/ModelPicker.store'
+import { useModelPickerStore } from '@/modules/user-llm-providers/modelPicker'
 import {
   BRANCHED_ANCHOR_MESSAGE_ID,
   BRANCHED_BRANCH_IDS,
@@ -150,7 +150,7 @@ export const gallery: ModuleGallery = {
         // holdForever re-asserts every 150ms so the composer's own loadProviders()
         // (which refills from the cassette on mount) can't repopulate it.
         holdForever(() =>
-          ModelPicker.store.setState({
+          useModelPickerStore.setState({
             providers: [],
             selectedModelId: null,
             loading: false,

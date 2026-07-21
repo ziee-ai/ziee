@@ -6,7 +6,7 @@ import type { Conversation } from '@/api-client/types'
  * Model Extension (frontend chat-extension shim).
  *
  * Bridges the chat composer to the user-llm-providers module. The
- * picker state lives in modules/user-llm-providers/ModelPicker.store.ts
+ * picker state lives in modules/user-llm-providers/modelPicker/
  * (registered as Stores.ModelPicker), NOT under Stores.Chat. This
  * extension is a thin UI shim that:
  *   - Renders the toolbar model selector slot.
@@ -30,7 +30,7 @@ const modelExtension: ChatExtension = createExtension({
   initialize: async (ctx) => {
     const { Stores } = await import('@ziee/framework/stores')
     const { newChatModelKey } = await import(
-      '@/modules/user-llm-providers/ModelPicker.store'
+      '@/modules/user-llm-providers/modelPicker'
     )
 
     // Editing-message → restore the message's model id, then fall back to the
@@ -76,7 +76,7 @@ const modelExtension: ChatExtension = createExtension({
   composeRequestFields: async ctx => {
     const { Stores } = await import('@ziee/framework/stores')
     const { newChatModelKey } = await import(
-      '@/modules/user-llm-providers/ModelPicker.store'
+      '@/modules/user-llm-providers/modelPicker'
     )
     const key = ctx.conversationId ?? newChatModelKey(ctx.paneId)
     const modelId =

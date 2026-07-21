@@ -2,7 +2,7 @@ import { CheckCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { Workflow } from '@/api-client/types'
 import { Stores } from '@ziee/framework/stores'
-import { NEW_CHAT_MODEL_KEY } from '@/modules/user-llm-providers/ModelPicker.store'
+import { NEW_CHAT_MODEL_KEY } from '@/modules/user-llm-providers/modelPicker'
 import {
   message,
   Dialog,
