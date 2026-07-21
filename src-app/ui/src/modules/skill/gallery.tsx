@@ -28,7 +28,7 @@ async function seedSkills(
 ): Promise<void> {
   const { useSkillStore } = await import('@/modules/skill/stores/skill')
   const { ConversationSkills } = await import(
-    '@/modules/skill/stores/ConversationSkills.store'
+    '@/modules/skill/stores/conversationSkills'
   )
   await holdPatch(() => {
     useSkillStore.setState({ skills, loading: false } as any)
@@ -43,7 +43,7 @@ async function seedSkills(
 /** Seed the loading arm (available undefined + loading true). */
 async function seedSkillsLoading(): Promise<void> {
   const { ConversationSkills } = await import(
-    '@/modules/skill/stores/ConversationSkills.store'
+    '@/modules/skill/stores/conversationSkills'
   )
   await holdPatch(() =>
     ConversationSkills.store.setState({
@@ -156,7 +156,7 @@ export const gallery: ModuleGallery = {
       ),
       setup: async () => {
         const { ConversationSkills } = await import(
-          '@/modules/skill/stores/ConversationSkills.store'
+          '@/modules/skill/stores/conversationSkills'
         )
         await holdPatch(() =>
           ConversationSkills.store.setState({
@@ -180,7 +180,7 @@ export const gallery: ModuleGallery = {
       ),
       setup: async () => {
         const { ConversationSkills } = await import(
-          '@/modules/skill/stores/ConversationSkills.store'
+          '@/modules/skill/stores/conversationSkills'
         )
         await holdPatch(() =>
           ConversationSkills.store.setState({
@@ -204,7 +204,7 @@ export const gallery: ModuleGallery = {
       ),
       setup: async () => {
         const { ConversationSkills } = await import(
-          '@/modules/skill/stores/ConversationSkills.store'
+          '@/modules/skill/stores/conversationSkills'
         )
         const { useSkillStore } = await import('@/modules/skill/stores/skill')
         await holdPatch(() => {

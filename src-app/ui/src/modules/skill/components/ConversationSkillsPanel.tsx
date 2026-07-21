@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Stores } from '@ziee/framework/stores'
-import { deriveHiddenSkills } from '@/modules/skill/stores/ConversationSkills.store'
+import { deriveHiddenSkills } from '@/modules/skill/stores'
 import {
   Alert,
   Button,
