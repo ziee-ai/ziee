@@ -1,7 +1,7 @@
 import { createModule } from '@ziee/framework'
 import { MdInfoOutline } from 'react-icons/md'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import { useServerUpdateStore } from '@/modules/server-update/stores/ServerUpdate.store'
+import { useServerUpdateStore } from '@/modules/server-update/stores/serverUpdate'
 import { ServerUpdateBanner } from '@/modules/server-update/ServerUpdateBanner'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/permissions'
