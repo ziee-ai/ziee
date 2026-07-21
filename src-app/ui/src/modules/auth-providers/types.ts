@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useAuthProvidersAdminStore } from './stores/AuthProvidersAdmin.store'
+import type { useAuthProvidersAdminStore } from './stores/authProvidersAdmin'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
