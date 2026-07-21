@@ -1,5 +1,6 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useOnboardingStore } from './stores/Onboarding.store'
+import type { useOnboardingStore } from './stores/onboarding'
+import './events/types'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
