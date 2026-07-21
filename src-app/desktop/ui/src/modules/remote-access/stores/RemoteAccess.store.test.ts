@@ -54,7 +54,7 @@ vi.mock('@ziee/framework/stores', () => ({
 }))
 
 // Import AFTER the mocks so the store picks them up.
-import { useRemoteAccessStore } from '@ziee/desktop/modules/remote-access/stores/remoteAccess'
+import { useRemoteAccessStore } from '@ziee/desktop/modules/remote-access/stores/RemoteAccess.store'
 
 function defaultStatus() {
   return {

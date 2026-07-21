@@ -18,7 +18,7 @@ import { Globe } from 'lucide-react'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/permissions'
 
-import { useRemoteAccessStore } from '@ziee/desktop/modules/remote-access/stores/remoteAccess'
+import { useRemoteAccessStore } from '@ziee/desktop/modules/remote-access/stores/RemoteAccess.store'
 
 const RemoteAccessPage = lazy(() =>
   import('./pages/RemoteAccessPage').then((m) => ({
