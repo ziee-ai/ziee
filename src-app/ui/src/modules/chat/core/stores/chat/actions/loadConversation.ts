@@ -1,6 +1,6 @@
 import { useMessageViewStateStore } from '@/modules/chat/core/stores/messageViewState'
 import { ApiClient } from '@/api-client'
-import { chatExtensionRegistry } from '@/modules/chat/extensions'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 
 import { loadAllPanelSnapshots, touchPanelSnapshot, savePanelSnapshotForConversation, rehydrateTabs } from '@/modules/chat/core/stores/chat'
 import type { ChatSet, ChatInitialState, ChatState } from '@/modules/chat/core/stores/chat'

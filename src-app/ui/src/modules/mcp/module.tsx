@@ -3,9 +3,11 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { useMcpUserPolicyStore } from './stores/mcpUserPolicy'
-import {
-  useMcpToolCallsStore,
-  } from '@/modules/mcp/stores'
+// Deep import (NOT the `@/modules/mcp/stores` barrel): the barrel re-exports
+// mcpServer/systemMcpServer/mcpServerDrawer/mcpComposer too, so importing one
+// hook from it dragged all of them (incl. the 17 KB mcpComposer) into the
+// boot-loaded mcp module chunk.
+import { useMcpToolCallsStore } from './stores/mcpToolCalls'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'

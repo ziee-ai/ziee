@@ -7,7 +7,11 @@ import '@/modules/knowledge-base/types' // store-merge declaration
 // Side-effect imports — register the chat composer/tool-result integration and
 // the project "Knowledge bases" knowledge kind even when the respective
 // auto-discovery globs don't reach this module first.
-import '@/modules/knowledge-base/chat-extension/extension'
+// The chat-extension is auto-discovered lazily by chat's extension glob (loaded
+// with the /chat page, not at boot) — importing it here dragged the kb chat
+// slots + ChatPaneContext + the File store into the boot payload. The
+// project-extension (below) stays eager: it registers the "Knowledge bases"
+// project knowledge-kind, which the projects surface needs independent of chat.
 import '@/modules/knowledge-base/project-extension/extension'
 
 const KnowledgeBasesListPage = lazyWithPreload(() =>

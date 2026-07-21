@@ -8,7 +8,12 @@ import { RecentConversationsWidget } from '@/modules/chat/widgets/RecentConversa
 import { OpenInNewWindowAction } from '@/modules/chat/components/OpenInNewWindowAction'
 import '@/modules/chat/types'
 import '@/modules/chat/core/events' // Import chat events for type merging
-import '@/modules/chat/extensions' // Auto-discover and register chat extensions
+// NOTE: chat extensions are NOT discovered here anymore. Importing
+// `@/modules/chat/extensions` at module-registration time pulled EVERY chat
+// extension (+ their stores: mcpComposer, file, memory, knowledge-base …) into
+// the boot payload, even on /login. Discovery is now triggered lazily by the
+// chat composer (`ChatInput` → `useChatExtensionsReady`) when a chat page first
+// mounts, so those chunks load with /chat instead of at boot.
 
 const NewChatPage = lazyWithPreload(() => import('./pages/NewChatPage'))
 const ConversationPage = lazyWithPreload(

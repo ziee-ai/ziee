@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import type { PermissionExpr } from '@/core/permissions'
 import type {
   AdvancedSettingsContribution,
@@ -104,7 +105,13 @@ export class ProjectExtensionRegistry {
         const Component =
           view === 'inlinePreview' ? c.inlinePreview : c.managePanel
         return {
-          node: <Component key={`${c.extensionName}-${view}-${idx}`} />,
+          // Suspense so panel components can be lazy refs (keeps their stores
+          // out of the boot payload — they load when the project surface opens).
+          node: (
+            <Suspense key={`${c.extensionName}-${view}-${idx}`} fallback={null}>
+              <Component />
+            </Suspense>
+          ),
           permission: c.permission,
         }
       })
@@ -113,7 +120,11 @@ export class ProjectExtensionRegistry {
       return this.advancedSettings().map((c, idx) => {
         const Component = c.panel
         return {
-          node: <Component key={`${c.extensionName}-panel-${idx}`} />,
+          node: (
+            <Suspense key={`${c.extensionName}-panel-${idx}`} fallback={null}>
+              <Component />
+            </Suspense>
+          ),
           permission: c.permission,
         }
       })

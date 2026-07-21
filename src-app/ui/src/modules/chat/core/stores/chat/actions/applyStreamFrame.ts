@@ -1,6 +1,6 @@
 import { ApiClient } from '@/api-client'
 import { finalizeTailWindow, resumeOrFreshPlaceholder, toOrderedMap } from '@/modules/chat/core/stores/messageWindow'
-import { chatExtensionRegistry } from '@/modules/chat/extensions'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import type { MessageContent, MessageWithContent } from '@/api-client/types'
 import type { SSEEvent } from '@/modules/chat/core/extensions/types'
 import { MESSAGE_PAGE_SIZE } from '@/modules/chat/core/stores/chat'

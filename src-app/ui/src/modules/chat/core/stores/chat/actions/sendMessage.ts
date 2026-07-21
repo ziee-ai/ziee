@@ -1,5 +1,5 @@
 import { ApiClient } from '@/api-client'
-import { chatExtensionRegistry } from '@/modules/chat/extensions'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import type { MessageWithContent } from '@/api-client/types'
 
 import type { ChatSet, ChatInitialState, ChatState } from '@/modules/chat/core/stores/chat'

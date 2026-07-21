@@ -43,6 +43,7 @@
  * Bootstrapped by `chat/module.tsx` via `import '@/modules/chat/extensions'`.
  */
 
+import { useEffect, useState } from 'react'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import type { ChatExtension } from '@/modules/chat/core/extensions'
 
@@ -91,3 +92,28 @@ export const chatExtensionsReady: Promise<void> = (async () => {
  * Re-export extension registry for convenience
  */
 export { chatExtensionRegistry } from '../core/extensions'
+
+/**
+ * Gate a chat surface on chat-extension registration.
+ *
+ * Importing this module kicks off discovery (the IIFE above), so the FIRST chat
+ * page that calls this hook triggers the lazy load of all chat extensions + their
+ * stores. Returns `false` until `chatExtensionsReady` resolves — chat composers
+ * gate on it so the request-field composers (file / MCP / memory attach) and the
+ * toolbar pills are registered before the user can interact, and so the pills
+ * don't flash in after the composer paints. Registration is module-level +
+ * one-shot, so this is a brief wait only on the first /chat visit of a session.
+ */
+export function useChatExtensionsReady(): boolean {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let active = true
+    void chatExtensionsReady.then(() => {
+      if (active) setReady(true)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+  return ready
+}

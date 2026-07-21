@@ -14,7 +14,7 @@ import {
 } from '@/modules/chat/core/stream/ChatStreamClient'
 
 
-import { chatExtensionRegistry } from '@/modules/chat/extensions'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 
 /** Default page size for a message-history window (mirrors the backend default). */
 export const MESSAGE_PAGE_SIZE = 30

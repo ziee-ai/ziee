@@ -6,6 +6,7 @@ import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extens
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
 import { EditingMessageBanner } from '@/modules/chat/components/EditingMessageBanner'
 import { Chat } from '@/modules/chat/core/stores/chatBridge'
+import { useChatExtensionsReady } from '@/modules/chat/extensions'
 
 interface ChatInputProps {
   disabled?: boolean
@@ -24,6 +25,12 @@ export function ChatInput({
 }: ChatInputProps) {
   const [focused, setFocused] = useState(false)
   const [plusOpen, setPlusOpen] = useState(false)
+
+  // Chat extensions (text input, file/MCP/memory composers, toolbar pills) are
+  // loaded lazily on first chat mount — the whole composer, INCLUDING the
+  // text_input slot, is extension-provided, so render a shaped skeleton until
+  // they register (no empty-composer / pill flash).
+  const extensionsReady = useChatExtensionsReady()
 
   // Get stores
   const { sendMessage, sending, isStreaming } = Chat
@@ -47,6 +54,27 @@ export function ChatInput({
       console.error('Failed to send message:', error)
       message.error(error.message || 'Failed to send message')
     }
+  }
+
+  if (!extensionsReady) {
+    // Composer-shaped skeleton — matches the card outline + toolbar row so there
+    // is no layout jump when the real, extension-populated composer swaps in.
+    return (
+      <div
+        className={`w-full relative ${className}`}
+        style={style}
+        data-chat-composer
+        data-testid="chat-composer-loading"
+      >
+        <div className="rounded-lg bg-card border border-border">
+          <div className="px-3 pt-2.5 pb-1 min-h-14" />
+          <div className="flex justify-between items-center gap-2 px-2 pt-1 pb-2">
+            <div className="h-8 w-8 rounded-md bg-muted animate-pulse" />
+            <div className="h-8 w-8 rounded-md bg-muted animate-pulse" />
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
