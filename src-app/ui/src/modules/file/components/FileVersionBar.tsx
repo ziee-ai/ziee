@@ -37,7 +37,11 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
   // load (render-safe) but does NOT subscribe — without touching the reactive
   // map here, the bar would render once (empty) and never update.
   const versionsByFile = Stores.FileVersions.versionsByFile
-  const versions = versionsByFile.get(file.id) ?? Stores.FileVersions.getVersions(file.id)
+  // Fire-and-forget background load if not already loaded/loading.
+  if (!versionsByFile.has(file.id)) {
+    void Stores.FileVersions.loadVersions(file.id)
+  }
+  const versions = versionsByFile.get(file.id) ?? []
   const [restoring, setRestoring] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
 

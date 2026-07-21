@@ -18,11 +18,15 @@ export function FileVersionDiff({
   to: number
 }) {
   const cache = Stores.FileVersions.versionTextCache
-  const a =
-    cache.get(`${fileId}:${from}`) ??
-    Stores.FileVersions.getVersionText(fileId, from)
-  const b =
-    cache.get(`${fileId}:${to}`) ?? Stores.FileVersions.getVersionText(fileId, to)
+  // Fire-and-forget background loads if not already loaded/cached.
+  if (cache.get(`${fileId}:${from}`) === undefined) {
+    void Stores.FileVersions.loadVersionText(fileId, from)
+  }
+  if (cache.get(`${fileId}:${to}`) === undefined) {
+    void Stores.FileVersions.loadVersionText(fileId, to)
+  }
+  const a = cache.get(`${fileId}:${from}`) ?? null
+  const b = cache.get(`${fileId}:${to}`) ?? null
   const lines = useMemo(
     () => (a != null && b != null ? lineDiff(a, b) : []),
     [a, b],

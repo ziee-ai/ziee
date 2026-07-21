@@ -133,12 +133,15 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
   }, [file.id])
   const isViewingOld = selectedVersion !== null && selectedVersion !== file.version
   // Read versionTextCache REACTIVELY so the body re-renders when the async text
-  // load lands. getVersionText() reads via getState() + kicks off the load but
-  // does NOT subscribe (same reason FileVersionBar reads versionsByFile).
+  // load lands. Fire-and-forget background load if not already cached.
   const versionTextCache = Stores.FileVersions.versionTextCache
   const oldVersionText = isViewingOld
-    ? versionTextCache.get(`${file.id}:${selectedVersion}`) ??
-      Stores.FileVersions.getVersionText(file.id, selectedVersion as number)
+    ? (() => {
+        if (versionTextCache.get(`${file.id}:${selectedVersion}`) === undefined) {
+          void Stores.FileVersions.loadVersionText(file.id, selectedVersion)
+        }
+        return versionTextCache.get(`${file.id}:${selectedVersion}`) ?? null
+      })()
     : null
 
   return (
