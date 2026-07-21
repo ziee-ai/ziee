@@ -1,6 +1,8 @@
-import type { PluginConfig } from 'streamdown'
+import type { PluggableList } from 'unified'
+import { type PluginConfig, defaultRehypePlugins } from 'streamdown'
 import { HtmlBlock } from './HtmlBlock'
 import { STREAMDOWN_PLUGINS } from '@/components/common/streamdownPlugins'
+import { rehypeGroupPaperFootnotes } from './rehypeGroupPaperFootnotes'
 
 /**
  * Streamdown `plugins` config for the CHAT markdown renderers. Starts from the
@@ -22,3 +24,23 @@ export const chatMarkdownPlugins: PluginConfig = {
     { component: HtmlBlock, language: ['html', 'htm'] },
   ],
 }
+
+/**
+ * Streamdown `rehypePlugins` for the CHAT markdown renderers.
+ *
+ * ⚠ Passing `rehypePlugins` REPLACES Streamdown's default chain outright — it is
+ * `props.rehypePlugins || defaults`, not a merge. Dropping the defaults would
+ * silently disable HTML sanitization, so `defaultRehypePlugins`
+ * (rehype-raw → rehype-sanitize → rehype-harden) is spread back in FIRST and the
+ * footnote grouper appended LAST. It therefore only ever sees already-sanitized
+ * nodes. Anything added here must keep that order.
+ *
+ * Exported as ONE constant consumed by BOTH chat <Streamdown> call sites, for
+ * the same reason `chatMarkdownPlugins` above is: the two render paths must not
+ * drift. Non-chat renderers (file viewer, skill/workflow output) pass no
+ * `rehypePlugins` and keep Streamdown's defaults untouched.
+ */
+export const chatRehypePlugins: PluggableList = [
+  ...Object.values(defaultRehypePlugins),
+  rehypeGroupPaperFootnotes,
+]

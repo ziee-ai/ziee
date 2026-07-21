@@ -1,6 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { scopeFootnoteId, scopeHref, isFootnoteLabel } from './footnoteScope.ts'
+import {
+  scopeFootnoteId,
+  scopeHref,
+  isFootnoteLabel,
+  footnoteLabel,
+  hierarchicalFootnoteLabel,
+  formatFootnoteLabel,
+} from './footnoteScope.ts'
 
 // Guards the footnote-reference-click fix: Streamdown v2 double-prefixes
 // footnote ids (`user-content-user-content-fn-N`) while leaving the ref href
@@ -58,4 +65,65 @@ test('isFootnoteLabel: true for footnote-label with any prefix count, false othe
   assert.equal(isFootnoteLabel('user-content-fn-1'), false)
   assert.equal(isFootnoteLabel('some-heading'), false)
   assert.equal(isFootnoteLabel(undefined), false)
+})
+
+// TEST-5 (ziee#167): the paper-chunk label the renderer DISPLAYS in place of
+// GFM's sequential ordinal. remark-gfm emits String(counter) as the anchor text
+// and keeps the author's label only in the id/href, so it is read back here.
+// The label travels as `1-1` and is SHOWN as `1.1` — a literal dot in the
+// markdown makes Streamdown's block splitter tear the message apart.
+
+test('footnoteLabel: extracts the raw wire identifier from an id or an href', () => {
+  assert.equal(footnoteLabel('user-content-user-content-fn-1-1'), '1-1')
+  assert.equal(footnoteLabel('user-content-fn-1-1'), '1-1')
+  assert.equal(footnoteLabel('fn-1-1'), '1-1')
+  assert.equal(footnoteLabel('#user-content-fn-1-2'), '1-2')
+  assert.equal(footnoteLabel('user-content-fn-note'), 'note')
+  assert.equal(footnoteLabel('some-heading'), undefined)
+  assert.equal(footnoteLabel(undefined), undefined)
+})
+
+test('formatFootnoteLabel: the wire hyphen becomes the displayed dot', () => {
+  assert.equal(formatFootnoteLabel('1-1'), '1.1')
+  assert.equal(formatFootnoteLabel('2-10'), '2.10')
+  assert.equal(formatFootnoteLabel('3'), '3')
+})
+
+test('hierarchicalFootnoteLabel: honors P-C from the href or the definition id', () => {
+  assert.equal(hierarchicalFootnoteLabel('user-content-user-content-fn-1-1'), '1-1')
+  assert.equal(hierarchicalFootnoteLabel('fn-2-10'), '2-10')
+  assert.equal(hierarchicalFootnoteLabel(undefined, '#user-content-fn-3-4'), '3-4')
+})
+
+test('hierarchicalFootnoteLabel: a re-referenced footnote reads its href, not its fnref id', () => {
+  // remark disambiguates the SECOND reference to `1-1` as `fnref-1-1-2`. That
+  // suffix is not the label; the href still points at the definition, so the
+  // href must win or the marker would silently fall back to GFM's ordinal.
+  assert.equal(
+    hierarchicalFootnoteLabel(
+      'user-content-user-content-fnref-1-1-2',
+      '#user-content-fn-1-1',
+    ),
+    '1-1',
+  )
+  // An fnref id with no href to fall back on is refused rather than guessed.
+  assert.equal(hierarchicalFootnoteLabel('user-content-fnref-1-1-2'), undefined)
+})
+
+test('hierarchicalFootnoteLabel: undefined for every non-hierarchical label', () => {
+  // THE DEGRADATION GUARANTEE. A plain sequential set and a named footnote both
+  // keep GFM's own numbering, so the citations / knowledge_base modules render
+  // byte-identically to before.
+  assert.equal(hierarchicalFootnoteLabel('user-content-fn-1'), undefined)
+  assert.equal(hierarchicalFootnoteLabel('user-content-fn-12'), undefined)
+  assert.equal(hierarchicalFootnoteLabel('user-content-fn-note'), undefined)
+  assert.equal(hierarchicalFootnoteLabel('user-content-fn-1-2-3'), undefined)
+  assert.equal(hierarchicalFootnoteLabel('user-content-fn-1-'), undefined)
+  assert.equal(hierarchicalFootnoteLabel('some-heading'), undefined)
+  assert.equal(hierarchicalFootnoteLabel(undefined, undefined), undefined)
+})
+
+test('scopeFootnoteId/scopeHref: a P-C label round-trips to the same scoped target', () => {
+  assert.equal(scopeFootnoteId('user-content-user-content-fn-1-1', CID), 'c9-fn-1-1')
+  assert.equal(scopeHref('#user-content-fn-1-1', CID), '#c9-fn-1-1')
 })

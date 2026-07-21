@@ -17,6 +17,8 @@ import {
   scopeFootnoteId,
   scopeHref,
   isFootnoteLabel,
+  hierarchicalFootnoteLabel,
+  formatFootnoteLabel,
 } from '@/modules/chat/core/utils/footnoteScope'
 import { cn } from '@/lib/utils'
 
@@ -111,6 +113,26 @@ export function useStreamdownComponents(contentId: string) {
         // message's slugged heading id inside scopeHref.
         const scopedId = scopeFootnoteId(id, contentId)
         const scopedHref = scopeHref(href, contentId)
+        // A citation in a paper-grouped answer must SHOW its own label, but
+        // remark-gfm renders the first-reference ORDINAL as the anchor text and
+        // keeps the label only in the id/href (ziee#167).
+        //
+        // `data-footnote-display` is stamped by rehypeGroupPaperFootnotes once
+        // it has confirmed the answer is paper-grouped — that is the only place
+        // with sight of the whole footnote set, which is what a FLAT label
+        // needs: "2" is the 3rd footnote when it follows "1-1" and "1-2", so
+        // per-anchor inspection alone would leave it showing "3".
+        //
+        // The per-anchor hierarchical read is the fallback for a P-C label that
+        // arrives without the stamp (a block-split message, say). Both are
+        // undefined for an ordinary footnote, so the citations and
+        // knowledge_base modules keep GFM's numbering untouched.
+        const stamped = (rest as Record<string, unknown>)['data-footnote-display']
+        const wireLabel = hierarchicalFootnoteLabel(id, href)
+        const displayLabel =
+          typeof stamped === 'string'
+            ? stamped
+            : wireLabel && formatFootnoteLabel(wireLabel)
         // All hash links — scroll within the current page
         if (scopedHref?.startsWith('#')) {
           return (
@@ -118,6 +140,7 @@ export function useStreamdownComponents(contentId: string) {
               {...rest}
               id={scopedId}
               href={scopedHref}
+              {...(displayLabel ? { children: displayLabel } : {})}
               // Re-apply Streamdown's default link class (overriding drops it).
               className={cn(LINK_CLASS, className)}
               onClick={(e) => {
@@ -186,6 +209,47 @@ export function useStreamdownComponents(contentId: string) {
       },
       li(props: JSX.IntrinsicElements['li']) {
         const { id, className, ...rest } = props
+        // Paper-grouped reference entries (ziee#167), built by
+        // rehypeGroupPaperFootnotes. Their number is rendered EXPLICITLY rather
+        // than left to `list-decimal`, so the reference list can never drift
+        // from the inline markers that point at it.
+        const attrs = rest as Record<string, unknown>
+        const paperLabel = attrs['data-paper-label']
+        const excerptLabel = attrs['data-excerpt-label']
+        if (typeof paperLabel === 'string') {
+          // One bibliographic entry per paper. `[&>p:first-of-type]:inline` keeps
+          // the header on the number's line without inlining the excerpt count.
+          return (
+            <li
+              {...rest}
+              id={scopeFootnoteId(id, contentId)}
+              // `footnote-paper` already arrives via className from the plugin.
+              className={cn(
+                'list-none py-1 [&>p:first-of-type]:inline',
+                className,
+              )}
+            >
+              <span className="font-medium tabular-nums">{paperLabel}.</span>{' '}
+              {rest.children}
+            </li>
+          )
+        }
+        if (typeof excerptLabel === 'string') {
+          // One excerpt of that paper, labelled P.C. Flex so the label sits
+          // beside the (block) "Cited excerpt" disclosure rather than above it.
+          return (
+            <li
+              {...rest}
+              id={scopeFootnoteId(id, contentId)}
+              className={cn('flex list-none gap-2 py-0.5', className)}
+            >
+              <span className="shrink-0 tabular-nums text-muted-foreground">
+                {excerptLabel}
+              </span>
+              <div className="min-w-0 flex-1">{rest.children}</div>
+            </li>
+          )
+        }
         // Scope footnote definition IDs to avoid cross-message duplicates. This
         // is the click TARGET the `a` override's scopedHref points at; keeping
         // it prefix-count-agnostic (Streamdown v2 double-prefixes) is what makes
