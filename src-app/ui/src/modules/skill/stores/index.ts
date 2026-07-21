@@ -1,5 +1,5 @@
 export { useConversationSkillsStore, deriveHiddenSkills } from './conversationSkills'
 export { useSkillConversationDrawerStore } from './skillConversationDrawer'
 export { useSkillStore } from './skill'
-export { useSkillDrawerStore } from './SkillDrawer.store'
+export { useSkillDrawerStore } from './skillDrawer'
 export { useSystemSkillStore } from './systemSkill'
