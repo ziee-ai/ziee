@@ -2,7 +2,7 @@ import { Download as DownloadIcon, File } from 'lucide-react'
 import { Button, Image, Space, Text } from '@ziee/kit'
 import { useEffect, useRef, useState } from 'react'
 import { ApiClient } from '@/api-client'
-import type { StepArtifactMeta } from '@/modules/workflow/stores/WorkflowRun.store'
+import type { StepArtifactMeta } from '@/modules/workflow/stores/workflowRun'
 import { formatBytes } from '@/utils/downloadUtils'
 import { message } from '@ziee/kit'
 

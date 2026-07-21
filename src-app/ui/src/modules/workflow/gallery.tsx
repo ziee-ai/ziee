@@ -346,11 +346,11 @@ export const gallery: ModuleGallery = {
         { runId: 'run-s1-err' },
       ),
       setup: async () => {
-        const { WorkflowRun } = await import(
-          '@/modules/workflow/stores/WorkflowRun.store'
+        const { useWorkflowRunStore } = await import(
+          '@/modules/workflow/stores/workflowRun'
         )
         await holdPatch(() =>
-          WorkflowRun.store.setState({
+          useWorkflowRunStore.setState({
             runs: {
               'run-s1-err': {
                 runId: 'run-s1-err',
@@ -397,11 +397,11 @@ export const gallery: ModuleGallery = {
         { runId: 'run-s1-empty' },
       ),
       setup: async () => {
-        const { WorkflowRun } = await import(
-          '@/modules/workflow/stores/WorkflowRun.store'
+        const { useWorkflowRunStore } = await import(
+          '@/modules/workflow/stores/workflowRun'
         )
         await holdPatch(() =>
-          WorkflowRun.store.setState({
+          useWorkflowRunStore.setState({
             runs: {
               'run-s1-empty': {
                 runId: 'run-s1-empty',
