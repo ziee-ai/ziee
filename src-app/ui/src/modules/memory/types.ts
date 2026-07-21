@@ -3,7 +3,7 @@ import type { useMemoriesStore } from './stores/memories'
 import type { useMemorySettingsStore } from './stores/MemorySettings.store'
 import type { useMemoryAdminStore } from './stores/MemoryAdmin.store'
 import type { useMemoryAuditStore } from './stores/memoryAudit'
-import type { useCoreMemoryBlocksStore } from './stores/CoreMemoryBlocks.store'
+import type { useCoreMemoryBlocksStore } from './stores/coreMemoryBlocks'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {

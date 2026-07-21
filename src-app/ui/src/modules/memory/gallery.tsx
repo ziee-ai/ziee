@@ -22,11 +22,11 @@ export const gallery: ModuleGallery = {
         { assistantId: 'asst-1' },
       ),
       setup: async () => {
-        const { CoreMemoryBlocks } = await import(
-          '@/modules/memory/stores/CoreMemoryBlocks.store'
+        const { useCoreMemoryBlocksStore } = await import(
+          '@/modules/memory/stores/coreMemoryBlocks'
         )
         await holdPatch(() =>
-          CoreMemoryBlocks.store.setState({
+          useCoreMemoryBlocksStore.setState({
             blocksByAssistant: { 'asst-1': [] },
             loadingByAssistant: { 'asst-1': true },
           } as any),
@@ -45,11 +45,11 @@ export const gallery: ModuleGallery = {
         { assistantId: 'asst-1' },
       ),
       setup: async () => {
-        const { CoreMemoryBlocks } = await import(
-          '@/modules/memory/stores/CoreMemoryBlocks.store'
+        const { useCoreMemoryBlocksStore } = await import(
+          '@/modules/memory/stores/coreMemoryBlocks'
         )
         await holdPatch(() =>
-          CoreMemoryBlocks.store.setState({
+          useCoreMemoryBlocksStore.setState({
             blocksByAssistant: { 'asst-1': [] },
             loadingByAssistant: { 'asst-1': false },
           } as any),
