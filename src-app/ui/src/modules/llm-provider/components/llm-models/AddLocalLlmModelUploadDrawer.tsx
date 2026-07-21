@@ -271,18 +271,18 @@ export function AddLocalLlmModelUploadDrawer() {
       }
 
       // Upload and auto-commit the files as a model in a single request
-      await Stores.LlmModelUpload.uploadLocalModel({
-        name: modelId,
-        provider_id: providerId!,
-        display_name: values.display_name as string,
-        description: values.description as string,
-        main_filename: values.main_filename as string,
-        file_format: values.file_format as string,
-        capabilities: (values.capabilities as Record<string, unknown>) || {},
-        engine_type: (values.engine_type as string) || 'mistralrs',
-        engine_settings: (values.engine_settings as Record<string, unknown>) || {},
-        files: filesToUpload,
-      })
+      await Stores.LlmModelUpload.uploadLocalModel(
+        providerId!,
+        modelId,
+        values.display_name as string,
+        values.description as string,
+        values.main_filename as string,
+        values.file_format as string,
+        (values.capabilities as Record<string, unknown>) || {},
+        (values.engine_type as string) || 'mistralrs',
+        (values.engine_settings as Record<string, unknown>) || {},
+        filesToUpload,
+      )
 
       message.success('Model uploaded successfully')
 
