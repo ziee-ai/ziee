@@ -8,7 +8,7 @@ import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useScheduledTasksStore } from './stores/scheduledTasks/index'
-import { useSchedulerAdminStore } from './stores/SchedulerAdmin.store'
+import { useSchedulerAdminStore } from './stores/schedulerAdmin'
 import { useSchedulerDrawerStore } from './stores/SchedulerDrawer.store'
 import '@/modules/scheduler/types' // register Stores.* (declaration merge)
 import '@/modules/settings/types/SettingsSlots'
