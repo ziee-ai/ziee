@@ -3,7 +3,7 @@ import { Stores } from '@ziee/framework/stores'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 import { useSystemWorkflowStore } from '@/modules/workflow/stores/systemWorkflow'
-import { useWorkflowStore } from '@/modules/workflow/stores/Workflow.store'
+import { useWorkflowStore } from '@/modules/workflow/stores/workflow'
 
 /**
  * Hub-workflows tab store. Workflows have no category-specific catalog endpoint,

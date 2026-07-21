@@ -131,9 +131,9 @@ function panelSurface(
   result: unknown,
 ) {
   return lazy(async () => {
-    const store = await import('@/modules/workflow/stores/Workflow.store')
     const mod = await loader()
     const Panel = mod[panelName]
+    const WorkflowModule = await import('@/modules/workflow/stores/workflow')
     const impl =
       outcome === 'loading'
         ? () => new Promise<never>(() => {})
@@ -143,7 +143,7 @@ function panelSurface(
                 new Error('Upstream returned 500 — service unavailable'),
               )
           : () => Promise.resolve(result)
-    store.WorkflowStoreDef.store.setState({ [actionName]: impl } as any)
+    WorkflowModule.useWorkflowStore.setState({ [actionName]: impl } as any)
     return {
       default: () => (
         <Panel workflow={galleryWorkflow} open onClose={() => undefined} />

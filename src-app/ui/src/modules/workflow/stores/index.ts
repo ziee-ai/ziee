@@ -1,5 +1,5 @@
 export { useSystemWorkflowStore } from './systemWorkflow'
-export { useWorkflowStore } from './Workflow.store'
+export { useWorkflowStore } from './workflow'
 export { useWorkflowDrawerStore } from './WorkflowDrawer.store'
 export { useWorkflowRunStore } from './WorkflowRun.store'
 export { useWorkflowRunsStore } from './WorkflowRuns.store'
