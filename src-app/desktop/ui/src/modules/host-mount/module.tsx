@@ -17,7 +17,7 @@ import { createModule, type AppModule } from '@ziee/ui-core'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/permissions'
 
-import { useProjectHostMountsStore } from './project-extension/stores/ProjectHostMounts.store'
+import { useProjectHostMountsStore } from './project-extension/stores/projectHostMounts'
 import { useConversationHostMountsStore } from './conversation-extension/stores/conversationHostMounts'
 import { useHostMountPolicyStore } from './stores/HostMountPolicy.store'
 import { ConversationMountsControl } from './conversation-extension/components/ConversationMountsControl'
