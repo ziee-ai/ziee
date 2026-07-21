@@ -34,6 +34,12 @@ export async function createBridgeToolModel(
   token: string,
   providerId: string,
   displayName: string,
+  // Output-token budget. A REASONING bridge model (e.g. qwen3.6) spends its
+  // budget on hidden reasoning before emitting the final `content`; too small a
+  // cap gets it cut off mid-reasoning and it returns EMPTY content. Tool-driven
+  // specs are fine on the small default (they emit a tool_call, not prose), but a
+  // spec that reads the model's TEXT reply (goal-seeking) must give it headroom.
+  maxTokens = 1536,
 ): Promise<string> {
   const res = await page.request.post(`${apiURL}/api/llm-models`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -45,7 +51,7 @@ export async function createBridgeToolModel(
       engine_type: 'none',
       file_format: 'gguf',
       capabilities: { tools: true, chat: true, streaming: true },
-      parameters: { context_length: 16384, temperature: 0, top_p: 0.9, max_tokens: 1536 },
+      parameters: { context_length: 16384, temperature: 0, top_p: 0.9, max_tokens: maxTokens },
     },
   })
   expect(res.ok()).toBeTruthy()

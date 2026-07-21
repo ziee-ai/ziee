@@ -45,7 +45,17 @@ test.describe('scheduler goal-seeking — done-when completion (ITEM-24)', () =>
     // A tool-capable bridge model + a real owned conversation to bind the loop to.
     const providerId = await createProviderViaAPI(apiURL, token, 'OpenAI', 'openai')
     await assignProviderToAdministratorsGroup(apiURL, token, providerId)
-    const modelId = await createBridgeToolModel(page, apiURL, token, providerId, 'Goal Loop Model')
+    // Goal-seeking reads the model's TEXT reply (the firing) AND runs a text-emitting
+    // evaluator, so the reasoning bridge model needs generous output headroom to
+    // finish reasoning and actually emit `content` (a small cap leaves it empty).
+    const modelId = await createBridgeToolModel(
+      page,
+      apiURL,
+      token,
+      providerId,
+      'Goal Loop Model',
+      6000,
+    )
 
     const convRes = await page.request.post(`${apiURL}/api/conversations`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -63,10 +73,12 @@ test.describe('scheduler goal-seeking — done-when completion (ITEM-24)', () =>
     const doneWhen = byTestId(page, 'schedule-loop-completion')
     await expect(doneWhen).toBeVisible({ timeout: 15_000 })
 
-    // A crisp condition unambiguously satisfied by the reply (so the not_done-biased
-    // evaluator still judges `done`).
+    // A SUBSTANTIVE task (not a one-word reply — a reasoning model emits real
+    // `content` for a real task) with an unambiguous terminal marker the reply must
+    // contain, so the not_done-biased evaluator can confidently judge `done`.
     await byTestId(page, 'schedule-loop-prompt').fill(
-      'Reply with exactly the single word FINISHED and nothing else.',
+      'Write one short factual sentence about the ocean. Then, on a new line, write ' +
+        'the single word FINISHED.',
     )
     await doneWhen.fill('the reply contains the word FINISHED')
     await pickSelectValue(page, 'task-form-model', modelId)
@@ -107,10 +119,13 @@ test.describe('scheduler goal-seeking — done-when completion (ITEM-24)', () =>
       )
       .toBe('completed')
 
-    // The completion + its run surface on the /scheduled-tasks timeline (no reload).
+    // The goal-seeking completion surfaces on the /scheduled-tasks timeline as the
+    // "Loop finished" badge (`paused_reason === 'completed'`) — the loop stopped
+    // BECAUSE the evaluator confirmed the condition, not by hitting a cap. (An
+    // off-schedule `run_now` firing is deliberately excluded from the per-task run
+    // HISTORY list — `trigger <> 'run_now'`, repository.rs — so the terminal task
+    // state, not a history row, is the timeline proof for a manual completion.)
     await page.goto(`${baseURL}/scheduled-tasks`)
     await expect(byTestId(page, `task-completed-${taskId}`)).toBeVisible({ timeout: 30_000 })
-    // At least one run row is present in the task's run timeline.
-    await expect(page.locator('[data-testid^="run-row-"]').first()).toBeVisible({ timeout: 30_000 })
   })
 })

@@ -50,11 +50,17 @@ pub enum GoalOutcome {
 /// Max chars of the result artifact shown to the evaluator (bounds the LLM input;
 /// a completion judgement needs the gist, not a megabyte).
 const EVAL_ARTIFACT_CAP: usize = 8_000;
-/// Hard ceiling on one evaluator call. A cheap yes/no needs seconds, not minutes;
-/// a hang is treated as `not_done` (keep working).
-const EVAL_TIMEOUT: Duration = Duration::from_secs(60);
-/// The evaluator only ever needs a one-word answer.
-const EVAL_MAX_TOKENS: u32 = 16;
+/// Hard ceiling on one evaluator call. A hang is treated as `not_done` (keep
+/// working). Generous enough that a REASONING evaluator (which streams hidden
+/// reasoning before its verdict token) finishes rather than being cut off.
+const EVAL_TIMEOUT: Duration = Duration::from_secs(120);
+/// Output-token budget for one evaluator call. The VERDICT is a single token, BUT a
+/// REASONING model spends its output budget on hidden reasoning BEFORE emitting that
+/// token — a tiny cap gets it cut off mid-reasoning so it returns EMPTY content,
+/// which the fail-safe parser reads as a (false) `not_done`. Give it headroom so a
+/// reasoning evaluator can finish reasoning and still emit DONE / NOT_DONE. A
+/// non-reasoning model simply emits the token immediately and ignores the slack.
+const EVAL_MAX_TOKENS: u32 = 2048;
 
 /// Parse the evaluator's free-text reply into a verdict (TEST-121). ROBUST +
 /// fail-safe: negative markers win (`NOT_DONE` contains `DONE`); anything

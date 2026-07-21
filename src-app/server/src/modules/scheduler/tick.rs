@@ -274,10 +274,12 @@ pub async fn fire_task(
     // `record_outcome` left it — a transient failure under the cap stays enabled
     // for its next natural re-fire; a terminal / cap-crossing failure is disabled
     // with the true failure reason.
-    if trigger != "run_now"
-        && outcome.success
-        && matches!(task.schedule_kind(), ScheduleKind::SelfPaced)
-    {
+    // Goal-seeking runs on ANY successful self-paced firing — INCLUDING `run_now`:
+    // a manual fire of a goal-seeking loop must be able to EVALUATE its result and
+    // self-complete (`done`) or re-arm (`not_done`). Plain self-paced re-arming
+    // stays off `run_now` (off-schedule must not touch schedule bookkeeping) — that
+    // exclusion moves to the `else if trigger != "run_now"` branch below.
+    if outcome.success && matches!(task.schedule_kind(), ScheduleKind::SelfPaced) {
         let (min_interval, max_horizon) = settings::get(pool)
             .await
             .map(|s| (i64::from(s.min_interval_seconds), i64::from(s.max_horizon_days)))
@@ -341,7 +343,7 @@ pub async fn fire_task(
             {
                 tracing::warn!("scheduler.tick: goal arm_self_paced {} failed: {e:?}", task.id);
             }
-        } else {
+        } else if trigger != "run_now" {
             // Plain self-paced (ITEM-21 / DEC-42): feed the model's `schedule_next`
             // proposal — drained off this firing's turn — to the EXISTING clamp +
             // write-back. `Some(delay)` re-arms at the clamped instant; `Some(stop)`
