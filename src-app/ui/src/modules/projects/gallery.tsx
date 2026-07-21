@@ -142,11 +142,11 @@ export const gallery: ModuleGallery = {
         'ProjectFormDrawer',
       ),
       setup: async () => {
-        const { ProjectDrawer } = await import(
-          '@/modules/projects/stores/ProjectDrawer.store'
+        const { useProjectDrawerStore } = await import(
+          '@/modules/projects/stores/projectDrawer'
         )
         const seed = () =>
-          ProjectDrawer.store.setState({
+          useProjectDrawerStore.setState({
             open: true,
             loading: true,
             editingProject: null,
