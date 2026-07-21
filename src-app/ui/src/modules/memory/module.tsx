@@ -6,7 +6,7 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useCoreMemoryBlocksStore } from './stores/coreMemoryBlocks'
 import { useMemoriesStore } from './stores/memories'
 import { useMemoryAdminStore } from './stores/memoryAdmin'
-import { useMemorySettingsStore } from './stores/MemorySettings.store'
+import { useMemorySettingsStore } from './stores/memorySettings'
 import './types'
 
 // The user page renders sections for each memory mechanism. A user
