@@ -1,5 +1,5 @@
 import { createModule, Stores } from '@ziee/framework'
-import { useAppStore } from '@/modules/app/App.store'
+import { useAppStore } from '@/modules/app/stores/app'
 import { useAppModeStore } from '@/modules/app/AppMode.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useEffect } from 'react'
