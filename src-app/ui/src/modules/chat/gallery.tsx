@@ -455,11 +455,11 @@ export const gallery: ModuleGallery = {
         'RecentConversationsWidget',
       ),
       setup: async () => {
-        const { ChatHistory } = await import(
-          '@/modules/chat/stores/ChatHistory.store'
+        const { useChatHistoryStore } = await import(
+          '@/modules/chat/stores/chatHistory'
         )
         await holdPatch(() =>
-          ChatHistory.store.setState({
+          useChatHistoryStore.setState({
             recentLoading: true,
             recentInitialized: false,
           } as any),
@@ -478,11 +478,11 @@ export const gallery: ModuleGallery = {
         'RecentConversationsWidget',
       ),
       setup: async () => {
-        const { ChatHistory } = await import(
-          '@/modules/chat/stores/ChatHistory.store'
+        const { useChatHistoryStore } = await import(
+          '@/modules/chat/stores/chatHistory'
         )
         await holdPatch(() =>
-          ChatHistory.store.setState({
+          useChatHistoryStore.setState({
             recentInitialized: true,
             recentLoading: false,
             recentConversations: [],
@@ -502,11 +502,11 @@ export const gallery: ModuleGallery = {
         'RecentConversationsWidget',
       ),
       setup: async () => {
-        const { ChatHistory } = await import(
-          '@/modules/chat/stores/ChatHistory.store'
+        const { useChatHistoryStore } = await import(
+          '@/modules/chat/stores/chatHistory'
         )
         await holdPatch(() =>
-          ChatHistory.store.setState({
+          useChatHistoryStore.setState({
             recentInitialized: true,
             recentLoading: false,
             recentLoadingMore: false,
@@ -530,11 +530,11 @@ export const gallery: ModuleGallery = {
         'RecentConversationsWidget',
       ),
       setup: async () => {
-        const { ChatHistory } = await import(
-          '@/modules/chat/stores/ChatHistory.store'
+        const { useChatHistoryStore } = await import(
+          '@/modules/chat/stores/chatHistory'
         )
         await holdPatch(() =>
-          ChatHistory.store.setState({
+          useChatHistoryStore.setState({
             recentInitialized: false,
             recentLoading: false,
             recentConversations: [],
@@ -555,11 +555,11 @@ export const gallery: ModuleGallery = {
         'RecentConversationsWidget',
       ),
       setup: async () => {
-        const { ChatHistory } = await import(
-          '@/modules/chat/stores/ChatHistory.store'
+        const { useChatHistoryStore } = await import(
+          '@/modules/chat/stores/chatHistory'
         )
         await holdPatch(() =>
-          ChatHistory.store.setState({
+          useChatHistoryStore.setState({
             recentInitialized: true,
             recentLoading: false,
             recentLoadingMore: true,
@@ -659,8 +659,8 @@ export const gallery: ModuleGallery = {
         'default',
       ),
       setup: async () => {
-        const { ChatHistory } = await import(
-          '@/modules/chat/stores/ChatHistory.store'
+        const { useChatHistoryStore } = await import(
+          '@/modules/chat/stores/chatHistory'
         )
         const { AppLayout } = await import(
           '@/modules/layouts/app-layout/AppLayout.store'
@@ -674,7 +674,7 @@ export const gallery: ModuleGallery = {
         // and ConversationList deterministically shows its load spinner.
         holdForever(() => {
           AppLayout.store.setState({ nativeScroll: true } as any)
-          ChatHistory.store.setState({
+          useChatHistoryStore.setState({
             loading: true,
             isInitialized: false,
             conversations: [],

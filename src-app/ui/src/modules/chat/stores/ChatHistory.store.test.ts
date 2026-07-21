@@ -63,7 +63,7 @@ vi.mock('@ziee/framework/events', () => ({
   },
 }))
 
-import { useChatHistoryStore } from './ChatHistory.store'
+import { useChatHistoryStore } from './chatHistory'
 
 const store = () => useChatHistoryStore.getState()
 

@@ -2,7 +2,7 @@ import { ArrowUpDown, Check } from 'lucide-react'
 import { Button, Dropdown, Select } from '@ziee/kit'
 import type { DropdownItem } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
-import type { ConversationSort } from '@/modules/chat/stores/ChatHistory.store'
+import type { ConversationSort } from '@/modules/chat/stores/chatHistory'
 
 export const SORT_OPTIONS: { value: ConversationSort; label: string }[] = [
   { value: 'recent', label: 'Most recent' },

@@ -1,6 +1,6 @@
 import type { StoreProxy } from '@ziee/framework/stores'
 import type { useChatStore } from '@/modules/chat/core/stores/chat'
-import type { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
+import type { useChatHistoryStore } from '@/modules/chat/stores/chatHistory'
 import type { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
 import type { useSplitViewStore } from '@/modules/chat/core/stores/splitView'
 import type { SidebarWidgetItem } from '@/modules/layouts/app-layout/types'
