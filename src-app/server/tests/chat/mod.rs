@@ -45,6 +45,7 @@ mod sync_emit_test;
 // cross-model guard.
 mod title_test;
 mod title_audience_test;
+mod title_approval_test;
 mod ownership_test;
 mod sandbox_real_llm_test;
 mod test_single_assistant_message_architecture;

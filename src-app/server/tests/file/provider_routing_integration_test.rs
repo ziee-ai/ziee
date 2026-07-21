@@ -131,7 +131,7 @@ async fn text_attachment_is_inlined_verbatim_binary_becomes_placeholder() {
         .iter()
         .find(|r| {
             r.all_text.contains("Analyze the attached files")
-                && !r.all_text.contains("Generate a concise, descriptive title")
+                && !r.all_text.contains(crate::common::stub_chat::TITLE_PROMPT_PREFIX)
         })
         .expect("stub recorded the main chat request");
 

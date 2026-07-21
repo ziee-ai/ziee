@@ -22,6 +22,7 @@ import { DivScrollY } from '@/components/common/DivScrollY'
 import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
 import { setConversationDragData } from '@/modules/chat/core/pane/paneDnd'
 import { useConversationTearOff } from '@/modules/chat/core/popout/useConversationTearOff'
+import { conversationDisplayLabel } from '@/modules/chat/core/utils/conversationDisplayLabel'
 import {
   chatExtensionRegistry,
   useConversationMenuContributions,
@@ -247,7 +248,7 @@ export function RecentConversationsWidget() {
           {virtualItems.map(vi => {
             const c = recentConversations[vi.index]
             if (!c) return null
-            const title = c.title || 'Untitled Conversation'
+            const title = conversationDisplayLabel(c)
             const selected = c.id === selectedId
             const cls = menuRowClasses({ selected, hasActions: true })
             return (
@@ -371,7 +372,7 @@ function ConversationRowActions({
     useConversationMenuContributions(conversation)
 
   const confirmDelete = async () => {
-    const title = conversation.title || 'Untitled Conversation'
+    const title = conversationDisplayLabel(conversation)
     const ok = await dialog.confirm({
       title: 'Delete conversation?',
       description: `"${title}" will be permanently deleted.`,
