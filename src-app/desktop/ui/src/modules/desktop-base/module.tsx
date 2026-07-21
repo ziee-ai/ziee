@@ -15,7 +15,7 @@ import { createModule, type AppModule } from '@ziee/ui-core'
 import { Stores, type StoreProxy } from '@ziee/framework/stores'
 import { invoke } from '@tauri-apps/api/core'
 import type { AutoLoginResponse } from '@/modules/auth/Auth.store'
-import { useBootstrapStore } from '@ziee/desktop/modules/desktop-base/Bootstrap.store'
+import { useBootstrapStore } from '@ziee/desktop/modules/desktop-base/bootstrap'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
