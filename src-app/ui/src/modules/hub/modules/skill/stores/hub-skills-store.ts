@@ -3,7 +3,7 @@ import { Stores } from '@ziee/framework/stores'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 import { useSkillStore } from '@/modules/skill/stores/skill'
-import { useSystemSkillStore } from '@/modules/skill/stores/SystemSkill.store'
+import { useSystemSkillStore } from '@/modules/skill/stores/systemSkill'
 
 /**
  * Hub-skills tab store. Skills have no category-specific catalog endpoint, so
