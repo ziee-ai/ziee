@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
+import type { useSandboxRootfsVersionsStore } from './stores/sandboxRootfsVersions'
 import type { useSandboxResourceLimitsStore } from './stores/sandboxResourceLimits'
 
 declare module '@ziee/framework/stores' {

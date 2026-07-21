@@ -5,7 +5,7 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useSandboxResourceLimitsStore } from './stores/sandboxResourceLimits'
-import { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
+import { useSandboxRootfsVersionsStore } from './stores/sandboxRootfsVersions'
 import { useSandboxFlavorsStore } from './stores/sandboxFlavors'
 import './types' // CRITICAL: enable store type declaration merging
 

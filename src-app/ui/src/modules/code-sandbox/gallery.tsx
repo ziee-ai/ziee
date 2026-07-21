@@ -75,11 +75,11 @@ export const gallery: ModuleGallery = {
         'SandboxRootfsVersionsSection',
       ),
       setup: async () => {
-        const { SandboxRootfsVersions } = await import(
-          '@/modules/code-sandbox/stores/SandboxRootfsVersions.store'
+        const { SandboxRootfsVersionsDef } = await import(
+          '@/modules/code-sandbox/stores/sandboxRootfsVersions'
         )
         await holdPatch(() =>
-          SandboxRootfsVersions.store.setState({
+          SandboxRootfsVersionsDef.store.setState({
             availability: 'disabled_in_config',
             loading: false,
             error: null,
