@@ -1,4 +1,4 @@
-export { useSystemWorkflowStore } from './SystemWorkflow.store'
+export { useSystemWorkflowStore } from './systemWorkflow'
 export { useWorkflowStore } from './Workflow.store'
 export { useWorkflowDrawerStore } from './WorkflowDrawer.store'
 export { useWorkflowRunStore } from './WorkflowRun.store'
