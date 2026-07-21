@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useConversationSummarizationStore } from './stores/ConversationSummarization.store'
+import type { useConversationSummarizationStore } from './stores/conversationSummarization'
 import type { useSummarizationAdminStore } from './stores/SummarizationAdmin.store'
 
 declare module '@ziee/framework/stores' {

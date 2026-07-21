@@ -3,7 +3,7 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useConversationSummarizationStore } from './stores/ConversationSummarization.store'
+import { useConversationSummarizationStore } from './stores/conversationSummarization'
 import { useSummarizationAdminStore } from './stores/SummarizationAdmin.store'
 import './types'
 
