@@ -7,7 +7,7 @@ import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useScheduledTasksStore } from './stores/ScheduledTasks.store'
+import { useScheduledTasksStore } from './stores/scheduledTasks/index'
 import { useSchedulerAdminStore } from './stores/SchedulerAdmin.store'
 import { useSchedulerDrawerStore } from './stores/SchedulerDrawer.store'
 import '@/modules/scheduler/types' // register Stores.* (declaration merge)

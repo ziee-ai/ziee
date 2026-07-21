@@ -14,7 +14,7 @@ vi.mock('@/api-client', () => ({
   },
 }))
 
-import { useScheduledTasksStore } from './ScheduledTasks.store'
+import { useScheduledTasksStore } from './scheduledTasks/index'
 
 const s = () => useScheduledTasksStore.getState()
 
