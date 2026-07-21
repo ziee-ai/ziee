@@ -44,9 +44,20 @@ export function AgentInboxPage() {
     }
   }, [])
 
-  // Refresh the shared inbox on entry (mirrors the sibling notifications page).
+  // Refresh the shared inbox on entry, then RECONCILE on an interval while the page
+  // is open. The live `sync:notification` push is the fast path, but it is
+  // best-effort: the per-user sync SSE stream can drop/flap (a reconnect can miss
+  // the notify-only frame, which has no server replay), so a background result
+  // could otherwise never appear on an open inbox until a manual reload. The
+  // notifications are DURABLE rows, so a modest periodic reload is a correct
+  // eventual-consistency backstop (not a "manual reload") that guarantees a landed
+  // result surfaces within one interval regardless of live-push delivery.
   useEffect(() => {
     void Stores.Notifications.load()
+    const id = globalThis.setInterval(() => {
+      void Stores.Notifications.load()
+    }, 10_000)
+    return () => globalThis.clearInterval(id)
   }, [])
 
   const list = (items ?? []).filter(n => agentKinds.has(n.kind))

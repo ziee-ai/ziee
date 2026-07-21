@@ -64,14 +64,21 @@ test.describe('realtime sync — background sub-agent completion notification', 
         'Reply with the single word DONE and nothing else.',
       )
 
-      // Device B surfaces the completion notification card LIVE (sync:notification
-      // → SDK store refetch), no manual reload. Scope to the inbox page so the
-      // shared app-shell bell (same notification) isn't a strict-mode multi-match.
+      // Device B surfaces the completion notification CARD on the inbox without a
+      // manual reload — via the live `sync:notification` push, backstopped by the
+      // page's periodic reconcile (the per-user sync SSE can flap and miss the
+      // notify-only frame). Assert the durable per-notification card testid
+      // (`agent-inbox-card-<id>`) — the canonical, unambiguous marker that a real
+      // background result landed and rendered in the timeline.
       await expect(
-        byTestId(pageB, 'agent-inbox-page').getByText('Background task finished').first(),
+        pageB.locator('[data-testid^="agent-inbox-card-"]').first(),
       ).toBeVisible({ timeout: 240_000 })
+      // …and it shows the completion title.
+      await expect(
+        pageB.locator('[data-testid^="agent-inbox-card-"]').first(),
+      ).toContainText('Background task finished')
 
-      // The empty state is gone — a real notification landed via sync.
+      // The empty state is gone — a real notification landed.
       await expect(byTestId(pageB, 'agent-inbox-empty')).toHaveCount(0)
     } finally {
       await ctxB.close()

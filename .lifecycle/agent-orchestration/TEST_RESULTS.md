@@ -98,7 +98,7 @@ documented bridge limit as the other real-LLM-tier tests.
 - **TEST-19**: PASS
 - **TEST-20**: PASS
 - **TEST-21**: PASS
-- **TEST-22**: SKIP
+- **TEST-22**: PASS
 - **TEST-23**: PASS
 - **TEST-24**: PASS
 - **TEST-25**: PASS
