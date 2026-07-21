@@ -7,6 +7,7 @@ import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
 import { inlineApiPlugin } from './plugins/vite-plugin-inline-api.js'
 import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
+import { moduleManifestPlugin } from './plugins/vite-plugin-module-manifest.js'
 // @ts-ignore — self-contained JS plugins re-homed under @ziee/gallery (B4).
 import { galleryCoveragePlugin } from '@ziee/gallery/vite/vite-plugin-gallery-coverage.js'
 // @ts-ignore
@@ -34,6 +35,12 @@ export default defineConfig(async () => {
       inlineApiPlugin({
         permissionsPath: path.resolve(__dirname, 'src/api-client/permissions.ts'),
         endpointsPath: path.resolve(__dirname, 'src/api-client/apiEndpoints.ts'),
+      }),
+      // Smart module loading: bake a cheap {name, shouldLoad, routePaths, deps,
+      // load} manifest into the entry so the loader can gate each module body's
+      // download on auth/permission/platform (vite-plugin-module-manifest.js).
+      moduleManifestPlugin({
+        srcDir: path.resolve(__dirname, './src'),
       }),
       // Instrument component/page source FIRST (enforce:'pre') so branch coverage
       // maps to real source lines, before react/oxc transpiles it.

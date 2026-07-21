@@ -8,3 +8,10 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// Build-generated module manifest (vite-plugin-module-manifest). The cheap
+// decision layer for smart module loading — see loader.ts.
+declare module 'virtual:ziee-module-manifest' {
+  import type { ModuleManifestEntry } from '@ziee/framework/module-system'
+  export const manifest: ModuleManifestEntry[]
+}
