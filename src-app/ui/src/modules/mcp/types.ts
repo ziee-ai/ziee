@@ -7,7 +7,7 @@ import type {
   useMcpToolCallsStore,
 } from '@/modules/mcp/stores'
 import type { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/mcpServerGroupsAssignmentCard'
-import type { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
+import type { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/groupSystemMcpServersWidget'
 import type { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
 import type { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
 

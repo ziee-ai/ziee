@@ -287,11 +287,11 @@ export const gallery: ModuleGallery = {
         { group: { id: 'grp-s4', name: 'Gallery Group' } },
       ),
       setup: async () => {
-        const { GroupSystemMcpServersWidget } = await import(
-          '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
+        const { GroupSystemMcpServersWidgetDef } = await import(
+          '@/modules/mcp/widgets/groupSystemMcpServersWidget'
         )
         await holdPatch(() =>
-          GroupSystemMcpServersWidget.store.setState({
+          GroupSystemMcpServersWidgetDef.store.setState({
             groupServers: new Map([
               [
                 'grp-s4',

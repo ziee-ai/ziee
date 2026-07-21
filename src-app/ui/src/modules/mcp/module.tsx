@@ -14,7 +14,7 @@ import {
   useMcpToolCallsStore,
   useSystemMcpServersStore,
 } from '@/modules/mcp/stores'
-import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
+import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/groupSystemMcpServersWidget'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
