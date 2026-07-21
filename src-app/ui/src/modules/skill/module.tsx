@@ -12,7 +12,7 @@ import {
   useSystemSkillStore,
 } from '@/modules/skill/stores'
 import { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/groupSystemSkillsWidget'
-import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/GroupSystemSkillsAssignmentDrawer.store'
+import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/skill/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types

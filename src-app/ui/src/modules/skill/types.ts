@@ -7,7 +7,7 @@ import type {
   useSystemSkillStore,
 } from '@/modules/skill/stores'
 import type { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/groupSystemSkillsWidget'
-import type { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/GroupSystemSkillsAssignmentDrawer.store'
+import type { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
