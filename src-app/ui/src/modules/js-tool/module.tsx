@@ -4,7 +4,7 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useJsToolSettingsStore } from './stores/JsToolSettings.store'
+import { useJsToolSettingsStore } from './stores/jsToolSettings'
 import './types' // CRITICAL: enable store type declaration merging
 
 const JsToolSettingsPage = lazyWithPreload(() =>
