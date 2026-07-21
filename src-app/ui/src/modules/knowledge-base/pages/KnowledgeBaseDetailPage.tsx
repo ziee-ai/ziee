@@ -40,7 +40,7 @@ export function KnowledgeBaseDetailPage() {
 
   useEffect(() => {
     if (kbId) void Stores.KnowledgeBaseDetail.load(kbId)
-    return () => Stores.KnowledgeBaseDetail.reset()
+    return () => void Stores.KnowledgeBaseDetail.reset()
   }, [kbId])
 
   if (loading && !kb) {

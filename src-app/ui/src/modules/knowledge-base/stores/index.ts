@@ -2,7 +2,7 @@ export { KnowledgeBases, useKnowledgeBasesStore } from './knowledgeBases'
 export {
   KnowledgeBaseDetail,
   useKnowledgeBaseDetailStore,
-} from './KnowledgeBaseDetail.store'
+} from './knowledgeBaseDetail'
 export {
   KnowledgeBaseComposer,
   useKnowledgeBaseComposerStore,
