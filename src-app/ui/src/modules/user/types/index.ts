@@ -7,7 +7,7 @@ import type { useUserGroupDrawerStore } from '@/modules/user/components/group/ed
 import type { useGroupMembersDrawerStore } from '@/modules/user/components/group/groupMembersDrawer'
 import type { useCreateUserDrawerStore } from '@/modules/user/components/user/createUserDrawer'
 import type { useEditUserDrawerStore } from '@/modules/user/components/user/editUserDrawer'
-import type { useResetPasswordDrawerStore } from '@/modules/user/components/user/ResetPasswordDrawer.store'
+import type { useResetPasswordDrawerStore } from '@/modules/user/components/user/resetPasswordDrawer'
 import type { useUserGroupsDrawerStore } from '@/modules/user/components/user/UserGroupsDrawer.store'
 import type { useAssignGroupDrawerStore } from '@/modules/user/components/user/assignGroupDrawer'
 

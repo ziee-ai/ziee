@@ -7,7 +7,7 @@ import { useGroupMembersDrawerStore } from '@/modules/user/components/group/grou
 import { useAssignGroupDrawerStore } from '@/modules/user/components/user/assignGroupDrawer'
 import { useCreateUserDrawerStore } from '@/modules/user/components/user/createUserDrawer'
 import { useEditUserDrawerStore } from '@/modules/user/components/user/editUserDrawer'
-import { useResetPasswordDrawerStore } from '@/modules/user/components/user/ResetPasswordDrawer.store'
+import { useResetPasswordDrawerStore } from '@/modules/user/components/user/resetPasswordDrawer'
 import { useUserGroupsDrawerStore } from '@/modules/user/components/user/UserGroupsDrawer.store'
 import { useUserGroupsStore } from '@/modules/user/stores'
 // NOTE: the `Users` store is NOT imported/registered here — it is whole-store-lazy
