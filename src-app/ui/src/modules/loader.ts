@@ -74,33 +74,34 @@ function resolveDependencies(modules: AppModule[]): AppModule[] {
   return sorted.map(name => moduleMap.get(name)!)
 }
 
-export function loadModules(): void {
+export async function loadModules(): Promise<void> {
   const { registerModule, initializeModules } = useModuleSystemStore.getState()
 
-  // Auto-discover all module.tsx files in the modules directory
+  // Auto-discover all module.tsx files in the modules directory.
+  // LAZY glob (no `{ eager: true }`): each module.tsx becomes its OWN chunk
+  // instead of being inlined into the entry chunk. Since a module.tsx statically
+  // imports its stores/components to wire routes+slots, an EAGER glob dragged
+  // every module's whole store/component subtree into entry (O(all-modules) boot
+  // weight). Lazy-globbing splits each module into a separate chunk; we still
+  // load them ALL at boot (below) — modules must be registered before routing
+  // renders — but as parallel, individually-cacheable chunks, and the entry
+  // chunk no longer carries them.
   const moduleFiles = import.meta.glob<{ default: AppModule }>(
     './**/module.tsx',
-    { eager: true },
   )
 
   // Also discover core modules from components directory
   const coreModuleFiles = import.meta.glob<{ default: AppModule }>(
     '../components/**/module.tsx',
-    { eager: true },
   )
 
-  // Collect all modules
+  // Collect all modules (load every discovered chunk in parallel)
+  const loaders = { ...moduleFiles, ...coreModuleFiles }
+  const loaded = await Promise.all(
+    Object.values(loaders).map(load => load()),
+  )
   const allModules: AppModule[] = []
-
-  // Phase 2: Router module is now in modules/router, so it will be discovered automatically
-  for (const [_path, moduleExports] of Object.entries(moduleFiles)) {
-    const module = moduleExports.default
-    if (module) {
-      allModules.push(module)
-    }
-  }
-
-  for (const [_path, moduleExports] of Object.entries(coreModuleFiles)) {
+  for (const moduleExports of loaded) {
     const module = moduleExports.default
     if (module) {
       allModules.push(module)
