@@ -7,7 +7,7 @@ import { McpServerDetailsDrawer } from '@/modules/hub/modules/mcp/components/Mcp
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
-import type { McpServerDrawerPrefill } from '@/modules/mcp/stores/McpServerDrawer.store'
+import type { McpServerDrawerPrefill } from '@/modules/mcp/stores/mcpServerDrawer/state'
 
 interface McpServerHubCardProps {
   server: HubMCPServer
