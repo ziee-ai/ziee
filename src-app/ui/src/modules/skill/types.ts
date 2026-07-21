@@ -6,7 +6,7 @@ import type {
   useSkillStore,
   useSystemSkillStore,
 } from '@/modules/skill/stores'
-import type { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/GroupSystemSkillsWidget.store'
+import type { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/groupSystemSkillsWidget'
 import type { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/GroupSystemSkillsAssignmentDrawer.store'
 
 declare module '@ziee/framework/stores' {

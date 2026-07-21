@@ -11,7 +11,7 @@ import {
   useSkillStore,
   useSystemSkillStore,
 } from '@/modules/skill/stores'
-import { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/GroupSystemSkillsWidget.store'
+import { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/groupSystemSkillsWidget'
 import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/GroupSystemSkillsAssignmentDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/skill/types' // CRITICAL: store declaration merging
