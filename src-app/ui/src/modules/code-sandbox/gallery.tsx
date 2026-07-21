@@ -49,12 +49,12 @@ export const gallery: ModuleGallery = {
         'SandboxResourceLimitsSection',
       ),
       setup: async () => {
-        const { SandboxResourceLimits } = await import(
-          '@/modules/code-sandbox/stores/SandboxResourceLimits.store'
+        const { SandboxResourceLimitsDef } = await import(
+          '@/modules/code-sandbox/stores/sandboxResourceLimits'
         )
-        await whenTrue(() => SandboxResourceLimits.store.getState().limits != null)
+        await whenTrue(() => SandboxResourceLimitsDef.store.getState().limits != null)
         await holdPatch(() =>
-          SandboxResourceLimits.store.setState({
+          SandboxResourceLimitsDef.store.setState({
             error: 'Failed to save resource limits.',
           } as any),
         )
@@ -117,11 +117,11 @@ export const gallery: ModuleGallery = {
         'SandboxResourceLimitsSection',
       ),
       setup: async () => {
-        const { SandboxResourceLimits } = await import(
-          '@/modules/code-sandbox/stores/SandboxResourceLimits.store'
+        const { SandboxResourceLimitsDef } = await import(
+          '@/modules/code-sandbox/stores/sandboxResourceLimits'
         )
         await holdPatch(() =>
-          SandboxResourceLimits.store.setState({ loading: true, limits: null } as any),
+          SandboxResourceLimitsDef.store.setState({ loading: true, limits: null } as any),
         )
       },
     },
