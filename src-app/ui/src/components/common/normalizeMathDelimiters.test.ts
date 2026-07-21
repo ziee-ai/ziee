@@ -102,6 +102,17 @@ test('partial and pre-existing math pass through unchanged', () => {
   assert.equal(normalizeMathDelimiters('plain prose [1] and arr[0]'), 'plain prose [1] and arr[0]')
 })
 
+// A CRLF document (an uploaded .md, a Windows-authored SKILL.md) must produce the
+// same block structure as LF — no stray `\r` line after the closing fence, which
+// is what the `\r?` in the trailing-context test prevents.
+test('CRLF input produces the same block structure as LF', () => {
+  check('Given \r\n\\[ x^2 \\]\r\nafter', 'Given \r\n$$\nx^2\n$$\r\nafter')
+  check('- first \\[ x_1 \\]\r\n- second', '- first \n  $$\n  x_1\n  $$\r\n- second')
+  check('inline \\( x \\)\r\nnext', 'inline $x$\r\nnext')
+  // a CRLF blank line inside the delimiters still trips the runaway guard
+  check('\\[ a\r\n\r\nb \\]', '\\[ a\r\n\r\nb \\]')
+})
+
 test('normalizeMathDelimiters is idempotent', () => {
   for (const input of ALL_INPUTS) {
     const once = normalizeMathDelimiters(input)

@@ -63,6 +63,19 @@ test('math spans are protected from the reference-link pass', () => {
     preprocessMarkdown('\\[ a[1] \\]\n\n[1]: http://x'),
     '$$\na[1]\n$$\n\n[1]: http://x',
   )
+  // Prose with a PAIR of `$` is already consumed as inline math by remark-math
+  // (`singleDollarTextMath` is on), so a bracket between them was never going to
+  // render as a link — it was being rewritten INTO the equation. Leaving it alone
+  // is what the renderer already does.
+  assert.equal(
+    preprocessMarkdown('costs $5 and [docs] is $10\n\n[docs]: http://x'),
+    'costs $5 and [docs] is $10\n\n[docs]: http://x',
+  )
+  // A lone `$` is not a span, so the reference link still inlines as before.
+  assert.equal(
+    preprocessMarkdown('price $5 then [docs] later\n\n[docs]: http://x'),
+    'price $5 then [docs](http://x) later\n\n[docs]: http://x',
+  )
 })
 
 test('math delimiters outside code are converted', () => {

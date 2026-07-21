@@ -84,7 +84,8 @@ export function normalizeMathDelimiters(md: string): string {
       // A blank line can't occur inside real math, but it CAN occur when an
       // unclosed `\[` runs on until some later `\]` — this bounds the damage to a
       // single paragraph instead of swallowing the rest of the message.
-      if (/\n[ \t]*\n/.test(inner)) return whole
+      // `\r?` throughout: an uploaded .md / SKILL.md may be CRLF.
+      if (/\r?\n[ \t]*\r?\n/.test(inner)) return whole
 
       // Inline needs no block positioning. A `$` in the content would close the
       // span early and corrupt the rest of the line, so leave those alone.
@@ -93,7 +94,7 @@ export function normalizeMathDelimiters(md: string): string {
       }
 
       // A body line that is exactly `$$` would close the fence early.
-      if (inner.split('\n').some(line => line.trim() === '$$')) return whole
+      if (inner.split(/\r?\n/).some(line => line.trim() === '$$')) return whole
 
       const lineHead = str.slice(str.lastIndexOf('\n', offset - 1) + 1, offset)
 
@@ -107,14 +108,16 @@ export function normalizeMathDelimiters(md: string): string {
       if (prefix === null) return whole
 
       const body = inner
-        .split('\n')
+        .split(/\r?\n/)
         .map(line => prefix + line.trim())
         .join('\n')
       // Only break the line when something precedes the match on it.
       const open = lineHead.trim() === '' ? '' : `\n${prefix}`
-      // ...and only after it when something follows on the same line.
+      // ...and only after it when something follows on the same line. The `\r?`
+      // matters: without it a CRLF document takes the something-follows branch
+      // and emits a stray prefix-plus-`\r` line after the closing fence.
       const trailing = str.slice(offset + whole.length)
-      const close = /^[ \t]*(\n|$)/.test(trailing)
+      const close = /^[ \t]*(\r?\n|$)/.test(trailing)
         ? `\n${prefix}$$`
         : `\n${prefix}$$\n${prefix}`
 
