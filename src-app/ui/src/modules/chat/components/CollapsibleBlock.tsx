@@ -7,7 +7,7 @@ import { Stores } from '@ziee/framework/stores'
 import {
   useMessageViewStateStore,
   type MessageViewFullState,
-} from '@/modules/chat/core/stores/MessageViewState.store'
+} from '@/modules/chat/core/stores/messageViewState'
 import { DEFAULT_MESSAGE_COLLAPSED } from '@/modules/chat/core/stores/messageViewState.helpers'
 import { useInPlaceAnchor } from '@/modules/chat/core/utils/useInPlaceAnchor'
 

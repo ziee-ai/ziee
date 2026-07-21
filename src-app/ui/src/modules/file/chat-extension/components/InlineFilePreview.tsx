@@ -24,7 +24,7 @@ import { DownloadButton } from '@/modules/file/viewers/shared/chrome'
 import {
   useMessageViewStateStore,
   type MessageViewFullState,
-} from '@/modules/chat/core/stores/MessageViewState.store'
+} from '@/modules/chat/core/stores/messageViewState'
 import { DEFAULT_INLINE_FILE_STATE } from '@/modules/chat/core/stores/messageViewState.helpers'
 import {
   INLINE_FILE_MIN_PX,

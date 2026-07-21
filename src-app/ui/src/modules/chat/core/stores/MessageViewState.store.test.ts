@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { useMessageViewStateStore } from './MessageViewState.store.ts'
+import { useMessageViewStateStore } from '@/modules/chat/core/stores/messageViewState'
 import {
   DEFAULT_MESSAGE_COLLAPSED,
   resolveFileState,

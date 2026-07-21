@@ -1,4 +1,4 @@
-import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
+import { useMessageViewStateStore } from '@/modules/chat/core/stores/messageViewState'
 import { ApiClient } from '@/api-client'
 import { chatExtensionRegistry } from '@/modules/chat/extensions'
 

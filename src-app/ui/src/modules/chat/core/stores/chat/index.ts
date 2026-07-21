@@ -4,7 +4,7 @@ import {
   defineStore,
   type StoreInitCtx,
 } from '@ziee/framework/store-kit'
-import { useMessageViewStateStore } from '@/modules/chat/core/stores/MessageViewState.store'
+import { useMessageViewStateStore } from '@/modules/chat/core/stores/messageViewState'
 import { ApiClient } from '@/api-client'
 import type { Branch, Conversation, MessageWithContent } from '@/api-client/types'
 
