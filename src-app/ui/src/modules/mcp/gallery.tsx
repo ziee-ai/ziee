@@ -216,7 +216,7 @@ export const gallery: ModuleGallery = {
         'McpUserPolicyCard',
       ),
       setup: async () => {
-        const { AppMode } = await import('@/modules/app/AppMode.store')
+        const { AppMode } = await import('@/modules/app/appMode')
         const { McpUserPolicyDef: McpUserPolicy } = await import(
           './stores/mcpUserPolicy'
         )
