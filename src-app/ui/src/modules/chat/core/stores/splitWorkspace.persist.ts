@@ -1,4 +1,4 @@
-import type { Pane } from '@/modules/chat/core/stores/SplitView.store'
+import type { Pane } from '@/modules/chat/core/stores/splitView/state'
 import type { SplitDirection } from '@/modules/chat/core/split/limits'
 
 /**

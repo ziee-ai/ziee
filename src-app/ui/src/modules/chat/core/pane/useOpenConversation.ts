@@ -93,7 +93,7 @@ export function useOpenConversationInWorkspace() {
         focused?.conversationId ??
         conversationIdFromPath(window.location.pathname)
 
-      const outcome = Stores.SplitView.openConversationInWorkspace(
+      const outcome = await Stores.SplitView.openConversationInWorkspace(
         conversationId,
         intent,
         { currentConversationId, projectId: opts?.projectId ?? null },
@@ -110,7 +110,7 @@ export function useOpenConversationInWorkspace() {
           cancelText: 'Cancel',
         })
         if (!replace) return
-        const replaced = Stores.SplitView.openConversationInWorkspace(
+        const replaced = await Stores.SplitView.openConversationInWorkspace(
           conversationId,
           'replaceFocused',
           { currentConversationId, projectId: opts?.projectId ?? null },

@@ -4,7 +4,7 @@ import {
   type ChatExtension,
 } from '@/modules/chat/core/extensions'
 import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
-import { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'
+import { useSplitViewStore } from '@/modules/chat/core/stores/splitView'
 
 /**
  * Resolve the DOM subtree of the FOCUSED split pane (ITEM-39). The keyboard

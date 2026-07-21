@@ -1,5 +1,5 @@
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
-import type { Pane } from '@/modules/chat/core/stores/SplitView.store'
+import type { Pane } from '@/modules/chat/core/stores/splitView/state'
 
 /**
  * The reconciliation reducer (ITEM-25 / DEC-40..43) — the SINGLE pure rule every

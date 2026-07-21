@@ -8,7 +8,7 @@ import {
   type WorkspaceLayout,
 } from './reconcile.ts'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
-import type { Pane } from '@/modules/chat/core/stores/SplitView.store'
+import type { Pane } from '@/modules/chat/core/stores/splitView/state'
 
 // TEST-47 (split-chat ITEM-25): the pure `openConversationInWorkspace` reducer —
 // the SINGLE rule every entry point routes through. Table-driven, one case per

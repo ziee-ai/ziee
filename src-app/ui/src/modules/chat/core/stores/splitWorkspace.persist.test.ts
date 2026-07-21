@@ -10,7 +10,7 @@ import {
   isSameTabReload,
   type PersistedWorkspace,
 } from './splitWorkspace.persist.ts'
-import type { Pane } from './SplitView.store'
+import type { Pane } from './splitView/state'
 
 // TEST-48 (split-chat ITEM-26) + TEST-110 (ITEM-73 / DEC-74): per-TAB workspace
 // persistence — save/load round-trip under `ziee-split-workspace-v2:<userId>` in

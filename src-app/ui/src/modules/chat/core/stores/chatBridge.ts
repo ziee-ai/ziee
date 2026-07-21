@@ -1,7 +1,7 @@
 import { useContext } from 'react'
 import { type StoreApi, useStore } from 'zustand'
 import { Chat } from '@/modules/chat/core/stores/chat'
-import { useSplitViewStore } from '@/modules/chat/core/stores/SplitView.store'
+import { useSplitViewStore } from '@/modules/chat/core/stores/splitView'
 import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
 
 /**
