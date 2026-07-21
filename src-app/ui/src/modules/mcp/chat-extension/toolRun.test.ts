@@ -9,7 +9,7 @@ import {
   shouldWrapRun,
 } from './toolRun.ts'
 import type { MessageContent } from '@/api-client/types'
-import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
+import type { McpToolCall } from '@/modules/mcp/stores/mcpComposer'
 
 const use = (id: string): MessageContent =>
   ({

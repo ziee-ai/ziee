@@ -1,7 +1,7 @@
 import { Tag } from '@ziee/kit'
 import { Wrench } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
-import { pendingConversationKey } from '@/modules/mcp/stores/McpComposer.store'
+import { pendingConversationKey } from '@/modules/mcp/stores/mcpComposer'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**

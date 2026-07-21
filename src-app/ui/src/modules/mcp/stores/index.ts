@@ -2,7 +2,7 @@
 export { useMcpStore } from './mcpServer'
 export { useSystemMcpServersStore } from './systemMcpServer'
 export { useMcpServerDrawerStore } from './mcpServerDrawer'
-export { useMcpComposerStore } from './McpComposer.store'
+export { useMcpComposerStore } from './mcpComposer'
 export { useMcpToolCallsStore } from './mcpToolCalls'
 
 // Re-export for compatibility with Stores pattern

@@ -1,5 +1,5 @@
 import { Alert, Text } from '@ziee/kit'
-import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
+import type { McpToolCall } from '@/modules/mcp/stores/mcpComposer'
 import { TOOL_STATUS } from '@/modules/chat/core/tool-status'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 

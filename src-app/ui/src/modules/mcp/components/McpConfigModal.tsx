@@ -5,7 +5,7 @@ import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMi
 import { Trash2 } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import type { Tool } from '@/api-client/types'
-import { pendingConversationKey, projectConfigKey } from '@/modules/mcp/stores/McpComposer.store'
+import { pendingConversationKey, projectConfigKey } from '@/modules/mcp/stores/mcpComposer'
 
 /**
  * MCP Configuration Modal

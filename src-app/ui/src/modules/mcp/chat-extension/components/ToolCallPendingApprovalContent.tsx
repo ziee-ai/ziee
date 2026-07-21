@@ -5,7 +5,7 @@ import { Stores } from '@ziee/framework/stores'
 import {
   approvalKeyOf,
   type McpToolCall,
-} from '@/modules/mcp/stores/McpComposer.store'
+} from '@/modules/mcp/stores/mcpComposer'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 

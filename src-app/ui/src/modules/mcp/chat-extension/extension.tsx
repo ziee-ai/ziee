@@ -11,7 +11,7 @@ import {
   type ContentRendererProps,
 } from '@/modules/chat/core/extensions'
 import { Stores } from '@ziee/framework/stores'
-import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
+import type { McpToolCall } from '@/modules/mcp/stores/mcpComposer'
 import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
 import { McpMenuItem } from '@/modules/mcp/chat-extension/components/McpMenuItem'
@@ -966,7 +966,7 @@ const mcpExtension: ChatExtension = createExtension({
   // Allow empty text when there are pending tool approvals
   beforeSendMessage: async () => {
     const { Stores } = await import('@ziee/framework/stores')
-    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/mcpComposer')
     const mcpStore = Stores.McpComposer
 
     // Check if there are approval decisions queued to send for THIS (sending =
@@ -987,7 +987,7 @@ const mcpExtension: ChatExtension = createExtension({
   // Compose request fields to include MCP config and approval decisions
   composeRequestFields: async (ctx) => {
     const { Stores } = await import('@ziee/framework/stores')
-    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/mcpComposer')
     const mcpStore = Stores.McpComposer
     // Resolve the SENDING pane's own MCP config + approvals (ITEM-33/51) — from the
     // per-conversation/per-pane keyed state, not the single-active pointer, so two
@@ -1184,7 +1184,7 @@ const mcpExtension: ChatExtension = createExtension({
     }
 
     // Clear only the SENDING conversation's approvals (ITEM-33).
-    const { approvalKeyOf } = await import('@/modules/mcp/stores/McpComposer.store')
+    const { approvalKeyOf } = await import('@/modules/mcp/stores/mcpComposer')
     mcpStore.clearApprovalDecisions(approvalKeyOf(conversation?.id))
 
     return {}

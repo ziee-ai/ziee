@@ -22,7 +22,7 @@ import {
 import { chatCassette } from '@/dev/gallery/fixtures/chat'
 import { useChatStore } from '@/modules/chat/core/stores/chat'
 import { useFileStore } from '@/modules/file/stores/file'
-import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
+import { useMcpComposerStore } from '@/modules/mcp/stores/mcpComposer'
 import { useModelPickerStore } from '@/modules/user-llm-providers/modelPicker'
 import {
   BRANCHED_ANCHOR_MESSAGE_ID,

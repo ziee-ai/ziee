@@ -3,7 +3,7 @@ import type {
   MessageContentDataToolUse,
   MessageContentDataToolResult,
 } from '@/api-client/types'
-import type { McpToolCall } from '@/modules/mcp/stores/McpComposer.store'
+import type { McpToolCall } from '@/modules/mcp/stores/mcpComposer'
 
 /**
  * Pure helpers for the "N tools called" group card (`McpToolGroupCard`).
