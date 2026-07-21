@@ -23,6 +23,7 @@ import { KbMenuItem } from './components/KbMenuItem'
 import { KbStatusRow } from './components/KbStatusRow'
 import { SearchKnowledgeToolResultCard } from './components/SearchKnowledgeToolResultCard'
 import type { KbSourceData } from './components/KbSourcePanel'
+import { KnowledgeBaseComposer } from '@/modules/knowledge-base/stores/knowledgeBaseComposer'
 
 // Augment the central PanelRendererMap so `displayInRightPanel({ type:
 // 'kb_source', data })` and `registerPanelRenderer('kb_source', …)` type-check.
@@ -46,7 +47,6 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
     const { registerPanelRenderer } = await import(
       '@/modules/chat/core/stores/chat'
     )
-    const { Stores } = await import('@ziee/framework/stores')
     const { KbSourcePanel } = await import('./components/KbSourcePanel')
     registerPanelRenderer('kb_source', {
       icon: <BookOpen />,
@@ -69,7 +69,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
           // buffered new-chat KB selection.
           if (!id) {
             const paneId = (ctx.chatStore.getState() as { paneId?: string | null }).paneId ?? null
-            Stores.KnowledgeBaseComposer.resetPending(paneId)
+            KnowledgeBaseComposer.resetPending(paneId)
           }
         },
       ),
@@ -94,8 +94,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   },
 
   onConversationLoad: async conversation => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const store = Stores.KnowledgeBaseComposer
+    const store = KnowledgeBaseComposer
     // Per-conversation (ITEM-46): hydrate THIS conversation's own slot.
     if (conversation.id) await store.loadForConversation(conversation.id)
     // Read-only KBs inherited from the conversation's project (scope legibility).
@@ -109,7 +108,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
     const { Stores } = await import('@ziee/framework/stores')
     const { pendingKbKey } = await import('../stores/kbSelectionKey')
     const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
-    const snap = Stores.KnowledgeBaseComposer.$
+    const snap = KnowledgeBaseComposer.$
     // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
     // a `Stores.Chat.$` read (which routes to the FOCUSED pane — in split view the
     // pane that sent may no longer be focused by the time this async hook runs, so
@@ -133,7 +132,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
       !snap.selectionByConversation.has(conversation.id) &&
       pendingSize > 0
     ) {
-      await Stores.KnowledgeBaseComposer.transferPending(conversation.id, ownerPaneId)
+      await KnowledgeBaseComposer.transferPending(conversation.id, ownerPaneId)
     }
     return {}
   },

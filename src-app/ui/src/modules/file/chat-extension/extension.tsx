@@ -11,12 +11,14 @@ import { AttachedFileCard } from '@/modules/file/chat-extension/components/Attac
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
 import { ImageContent } from '@/modules/file/chat-extension/components/ImageContent'
 // Raw zustand hook for the `useSendBlocker` reactive subscription —
-// going through Stores.File would fire the Stores-proxy's internal
+// going through FileStore would fire the Stores-proxy's internal
 // useEffect+useStore on property access, corrupting the outer hook
 // count (see ProjectFiles.store.ts's earlier bug).
 import { composerPaneKey, useFileStore } from '@/modules/file/stores/file'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment, MessageContentDataImage } from '@/api-client/types'
+import { SplitView } from '@/modules/chat/core/stores/splitView'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 // Per-pane subscription teardown (ITEM-34/5): keyed by the pane's chat store api
 // (ctx.chatStore) so cleanup tears down the RIGHT pane's subscriptions — a
@@ -161,7 +163,6 @@ const fileExtension: ChatExtension = createExtension({
       },
     })
 
-    const { Stores } = await import('@ziee/framework/stores')
     // Bind to the OWNING pane's chat store (ITEM-34/5) — not the global
     // singleton — so these subscriptions watch THIS pane's conversation/edit
     // state. Unsubs are stored per-pane (keyed by ctx.chatStore) for cleanup.
@@ -179,7 +180,7 @@ const fileExtension: ChatExtension = createExtension({
       chatStore.subscribe(
         (state: any) => state.conversation?.id,
         () => {
-          Stores.File.clearFiles(composerPaneKey(chatStore.getState().paneId))
+          FileStore.clearFiles(composerPaneKey(chatStore.getState().paneId))
         },
       ),
     )
@@ -188,7 +189,7 @@ const fileExtension: ChatExtension = createExtension({
       chatStore.subscribe(
         (state: any) => state.editingMessage,
         async (editingMessage: any) => {
-        const fileStore = Stores.File
+        const fileStore = FileStore
         if (!fileStore) return
 
         if (editingMessage) {
@@ -250,8 +251,7 @@ const fileExtension: ChatExtension = createExtension({
     _composedRequest: any,
     composerPaneId?: string | null,
   ): Promise<MessageContent[]> => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const fileStore = Stores.File
+    const fileStore = FileStore
     if (!fileStore) return []
 
     // Attach only the SENDING pane's files (ITEM-32).
@@ -291,7 +291,7 @@ const fileExtension: ChatExtension = createExtension({
   // subscribe behavior (which handles the initial edit-click flow).
   //
   // Inverts the file-specific code that used to live at
-  // Chat.store.ts:891-921 (lazy-imported Stores.File to avoid the
+  // Chat.store.ts:891-921 (lazy-imported FileStore to avoid the
   // chat → file dependency).
   onMessageEditRestore: async (contents) => {
     const stubs: FileEntity[] = contents
@@ -299,12 +299,11 @@ const fileExtension: ChatExtension = createExtension({
       .filter((f): f is FileEntity => f !== null)
     if (stubs.length === 0) return
 
-    const { Stores } = await import('@ziee/framework/stores')
-    const fileStore = Stores.File
+    const fileStore = FileStore
     if (!fileStore) return
 
     fileStore.restoreFilesFromEdit(
-      composerPaneKey(Stores.SplitView.$.focusedPaneId),
+      composerPaneKey(SplitView.$.focusedPaneId),
       stubs,
     )
   },
@@ -331,11 +330,10 @@ const fileExtension: ChatExtension = createExtension({
   // disable lands (race) or some other extension's useSendBlocker
   // doesn't propagate. Same semantics as the useSendBlocker hook.
   beforeSendMessage: async () => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const fileStore = Stores.File
+    const fileStore = FileStore
 
     // Check if there are any files still uploading (use action method to avoid React hooks)
-    if (fileStore.isUploading(composerPaneKey(Stores.SplitView.$.focusedPaneId))) {
+    if (fileStore.isUploading(composerPaneKey(SplitView.$.focusedPaneId))) {
       console.log('[FileExtension] Blocking message send - files still uploading')
 
       return {
@@ -349,10 +347,9 @@ const fileExtension: ChatExtension = createExtension({
 
   // Compose request fields to add file_ids to send message request
   composeRequestFields: async (ctx) => {
-    const { Stores } = await import('@ziee/framework/stores')
 
     // The SENDING pane's file ids (ITEM-32).
-    const fileStore = Stores.File
+    const fileStore = FileStore
     const fileIds = fileStore.getFileIds(composerPaneKey(ctx.paneId))
 
     console.log('[FileExtension] composeRequestFields - fileIds:', fileIds)
@@ -372,8 +369,7 @@ const fileExtension: ChatExtension = createExtension({
   // user may have focused another pane; the store's own paneId is stable
   // (ITEM-32/DRIFT-2.13).
   onMessageSent: async (ownerPaneId) => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const fileStore = Stores.File
+    const fileStore = FileStore
     const paneKey = composerPaneKey(ownerPaneId)
 
     // Backup THIS pane's files before clearing THIS pane's buffer.
@@ -387,8 +383,7 @@ const fileExtension: ChatExtension = createExtension({
   // errored), threaded from the pane's store. The error frame arrives async, so
   // focus is unreliable; using it would restore into / clobber the wrong pane.
   onStreamError: async (_error, ownerPaneId) => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const fileStore = Stores.File
+    const fileStore = FileStore
 
     // Restore only THIS pane's backed-up files (leaves other panes untouched).
     fileStore.restoreFromBackup(composerPaneKey(ownerPaneId))
@@ -399,8 +394,7 @@ const fileExtension: ChatExtension = createExtension({
   // Clear backup on successful completion — keyed by the OWNING pane (same async-
   // boundary reasoning as onStreamError).
   afterStreamComplete: async (_message, ownerPaneId) => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const fileStore = Stores.File
+    const fileStore = FileStore
 
     // Clear THIS pane's backup since its message was sent successfully.
     fileStore.clearBackup(composerPaneKey(ownerPaneId))

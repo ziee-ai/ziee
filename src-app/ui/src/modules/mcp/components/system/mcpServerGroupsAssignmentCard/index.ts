@@ -42,3 +42,4 @@ const McpServerGroupsAssignmentCardDef = defineStore<McpServerGroupsAssignmentCa
 })
 export const McpServerGroupsAssignmentCard = registerLazyStore(McpServerGroupsAssignmentCardDef)
 export const useSystemMcpServerGroupCardStore = McpServerGroupsAssignmentCardDef.store
+export const SystemMcpServerGroupCard = McpServerGroupsAssignmentCard

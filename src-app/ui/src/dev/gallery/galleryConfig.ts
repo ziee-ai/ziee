@@ -20,7 +20,6 @@ import {
   mockErrorResponse,
   sseReplayResponse,
 } from '@ziee/gallery'
-import { Stores } from '@ziee/framework/stores'
 import { ApiEndpoints } from '@/api-client/apiEndpoints'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
@@ -43,6 +42,7 @@ import {
   llmProvidersList,
 } from './fixtures/llm-providers'
 import { discoverGalleries } from './support/registry'
+import { ConfigClient } from '@/modules/config-client/configClient'
 
 // ── auth/role seed (was `seed.ts`) ───────────────────────────────────────────
 // A conservative read-only permission set a "limited" user plausibly holds.
@@ -151,9 +151,9 @@ export function buildGalleryConfig(): GalleryConfig {
       ACCENT_ORDER.map(a => [a, ACCENT_PRESETS[a].label]),
     ),
     defaultAccent: 'blue',
-    setThemePref: theme => Stores.ConfigClient.setThemePreference(theme),
+    setThemePref: theme => ConfigClient.setThemePreference(theme),
     setAccentPref: accent =>
-      Stores.ConfigClient.setAccentPreset(accent as AccentPreset),
+      ConfigClient.setAccentPreset(accent as AccentPreset),
 
     stories: ALL_STORIES,
     paramValues: {

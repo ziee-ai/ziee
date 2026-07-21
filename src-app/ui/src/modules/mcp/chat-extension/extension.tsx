@@ -1,3 +1,4 @@
+import { Stores } from '@ziee/framework/stores'
 import { Fragment, useEffect, useState } from 'react'
 import { Alert, Button, Card, Progress, Text } from '@ziee/kit'
 import { ChevronDown } from 'lucide-react'
@@ -10,7 +11,6 @@ import {
   type ChatExtension,
   type ContentRendererProps,
 } from '@/modules/chat/core/extensions'
-import { Stores } from '@ziee/framework/stores'
 import type { McpToolCall } from '@/modules/mcp/stores/mcpComposer'
 import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
@@ -28,6 +28,8 @@ import {
   resolveArtifactToolUseId,
   shouldWrapRun,
 } from '@/modules/mcp/chat-extension/toolRun'
+import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
+import { McpServer as McpServerStore } from '@/modules/mcp/stores/mcpServer'
 
 /**
  * MCP Tool Call UI Component
@@ -146,8 +148,8 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // Access toolCalls Map directly to create a reactive subscription
   // Using getToolCall() method doesn't trigger re-renders when store updates
-  const { toolCalls } = Stores.McpComposer
-  const { servers } = Stores.McpServer
+  const { toolCalls } = McpComposer
+  const { servers } = McpServerStore
   // Hoisted above the early returns below: `Stores.Chat.messages` is a reactive
   // store-proxy access that calls a hook on every render, so it MUST run on every
   // render path — otherwise a re-render that early-returns (e.g. once `toolCall`
@@ -276,10 +278,10 @@ function McpToolGroupCard({
   // reactive subscription (the same pattern as McpToolUseRenderer — the
   // getToolCall() method does NOT trigger re-renders). An approval / running
   // status that arrives after mount re-renders this component and opens it.
-  const { toolCalls } = Stores.McpComposer
+  const { toolCalls } = McpComposer
   // Server rows for resolving a human display name in the single-tool header
   // (same reactive read + resolution as McpToolUseRenderer).
-  const { servers } = Stores.McpServer
+  const { servers } = McpServerStore
   const useIds = runToolUseIds(run)
   const hasPendingApproval = useIds.some(
     id => toolCalls.get(id)?.status === 'pending_approval',
@@ -418,7 +420,6 @@ const mcpExtension: ChatExtension = createExtension({
   priority: 50, // Higher priority to handle events early
 
   initialize: async (ctx) => {
-    const { Stores } = await import('@ziee/framework/stores')
     const { ApiClient } = await import('@/api-client')
 
     // Bind the editing-message restore to the OWNING pane's chat store
@@ -431,7 +432,7 @@ const mcpExtension: ChatExtension = createExtension({
       chatStore.subscribe(
         (state: any) => state.editingMessage,
         async (editingMessage: any) => {
-        const mcpStore = Stores.McpComposer
+        const mcpStore = McpComposer
         if (!mcpStore) return
 
         if (editingMessage) {
@@ -475,7 +476,7 @@ const mcpExtension: ChatExtension = createExtension({
       // data is automatically typed as SSEChatStreamMcpToolStartData
       // addToolCall is an action — callable directly on the store proxy
       // (actions are hook-free, safe outside a React component context).
-      const mcpStore = Stores.McpComposer
+      const mcpStore = McpComposer
 
       mcpStore.addToolCall({
         tool_use_id: data.tool_use_id,
@@ -577,7 +578,7 @@ const mcpExtension: ChatExtension = createExtension({
       // A long-running tool call reported progress (e.g. a sandbox rootfs
       // download). Attach it to the running tool call(s) for this server so
       // the tool card can render a live progress bar.
-      const mcpStore = Stores.McpComposer
+      const mcpStore = McpComposer
       mcpStore.setToolCallProgress(data.server, data.message_id, {
         progress: data.progress,
         total: data.total ?? undefined,
@@ -587,7 +588,7 @@ const mcpExtension: ChatExtension = createExtension({
 
     mcpApprovalRequired: async (data, get, set) => {
       // data is automatically typed as SSEChatStreamMcpApprovalRequiredData
-      const mcpStore = Stores.McpComposer
+      const mcpStore = McpComposer
 
       // Use addToolCall instead of updateToolCall - the tool call doesn't exist yet
       // because mcpToolStart is NOT sent when approval is required
@@ -716,8 +717,8 @@ const mcpExtension: ChatExtension = createExtension({
       // resolved state survives a component remount. Guard on !has() so a
       // double-delivered SSE frame can't reset an already-resolved entry to
       // 'pending' (which would re-show the buttons + allow a duplicate POST).
-      if (!Stores.McpComposer.$.elicitationRequests.has(data.elicitation_id)) {
-        Stores.McpComposer.addElicitationRequest({
+      if (!McpComposer.$.elicitationRequests.has(data.elicitation_id)) {
+        McpComposer.addElicitationRequest({
           elicitation_id: data.elicitation_id,
           message: `run_js wants to call ${data.tool_name}`,
           requested_schema: {},
@@ -792,7 +793,7 @@ const mcpExtension: ChatExtension = createExtension({
 
     mcpElicitationRequired: async (data, get, set) => {
       // data is automatically typed as SSEChatStreamMcpElicitationRequiredData
-      const mcpStore = Stores.McpComposer
+      const mcpStore = McpComposer
       mcpStore.addElicitationRequest(data)
 
       // Inject elicitation_request content block into streaming message so
@@ -863,7 +864,7 @@ const mcpExtension: ChatExtension = createExtension({
 
     mcpToolComplete: async (data, _get, _set) => {
       // data is automatically typed as SSEChatStreamMcpToolCompleteData
-      const mcpStore = Stores.McpComposer
+      const mcpStore = McpComposer
 
       mcpStore.updateToolCall(data.tool_use_id, {
         status: data.is_error ? 'error' : 'completed',
@@ -891,7 +892,7 @@ const mcpExtension: ChatExtension = createExtension({
       // which would mis-attach a parallel artifact.
       const toolUseId = resolveArtifactToolUseId(
         streamingMessage.contents,
-        Stores.McpComposer.$.toolCalls,
+        McpComposer.$.toolCalls,
         data.tool_use_id,
       )
       if (!toolUseId) return
@@ -967,7 +968,7 @@ const mcpExtension: ChatExtension = createExtension({
   beforeSendMessage: async () => {
     const { Stores } = await import('@ziee/framework/stores')
     const { approvalKeyOf } = await import('@/modules/mcp/stores/mcpComposer')
-    const mcpStore = Stores.McpComposer
+    const mcpStore = McpComposer
 
     // Check if there are approval decisions queued to send for THIS (sending =
     // focused) conversation (ITEM-33) — not another pane's.
@@ -986,9 +987,8 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Compose request fields to include MCP config and approval decisions
   composeRequestFields: async (ctx) => {
-    const { Stores } = await import('@ziee/framework/stores')
     const { approvalKeyOf } = await import('@/modules/mcp/stores/mcpComposer')
-    const mcpStore = Stores.McpComposer
+    const mcpStore = McpComposer
     // Resolve the SENDING pane's own MCP config + approvals (ITEM-33/51) — from the
     // per-conversation/per-pane keyed state, not the single-active pointer, so two
     // split panes send with their own selection and one pane's approval never leaks.
@@ -1023,9 +1023,8 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Load conversation MCP settings when conversation is opened
   onConversationLoad: async (conversation) => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const mcpStore = Stores.McpComposer
-    const mcpStoreProxy = Stores.McpComposer
+    const mcpStore = McpComposer
+    const mcpStoreProxy = McpComposer
 
     // Set current conversation ID
     mcpStore.setCurrentConversation(conversation.id)
@@ -1038,7 +1037,7 @@ const mcpExtension: ChatExtension = createExtension({
 
       // Get available servers to compute selectedServers from disabledServers
       // Read via `$` snapshot on the McpServer store (outside React context)
-      const mcpServerState = Stores.McpServer.$
+      const mcpServerState = McpServerStore.$
       const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
       const availableServerIds = new Set(availableServers.map(s => s.id))
 
@@ -1101,7 +1100,7 @@ const mcpExtension: ChatExtension = createExtension({
       }
     } catch {
       // If settings don't exist yet, create default config with all servers enabled
-      const mcpServerState = Stores.McpServer.$
+      const mcpServerState = McpServerStore.$
       const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
       const selectedServers = new Map<string, { server_id: string; tools: string[] }>()
       for (const server of availableServers) {
@@ -1149,7 +1148,7 @@ const mcpExtension: ChatExtension = createExtension({
     const { Stores } = await import('@ziee/framework/stores')
     const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     // Read via `$` snapshot (state fields + actions both live on getState())
-    const mcpStore = Stores.McpComposer.$
+    const mcpStore = McpComposer.$
 
     // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
     // a `Stores.Chat.$` read (the FOCUSED pane) — in split view the sender may not
@@ -1170,7 +1169,7 @@ const mcpExtension: ChatExtension = createExtension({
       mcpStore.setCurrentConversation(conversation.id, ownerPaneId)
 
       // Get available server IDs for proper disabled_servers computation
-      const mcpServerState = Stores.McpServer.$
+      const mcpServerState = McpServerStore.$
       const availableServerIds = (mcpServerState?.servers || [])
         .filter(s => s.enabled)
         .map(s => s.id)

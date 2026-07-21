@@ -1,7 +1,7 @@
 /**
  * Skill fixtures for the Skills-in-conversation overlay entries. Seeds the
- * install list (`Stores.Skill.skills`) + the per-conversation available set
- * (`Stores.ConversationSkills.available[cid]`) so the "Skills in this
+ * install list (`SkillStore.skills`) + the per-conversation available set
+ * (`ConversationSkills.available[cid]`) so the "Skills in this
  * conversation" dialog renders POPULATED (some toggled off), EMPTY, and LOADING.
  */
 import type { AvailableSkillEntry, Skill } from '@/api-client/types'

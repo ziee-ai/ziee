@@ -14,6 +14,9 @@ import {
   type ChatExtension,
 } from '@/modules/chat/core/extensions'
 import { AddToProjectModal } from '@/modules/projects/components/AddToProjectModal'
+import { SplitView } from '@/modules/chat/core/stores/splitView'
+import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
+import { Projects as ProjectsStore } from '@/modules/projects/stores/projects'
 
 /**
  * Frontend bridge between chat (project-unaware) and the projects
@@ -132,7 +135,7 @@ function projectIdFromUrl(): string | null {
  * `projectId` (null for a plain new-chat pane). Single-pane → the URL, unchanged.
  */
 function sendingPaneProjectId(): string | null {
-  const sv = Stores.SplitView.$
+  const sv = SplitView.$
   if (sv.panes.length >= 2) {
     const focused = sv.panes.find((p) => p.paneId === sv.focusedPaneId)
     return focused?.projectId ?? null
@@ -154,7 +157,7 @@ const projectExtension: ChatExtension = createExtension({
       // Seed the assistant picker with the project's default when the user
       // hasn't picked one, keyed by THIS conversation so it's pane-scoped
       // (ITEM-5). One-shot — won't override an explicit user choice.
-      const picker = Stores.AssistantPicker
+      const picker = AssistantPicker
       if (!(await picker.getAssistantId(conversation.id))) {
         picker.selectAssistant(conversation.id, project.default_assistant_id)
       }
@@ -165,7 +168,7 @@ const projectExtension: ChatExtension = createExtension({
     const projectId = sendingPaneProjectId()
     if (!projectId) return
     try {
-      const response = await Stores.Projects.attachConversation(
+      const response = await ProjectsStore.attachConversation(
         projectId,
         conversation.id,
       )
@@ -236,7 +239,7 @@ function ProjectTagWithRemove({
   const handleRemove = async () => {
     setRemoving(true)
     try {
-      await Stores.Projects.detachConversation(project.id, conversationId)
+      await ProjectsStore.detachConversation(project.id, conversationId)
       message.success('Removed from project')
     } catch (err) {
       message.error(
@@ -526,7 +529,7 @@ function useProjectMenuContribution(conversation: Conversation): {
     }).then(async (ok) => {
       if (!ok) return
       try {
-        await Stores.Projects.detachConversation(project.id, conversation.id)
+        await ProjectsStore.detachConversation(project.id, conversation.id)
         message.success('Removed from project')
       } catch (err) {
         message.error(

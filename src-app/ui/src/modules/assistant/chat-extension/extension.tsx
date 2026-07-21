@@ -3,16 +3,16 @@ import {
   type ChatExtension,
   type ExtensionRequestFields,
 } from '@/modules/chat/core/extensions'
-import { Stores } from '@ziee/framework/stores'
 import { AssistantMenuItem } from '@/modules/assistant/chat-extension/components/AssistantMenuItem'
 import { AssistantStatusChip } from '@/modules/assistant/chat-extension/components/AssistantStatusChip'
+import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
 
 /**
  * Assistant Extension (frontend chat-extension shim).
  *
  * Bridges the chat composer to the assistant module. The picker state
  * lives in modules/assistant/stores/assistantPicker/
- * (registered as Stores.AssistantPicker), NOT under
+ * (registered as AssistantPicker), NOT under
  * Stores.Chat. This extension is a thin UI shim that:
  *   - Renders the toolbar picker + status chip components.
  *   - Reads the active picker selection into outgoing chat requests
@@ -32,7 +32,6 @@ const assistantExtension: ChatExtension = createExtension({
   priority: 80,
 
   initialize: async (ctx) => {
-    const { Stores } = await import('@ziee/framework/stores')
     const { newChatAssistantKey } = await import('@/modules/assistant/stores')
 
     // Per-conversation keying makes the old "reset on conversation change"
@@ -52,7 +51,7 @@ const assistantExtension: ChatExtension = createExtension({
       chatStore.subscribe(
         (state: any) => state.editingMessage,
         async (editingMessage: any) => {
-        const picker = Stores.AssistantPicker
+        const picker = AssistantPicker
         if (!picker) return
         const key = paneKey()
 
@@ -104,7 +103,7 @@ const assistantExtension: ChatExtension = createExtension({
     // The SENDING pane's assistant (ctx.conversationId; null = new chat). (ITEM-5)
     const { newChatAssistantKey } = await import('@/modules/assistant/stores')
     const key = ctx.conversationId ?? newChatAssistantKey(ctx.paneId)
-    const selectedAssistantId = await Stores.AssistantPicker.getAssistantId(key)
+    const selectedAssistantId = await AssistantPicker.getAssistantId(key)
 
     if (selectedAssistantId) {
       return {
