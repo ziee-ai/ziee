@@ -265,22 +265,39 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
     const bubble = assistantBubble(page)
     await expect(bubble).toContainText('Steady state')
 
-    // Both display equations render as KaTeX display blocks.
+    // Both display equations render as KaTeX display blocks. The count IS the
+    // proof the delimiters converted: if the raw `\[ … \]` had leaked through as
+    // plain text (the #177 bug) it would be 0.
+    //
+    // We deliberately do NOT assert the raw TeX is ABSENT from the DOM. KaTeX
+    // embeds the source in a hidden `<annotation encoding="application/x-tex">`
+    // for screen readers (the a11y win of rendering as math), so `\frac{…}` is
+    // legitimately present in the bubble's text content — a text-absence check
+    // would fail on a correctly-rendered equation.
     await expect(bubble.locator('.katex-display').first()).toBeVisible({
       timeout: 10000,
     })
     expect(
       await bubble.evaluate(el => el.querySelectorAll('.katex-display').length),
     ).toBe(2)
-
-    // The raw LaTeX must be GONE — this is the actual user-visible bug.
-    await expect(bubble).not.toContainText('\\frac{d^2C(x)}{dx^2}')
-    await expect(bubble).not.toContainText('\\sqrt{D/k}')
+    // ...and that hidden TeX annotation is the accessible-name source, so assert
+    // it exists rather than that it's gone.
+    expect(
+      await bubble.evaluate(
+        el => el.querySelectorAll('.katex-mathml annotation').length,
+      ),
+    ).toBe(2)
   })
 
   // Inline `\( … \)` is deliberately NOT converted: it is byte-identical to POSIX
-  // BRE grouping, so converting it would delete the backslashes from ordinary
-  // shell prose. This pins that decision at the rendered-DOM level.
+  // BRE grouping, so converting it would turn shell prose into an equation.
+  //
+  // Note what "untouched" means at the DOM level. Markdown's OWN character-escape
+  // rule already turns `\(` into `(` — `(` is ASCII punctuation, so it is
+  // escapable — and that is pre-existing behavior this change does not alter. So
+  // the user sees `sed -e 's/(foo)/bar/'`: parentheses intact, structure readable.
+  // Converting would instead have produced `$foo$`, rendering as an italicised
+  // math `foo` with the parentheses gone entirely. That difference is the point.
   test('leaves inline \\( … \\) untouched so sed/grep prose survives', async ({
     page,
     testInfra,
@@ -291,8 +308,10 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
       "Ran: sed -e 's/\\(foo\\)/bar/' on 3 files.\n\nTo escape use \\( and \\) in LaTeX.",
     )
     const bubble = assistantBubble(page)
-    await expect(bubble).toContainText("sed -e 's/\\(foo\\)/bar/' on 3 files")
-    await expect(bubble).toContainText('To escape use \\( and \\) in LaTeX.')
+    // The grouping parens survive — they would be GONE had this become math.
+    await expect(bubble).toContainText("sed -e 's/(foo)/bar/' on 3 files")
+    await expect(bubble).toContainText('To escape use ( and ) in LaTeX.')
+    // ...and nothing here was rendered as an equation.
     expect(await bubble.evaluate(el => el.querySelectorAll('.katex').length)).toBe(0)
   })
 

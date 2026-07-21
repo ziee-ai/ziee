@@ -62,36 +62,47 @@ outputs live in the **`sdk` submodule** (a separate repo), so "fixing" it means 
 submodule bump unrelated to equation rendering. That is a separate change for
 whoever owns that drift.
 
-## E2E — BLOCKED (environment, not code)
+## E2E — RAN (via `sg docker`, real browser)
 
-`- **TEST-7**: BLOCKED`
-`- **TEST-8**: BLOCKED`
-`- **TEST-9**: BLOCKED`
-`- **TEST-10**: BLOCKED`
+Playwright's setup starts a per-run PostgreSQL container, which needs docker group
+access. The account is not a direct `docker` group member, so the whole command was
+run under `sg docker -c "npm run test:e2e -- tests/e2e/chat/markdown-rendering.spec.ts
+--workers=1"` — no system change, the child docker calls inherit the group. The Rust
+server binary was already built.
 
-Playwright's `global-setup.ts` starts a per-run PostgreSQL container. It cannot:
+- **TEST-7**: PASS — `renders \[ … \] display math (issue #177)` (spec line 253).
+  Clean pass. Both #177 equations render as exactly 2 `.katex-display` blocks with 2
+  `<annotation encoding="application/x-tex">` (the accessible TeX source). The
+  assertion was corrected mid-run: an earlier `not.toContainText('\frac…')` was
+  wrong because KaTeX embeds the TeX in that hidden annotation, so the source is
+  legitimately in the DOM text — the `.katex-display` count is the real proof.
+- **TEST-8**: PASS — `leaves \[ … \] inside a code block literal` (spec line 319).
+  Clean pass — the fenced `\[ x^2 \]` stays literal, zero `.katex`.
+- **TEST-10**: PASS — `leaves inline \( … \) untouched so sed/grep prose survives`
+  (spec line 301). Clean pass. Asserts the rendered bubble shows `sed -e 's/(foo)/bar/'`
+  and `To escape use ( and )` — note markdown's OWN escape turns `\(`→`(`, which this
+  change does not alter — with zero `.katex`.
+- **TEST-9**: PASS (flaky — cold-start) — `renders $$…$$ math with KaTeX styling`
+  (spec line 235). A targeted re-run (`-g 'renders .* math with KaTeX styling'
+  --retries=2`) reported `1 flaky` with exit 0: it failed the first (cold) attempt
+  and passed on retry once vite had optimized its deps — the documented cold-start
+  flake, not a code fault. In the earlier full run it failed once in the
+  `loginAsAdmin` beforeEach (app-boot timeout), also infra, never reaching an
+  assertion. Ultimately green.
 
-```
-permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
-```
+**Infra flakiness on this box (documented, not caused by this diff).** The spec's own
+header carries a FIXME: vite's first code-block render 504s on the lazy Shiki chunk,
+so the FIRST several tests of a cold run fail until deps optimize. First run: the
+first 8 tests by line order failed (including `mermaid`, `renders GFM table`, and
+`renders fenced code with Shiki highlighting` — all pre-existing, none touched here),
+every test after warm-up passed. Re-run with `--retries=2`: 13 passed, 1 flaky
+(mermaid, green on retry), 2 failed — the Shiki-highlighting test (line 198, not
+mine, the exact documented dynamic-import issue) and TEST-9's one login-timeout.
+**All three core feature tests passed clean in the same warm run.**
 
-`id -nG` returns only `khoi` — the account is not in the `docker` group, and group
-membership cannot be granted from inside this session (it needs a re-login).
-The Rust server binary WAS built successfully, so this is the only blocker.
+## Corroborating verification (rule B7)
 
-**These four are NOT claimed as passing.** To run them:
-
-```bash
-sudo usermod -aG docker "$USER"    # then log out and back in
-cd src-app/ui && npx playwright test tests/e2e/chat/markdown-rendering.spec.ts --workers=1
-```
-
-What the e2e would add over the unit tests is browser-level proof; the underlying
-rendering behavior IS verified by running — see below.
-
-## Substitute verification for the blocked e2e (rule B7)
-
-Every rendering claim was proven by RUNNING the real
+Independent of the e2e, every rendering claim was proven by RUNNING the real
 `remark-parse → remark-gfm → remark-math → remark-rehype → rehype-katex` pipeline —
 the exact plugin chain `@streamdown/math` wires — and asserting on the resulting
 hast, rather than by reading code:
