@@ -219,7 +219,7 @@ export const gallery: ModuleGallery = {
           '@/modules/llm-provider/stores/llmModelDownload'
         )
         const { ViewDownloadDrawer } = await import(
-          '@/modules/llm-provider/stores/LlmModelDrawers.store'
+          '@/modules/llm-provider/stores/llmModelDrawers'
         )
         await holdPatch(() => {
           LlmModelDownloadStore.setState({
@@ -269,7 +269,7 @@ export const gallery: ModuleGallery = {
           '@/modules/llm-provider/stores/llmModelDownload'
         )
         const { ViewDownloadDrawer } = await import(
-          '@/modules/llm-provider/stores/LlmModelDrawers.store'
+          '@/modules/llm-provider/stores/llmModelDrawers'
         )
         await holdPatch(() => {
           LlmModelDownloadStore.setState({

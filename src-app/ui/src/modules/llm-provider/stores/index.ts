@@ -3,7 +3,7 @@ export { useLlmProviderStore } from './llmProvider'
 export type { LlmProviderWithModels } from './llmProvider/types'
 
 // Drawer stores
-export * from './LlmModelDrawers.store'
+export * from './llmModelDrawers'
 
 // Download store
 export * from './llmModelDownload'
