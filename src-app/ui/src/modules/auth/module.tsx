@@ -3,7 +3,7 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useAuthStore } from '@/modules/auth/Auth.store'
 import { useAuthProvidersStore } from '@/modules/auth/authProviders'
-import { useSessionSettingsStore } from '@/modules/auth/SessionSettings.store'
+import { useSessionSettingsStore } from '@/modules/auth/sessionSettings'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
