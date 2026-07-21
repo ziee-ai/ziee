@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
+import { McpServer } from '@/modules/mcp/stores/mcpServer'
 
 /**
  * McpInitializer Component
@@ -22,8 +24,8 @@ export function McpInitializer() {
   const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
   const paneConvId = chat.conversation?.id ?? null
 
-  const mcpStore = Stores.McpComposer
-  const { servers } = Stores.McpServer
+  const mcpStore = McpComposer
+  const { servers } = McpServer
   const { userDefaultsLoaded, userDefaults } = mcpStore
 
   const enabledServers = servers.filter(s => s.enabled)

@@ -4,8 +4,6 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useSandboxResourceLimitsStore } from './stores/sandboxResourceLimits'
-import { useSandboxRootfsVersionsStore } from './stores/sandboxRootfsVersions'
 import { useSandboxFlavorsStore } from './stores/sandboxFlavors'
 import './types' // CRITICAL: enable store type declaration merging
 
@@ -42,14 +40,6 @@ export default createModule({
     },
   ],
   stores: [
-    {
-      name: 'SandboxRootfsVersions',
-      store: useSandboxRootfsVersionsStore,
-    },
-    {
-      name: 'SandboxResourceLimits',
-      store: useSandboxResourceLimitsStore,
-    },
     {
       // Shared catalog of known sandbox flavors. Consumed by the
       // MCP user-policy card + the McpServerDrawer's system-stdio

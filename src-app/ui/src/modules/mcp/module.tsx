@@ -4,17 +4,11 @@ import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { useMcpUserPolicyStore } from './stores/mcpUserPolicy'
-import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
 import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/mcpServerGroupsAssignmentCard'
 import { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/projectMcpSettings'
 import {
-  useMcpComposerStore,
-  useMcpServerDrawerStore,
-  useMcpStore,
   useMcpToolCallsStore,
-  useSystemMcpServersStore,
-} from '@/modules/mcp/stores'
-import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/groupSystemMcpServersWidget'
+  } from '@/modules/mcp/stores'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
@@ -78,32 +72,8 @@ export default createModule({
   ],
   stores: [
     {
-      name: 'McpServer',
-      store: useMcpStore,
-    },
-    {
-      name: 'SystemMcpServer',
-      store: useSystemMcpServersStore,
-    },
-    {
-      name: 'McpServerDrawer',
-      store: useMcpServerDrawerStore,
-    },
-    {
-      name: 'GroupSystemMcpServersWidget',
-      store: useGroupSystemMcpServersWidgetStore,
-    },
-    {
-      name: 'GroupSystemMcpServersAssignment',
-      store: useGroupSystemMcpServersAssignmentStore,
-    },
-    {
       name: 'SystemMcpServerGroupCard',
       store: useSystemMcpServerGroupCardStore,
-    },
-    {
-      name: 'McpComposer',
-      store: useMcpComposerStore,
     },
     {
       // Per-server tool-call history (mcp_tool_calls), shown in the

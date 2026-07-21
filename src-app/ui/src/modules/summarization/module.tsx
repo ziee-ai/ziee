@@ -3,8 +3,6 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useConversationSummarizationStore } from './stores/conversationSummarization'
-import { useSummarizationAdminStore } from './stores/summarizationAdmin'
 import './types'
 
 const SummarizationAdminPage = lazyWithPreload(() =>
@@ -31,11 +29,6 @@ export default createModule({
     },
   ],
   stores: [
-    { name: 'SummarizationAdmin', store: useSummarizationAdminStore },
-    {
-      name: 'ConversationSummarization',
-      store: useConversationSummarizationStore,
-    },
   ],
   slots: {
     settingsAdminPages: [

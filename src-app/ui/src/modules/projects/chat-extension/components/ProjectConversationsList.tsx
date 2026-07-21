@@ -2,8 +2,10 @@ import { CircleMinus } from 'lucide-react'
 import { Alert, Button, Empty, Tooltip, Text, message, Confirm } from '@ziee/kit'
 import { useState } from 'react'
 import type { ConversationResponse } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
+import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
+import { Projects } from '@/modules/projects/stores/projects'
+import { ChatHistory } from '@/modules/chat/stores/chatHistory'
 
 interface ProjectConversationsListProps {
   projectId: string
@@ -31,7 +33,7 @@ export function ProjectConversationsList({
     conversationsLoadingMore,
     conversationsHasMore,
     conversationsError,
-  } = Stores.ProjectDetail
+  } = ProjectDetail
   const isSelectionMode = selectedIds.size > 0
 
   if (conversationsLoading && conversations.length === 0) {
@@ -67,11 +69,11 @@ export function ProjectConversationsList({
   }
 
   const handleDelete = async (id: string) => {
-    await Stores.ChatHistory.deleteConversation(id)
+    await ChatHistory.deleteConversation(id)
   }
 
   const handleLoadMore = () => {
-    void Stores.ProjectDetail.loadMoreConversations(projectId)
+    void ProjectDetail.loadMoreConversations(projectId)
   }
 
   const renderTrailing = (conv: ConversationResponse) => (
@@ -124,7 +126,7 @@ function RemoveFromProjectButton({
   const handleRemove = async () => {
     setLoading(true)
     try {
-      await Stores.Projects.detachConversation(projectId, conversationId)
+      await Projects.detachConversation(projectId, conversationId)
       message.success('Removed from project')
     } catch (err) {
       message.error(

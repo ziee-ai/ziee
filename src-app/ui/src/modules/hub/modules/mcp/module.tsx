@@ -4,7 +4,6 @@ import { Plug } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
-import { useMcpServerDetailsDrawerStore } from '@/modules/hub/modules/mcp/components/mcpServerDetailsDrawer'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/mcp/types'
 
@@ -25,10 +24,6 @@ export default createModule({
     {
       name: 'HubMcpServers',
       store: useHubMcpServersStore,
-    },
-    {
-      name: 'McpServerDetailsDrawer',
-      store: useMcpServerDetailsDrawerStore,
     },
   ],
   slots: {

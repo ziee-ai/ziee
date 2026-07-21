@@ -4,15 +4,6 @@ import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import {
-  useSystemWorkflowStore,
-  useWorkflowDrawerStore,
-  useWorkflowRunsStore,
-  useWorkflowRunStore,
-  useWorkflowStore,
-} from '@/modules/workflow/stores'
-import { useGroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/groupSystemWorkflowsWidget'
-import { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/workflow/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
@@ -49,19 +40,6 @@ export default createModule({
   },
   dependencies: ['router'],
   stores: [
-    { name: 'Workflow', store: useWorkflowStore },
-    { name: 'SystemWorkflow', store: useSystemWorkflowStore },
-    { name: 'WorkflowRun', store: useWorkflowRunStore },
-    { name: 'WorkflowRuns', store: useWorkflowRunsStore },
-    { name: 'WorkflowDrawer', store: useWorkflowDrawerStore },
-    {
-      name: 'GroupSystemWorkflowsWidget',
-      store: useGroupSystemWorkflowsWidgetStore,
-    },
-    {
-      name: 'GroupSystemWorkflowsAssignment',
-      store: useGroupSystemWorkflowsAssignmentStore,
-    },
   ],
   components: [
     {

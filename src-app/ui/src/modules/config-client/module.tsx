@@ -1,5 +1,4 @@
 import { createModule } from '@ziee/framework'
-import { useConfigClientStore } from '@/modules/config-client/configClient'
 
 export default createModule({
   metadata: {
@@ -9,10 +8,6 @@ export default createModule({
   },
   routes: [],
   stores: [
-    {
-      name: 'ConfigClient',
-      store: useConfigClientStore,
-    },
   ],
   initialize: () => {
     console.log('Config-client module initialized')

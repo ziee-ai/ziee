@@ -2,11 +2,7 @@ import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { useFileStore } from './stores/file'
-import { useFilePreviewDrawerStore } from './stores/filePreviewDrawer'
-import { useFileVersionsStore } from './stores/fileVersions'
-import { useDeliverablesStore } from './stores/deliverables'
 import { ProjectFilesDef } from './project-extension/stores/projectFiles'
-import { usePdfHighlightStore } from './stores/pdfHighlight'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
@@ -62,12 +58,8 @@ export default createModule({
   ],
   stores: [
     { name: 'File', store: useFileStore },
-    { name: 'FilePreviewDrawer', store: useFilePreviewDrawerStore },
-    { name: 'FileVersions', store: useFileVersionsStore },
-    { name: 'Deliverables', store: useDeliverablesStore },
     // defineStore handle already carries its { name, store } — name once.
     ProjectFilesDef,
-    { name: 'PdfHighlight', store: usePdfHighlightStore },
   ],
   components: [
     {

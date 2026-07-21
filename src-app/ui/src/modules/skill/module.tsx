@@ -7,12 +7,7 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useConversationSkillsStore,
   useSkillConversationDrawerStore,
-  useSkillDrawerStore,
-  useSkillStore,
-  useSystemSkillStore,
-} from '@/modules/skill/stores'
-import { useGroupSystemSkillsWidgetStore } from '@/modules/skill/widgets/groupSystemSkillsWidget'
-import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
+  } from '@/modules/skill/stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/skill/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
@@ -47,21 +42,10 @@ export default createModule({
   },
   dependencies: ['router'],
   stores: [
-    { name: 'Skill', store: useSkillStore },
     { name: 'ConversationSkills', store: useConversationSkillsStore },
-    { name: 'SystemSkill', store: useSystemSkillStore },
-    { name: 'SkillDrawer', store: useSkillDrawerStore },
     {
       name: 'SkillConversationDrawer',
       store: useSkillConversationDrawerStore,
-    },
-    {
-      name: 'GroupSystemSkillsWidget',
-      store: useGroupSystemSkillsWidgetStore,
-    },
-    {
-      name: 'GroupSystemSkillsAssignment',
-      store: useGroupSystemSkillsAssignmentStore,
     },
   ],
   components: [

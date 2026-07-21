@@ -1,5 +1,4 @@
 import { createModule } from '@ziee/framework'
-import { useAppLayoutStore } from '@/modules/layouts/app-layout/appLayout'
 import '@/modules/layouts/app-layout/types'
 
 export default createModule({
@@ -10,10 +9,6 @@ export default createModule({
   },
   routes: [],
   stores: [
-    {
-      name: 'AppLayout',
-      store: useAppLayoutStore,
-    },
   ],
   initialize: () => {
     console.log('Layout module initialized')

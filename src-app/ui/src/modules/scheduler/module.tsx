@@ -7,9 +7,6 @@ import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useScheduledTasksStore } from './stores/scheduledTasks/index'
-import { useSchedulerAdminStore } from './stores/schedulerAdmin'
-import { useSchedulerDrawerStore } from './stores/schedulerDrawer'
 import '@/modules/scheduler/types' // register Stores.* (declaration merge)
 import '@/modules/settings/types/SettingsSlots'
 
@@ -56,9 +53,6 @@ export default createModule({
     },
   ],
   stores: [
-    { name: 'ScheduledTasks', store: useScheduledTasksStore },
-    { name: 'SchedulerAdmin', store: useSchedulerAdminStore },
-    { name: 'SchedulerDrawer', store: useSchedulerDrawerStore },
   ],
   components: [
     {

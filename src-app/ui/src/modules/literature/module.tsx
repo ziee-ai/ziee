@@ -4,8 +4,6 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useLitSearchAdminStore } from './stores/litSearchAdmin'
-import { useLitSearchUserKeysStore } from './stores/litSearchUserKeys'
 import './types' // CRITICAL: enable store + panel-renderer type declaration merging
 
 // The screening right-panel + tool-result card register via the auto-discovered
@@ -52,14 +50,6 @@ export default createModule({
     },
   ],
   stores: [
-    {
-      name: 'LitSearchAdmin',
-      store: useLitSearchAdminStore,
-    },
-    {
-      name: 'LitSearchUserKeys',
-      store: useLitSearchUserKeysStore,
-    },
   ],
   slots: {
     settingsAdminPages: [

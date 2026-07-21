@@ -13,7 +13,7 @@ import {
   Link,
 } from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
+import { UserProviderKeys } from '@/modules/user-llm-providers/userProviderKeys'
 
 interface ProviderApiKeyModalProps {
   providerId: string
@@ -42,7 +42,7 @@ export function ProviderApiKeyModal({
   onCancel,
 }: ProviderApiKeyModalProps) {
   const navigate = useNavigate()
-  const { saving } = Stores.UserProviderKeys
+  const { saving } = UserProviderKeys
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -51,7 +51,7 @@ export function ProviderApiKeyModal({
 
   const onValidSubmit = async ({ apiKey }: { apiKey: string }) => {
     try {
-      await Stores.UserProviderKeys.saveKey(providerId, apiKey.trim())
+      await UserProviderKeys.saveKey(providerId, apiKey.trim())
       onSuccess(modelId)
     } catch (err: any) {
       form.setError('root', { message: err.message || 'Failed to save API key' })

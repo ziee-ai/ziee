@@ -2,7 +2,6 @@ import { createModule } from '@ziee/framework'
 import { Book } from 'lucide-react'
 import { BlankLayout } from '@/modules/layouts/blank'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useOnboardingStore } from './stores/onboarding'
 import { OnboardingRedirect } from './OnboardingRedirect'
 import './types/OnboardingSlot'
 import './types'
@@ -19,7 +18,6 @@ export default createModule({
   },
   dependencies: ['router', 'auth'],
   stores: [
-    { name: 'Onboarding', store: useOnboardingStore },
   ],
   routes: [
     {

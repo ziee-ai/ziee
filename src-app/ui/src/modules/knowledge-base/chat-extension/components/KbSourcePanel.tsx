@@ -8,6 +8,7 @@ import {
   FileHighlightScopeContext,
   scopedHighlightKey,
 } from '@/modules/file/viewers/highlightScope'
+import { PdfHighlight as PdfHighlightStore } from '@/modules/file/stores/pdfHighlight'
 
 /** Serializable payload for a `kb_source` right-panel tab. */
 export interface KbSourceData {
@@ -65,15 +66,15 @@ export function KbSourcePanel({ fileId, page, charStart, charEnd, snippet }: KbS
           end: charEnd,
         })
         if (cancelled) return
-        Stores.PdfHighlight.setTarget(hlKey, { page, rects: res.rects })
+        PdfHighlightStore.setTarget(hlKey, { page, rects: res.rects })
       } catch {
         // Fall back to a plain page jump if geometry is unavailable.
-        if (!cancelled) Stores.PdfHighlight.setTarget(hlKey, { page, rects: [] })
+        if (!cancelled) PdfHighlightStore.setTarget(hlKey, { page, rects: [] })
       }
     })()
     return () => {
       cancelled = true
-      Stores.PdfHighlight.clearTarget(hlKey)
+      PdfHighlightStore.clearTarget(hlKey)
     }
   }, [hlKey, page, charStart, charEnd])
 

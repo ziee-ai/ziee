@@ -2,18 +2,12 @@ import { Server } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
-import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
-import { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/llmProviderDrawer'
-import { useProviderGroupAssignmentCardStore } from '@/modules/llm-provider/components/providerGroupAssignmentCard'
 import { DownloadIndicatorWidget } from '@/modules/llm-provider/components/widgets/DownloadIndicatorWidget'
 import {
   useAddLocalLlmModelDownloadDrawerStore,
   useAddLocalLlmModelUploadDrawerStore,
   useAddRemoteLlmModelDrawerStore,
   useEditLlmModelDrawerStore,
-  useLlmModelDownloadStore,
-  useLlmProviderStore,
-  useUploadStore,
   useViewDownloadDrawerStore,
 } from '@/modules/llm-provider/stores'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
@@ -62,18 +56,6 @@ export default createModule({
   ],
   stores: [
     {
-      name: 'LlmProvider',
-      store: useLlmProviderStore,
-    },
-    {
-      name: 'LlmModelDownload',
-      store: useLlmModelDownloadStore,
-    },
-    {
-      name: 'LlmProviderDrawer',
-      store: useLlmProviderDrawerStore,
-    },
-    {
       name: 'AddLocalLlmModelUploadDrawer',
       store: useAddLocalLlmModelUploadDrawerStore,
     },
@@ -92,18 +74,6 @@ export default createModule({
     {
       name: 'ViewDownloadDrawer',
       store: useViewDownloadDrawerStore,
-    },
-    {
-      name: 'LlmModelUpload',
-      store: useUploadStore,
-    },
-    {
-      name: 'GroupLlmProvidersAssignment',
-      store: useGroupLlmProvidersAssignmentStore,
-    },
-    {
-      name: 'ProviderGroupAssignmentCard',
-      store: useProviderGroupAssignmentCardStore,
     },
   ],
   components: [

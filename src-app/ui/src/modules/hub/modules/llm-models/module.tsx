@@ -2,7 +2,6 @@ import { Server } from 'lucide-react'
 import { createModule } from '@ziee/framework'
 import { Permissions } from '@/api-client/permissions'
 import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
-import { useModelDetailsDrawerStore } from '@/modules/hub/modules/llm-models/components/modelDetailsDrawer'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/llm-models/types'
 
@@ -21,10 +20,6 @@ export default createModule({
     {
       name: 'HubModels',
       store: useHubModelsStore,
-    },
-    {
-      name: 'ModelDetailsDrawer',
-      store: useModelDetailsDrawerStore,
     },
   ],
   slots: {

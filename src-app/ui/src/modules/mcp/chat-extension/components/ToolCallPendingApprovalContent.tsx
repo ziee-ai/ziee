@@ -8,6 +8,8 @@ import {
 } from '@/modules/mcp/stores/mcpComposer'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
+import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
+import { McpServer } from '@/modules/mcp/stores/mcpServer'
 
 interface ToolCallPendingApprovalContentProps {
   toolCall: McpToolCall
@@ -52,7 +54,7 @@ export function ToolCallPendingApprovalContent({
 
   const handleApproveOnce = async () => {
     setIsSubmitting(true)
-    const mcpStore = Stores.McpComposer
+    const mcpStore = McpComposer
     // Optimistic status update: immediately switch out of 'pending_approval' so the
     // approval panel disappears and shows the 'Running…' card instead. This update
     // lives in McpStore (not local React state) and therefore survives the component
@@ -86,7 +88,7 @@ export function ToolCallPendingApprovalContent({
 
   const handleApproveForConversation = async () => {
     setIsSubmitting(true)
-    const mcpStore = Stores.McpComposer
+    const mcpStore = McpComposer
     // Optimistic status update (same rationale as handleApproveOnce)
     mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'started' })
     try {
@@ -103,7 +105,7 @@ export function ToolCallPendingApprovalContent({
 
         // 2. Persist to backend if conversation exists
         if (conversationId) {
-          const mcpServerState = Stores.McpServer.$
+          const mcpServerState = McpServer.$
           const availableServerIds = (mcpServerState?.servers || [])
             .filter((s: { enabled: boolean }) => s.enabled)
             .map((s: { id: string }) => s.id)
@@ -143,7 +145,7 @@ export function ToolCallPendingApprovalContent({
 
   const handleDeny = async () => {
     setIsSubmitting(true)
-    const mcpStore = Stores.McpComposer
+    const mcpStore = McpComposer
     // Optimistic status update to 'error' so the panel immediately shows denied state
     mcpStore.updateToolCall(toolCall.tool_use_id, {
       status: 'error',

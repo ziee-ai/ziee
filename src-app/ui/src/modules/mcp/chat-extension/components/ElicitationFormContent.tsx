@@ -17,7 +17,6 @@ import {
   SquarePen,
   Ban,
 } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import {
   ASK_USER_MARKER,
@@ -27,6 +26,7 @@ import {
 } from './elicitationOptions'
 import { renderInputField } from './elicitationFields'
 import { AskUserWizardContent } from './AskUserWizardContent'
+import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
 
 interface ElicitationData {
   type: 'elicitation_request'
@@ -137,7 +137,7 @@ export function ElicitationFormContent({
   // persisted DB status in that case — a `pending` block is still answerable
   // (the form submits by `elicitation_id`); only show cancelled/declined/accepted
   // when the DB itself records that terminal state.
-  const mcpEntry = Stores.McpComposer.elicitationRequests.get(
+  const mcpEntry = McpComposer.elicitationRequests.get(
     elicitation.elicitation_id,
   )
   const status = mcpEntry?.status ?? elicitation.status ?? 'pending'
@@ -168,7 +168,7 @@ export function ElicitationFormContent({
   const handleDecline = async () => {
     setIsSubmitting(true)
     try {
-      await Stores.McpComposer.resolveElicitation(elicitation.elicitation_id, 'decline')
+      await McpComposer.resolveElicitation(elicitation.elicitation_id, 'decline')
     } finally {
       setIsSubmitting(false)
     }
@@ -179,7 +179,7 @@ export function ElicitationFormContent({
   const onValid = async (values: Record<string, unknown>) => {
     setIsSubmitting(true)
     try {
-      await Stores.McpComposer.resolveElicitation(
+      await McpComposer.resolveElicitation(
         elicitation.elicitation_id,
         'accept',
         values,

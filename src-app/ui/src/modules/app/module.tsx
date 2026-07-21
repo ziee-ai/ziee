@@ -1,5 +1,4 @@
 import { createModule, Stores } from '@ziee/framework'
-import { useAppStore } from '@/modules/app/stores/app'
 import { useAppModeStore } from '@/modules/app/AppMode.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useEffect } from 'react'
@@ -44,10 +43,6 @@ export default createModule({
     },
   ],
   stores: [
-    {
-      name: 'App',
-      store: useAppStore,
-    },
     {
       // Portable multi-user / single-admin flag. Default `true` (web
       // build); the desktop bootstrap flips it to `false`. See

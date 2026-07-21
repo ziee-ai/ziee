@@ -3,6 +3,8 @@ import { Stores } from '@ziee/framework/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { McpComposer as McpComposerStore } from '@/modules/mcp/stores/mcpComposer'
+import { McpServer } from '@/modules/mcp/stores/mcpServer'
 
 /**
  * McpMenuItem Component
@@ -15,8 +17,8 @@ import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
  * rendered inside this item would be torn down before it could appear.
  */
 export function McpMenuItem() {
-  const { servers, loading } = Stores.McpServer
-  const mcpStore = Stores.McpComposer
+  const { servers, loading } = McpServer
+  const mcpStore = McpComposerStore
   const { close } = usePlusDropdown()
   // THIS pane's conversation, resolved from its OWN store (the same
   // `useChatPaneOrNull()` pattern as McpStatusRow) — NOT the focused-pane bridge.

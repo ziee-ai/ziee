@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Alert, Button, Space, Text } from '@ziee/kit'
 import { Check, Clock, X } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions/types'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
+import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
 
 /**
  * Renders the approve/deny prompt for a gated sub-tool call a `run_js` script
@@ -30,7 +30,7 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
   // optimistically and ROLLS IT BACK to 'pending' on a failed POST, so a failed
   // approve re-enables the buttons (no false "Approved") and the resolved state
   // survives a component remount (virtualized list / streaming→final swap).
-  const status = Stores.McpComposer.elicitationRequests.get(data.elicitation_id)?.status
+  const status = McpComposer.elicitationRequests.get(data.elicitation_id)?.status
   const resolved: 'approved' | 'denied' | null =
     status === 'accepted' ? 'approved' : status === 'declined' || status === 'cancelled' ? 'denied' : null
 
@@ -41,7 +41,7 @@ export function JsToolApprovalContent({ content }: ContentRendererProps) {
     try {
       // resolveElicitation reflects success/failure in the store entry; the
       // derived `resolved` above reacts (rollback → buttons return for retry).
-      await Stores.McpComposer.resolveElicitation(data.elicitation_id, action)
+      await McpComposer.resolveElicitation(data.elicitation_id, action)
     } finally {
       setSubmitting(false)
     }

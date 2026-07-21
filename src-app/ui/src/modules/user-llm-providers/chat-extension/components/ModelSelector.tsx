@@ -6,6 +6,7 @@ import type { ProviderWithModels } from '@/api-client/types'
 import { newChatModelKey } from '@/modules/user-llm-providers/modelPicker'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
+import { ModelPicker } from '@/modules/user-llm-providers/modelPicker'
 
 /**
  * ModelSelector Component
@@ -35,7 +36,7 @@ function providerNeedsApiKey(
 
 export function ModelSelector() {
   const { selectedByConversation, providers, error, loading } =
-    Stores.ModelPicker
+    ModelPicker
   // Key the selection by THIS pane's conversation (resolved via the Stores.Chat
   // bridge → the pane's own conversation in split; the shared new-chat key when
   // there's no conversation yet), so each pane keeps its own model. (ITEM-5)
@@ -103,12 +104,12 @@ export function ModelSelector() {
         }
       }
     }
-    Stores.ModelPicker.setModelId(modelKey, value)
+    ModelPicker.setModelId(modelKey, value)
   }
 
   const handleKeyProvided = (modelId: string) => {
     setPendingProviderForKey(null)
-    Stores.ModelPicker.setModelId(modelKey, modelId)
+    ModelPicker.setModelId(modelKey, modelId)
   }
 
   // Provider load failed and there's nothing to pick from: a persistent,
@@ -121,7 +122,7 @@ export function ModelSelector() {
           <Button
             variant="ghost"
             icon={<TriangleAlert className="text-destructive" />}
-            onClick={() => void Stores.ModelPicker.loadProviders()}
+            onClick={() => void ModelPicker.loadProviders()}
             loading={loading}
             data-testid="ullm-model-retry"
             className="text-[15px] max-w-[200px] text-destructive"

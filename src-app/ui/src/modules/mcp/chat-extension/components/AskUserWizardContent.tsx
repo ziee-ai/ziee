@@ -14,7 +14,6 @@ import {
 } from '@ziee/kit'
 import { RadioGroup, RadioGroupItem } from '@ziee/kit/shadcn/radio-group'
 import { SquarePen } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import {
   allowsOther,
   buildFormSchema,
@@ -30,6 +29,7 @@ import {
   type RichOption,
 } from './elicitationOptions'
 import { renderInputField } from './elicitationFields'
+import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
 
 interface AskUserWizardContentProps {
   elicitationId: string
@@ -355,7 +355,7 @@ export function AskUserWizardContent({
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
-      await Stores.McpComposer.resolveElicitation(elicitationId, 'decline')
+      await McpComposer.resolveElicitation(elicitationId, 'decline')
     } catch (e) {
       // The store rolls status back on POST failure so the user can retry; swallow
       // so it doesn't bubble to the chat error boundary.
@@ -388,7 +388,7 @@ export function AskUserWizardContent({
         return // `finally` re-enables the controls so the user can correct + retry
       }
       const values = finalizeValues(properties, form.getValues(), otherText)
-      await Stores.McpComposer.resolveElicitation(elicitationId, 'accept', values)
+      await McpComposer.resolveElicitation(elicitationId, 'accept', values)
     } catch (e) {
       console.warn('ask_user resolve failed', e)
     } finally {

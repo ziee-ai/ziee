@@ -4,9 +4,6 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useModelPickerStore } from './modelPicker'
-import { useUserLlmProvidersStore } from './userLlmProviders'
-import { useUserProviderKeysStore } from './userProviderKeys'
 import './types'
 
 const UserLlmProvidersPage = lazyWithPreload(
@@ -21,9 +18,6 @@ export default createModule({
   },
   dependencies: ['router'],
   stores: [
-    { name: 'UserLlmProviders', store: useUserLlmProvidersStore },
-    { name: 'ModelPicker', store: useModelPickerStore },
-    { name: 'UserProviderKeys', store: useUserProviderKeysStore },
   ],
   routes: [
     {

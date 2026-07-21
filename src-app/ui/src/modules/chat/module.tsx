@@ -4,9 +4,6 @@ import { History, Plus } from 'lucide-react'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { chatBridge } from '@/modules/chat/core/stores/chatBridge'
-import { useChatHistoryStore } from '@/modules/chat/stores/chatHistory'
-import { useMessageViewStateStore } from '@/modules/chat/core/stores/messageViewState'
-import { useSplitViewStore } from '@/modules/chat/core/stores/splitView'
 import { RecentConversationsWidget } from '@/modules/chat/widgets/RecentConversationsWidget'
 import { OpenInNewWindowAction } from '@/modules/chat/components/OpenInNewWindowAction'
 import '@/modules/chat/types'
@@ -38,18 +35,6 @@ export default createModule({
       // behaviour is unchanged.
       name: 'Chat',
       store: chatBridge,
-    },
-    {
-      name: 'ChatHistory',
-      store: useChatHistoryStore,
-    },
-    {
-      name: 'MessageViewState',
-      store: useMessageViewStateStore,
-    },
-    {
-      name: 'SplitView',
-      store: useSplitViewStore,
     },
   ],
   routes: [

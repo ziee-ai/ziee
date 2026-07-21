@@ -1,8 +1,8 @@
 import { Shrink, ChevronRight, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { Card, Separator, Flex, Text } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
+import { ConversationSummarization } from '@/modules/summarization/stores/conversationSummarization'
 
 /**
  * In-thread persistent marker shown on the boundary message — i.e. the
@@ -22,13 +22,13 @@ import { useMessageContext } from '@/modules/chat/core/MessageContext'
  * condensed" marker). The footer sits directly below the last
  * condensed turn, which reads naturally.
  *
- * The summary itself lives in `Stores.ConversationSummarization.current`
+ * The summary itself lives in `ConversationSummarization.current`
  * — loaded by `SummarizationStatusPill` on every conversation switch
  * and on every `messages.size` change.
  */
 export function SummaryBoundaryMarker() {
   const message = useMessageContext()
-  const current = Stores.ConversationSummarization.current
+  const current = ConversationSummarization.current
   const [expanded, setExpanded] = useState(false)
 
   if (!message) return null

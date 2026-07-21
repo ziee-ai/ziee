@@ -2,11 +2,6 @@ import { Library } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
-import {
-  useKnowledgeBaseComposerStore,
-  useKnowledgeBaseDetailStore,
-  useKnowledgeBasesStore,
-} from '@/modules/knowledge-base/stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/knowledge-base/types' // store-merge declaration
 // Side-effect imports — register the chat composer/tool-result integration and
@@ -35,9 +30,6 @@ export default createModule({
   },
   dependencies: ['router'],
   stores: [
-    { name: 'KnowledgeBases', store: useKnowledgeBasesStore },
-    { name: 'KnowledgeBaseDetail', store: useKnowledgeBaseDetailStore },
-    { name: 'KnowledgeBaseComposer', store: useKnowledgeBaseComposerStore },
   ],
   routes: [
     {

@@ -2,14 +2,6 @@ import { User as UserIcon, Users as UsersIcon } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import { useUserGroupDrawerStore } from '@/modules/user/components/group/editUserGroupDrawer'
-import { useGroupMembersDrawerStore } from '@/modules/user/components/group/groupMembersDrawer'
-import { useAssignGroupDrawerStore } from '@/modules/user/components/user/assignGroupDrawer'
-import { useCreateUserDrawerStore } from '@/modules/user/components/user/createUserDrawer'
-import { useEditUserDrawerStore } from '@/modules/user/components/user/editUserDrawer'
-import { useResetPasswordDrawerStore } from '@/modules/user/components/user/resetPasswordDrawer'
-import { useUserGroupsDrawerStore } from '@/modules/user/components/user/userGroupsDrawer'
-import { useUserGroupsStore } from '@/modules/user/stores'
 // NOTE: the `Users` store is NOT imported/registered here — it is whole-store-lazy
 // (self-registers from its own chunk when a consumer imports it). See Users.store.ts.
 import '@/modules/user/types' // Import type augmentation
@@ -52,38 +44,6 @@ export default createModule({
     },
   ],
   stores: [
-    {
-      name: 'UserGroups',
-      store: useUserGroupsStore,
-    },
-    {
-      name: 'EditUserGroupDrawer',
-      store: useUserGroupDrawerStore,
-    },
-    {
-      name: 'GroupMembersDrawer',
-      store: useGroupMembersDrawerStore,
-    },
-    {
-      name: 'CreateUserDrawer',
-      store: useCreateUserDrawerStore,
-    },
-    {
-      name: 'EditUserDrawer',
-      store: useEditUserDrawerStore,
-    },
-    {
-      name: 'ResetPasswordDrawer',
-      store: useResetPasswordDrawerStore,
-    },
-    {
-      name: 'UserGroupsDrawer',
-      store: useUserGroupsDrawerStore,
-    },
-    {
-      name: 'AssignGroupDrawer',
-      store: useAssignGroupDrawerStore,
-    },
   ],
   slots: {
     settingsAdminPages: [

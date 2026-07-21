@@ -2,11 +2,6 @@ import { Folder } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
-import {
-  useProjectDetailStore,
-  useProjectDrawerStore,
-  useProjectsStore,
-} from '@/modules/projects/stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/projects/types' // store-merge declaration
 import '@/modules/projects/events' // event-bus type merge
@@ -45,9 +40,6 @@ export default createModule({
   },
   dependencies: ['router'],
   stores: [
-    { name: 'Projects', store: useProjectsStore },
-    { name: 'ProjectDetail', store: useProjectDetailStore },
-    { name: 'ProjectDrawer', store: useProjectDrawerStore },
   ],
   routes: [
     {

@@ -1,11 +1,5 @@
 import { Bot } from 'lucide-react'
 import { createModule } from '@ziee/framework'
-import { useAssistantDrawerStore } from '@/modules/assistant/components/assistantDrawer'
-import {
-  useAssistantPickerStore,
-  useTemplateAssistantsStore,
-  useUserAssistantsStore,
-} from '@/modules/assistant/stores'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/assistant/types'
 import { Permissions } from '@/api-client/permissions'
@@ -48,22 +42,6 @@ export default createModule({
     },
   ],
   stores: [
-    {
-      name: 'UserAssistants',
-      store: useUserAssistantsStore,
-    },
-    {
-      name: 'TemplateAssistants',
-      store: useTemplateAssistantsStore,
-    },
-    {
-      name: 'AssistantDrawer',
-      store: useAssistantDrawerStore,
-    },
-    {
-      name: 'AssistantPicker',
-      store: useAssistantPickerStore,
-    },
   ],
   slots: {
     settingsUserPages: [

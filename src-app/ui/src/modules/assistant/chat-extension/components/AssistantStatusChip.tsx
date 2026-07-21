@@ -5,6 +5,7 @@ import { Bot } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import { newChatAssistantKey } from '@/modules/assistant/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
 
 /**
  * AssistantStatusChip Component
@@ -16,7 +17,7 @@ export function AssistantStatusChip() {
   // Per-conversation selection (ITEM-5): `selectedAssistantId` is derived below
   // from `selectedByConversation[key]`, not read globally off the store.
   const { selectedByConversation, availableAssistants, clearAssistant } =
-    Stores.AssistantPicker
+    AssistantPicker
   // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
   const pane = useChatPaneOrNull()
   const key =

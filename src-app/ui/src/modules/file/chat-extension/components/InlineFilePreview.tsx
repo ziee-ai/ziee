@@ -33,6 +33,7 @@ import {
   resolveBodyHeightPx,
 } from '@/modules/file/chat-extension/components/inlineFileHeight'
 import { useInPlaceAnchor } from '@/modules/chat/core/utils/useInPlaceAnchor'
+import { MessageViewState as MessageViewStateStore } from '@/modules/chat/core/stores/messageViewState'
 
 interface InlineFilePreviewProps {
   /** Viewer matched by `getViewer(name, mimeType)`. `undefined` when no
@@ -108,7 +109,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
   useEffect(() => {
     if (view.seen) return
     if (typeof IntersectionObserver === 'undefined') {
-      Stores.MessageViewState.markFileSeen(key)
+      MessageViewStateStore.markFileSeen(key)
       return
     }
     const el = rootRef.current
@@ -116,7 +117,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     const observer = new IntersectionObserver(
       entries => {
         if (entries.some(e => e.isIntersecting)) {
-          Stores.MessageViewState.markFileSeen(key)
+          MessageViewStateStore.markFileSeen(key)
           observer.disconnect()
         }
       },
@@ -151,7 +152,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
 
   const setCollapsed = (next: boolean) => {
     anchorBeforeChange()
-    Stores.MessageViewState.setFileCollapsed(key, next)
+    MessageViewStateStore.setFileCollapsed(key, next)
   }
 
   const handleOpenInPanel = () => {
@@ -199,7 +200,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     if (dragStart.current == null) return
     dragStart.current = null
     const px = dragHeightRef.current
-    if (px != null) Stores.MessageViewState.setFileHeight(key, px)
+    if (px != null) MessageViewStateStore.setFileHeight(key, px)
     setDrag(null)
   }, [key])
   const onHandlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -223,7 +224,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
     if (next == null) return
     e.preventDefault()
     anchorBeforeChange()
-    Stores.MessageViewState.setFileHeight(key, clampReservedPx(next, viewportH()))
+    MessageViewStateStore.setFileHeight(key, clampReservedPx(next, viewportH()))
   }
 
   return (

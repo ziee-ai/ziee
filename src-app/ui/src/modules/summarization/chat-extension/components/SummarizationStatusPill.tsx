@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { Tooltip, Tag, Dropdown, message } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
+import { ConversationSummarization as ConversationSummarizationStore } from '@/modules/summarization/stores/conversationSummarization'
+import { SummarizationAdmin as SummarizationAdminStore } from '@/modules/summarization/stores/summarizationAdmin'
 
 type Mode = 'inherit' | 'on' | 'off'
 
@@ -13,7 +15,7 @@ type Mode = 'inherit' | 'on' | 'off'
  *
  * Also acts as the **read-model driver** for the in-thread summary
  * marker: subscribes to `messages.size` + `conversation.id` and calls
- * `Stores.ConversationSummarization.loadForConversation(id)`
+ * `ConversationSummarizationStore.loadForConversation(id)`
  * on change. This load-bearing pattern rides cross-device freshness
  * transitively on `sync:conversation` — DO NOT move the trigger
  * elsewhere (audit lesson from the crashed-session redo).
@@ -25,7 +27,7 @@ export function SummarizationStatusPill() {
   // render."
   const conversation = Stores.Chat.conversation
   const messages = Stores.Chat.messages
-  const adminSettings = Stores.SummarizationAdmin.settings
+  const adminSettings = SummarizationAdminStore.settings
   const [mode, setMode] = useState<Mode>('inherit')
   const [loading, setLoading] = useState(false)
 
@@ -60,10 +62,10 @@ export function SummarizationStatusPill() {
   // ConversationSummarization rotates on conversation switch.
   useEffect(() => {
     if (!conversation?.id) {
-      Stores.ConversationSummarization.clear()
+      ConversationSummarizationStore.clear()
       return
     }
-    void Stores.ConversationSummarization.loadForConversation(
+    void ConversationSummarizationStore.loadForConversation(
       conversation.id,
     )
   }, [conversation?.id, messages.size])

@@ -3,7 +3,6 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useFileRagAdminStore } from './stores/fileRagAdmin'
 import './types'
 
 const FileRagAdminPage = lazyWithPreload(() =>
@@ -26,7 +25,7 @@ export default createModule({
       layout: SettingsLayoutDef,
     },
   ],
-  stores: [{ name: 'FileRagAdmin', store: useFileRagAdminStore }],
+  stores: [],
   slots: {
     settingsAdminPages: [
       {

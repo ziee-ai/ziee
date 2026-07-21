@@ -4,18 +4,6 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import {
-  useVoiceConfigStore,
-  useVoiceDownloadProgressStore,
-  useVoiceInstanceStore,
-  useVoiceModelDownloadProgressStore,
-  useVoiceModelStore,
-  useVoiceModelUpdateStore,
-  useVoiceModelUploadStore,
-  useVoiceRuntimeVersionStore,
-  useVoiceUpdateStore,
-  useVoiceUploadModelDrawerStore,
-} from './stores'
 import './types' // CRITICAL: enable store type declaration merging
 
 const VOICE_ADMIN_READ_PERM = { anyOf: [Permissions.VoiceAdminRead] }
@@ -43,19 +31,6 @@ export default createModule({
     },
   ],
   stores: [
-    { name: 'VoiceRuntimeVersion', store: useVoiceRuntimeVersionStore },
-    { name: 'VoiceUpdate', store: useVoiceUpdateStore },
-    { name: 'VoiceDownloadProgress', store: useVoiceDownloadProgressStore },
-    { name: 'VoiceConfig', store: useVoiceConfigStore },
-    { name: 'VoiceModel', store: useVoiceModelStore },
-    { name: 'VoiceModelUpdate', store: useVoiceModelUpdateStore },
-    {
-      name: 'VoiceModelDownloadProgress',
-      store: useVoiceModelDownloadProgressStore,
-    },
-    { name: 'VoiceModelUpload', store: useVoiceModelUploadStore },
-    { name: 'VoiceUploadModelDrawer', store: useVoiceUploadModelDrawerStore },
-    { name: 'VoiceInstance', store: useVoiceInstanceStore },
   ],
   slots: {
     settingsAdminPages: [

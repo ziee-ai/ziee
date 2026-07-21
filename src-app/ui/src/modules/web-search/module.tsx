@@ -5,7 +5,6 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useWebSearchAdminStore } from './stores/webSearchAdmin'
-import { useWebSearchUserKeysStore } from './stores/webSearchUserKeys'
 import './types' // CRITICAL: enable store type declaration merging
 
 const WebSearchSettingsPage = lazyWithPreload(() =>
@@ -47,10 +46,6 @@ export default createModule({
     {
       name: 'WebSearchAdmin',
       store: useWebSearchAdminStore,
-    },
-    {
-      name: 'WebSearchUserKeys',
-      store: useWebSearchUserKeysStore,
     },
   ],
   slots: {

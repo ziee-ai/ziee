@@ -1,8 +1,6 @@
 import { CloudDownload } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
-import { useLlmRepositoryDrawerStore } from '@/modules/llm-repository/stores/llmRepositoryDrawer'
-import { useLlmRepositoryStore } from '@/modules/llm-repository/stores/llmRepository'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/llm-repository/types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -38,14 +36,6 @@ export default createModule({
     },
   ],
   stores: [
-    {
-      name: 'LlmRepository',
-      store: useLlmRepositoryStore,
-    },
-    {
-      name: 'LlmRepositoryDrawer',
-      store: useLlmRepositoryDrawerStore,
-    },
   ],
   components: [
     {

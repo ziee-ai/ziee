@@ -2,8 +2,6 @@ import { TimerReset } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useAuthStore } from '@/modules/auth/Auth.store'
-import { useAuthProvidersStore } from '@/modules/auth/authProviders'
-import { useSessionSettingsStore } from '@/modules/auth/sessionSettings'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
@@ -63,14 +61,6 @@ export default createModule({
     {
       name: 'Auth',
       store: useAuthStore,
-    },
-    {
-      name: 'AuthProviders',
-      store: useAuthProvidersStore,
-    },
-    {
-      name: 'SessionSettings',
-      store: useSessionSettingsStore,
     },
   ],
   // Fill the router-owned `routeGuards` slot so the router gates protected

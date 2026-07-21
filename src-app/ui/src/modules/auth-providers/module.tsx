@@ -4,7 +4,6 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/permissions'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useAuthProvidersAdminStore } from './stores/authProvidersAdmin'
 import './types' // CRITICAL: store type declaration merging
 
 const AuthProvidersSettingsPage = lazyWithPreload(() =>
@@ -34,10 +33,6 @@ export default createModule({
     },
   ],
   stores: [
-    {
-      name: 'AuthProvidersAdmin',
-      store: useAuthProvidersAdminStore,
-    },
   ],
   slots: {
     settingsAdminPages: [
