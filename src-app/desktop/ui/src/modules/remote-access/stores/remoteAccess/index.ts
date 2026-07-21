@@ -1,4 +1,4 @@
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import { type StoreProxy } from '@ziee/framework/stores'
 import { remoteAccessState, type RemoteAccessData, type RemoteAccessState } from './state'
 import type { Actions } from './actions.gen'
@@ -30,7 +30,7 @@ declare module '@ziee/framework/stores' {
 // upon synchronously (a caller — and the unit test — reads `rotationTimer`
 // immediately after). A lazy dispatcher would defer that behind a dynamic
 // import, so these load eagerly. The async actions stay async.
-export const RemoteAccess = defineStore<RemoteAccessData, Actions>('RemoteAccess', {
+const RemoteAccessDef = defineStore<RemoteAccessData, Actions>('RemoteAccess', {
   immer: true,
   state: remoteAccessState,
   actions: import.meta.glob('./actions/*.ts', { eager: true }),
@@ -41,4 +41,5 @@ export const RemoteAccess = defineStore<RemoteAccessData, Actions>('RemoteAccess
   },
 })
 
-export const useRemoteAccessStore = RemoteAccess.store
+export const useRemoteAccessStore = RemoteAccessDef.store
+export const RemoteAccess = registerLazyStore(RemoteAccessDef)

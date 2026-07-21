@@ -8,7 +8,7 @@
  *   - per-conversation "Mounted folders" header control,
  *   - admin "Host Mount Policy" settings page.
  * Backed by the desktop-only `/api/host-mounts/*` routes. The native folder
- * picker is `Stores.FileDialog.openFolder`.
+ * picker is `FileDialog.openFolder`.
  */
 
 import { lazy } from 'react'

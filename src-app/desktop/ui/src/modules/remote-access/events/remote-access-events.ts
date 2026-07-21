@@ -9,13 +9,13 @@
  * also what brings that declaration into the project's type universe.
  */
 
-import { Stores } from '@ziee/framework/stores'
 import './types'
+import { EventBus } from '@ziee/framework/stores'
 
 export const emitRemoteAccessStatusChanged = async (
   reason: 'settings' | 'tunnel',
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'remote_access.status_changed',
     data: { reason },
   })

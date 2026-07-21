@@ -74,7 +74,7 @@ beforeEach(() => {
   }
 })
 
-describe('Stores.Updater', () => {
+describe('UpdaterStore', () => {
   describe('loadStatus', () => {
     it('copies status fields and stops polling when not downloading', async () => {
       apiMock.Updater.status.mockResolvedValueOnce(

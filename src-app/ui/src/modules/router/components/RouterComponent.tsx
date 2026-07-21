@@ -8,8 +8,8 @@ import {
   Link,
 } from 'react-router-dom'
 import { Button, Result } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { ModuleSystem } from '@ziee/framework/stores'
+import { useRoutesStore } from '@/modules/router/stores/routes-store'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
 import { usePermission } from '@/core/permissions'
@@ -81,7 +81,7 @@ function renderRouteElement(route: RouteConfig<any>) {
  * - Renders routes with their layouts
  */
 export function RouterComponent() {
-  const { routes } = Stores.Routes
+  const routes = useRoutesStore(s => s.routes) as RouteConfig<any>[]
 
   // Group routes by auth requirement
   const protectedRoutes = routes.filter(r => r.requiresAuth)

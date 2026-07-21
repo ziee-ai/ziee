@@ -19,8 +19,7 @@ import {
 
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Stores } from '@ziee/framework/stores'
-
+import { HostMountPolicy } from '@ziee/desktop/modules/host-mount/stores/hostMountPolicy'
 type FormValues = {
   enabled: boolean
   allow_readwrite: boolean
@@ -28,7 +27,7 @@ type FormValues = {
 }
 
 export function HostMountPolicyPage() {
-  const { policy, loading, saving } = Stores.HostMountPolicy
+  const { policy, loading, saving } = HostMountPolicy
 
   const form = useForm<FormValues>({
     defaultValues: {
@@ -52,7 +51,7 @@ export function HostMountPolicyPage() {
 
   const onSubmit = async (v: FormValues) => {
     try {
-      await Stores.HostMountPolicy.updatePolicy({
+      await HostMountPolicy.updatePolicy({
         enabled: v.enabled,
         allow_readwrite: v.allow_readwrite,
         allowed_prefixes: v.allowed_prefixes,

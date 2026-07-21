@@ -1,5 +1,5 @@
-import { Stores } from '@ziee/framework/stores'
 import type { AuthResponse } from '@/api-client/types'
+import { Auth as AuthStore } from '@/modules/auth/Auth.store'
 
 /**
  * Hand the whole token pair to the shared Auth store: it captures the body
@@ -8,7 +8,7 @@ import type { AuthResponse } from '@/api-client/types'
  * bounces back to PhoneAuthPage (correct for a remote phone session).
  */
 export default function applySession(res: AuthResponse): void {
-  Stores.Auth.setAuthFromAutoLogin({
+  AuthStore.setAuthFromAutoLogin({
     user: res.user,
     access_token: res.access_token,
     refresh_token: res.refresh_token,

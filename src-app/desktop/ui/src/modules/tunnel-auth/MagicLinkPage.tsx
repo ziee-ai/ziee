@@ -5,7 +5,7 @@
  * only when a phone user opens the link the admin generated from
  * the desktop Remote Access page. Delegates to the TunnelAuth
  * store's `exchangeMagicLink` action which (a) dedupes Strict-Mode
- * double-mount + browser-refresh, (b) seeds `Stores.Auth`, (c)
+ * double-mount + browser-refresh, (b) seeds `Auth`, (c)
  * captures any error onto a single store slot.
  *
  * Route is registered `requiresAuth: false` so it renders WITHOUT
@@ -17,8 +17,8 @@
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Result, Spin } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { useTunnelAuthStore } from '../tunnelAuth'
+import { Auth } from '@/modules/auth/Auth.store'
 
 /**
  * Match the page chrome to the theme-aware layout background so
@@ -93,10 +93,10 @@ export function MagicLinkPage() {
   if (exchangeError) {
     // Refresh-after-success special case: the token has been consumed
     // server-side and the store's previous successful exchange already
-    // pushed the session into Stores.Auth (still in memory). If we're
+    // pushed the session into Auth (still in memory). If we're
     // already authenticated, just bounce home rather than show the
     // "link expired" page — the user is already logged in.
-    if (Stores.Auth.$.isAuthenticated) {
+    if (Auth.$.isAuthenticated) {
       navigate('/', { replace: true })
       return null
     }

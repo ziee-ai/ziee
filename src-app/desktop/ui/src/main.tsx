@@ -1,7 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from '@ziee/ui-core'
-import { Stores } from '@ziee/framework/stores'
 import { loadDesktopModules } from '@ziee/desktop/modules/desktop-loader'
 import { registerDesktopOverrides } from '@ziee/desktop/modules/desktop-base/overrides'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
@@ -12,6 +11,7 @@ import { Button } from '@ziee/kit'
 // localOverridePlugin handles it at runtime.
 import { installDecorumTitlebarFix } from '@ziee/desktop/core/decorum-titlebar-fix'
 import '@/index.css'
+import { AppMode } from '@/modules/app/AppMode.store'
 
 // Posthoc CSS patch for tauri-plugin-decorum's z:100 titlebar overlay
 // (Windows only). Without it, the SidebarToggleButton at top-left is
@@ -47,9 +47,9 @@ loadDesktopModules()
 // this in `desktop-base/module.tsx::initialize()` (async) would
 // leave a brief render-flash window before the flip; setting it
 // here happens after both core + desktop modules have registered
-// their stores (`Stores.AppMode` from `modules/app/module.tsx`) and
+// their stores (`AppMode` from `modules/app/module.tsx`) and
 // before `createRoot().render(<App/>)`.
-Stores.AppMode.setMultiUserMode(false)
+AppMode.setMultiUserMode(false)
 
 // Register every element-level desktop UI override (a `<Seam>` declared in a
 // core web component) BEFORE the first render, so a core component that reads

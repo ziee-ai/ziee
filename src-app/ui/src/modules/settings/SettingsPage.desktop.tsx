@@ -29,7 +29,6 @@ import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowM
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect, useRef } from 'react'
-import { AppMode } from '@/modules/app/AppMode.store'
 import { ModuleSystem } from '@ziee/framework/stores'
 
 // Settings page entries that are specific to multi-user SaaS features

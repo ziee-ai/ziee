@@ -6,7 +6,7 @@
  * desktop bundle — updates are a native-app concern.
  *
  * Backend control surface: the desktop crate's aide-documented
- * `/api/desktop/updater/*` routes, driven through `Stores.Updater`.
+ * `/api/desktop/updater/*` routes, driven through `UpdaterStore`.
  */
 
 import { createModule, type AppModule } from '@ziee/ui-core'

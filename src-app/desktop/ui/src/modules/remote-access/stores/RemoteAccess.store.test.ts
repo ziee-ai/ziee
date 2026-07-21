@@ -40,7 +40,7 @@ vi.mock('@/api-client', () => ({
 // remains resolvable.
 const authStoreMock = vi.hoisted(() => ({}))
 
-// Stores.EventBus.emit is called by the events module; stub it so
+// EventBusStore.emit is called by the events module; stub it so
 // nothing tries to dispatch.
 const eventBusMock = vi.hoisted(() => ({
   emit: vi.fn().mockResolvedValue(undefined),
@@ -90,7 +90,7 @@ beforeEach(() => {
   eventBusMock.emit.mockReset().mockResolvedValue(undefined)
 })
 
-describe('Stores.RemoteAccess', () => {
+describe('RemoteAccessStore', () => {
   describe('loadStatus', () => {
     it('populates status and clears error on success', async () => {
       apiMock.RemoteAccess.getStatus.mockResolvedValueOnce(defaultStatus())
@@ -201,7 +201,7 @@ describe('Stores.RemoteAccess', () => {
         undefined,
       )
       // Phones fetch /api/auth/config on PhoneAuthPage mount, so the
-      // store has nothing to "push" to Stores.Auth — the toggle is
+      // store has nothing to "push" to AuthStore — the toggle is
       // observable on the next phone session start. (See the
       // comment in RemoteAccess.store.ts::setPasswordAuthEnabled.)
     })

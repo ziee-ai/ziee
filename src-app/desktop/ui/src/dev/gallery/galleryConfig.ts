@@ -15,7 +15,6 @@
  * route, so there is no `GalleryPage.tsx` shim (unlike web).
  */
 import type { GalleryConfig } from '@ziee/gallery'
-import { Stores } from '@ziee/framework/stores'
 import { ApiEndpoints } from '@/api-client/apiEndpoints'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { AppErrorBoundary } from '@/components/AppErrorBoundary'
@@ -33,6 +32,7 @@ import { loadDesktopModules } from '@ziee/desktop/modules/desktop-loader'
 import { crawlCassette } from './fixtures/crawl.generated'
 import { adminUser, adminPermissions } from './fixtures'
 import { discoverGalleries } from './module-seed'
+import { ConfigClient } from '@/modules/config-client/configClient'
 
 // ── auth/role seed (was `seed.ts`) ───────────────────────────────────────────
 // A conservative read-only permission set a "limited" user plausibly holds.
@@ -113,9 +113,9 @@ export function buildGalleryConfig(): GalleryConfig {
       ACCENT_ORDER.map(a => [a, ACCENT_PRESETS[a].label]),
     ),
     defaultAccent: 'blue',
-    setThemePref: theme => Stores.ConfigClient.setThemePreference(theme),
+    setThemePref: theme => ConfigClient.setThemePreference(theme),
     setAccentPref: accent =>
-      Stores.ConfigClient.setAccentPreset(accent as AccentPreset),
+      ConfigClient.setAccentPreset(accent as AccentPreset),
 
     // Login form renders null when authenticated → seed logged-out for it.
     surfaceAuthSeed: { auth: 'none' },

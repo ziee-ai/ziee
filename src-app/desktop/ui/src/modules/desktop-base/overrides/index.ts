@@ -1,11 +1,12 @@
 /**
+import { AppMode } from '@/modules/app/AppMode.store'
  * Desktop UI Override registrations — auto-discovery barrel.
  *
  * `registerDesktopOverrides()` is invoked SYNCHRONOUSLY from `main.tsx` before
  * `ReactDOM.render`, so every element-level desktop override (a `<Seam>` declared
  * in a core web component) is in the registry before the core component that
  * reads its seam first renders — the same pre-render window as
- * `Stores.AppMode.setMultiUserMode(false)`.
+ * `AppMode.setMultiUserMode(false)`.
  *
  * Each sibling file under this dir owns ONE seam and exports a `register()`; they
  * are glob-discovered here (mirroring `desktop-loader.ts`) so a new conversion is

@@ -8,6 +8,7 @@ import type {
   User,
 } from '@/api-client/types'
 import { type StoreProxy} from '@ziee/framework/stores'
+import { setAuthView, type PermissionAuthView } from '@ziee/framework/permissions'
 import { EventBus as EventBusStore } from '@ziee/framework/stores'
 
 /**
@@ -870,3 +871,10 @@ const AuthDef = defineStore('Auth', {
 export const useAuthStore = AuthDef.store
 
 export const Auth = registerLazyStore(AuthDef)
+
+// Inject the Auth store into the framework permission system. The SDK's
+// permission primitives (usePermission / <Can>) read the current user +
+// flattened permissions through this seam, staying app-agnostic without any
+// global `Stores.Auth` lookup. Runs at boot (Auth.store is eagerly imported by
+// App.tsx / AuthGuard before any permission hook renders).
+setAuthView(Auth as unknown as StoreProxy<PermissionAuthView>)

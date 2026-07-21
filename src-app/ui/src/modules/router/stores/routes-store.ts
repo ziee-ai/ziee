@@ -1,7 +1,8 @@
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
+import { routesSeam } from '@ziee/framework'
 import type { RouteConfig } from '@/modules/router/types'
 
-export const Routes = defineStore('Routes', {
+const RoutesDef = defineStore('Routes', {
   state: {
     routes: [] as RouteConfig<any>[],
   },
@@ -12,4 +13,8 @@ export const Routes = defineStore('Routes', {
   }),
 })
 
-export const useRoutesStore = Routes.store
+export const useRoutesStore = RoutesDef.store
+export const Routes = registerLazyStore(RoutesDef)
+
+// SEAM: inject into the SDK router/prefetch (replaces the old global Stores.Routes).
+routesSeam.set(Routes as unknown as { routes: unknown[] })

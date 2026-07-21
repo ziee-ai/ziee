@@ -5,7 +5,7 @@ import { usePermission } from '@/core/permissions'
 
 import { NotificationBellWidget } from './components/NotificationBellWidget'
 import { useNotificationsStore } from './stores/Notifications.store'
-import '@/modules/notification/types' // register Stores.Notifications (declaration merge)
+import '@/modules/notification/types' // register Notifications (declaration merge)
 import '@/modules/notification/kinds' // register ziee's notification kinds/renderers (SDK seam)
 
 const NotificationsPage = lazyWithPreload(() =>

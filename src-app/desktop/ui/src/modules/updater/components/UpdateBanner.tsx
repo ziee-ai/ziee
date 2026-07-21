@@ -16,8 +16,7 @@
 
 import { Button, Progress, Space, Text } from '@ziee/kit'
 import { ArrowUp } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
-
+import { Updater } from '@ziee/desktop/modules/updater/stores/updater'
 export function UpdateBanner() {
   const {
     available,
@@ -27,7 +26,7 @@ export function UpdateBanner() {
     readyToInstall,
     progress,
     error,
-  } = Stores.Updater
+  } = Updater
 
   if (!available || dismissed) return null
 
@@ -63,13 +62,13 @@ export function UpdateBanner() {
           </div>
         ) : (
           <Space size="small" className="w-full">
-            <Button data-testid="desktop-updater-banner-remind-btn" size="default" onClick={() => Stores.Updater.remindLater()}>
+            <Button data-testid="desktop-updater-banner-remind-btn" size="default" onClick={() => Updater.remindLater()}>
               Remind later
             </Button>
             <Button
               data-testid="desktop-updater-banner-install-btn"
               size="default"
-              onClick={() => Stores.Updater.installAndRestart()}
+              onClick={() => Updater.installAndRestart()}
             >
               Install &amp; restart
             </Button>

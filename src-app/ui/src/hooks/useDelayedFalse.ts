@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react'
  * @example
  * ```typescript
  * // Use case: Keep drawer mounted for animation
- * const shouldMount = useDelayedFalse(() => Stores.MyDrawer.isOpen)
+ * const shouldMount = useDelayedFalse(() => MyDrawer.isOpen)
  * ```
  *
  * Behavior:

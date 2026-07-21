@@ -3,8 +3,6 @@ export { useUserAssistantsStore } from './userAssistants'
 export { useTemplateAssistantsStore } from './templateAssistants'
 export { useAssistantPickerStore } from './assistantPicker'
 
-// Re-export for compatibility with Stores pattern
-export { Stores } from '@ziee/framework/stores'
 
 // Re-export constants that callers import directly from the store.
 export {

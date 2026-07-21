@@ -1,7 +1,7 @@
 // "Mounted folders" panel for the project detail page (desktop-only).
 //
 // Lists the host folders mounted into the code sandbox for this project, with a
-// native folder picker (Stores.FileDialog) to add one, a read-only toggle, and
+// native folder picker (FileDialog) to add one, a read-only toggle, and
 // remove. Folders appear in the sandbox at /mnt/<full host path> for every chat
 // in the project (read-through to conversations).
 
@@ -19,8 +19,9 @@ import {
 import { Trash2, FolderPlus, FolderOpen } from 'lucide-react'
 
 import type { MountEntry } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
-
+import { FileDialog } from '@ziee/desktop/modules/file-dialog/store'
+import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
+import { ProjectHostMounts } from '@ziee/desktop/modules/host-mount/project-extension/stores/projectHostMounts'
 /** Mirror of the server-side `/mnt/<full host path>` derivation (display only). */
 function toSandboxPath(hostPath: string): string {
   let s = hostPath.replace(/\\/g, '/')
@@ -30,8 +31,8 @@ function toSandboxPath(hostPath: string): string {
 }
 
 export function ProjectMountsPanel() {
-  const project = Stores.ProjectDetail.project
-  const { mounts, loading, saving } = Stores.ProjectHostMounts
+  const project = ProjectDetail.project
+  const { mounts, loading, saving } = ProjectHostMounts
 
   const [draft, setDraft] = useState<MountEntry[]>([])
   useEffect(() => {
@@ -43,7 +44,7 @@ export function ProjectMountsPanel() {
   const dirty = JSON.stringify(draft) !== JSON.stringify(mounts)
 
   const addFolder = async () => {
-    const picked = await Stores.FileDialog.openFolder({
+    const picked = await FileDialog.openFolder({
       title: 'Select a folder to mount into the sandbox',
     })
     if (!picked || Array.isArray(picked)) return
@@ -62,7 +63,7 @@ export function ProjectMountsPanel() {
 
   const save = async () => {
     try {
-      await Stores.ProjectHostMounts.saveMounts(project.id, draft)
+      await ProjectHostMounts.saveMounts(project.id, draft)
       message.success('Saved mounted folders')
     } catch {
       message.error('Failed to save mounted folders')

@@ -1,5 +1,6 @@
 import { createJSONStorage } from 'zustand/middleware'
 import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
+import { configClientSeam } from '@ziee/shell'
 import { configClientState, type ConfigClientState, type ThemePreference } from './state'
 import type { AccentPreset } from '@/components/ThemeProvider/accentPresets'
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from '@/components/ThemeProvider/accentPresets'
@@ -58,6 +59,9 @@ const ConfigClientDef = defineStore<ConfigClientState, Actions>('ConfigClient', 
 })
 
 export const ConfigClient = registerLazyStore(ConfigClientDef)
+
+// SEAM: inject into the SDK shell ThemeProvider (replaces the old global Stores.ConfigClient).
+configClientSeam.set(ConfigClient)
 export const useConfigClientStore = ConfigClientDef.store
 
 export type { ThemePreference } from './state'

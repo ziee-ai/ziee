@@ -151,12 +151,12 @@ const fileExtension: ChatExtension = createExtension({
     const { FilePanel: FilePanelComponent } = await import('@/modules/file/components/FilePanel')
     const { File: FileOutlinedIcon } = await import('lucide-react')
     const { Spin: SpinComponent } = await import('@ziee/kit')
-    const { Stores: StoresRef } = await import('@ziee/framework/stores')
+    const { File: FileStore } = await import('@/modules/file/stores/file')
 
     registerPanelRenderer('file', {
       icon: <FileOutlinedIcon />,
       component: ({ fileId, version }) => {
-        const { selectedFiles, messageFilesCache } = StoresRef.File
+        const { selectedFiles, messageFilesCache } = FileStore
         const file = selectedFiles.get(fileId) ?? messageFilesCache.get(fileId) ?? null
         if (!file) return <SpinComponent label="Loading file" />
         return <FilePanelComponent file={file} initialVersion={version} />

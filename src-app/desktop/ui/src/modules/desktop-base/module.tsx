@@ -12,10 +12,11 @@
  */
 
 import { createModule, type AppModule } from '@ziee/ui-core'
-import { Stores, type StoreProxy } from '@ziee/framework/stores'
+import { type StoreProxy } from '@ziee/framework/stores'
 import { invoke } from '@tauri-apps/api/core'
 import type { AutoLoginResponse } from '@/modules/auth/Auth.store'
-import { useBootstrapStore } from '@ziee/desktop/modules/desktop-base/bootstrap'
+import { useBootstrapStore, Bootstrap as BootstrapStore } from '@ziee/desktop/modules/desktop-base/bootstrap'
+import { Auth as AuthStore } from '@/modules/auth/Auth.store'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
@@ -40,11 +41,11 @@ function applyTokens(authData: AutoLoginResponse): void {
   // which never fires when the machine sleeps through it, the root
   // cause of the desktop mid-work auto-logout — deleted in favor of the
   // shared machinery.)
-  Stores.Auth.setAuthFromAutoLogin(authData)
+  AuthStore.setAuthFromAutoLogin(authData)
 }
 
 async function runAutoLoginWithRetry(): Promise<void> {
-  const bootstrap = Stores.Bootstrap.$
+  const bootstrap = BootstrapStore.$
   const startedAt = Date.now()
   let attempt = 0
 
@@ -65,7 +66,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
         attempt > 0 ? `(after ${attempt} retries)` : '',
       )
       applyTokens(authData)
-      Stores.Bootstrap.setStatus('succeeded')
+      BootstrapStore.setStatus('succeeded')
       return
     } catch (error) {
       attempt += 1
@@ -80,7 +81,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
           'attempts. Last error:',
           msg,
         )
-        Stores.Bootstrap.setStatus(
+        BootstrapStore.setStatus(
           'failed',
           'Backend failed to start. Try restarting Ziee.',
         )
@@ -91,7 +92,7 @@ async function runAutoLoginWithRetry(): Promise<void> {
       console.warn(
         `[Desktop] Auto-login attempt ${attempt} failed (${msg}); retrying in ${wait}ms`,
       )
-      Stores.Bootstrap.setAttempt(attempt)
+      BootstrapStore.setAttempt(attempt)
       await new Promise(resolve => setTimeout(resolve, wait))
     }
   }
@@ -115,7 +116,7 @@ const desktopBaseModule: AppModule = createModule({
   initialize: async () => {
     console.log('[Desktop] Desktop base module initialized')
 
-    // Note: `Stores.AppMode.setMultiUserMode(false)` is set
+    // Note: `AppMode.setMultiUserMode(false)` is set
     // synchronously in `desktop/ui/src/main.tsx` BEFORE the React
     // render, so multi-user-only widgets never render even briefly.
     // Don't move it here — async initialize lets a render frame
@@ -134,7 +135,7 @@ const desktopBaseModule: AppModule = createModule({
     // the full session length), re-mint locally via auto_login instead
     // of clearing auth. The embedded server trusts the local user, so
     // the desktop session never ends up on a login screen.
-    Stores.Auth.setRefreshFallback(async () => {
+    AuthStore.setRefreshFallback(async () => {
       console.log('[Desktop] Token refresh failed; re-minting via auto_login')
       await runAutoLoginWithRetry()
     })
@@ -144,8 +145,8 @@ const desktopBaseModule: AppModule = createModule({
 
   cleanup: async () => {
     cleanupRequested = true
-    Stores.Auth.setRefreshFallback(null)
-    Stores.Bootstrap.reset()
+    AuthStore.setRefreshFallback(null)
+    BootstrapStore.reset()
     console.log('[Desktop] Desktop base module cleaned up')
   },
 })

@@ -5,7 +5,7 @@
  *   Check for updates → (if available) Download with progress →
  *   Install & restart.
  *
- * All state lives in `Stores.Updater`; this page is presentational +
+ * All state lives in `Updater`; this page is presentational +
  * dispatches the store actions.
  */
 
@@ -24,8 +24,8 @@ import {
   RotateCw,
   Rocket,
 } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@ziee/ui-core/modules/settings/components/SettingsPageContainer'
+import { Updater } from '@ziee/desktop/modules/updater/stores/updater'
 
 export function AboutPage() {
   const {
@@ -38,7 +38,7 @@ export function AboutPage() {
     version,
     notes,
     error,
-  } = Stores.Updater
+  } = Updater
 
   const upToDate = !available && !checking && !downloading && !readyToInstall
 
@@ -97,7 +97,7 @@ export function AboutPage() {
             icon={<RotateCw />}
             loading={checking}
             disabled={downloading}
-            onClick={() => Stores.Updater.check()}
+            onClick={() => Updater.check()}
           >
             Check for updates
           </Button>
@@ -107,7 +107,7 @@ export function AboutPage() {
               data-testid="desktop-updater-about-download-btn"
               icon={<Download />}
               loading={downloading}
-              onClick={() => Stores.Updater.download()}
+              onClick={() => Updater.download()}
             >
               Download update
             </Button>
@@ -117,7 +117,7 @@ export function AboutPage() {
             <Button
               data-testid="desktop-updater-about-install-btn"
               icon={<Rocket />}
-              onClick={() => Stores.Updater.install()}
+              onClick={() => Updater.install()}
             >
               Install &amp; restart
             </Button>

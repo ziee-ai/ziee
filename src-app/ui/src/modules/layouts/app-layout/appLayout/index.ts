@@ -1,4 +1,5 @@
 import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
+import { appLayoutSeam } from '@ziee/shell'
 import { createJSONStorage } from 'zustand/middleware'
 import { appLayoutState, type AppLayoutState } from './state'
 import type { Actions } from './actions.gen'
@@ -42,3 +43,6 @@ export const AppLayoutDef = defineStore<AppLayoutState, Actions>('AppLayout', {
 
 export const AppLayout = registerLazyStore(AppLayoutDef)
 export const useAppLayoutStore = AppLayoutDef.store
+
+// SEAM: inject into the SDK shell (replaces the old global Stores.AppLayout).
+appLayoutSeam.set(AppLayout)

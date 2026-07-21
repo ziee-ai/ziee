@@ -8,6 +8,7 @@ import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
 import {
   createNotificationsStore,
+  notificationsSeam,
   type NotificationApiPort,
 } from '@ziee/notification-ui'
 
@@ -30,3 +31,6 @@ export const Notifications = createNotificationsStore({
 })
 
 export const useNotificationsStore = Notifications.store
+
+// SEAM: inject into the SDK notification widgets (replaces the old global Stores.Notifications).
+notificationsSeam.set(Notifications as unknown as Parameters<typeof notificationsSeam.set>[0])

@@ -48,11 +48,11 @@ import { CircleCheck, Copy, RotateCw, TriangleAlert } from 'lucide-react'
 import { z } from 'zod'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useMemo, useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { RemoteAccess } from '@ziee/desktop/modules/remote-access/stores/remoteAccess'
 
 export function RemoteAccessPage() {
-  const { status, loading, saving, error, magicLink } = Stores.RemoteAccess
+  const { status, loading, saving, error, magicLink } = RemoteAccess
 
   // Local form state (uncontrolled by the store so the user can
   // type without each keystroke firing a save). Persisted only on
@@ -77,10 +77,10 @@ export function RemoteAccessPage() {
   // (loadStatus → tunnel still Connected) restarts rotation.
   useEffect(() => {
     if (!status) {
-      void Stores.RemoteAccess.loadStatus()
+      void RemoteAccess.loadStatus()
     }
     return () => {
-      Stores.RemoteAccess.stopMagicLinkRotation()
+      RemoteAccess.stopMagicLinkRotation()
     }
   }, [])
 
@@ -166,7 +166,7 @@ export function RemoteAccessPage() {
             data-testid="desktop-remote-retry-btn"
             icon={<RotateCw />}
             loading={loading}
-            onClick={() => Stores.RemoteAccess.loadStatus()}
+            onClick={() => RemoteAccess.loadStatus()}
           >
             Retry
           </Button>
@@ -188,7 +188,7 @@ export function RemoteAccessPage() {
           data-testid="desktop-remote-error-alert"
           tone="error"
           title={error}
-          onClose={() => Stores.RemoteAccess.loadStatus()}
+          onClose={() => RemoteAccess.loadStatus()}
           closeLabel="Close"
         />
       )}
@@ -218,7 +218,7 @@ export function RemoteAccessPage() {
               loading={saving}
               onClick={async () => {
                 try {
-                  await Stores.RemoteAccess.saveAuthToken(tokenDraft.trim())
+                  await RemoteAccess.saveAuthToken(tokenDraft.trim())
                   setTokenDraft('')
                   message.success('ngrok auth token saved')
                 } catch (e) {
@@ -270,7 +270,7 @@ export function RemoteAccessPage() {
               onClick={async () => {
                 const next = domainDraft.trim() || null
                 try {
-                  await Stores.RemoteAccess.saveDomain(next)
+                  await RemoteAccess.saveDomain(next)
                   message.success('Domain saved')
                 } catch (e) {
                   message.error(
@@ -314,7 +314,7 @@ export function RemoteAccessPage() {
                 loading={saving}
                 onChange={async v => {
                   try {
-                    await Stores.RemoteAccess.saveAutoStart(v)
+                    await RemoteAccess.saveAutoStart(v)
                     message.success(
                       v ? 'Auto-start enabled' : 'Auto-start disabled',
                     )
@@ -388,7 +388,7 @@ export function RemoteAccessPage() {
               <Button
                 data-testid="desktop-remote-start-tunnel-btn"
                 loading={saving}
-                onClick={() => Stores.RemoteAccess.startTunnel()}
+                onClick={() => RemoteAccess.startTunnel()}
               >
                 Start tunnel
               </Button>
@@ -408,7 +408,7 @@ export function RemoteAccessPage() {
                 data-testid="desktop-remote-stop-tunnel-btn"
                 variant="destructive"
                 loading={saving}
-                onClick={() => Stores.RemoteAccess.stopTunnel()}
+                onClick={() => RemoteAccess.stopTunnel()}
               >
                 Stop tunnel
               </Button>
@@ -416,7 +416,7 @@ export function RemoteAccessPage() {
                 data-testid="desktop-remote-new-code-btn"
                 icon={<RotateCw />}
                 loading={saving}
-                onClick={() => Stores.RemoteAccess.rotateMagicLink()}
+                onClick={() => RemoteAccess.rotateMagicLink()}
               >
                 New code now
               </Button>
@@ -545,10 +545,10 @@ function PasswordAuthSection({
       // /api/remote-access/admin-password endpoint, gated by the
       // localhost-Host middleware — the desktop user's physical
       // presence is the auth proof).
-      await Stores.RemoteAccess.setAdminPassword(v.new_password)
+      await RemoteAccess.setAdminPassword(v.new_password)
       message.success('Password set')
       // Now safe to flip the toggle on.
-      await Stores.RemoteAccess.setPasswordAuthEnabled(true)
+      await RemoteAccess.setPasswordAuthEnabled(true)
       setShowChangePassword(false)
       form.reset()
     } catch (e) {
@@ -581,7 +581,7 @@ function PasswordAuthSection({
               return
             }
             try {
-              await Stores.RemoteAccess.setPasswordAuthEnabled(v)
+              await RemoteAccess.setPasswordAuthEnabled(v)
               message.success(
                 v
                   ? 'Password authentication enabled'
