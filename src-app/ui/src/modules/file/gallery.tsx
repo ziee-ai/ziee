@@ -81,14 +81,14 @@ const seedProjectFiles = async (patch: Record<string, unknown>) => {
   const { ProjectDetail } = await import(
     '@/modules/projects/stores/ProjectDetail.store'
   )
-  const { ProjectFiles } = await import(
-    '@/modules/file/project-extension/stores/ProjectFiles.store'
+  const { ProjectFilesDef } = await import(
+    '@/modules/file/project-extension/stores/projectFiles'
   )
   await holdPatch(() => {
     ProjectDetail.store.setState({
       project: { id: 'proj-s2-0001', name: 'Gallery Project' },
     } as any)
-    ProjectFiles.store.setState(patch as any)
+    ProjectFilesDef.store.setState(patch as any)
   })
 }
 

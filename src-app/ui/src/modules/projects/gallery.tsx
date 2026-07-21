@@ -33,8 +33,8 @@ async function seedProjectDetail(patch: {
   const { ProjectDetail } = await import(
     '@/modules/projects/stores/ProjectDetail.store'
   )
-  const { ProjectFiles } = await import(
-    '@/modules/file/project-extension/stores/ProjectFiles.store'
+  const { ProjectFilesDef } = await import(
+    '@/modules/file/project-extension/stores/projectFiles'
   )
   await holdPatch(() => {
     ProjectDetail.store.setState({
@@ -47,7 +47,7 @@ async function seedProjectDetail(patch: {
       conversationsHasMore: false,
       conversationsError: null,
     } as any)
-    ProjectFiles.store.setState({
+    ProjectFilesDef.store.setState({
       currentProjectId: patch.project?.id ?? null,
       files: patch.files ?? [],
       filesLoading: false,
