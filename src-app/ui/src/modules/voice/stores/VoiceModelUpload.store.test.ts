@@ -48,7 +48,7 @@ vi.mock('@ziee/framework/events', () => ({
   },
 }))
 
-import { useVoiceModelUploadStore } from './VoiceModelUpload.store'
+import { useVoiceModelUploadStore } from './voiceModelUpload'
 
 const store = () => useVoiceModelUploadStore.getState()
 
