@@ -23,7 +23,7 @@ import { AddToProjectModal } from '@/modules/projects/components/AddToProjectMod
  *
  * Responsibilities:
  *   - `afterCreateConversation`: attach a freshly-created chat into
- *     the active project (via Projects.store).
+ *     the active project (via the Projects store).
  *   - `onConversationLoad`: resolve the conversation's project and
  *     cache it so the synchronous URL hooks can read it without a
  *     network call.

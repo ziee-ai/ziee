@@ -1,4 +1,4 @@
-export { useProjectsStore } from './Projects.store'
+export { useProjectsStore } from './projects'
 export { useProjectDetailStore } from './projectDetail'
 export { useProjectDrawerStore } from './ProjectDrawer.store'
 
