@@ -131,7 +131,7 @@ export const gallery: ModuleGallery = {
       setup: async () => {
         const { Auth } = await import('@/modules/auth/Auth.store')
         const { App } = await import('@/modules/app/stores/app')
-        const { AppMode } = await import('@/modules/app/appMode')
+        const { AppMode } = await import('@/modules/app/AppMode.store')
         await holdPatch(() => {
           AppMode.store.setState({ multiUserMode: true } as any)
           App.__setState({ needsSetup: null })

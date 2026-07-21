@@ -1,6 +1,6 @@
 import { createModule, Stores } from '@ziee/framework'
 import { useAppStore } from '@/modules/app/stores/app'
-import { useAppModeStore } from '@/modules/app/appMode'
+import { useAppModeStore } from '@/modules/app/AppMode.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -51,7 +51,7 @@ export default createModule({
     {
       // Portable multi-user / single-admin flag. Default `true` (web
       // build); the desktop bootstrap flips it to `false`. See
-      // appMode/index.ts.
+      // AppMode.store.ts.
       name: 'AppMode',
       store: useAppModeStore,
     },
