@@ -67,7 +67,7 @@ vi.mock('@ziee/framework/events', () => ({
   },
 }))
 
-import { useVoiceModelDownloadProgressStore } from './VoiceModelDownloadProgress.store'
+import { useVoiceModelDownloadProgressStore } from './index'
 
 const store = () => useVoiceModelDownloadProgressStore.getState()
 
