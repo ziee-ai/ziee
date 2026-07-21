@@ -11,7 +11,7 @@ import {
   useWorkflowRunStore,
   useWorkflowStore,
 } from '@/modules/workflow/stores'
-import { useGroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsWidget.store'
+import { useGroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/groupSystemWorkflowsWidget'
 import { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/workflow/types' // CRITICAL: store declaration merging
