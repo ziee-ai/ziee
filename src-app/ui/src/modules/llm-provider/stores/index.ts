@@ -5,7 +5,7 @@ export * from './LlmProvider.store'
 export * from './LlmModelDrawers.store'
 
 // Download store
-export * from './LlmModelDownload.store'
+export * from './llmModelDownload'
 
 // Upload store
 export * from './LlmModelUpload.store'

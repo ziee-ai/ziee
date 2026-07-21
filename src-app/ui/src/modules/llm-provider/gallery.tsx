@@ -162,11 +162,11 @@ export const gallery: ModuleGallery = {
         'DownloadIndicatorWidget',
       ),
       setup: async () => {
-        const { LlmModelDownload } = await import(
-          '@/modules/llm-provider/stores/LlmModelDownload.store'
+        const { LlmModelDownloadStore } = await import(
+          '@/modules/llm-provider/stores/llmModelDownload'
         )
         await holdPatch(() =>
-          LlmModelDownload.store.setState({ downloads: [] } as any),
+          LlmModelDownloadStore.setState({ downloads: [] } as any),
         )
       },
     },
@@ -215,14 +215,14 @@ export const gallery: ModuleGallery = {
         'AddLocalLlmModelDownloadDrawer',
       ),
       setup: async () => {
-        const { LlmModelDownload } = await import(
-          '@/modules/llm-provider/stores/LlmModelDownload.store'
+        const { LlmModelDownloadStore } = await import(
+          '@/modules/llm-provider/stores/llmModelDownload'
         )
         const { ViewDownloadDrawer } = await import(
           '@/modules/llm-provider/stores/LlmModelDrawers.store'
         )
         await holdPatch(() => {
-          LlmModelDownload.store.setState({
+          LlmModelDownloadStore.setState({
             downloads: [
               {
                 id: 's3-dl-failed',
@@ -265,14 +265,14 @@ export const gallery: ModuleGallery = {
         'AddLocalLlmModelDownloadDrawer',
       ),
       setup: async () => {
-        const { LlmModelDownload } = await import(
-          '@/modules/llm-provider/stores/LlmModelDownload.store'
+        const { LlmModelDownloadStore } = await import(
+          '@/modules/llm-provider/stores/llmModelDownload'
         )
         const { ViewDownloadDrawer } = await import(
           '@/modules/llm-provider/stores/LlmModelDrawers.store'
         )
         await holdPatch(() => {
-          LlmModelDownload.store.setState({
+          LlmModelDownloadStore.setState({
             downloads: [
               {
                 id: 's3-dl-active',
@@ -347,11 +347,11 @@ export const gallery: ModuleGallery = {
         { providerId: 's3-empty-prov' },
       ),
       setup: async () => {
-        const { LlmModelDownload } = await import(
-          '@/modules/llm-provider/stores/LlmModelDownload.store'
+        const { LlmModelDownloadStore } = await import(
+          '@/modules/llm-provider/stores/llmModelDownload'
         )
         await holdPatch(() =>
-          LlmModelDownload.store.setState({ downloads: [] } as any),
+          LlmModelDownloadStore.setState({ downloads: [] } as any),
         )
       },
     },
