@@ -52,6 +52,34 @@
   overflow-y: auto;
 }
 
+/* Co-located citations ([^1][^2][^3]) render as adjacent <sup> elements with
+ * nothing between them, so three references read as one blob: "123". Separate
+ * them with a comma (ziee#167).
+ *
+ * The class is stamped by `markAdjacentFootnoteRefs` rather than matched with a
+ * CSS `sup + sup` rule, because the adjacent-sibling combinator ignores
+ * intervening TEXT — a later, unrelated citation in the same paragraph would
+ * also match it and gain a spurious leading comma. A real exponent
+ * (<sup>2</sup>) is never marked, and neither is the first ref of a run. */
+.footnote-ref-adjacent::before {
+  content: ", ";
+}
+
+/* Paper-grouped references (ziee#167): one bibliographic entry per paper with
+ * its cited excerpts nested beneath it, built by rehypeGroupPaperFootnotes.
+ * The numbers themselves are rendered by the `li` override, not by list-decimal,
+ * so they cannot drift from the inline markers. */
+.footnote-excerpt-count {
+  margin-top: 0.25rem;
+  font-size: 0.875em;
+  color: var(--muted-foreground);
+}
+.footnote-excerpts {
+  margin-top: 0.125rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--border);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

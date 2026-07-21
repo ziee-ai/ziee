@@ -1,6 +1,15 @@
 // Link reference definition:  [id]: url "optional title"   (indented ≤3 spaces)
+//
+// The id may NOT start with `^`: in a GFM document `[^id]:` is always a FOOTNOTE
+// definition, never a link reference. Without this exclusion a footnote whose
+// body happens to be a single token — `[^2]: Two.` — is collected as a link
+// definition with url `Two.`, and the reference pass below then rewrites the
+// co-located citation run `[^1][^2]` (which looks exactly like the reference
+// link `[text][id]`) into `[^1](Two.)`, silently destroying the second citation
+// of every run. Long definition bodies happen not to match, so this only ever
+// bit short ones — see markdownPreprocess.test.ts.
 const DEF_RE =
-  /^ {0,3}\[([^\]\r\n]+)\]:[ \t]*(<[^>\r\n]*>|\S+)(?:[ \t]+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?[ \t]*$/gm
+  /^ {0,3}\[([^^\]\r\n][^\]\r\n]*)\]:[ \t]*(<[^>\r\n]*>|\S+)(?:[ \t]+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?[ \t]*$/gm
 
 // Inline image:  ![alt](url "title")
 const IMG_RE =
