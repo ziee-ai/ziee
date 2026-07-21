@@ -68,8 +68,16 @@ test('guards leave unsafe cases untouched', () => {
   // a body line that is exactly `$$` would close the fence early
   check('\\[ a\n$$\nb \\]', '\\[ a\n$$\nb \\]')
 
-  // 4-space indent with no bullet/quote is an indented code block
+  // 4-space indent with no bullet/quote is an indented code block — and a TAB
+  // is 4 columns in CommonMark, so it is the same code block
   check('    \\[ x \\]', '    \\[ x \\]')
+  check('\t\\[ x \\]', '\t\\[ x \\]')
+
+  // inside a link destination/title a newline would break the link outright,
+  // so it downgrades to inline rather than corrupting the syntax
+  check('[t](http://x "\\[ y \\]")', '[t](http://x "$y$")')
+  // ...but a COMPLETED link earlier on the line must not trigger that guard
+  check('[t](http://x) then \\[ y \\]', '[t](http://x) then \n$$\ny\n$$')
 
   // empty delimiters are not math
   check('\\[\\]', '\\[\\]')

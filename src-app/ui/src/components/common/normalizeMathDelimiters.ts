@@ -42,8 +42,22 @@ function continuationPrefix(lineHead: string): string | null {
   const m = CONTAINER_RE.exec(lineHead)
   if (!m) return ''
   const [, lead, bq, mid, marker, gap] = m
-  if (lead.length >= 4 && !bq && !marker) return null
+  // A tab counts as 4 columns of indentation in CommonMark, so `\t\[ x \]` is an
+  // indented CODE block just as `    \[ x \]` is — measure columns, not chars.
+  const indentColumns = lead.replace(/\t/g, '    ').length
+  if (indentColumns >= 4 && !bq && !marker) return null
   return lead + bq + mid + (marker ? ' '.repeat(marker.length + gap.length) : '')
+}
+
+/**
+ * Is the match sitting inside a link destination or title — `[t](http://x "…")`?
+ * Injecting a newline there would break the link syntax outright (corruption, not
+ * degradation), so those downgrade to inline math the same way a table row does.
+ * True when the last `](` on the line has no `)` after it.
+ */
+function inLinkTarget(lineHead: string): boolean {
+  const open = lineHead.lastIndexOf('](')
+  return open !== -1 && !lineHead.includes(')', open + 2)
 }
 
 /**
@@ -98,9 +112,10 @@ export function normalizeMathDelimiters(md: string): string {
 
       const lineHead = str.slice(str.lastIndexOf('\n', offset - 1) + 1, offset)
 
-      // A table row is newline-terminated, so injecting one to reach block
-      // position would destroy the row. Inline math still renders.
-      if (lineHead.includes('|')) {
+      // Two places a newline cannot go: a table row (newline-terminated) and a
+      // link destination/title (newline breaks the link syntax). Both downgrade
+      // to inline math, which still renders and cannot corrupt the construct.
+      if (lineHead.includes('|') || inLinkTarget(lineHead)) {
         return inner.includes('$') ? whole : `$${inner}$`
       }
 
