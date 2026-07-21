@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
+import { useAppLayoutStore } from '@/modules/layouts/app-layout/appLayout'
 
 // Shim → @ziee/shell. The pure, store-free breakpoint hooks + helpers moved to
 // `@ziee/shell/hooks/useWindowMinSize`. The store-coupled `useMainContentMinSize`

@@ -1,5 +1,5 @@
 import { useLayoutEffect } from 'react'
-import { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
+import { useAppLayoutStore } from '@/modules/layouts/app-layout/appLayout'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 /** html class the CSS overrides key off (relaxes #root/body height + overflow). */

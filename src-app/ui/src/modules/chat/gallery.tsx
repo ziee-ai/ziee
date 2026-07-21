@@ -662,8 +662,8 @@ export const gallery: ModuleGallery = {
         const { useChatHistoryStore } = await import(
           '@/modules/chat/stores/chatHistory'
         )
-        const { AppLayout } = await import(
-          '@/modules/layouts/app-layout/AppLayout.store'
+        const { AppLayoutDef } = await import(
+          '@/modules/layouts/app-layout/appLayout'
         )
         // ChatHistoryPage refetches on mount (which flips loading/isInitialized as
         // it resolves), so a one-shot seed races into a blank window: `loading`
@@ -673,7 +673,7 @@ export const gallery: ModuleGallery = {
         // via the loading arm (also covering the `nativeScroll===true` :143 ternary)
         // and ConversationList deterministically shows its load spinner.
         holdForever(() => {
-          AppLayout.store.setState({ nativeScroll: true } as any)
+          AppLayoutDef.store.setState({ nativeScroll: true } as any)
           useChatHistoryStore.setState({
             loading: true,
             isInitialized: false,
