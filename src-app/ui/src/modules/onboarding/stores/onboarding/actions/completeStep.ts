@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import type { OnboardingGet, OnboardingSet } from '../state'
 import '@/modules/onboarding/events/types'
+import { EventBus } from '@ziee/framework/stores'
 
 export default (set: OnboardingSet, _get: OnboardingGet) =>
   async (guideId: string, stepId: string) => {
@@ -13,7 +13,7 @@ export default (set: OnboardingSet, _get: OnboardingGet) =>
       draft.completedGuideIds = progress.completed_guide_ids
       draft.completedStepIds = progress.completed_step_ids
     })
-    await Stores.EventBus.emit({
+    await EventBus.emit({
       type: 'onboarding.step_completed',
       data: { guideId, stepId },
     })

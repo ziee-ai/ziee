@@ -14,8 +14,8 @@ import {
 } from '@ziee/kit'
 import { z } from 'zod'
 import { Lock } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
+import { Auth } from '@/modules/auth/Auth.store'
 
 const linkAccountSchema = z.object({
   password: z.string().min(1, 'Please enter your password'),
@@ -55,7 +55,7 @@ export const LinkAccountPage: React.FC = () => {
     setError(null)
     setLoading(true)
     try {
-      await Stores.Auth.linkAccount({ link_token: linkToken, password })
+      await Auth.linkAccount({ link_token: linkToken, password })
       navigate('/', { replace: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to link account')

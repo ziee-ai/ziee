@@ -15,7 +15,6 @@ import {
 import type { MenuItem } from '@ziee/kit/kit/menu'
 import { RotateCw } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
-import { Stores } from '@ziee/framework/stores'
 import { evaluatePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -27,12 +26,14 @@ import { DivScrollY } from '@/components/common/DivScrollY'
 import { McpUserPolicy } from '@/modules/mcp/stores/mcpUserPolicy'
 import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
+import { Auth } from '@/modules/auth/Auth.store'
+import { ModuleSystem } from '@ziee/framework/stores'
 
 export function HubPage() {
   const { activeTab: urlActiveTab } = useParams()
   const navigate = useNavigate()
-  const { slots } = Stores.ModuleSystem
-  const { user, permissions } = Stores.Auth
+  const { slots } = ModuleSystem
+  const { user, permissions } = Auth
   // Subscribe to the MCP policy so the MCP tab's shouldRender gate re-evaluates
   // the moment an admin saves a new policy (its presence in visibleTabs deps is
   // the load-bearing piece).

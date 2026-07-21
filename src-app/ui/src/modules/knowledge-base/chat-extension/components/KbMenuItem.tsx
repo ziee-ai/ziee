@@ -5,11 +5,11 @@ import { BookOpen, Check, ChevronRight } from 'lucide-react'
 import { type KnowledgeBase } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { kbKey } from '@/modules/knowledge-base/stores/kbSelectionKey'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { KnowledgeBases } from '@/modules/knowledge-base/stores/knowledgeBases'
 import { KnowledgeBaseComposer } from '@/modules/knowledge-base/stores/knowledgeBaseComposer'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 const EMPTY_SET: ReadonlySet<string> = new Set()
 
@@ -38,7 +38,7 @@ export function KbMenuItem() {
   // the pane's own store, so a pending selection here never leaks into another pane.
   const { selectionByConversation } = KnowledgeBaseComposer
   const pane = useChatPaneOrNull()
-  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (pane?.store ?? Chat) as typeof Chat
   const paneId = pane?.paneId ?? null
   const convId = chat.conversation?.id ?? null
   const selectedKbIds = selectionByConversation.get(kbKey(convId, paneId)) ?? EMPTY_SET

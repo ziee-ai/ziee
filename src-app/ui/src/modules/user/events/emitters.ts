@@ -1,11 +1,11 @@
-import { Stores } from '@ziee/framework/stores'
 import type { Group, User } from '@/api-client/types'
+import { EventBus } from '@ziee/framework/stores'
 
 /**
  * Emit group created event
  */
 export const emitGroupCreated = async (group: Group) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'group.created',
     data: { group },
   })
@@ -15,7 +15,7 @@ export const emitGroupCreated = async (group: Group) => {
  * Emit group updated event
  */
 export const emitGroupUpdated = async (group: Group) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'group.updated',
     data: { group },
   })
@@ -25,7 +25,7 @@ export const emitGroupUpdated = async (group: Group) => {
  * Emit group deleted event
  */
 export const emitGroupDeleted = async (groupId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'group.deleted',
     data: { groupId },
   })
@@ -35,7 +35,7 @@ export const emitGroupDeleted = async (groupId: string) => {
  * Emit user created event
  */
 export const emitUserCreated = async (user: User) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'user.created',
     data: { user },
   })
@@ -45,7 +45,7 @@ export const emitUserCreated = async (user: User) => {
  * Emit user updated event
  */
 export const emitUserUpdated = async (user: User) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'user.updated',
     data: { user },
   })
@@ -55,7 +55,7 @@ export const emitUserUpdated = async (user: User) => {
  * Emit user deleted event
  */
 export const emitUserDeleted = async (userId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'user.deleted',
     data: { userId },
   })
@@ -65,7 +65,7 @@ export const emitUserDeleted = async (userId: string) => {
  * Emit group member added event
  */
 export const emitGroupMemberAdded = async (groupId: string, userId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'group.member_added',
     data: { groupId, userId },
   })
@@ -78,7 +78,7 @@ export const emitGroupMemberRemoved = async (
   groupId: string,
   userId: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'group.member_removed',
     data: { groupId, userId },
   })

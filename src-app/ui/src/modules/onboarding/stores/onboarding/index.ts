@@ -10,7 +10,7 @@ const OnboardingDef = defineStore<OnboardingState, Actions>('Onboarding', {
   init: ({ watch, on, set, actions }) => {
     // Onboarding depends on auth (allowed direction). Watch the USER ID (not
     // isAuthenticated) so a user *switch* — which keeps isAuthenticated=true —
-    // still re-fires. Watch the RAW auth store: going through the Stores.Auth
+    // still re-fires. Watch the RAW auth store: going through the AuthStore
     // proxy in this non-component context corrupts hook ordering.
     watch(
       useAuthStore,

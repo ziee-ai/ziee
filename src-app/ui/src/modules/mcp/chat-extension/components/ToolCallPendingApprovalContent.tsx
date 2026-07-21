@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Button, Card, Text } from '@ziee/kit'
 import { Clock, Check, X } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import {
   approvalKeyOf,
   type McpToolCall,
@@ -10,6 +9,7 @@ import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { mcpServerParenLabel } from '@/modules/mcp/chat-extension/serverLabel'
 import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
 import { McpServer } from '@/modules/mcp/stores/mcpServer'
+import { Chat as ChatStore } from '@/modules/chat/core/stores/chatBridge'
 
 interface ToolCallPendingApprovalContentProps {
   toolCall: McpToolCall
@@ -39,7 +39,7 @@ export function ToolCallPendingApprovalContent({
   // Bind to THIS pane's chat store (ITEM-33) so approving in pane B files the
   // decision under pane B's conversation and resumes pane B — never pane A (the
   // wrong-pane approval bug). Single-pane falls back to the primary.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? ChatStore) as typeof ChatStore
 
   // The built-in App Control server (`invoke_capability`) ALWAYS re-prompts on a
   // state-changing action — the backend deliberately ignores any persisted

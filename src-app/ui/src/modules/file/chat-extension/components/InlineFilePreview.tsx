@@ -10,7 +10,6 @@ import {
 } from 'react'
 import { Button, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileViewerEntry, FileViewerSlotProps, InlineFileSource } from '@/modules/file/types/viewer'
@@ -34,6 +33,7 @@ import {
 } from '@/modules/file/chat-extension/components/inlineFileHeight'
 import { useInPlaceAnchor } from '@/modules/chat/core/utils/useInPlaceAnchor'
 import { MessageViewState as MessageViewStateStore } from '@/modules/chat/core/stores/messageViewState'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 interface InlineFilePreviewProps {
   /** Viewer matched by `getViewer(name, mimeType)`. `undefined` when no
@@ -83,7 +83,7 @@ const viewportH = () =>
  */
 export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewProps) {
   // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
   const key = source.url
   const rootRef = useRef<HTMLDivElement>(null)
   const bodyId = useId()

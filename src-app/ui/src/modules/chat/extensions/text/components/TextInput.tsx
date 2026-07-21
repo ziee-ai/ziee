@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { Textarea } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
   getDraft,
   setDraft,
   makeDraftKey,
 } from '@/modules/chat/extensions/text/chatDrafts'
+import { Auth } from '@/modules/auth/Auth.store'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * TextInput Component
@@ -22,14 +23,14 @@ import {
 export function TextInput() {
   const ref = useRef<HTMLTextAreaElement>(null)
   // Resolve THIS pane's chat store directly (not the focused-pane bridge): the
-  // composer's TextStore is a NESTED store, and `Stores.Chat.TextStore` resolves
+  // composer's TextStore is a NESTED store, and `Chat.TextStore` resolves
   // nested stores via getState()->focusedApi() (the focused pane), NOT the
   // subtree's PaneApiContext — so a non-focused pane's composer would register
   // its get/set/clear on, and read from, the WRONG pane's TextStore. Binding to
   // `pane.store` keeps each pane's composer isolated (single-pane: pane is null →
-  // Stores.Chat, unchanged).
+  // Chat, unchanged).
   const pane = useChatPaneOrNull()
-  const chatStore = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chatStore = (pane?.store ?? Chat) as typeof Chat
   const { sending } = chatStore
   const { setGetMessage, setSetMessage, setClearMessage } = chatStore.TextStore
 
@@ -42,7 +43,7 @@ export function TextInput() {
   const isEditing = chatStore.editingMessage != null
   // Namespace the draft by the current user so a shared browser never surfaces
   // another user's unsent text (esp. the fixed `new` bucket) — see makeDraftKey.
-  const draftKey = makeDraftKey(Stores.Auth.user?.id, conversationId)
+  const draftKey = makeDraftKey(Auth.user?.id, conversationId)
 
   // Keep the latest key/editing flag in refs so the DOM-driven save handler and
   // the registered clearer read current values without re-subscribing.

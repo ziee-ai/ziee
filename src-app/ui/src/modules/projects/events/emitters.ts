@@ -1,22 +1,22 @@
-import { Stores } from '@ziee/framework/stores'
 import type { Project } from '@/api-client/types'
+import { EventBus } from '@ziee/framework/stores'
 
 export const emitProjectCreated = async (project: Project) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'project.created',
     data: { project },
   })
 }
 
 export const emitProjectUpdated = async (project: Project) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'project.updated',
     data: { project },
   })
 }
 
 export const emitProjectDeleted = async (projectId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'project.deleted',
     data: { projectId },
   })
@@ -31,7 +31,7 @@ export const emitProjectConversationAttached = async (
   conversationId: string,
   fromProjectId: string | null,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'project.conversation_attached',
     data: { projectId, conversationId, fromProjectId },
   })
@@ -41,7 +41,7 @@ export const emitProjectConversationDetached = async (
   projectId: string,
   conversationId: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'project.conversation_detached',
     data: { projectId, conversationId },
   })

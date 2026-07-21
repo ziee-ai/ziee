@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Download } from 'lucide-react'
 import { Button, Checkbox, Dropdown, Input, List, Segmented, Space, Tag, Text, Title, Paragraph } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
   type LiteratureRecord,
@@ -10,6 +9,7 @@ import {
   type ScreeningDecision,
 } from '../types'
 import { downloadText, toBibtex, toCsv, toRis } from '../utils/citationFormats'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * The right-panel screening workbench (registered as the `literature` panel
@@ -23,7 +23,7 @@ export function LiteratureScreeningPanel(data: LiteratureScreeningData) {
   // resolves to the FOCUSED pane, so blurring pane B's exclusion-reason input by
   // clicking pane A read pane A's tabs → findIndex miss → the typed reason was
   // DROPPED. Binding to the render pane's store keeps it.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
 
   // Transient UI-only state — never persisted to the tab snapshot.
   const [selected, setSelected] = useState<Set<string>>(new Set())

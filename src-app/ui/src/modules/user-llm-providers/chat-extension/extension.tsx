@@ -8,7 +8,7 @@ import { ModelPicker } from '@/modules/user-llm-providers/modelPicker'
  *
  * Bridges the chat composer to the user-llm-providers module. The
  * picker state lives in modules/user-llm-providers/modelPicker/
- * (registered as ModelPicker), NOT under Stores.Chat. This
+ * (registered as ModelPicker), NOT under Chat. This
  * extension is a thin UI shim that:
  *   - Renders the toolbar model selector slot.
  *   - Reads the active picker selection into outgoing chat requests

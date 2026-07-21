@@ -1,10 +1,10 @@
 import { Shrink, FileText, EyeOff, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Tooltip, Tag, Dropdown, message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import { ConversationSummarization as ConversationSummarizationStore } from '@/modules/summarization/stores/conversationSummarization'
 import { SummarizationAdmin as SummarizationAdminStore } from '@/modules/summarization/stores/summarizationAdmin'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 type Mode = 'inherit' | 'on' | 'off'
 
@@ -25,8 +25,8 @@ export function SummarizationStatusPill() {
   // Each proxy access fires a useEffect; reading conditionally after
   // a guard triggers "Rendered more hooks than during the previous
   // render."
-  const conversation = Stores.Chat.conversation
-  const messages = Stores.Chat.messages
+  const conversation = Chat.conversation
+  const messages = Chat.messages
   const adminSettings = SummarizationAdminStore.settings
   const [mode, setMode] = useState<Mode>('inherit')
   const [loading, setLoading] = useState(false)

@@ -24,6 +24,7 @@ import { KbStatusRow } from './components/KbStatusRow'
 import { SearchKnowledgeToolResultCard } from './components/SearchKnowledgeToolResultCard'
 import type { KbSourceData } from './components/KbSourcePanel'
 import { KnowledgeBaseComposer } from '@/modules/knowledge-base/stores/knowledgeBaseComposer'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 // Augment the central PanelRendererMap so `displayInRightPanel({ type:
 // 'kb_source', data })` and `registerPanelRenderer('kb_source', …)` type-check.
@@ -105,12 +106,11 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
   },
 
   onMessageSent: async ownerPaneId => {
-    const { Stores } = await import('@ziee/framework/stores')
     const { pendingKbKey } = await import('../stores/kbSelectionKey')
     const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     const snap = KnowledgeBaseComposer.$
     // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
-    // a `Stores.Chat.$` read (which routes to the FOCUSED pane — in split view the
+    // a `Chat.$` read (which routes to the FOCUSED pane — in split view the
     // pane that sent may no longer be focused by the time this async hook runs, so
     // a `.$` read would transfer the pending buffer onto the wrong conversation or
     // short-circuit and silently drop it). Single-pane (no paneId) falls back to
@@ -120,7 +120,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
           | { conversation?: { id?: string } }
           | undefined)
       : undefined
-    const conversation = paneState?.conversation ?? Stores.Chat.$.conversation
+    const conversation = paneState?.conversation ?? Chat.$.conversation
     // A brand-new conversation (just minted, not yet hydrated into its own slot)
     // with a non-empty pending buffer → move THIS pane's pending selection under it
     // (ITEM-51: read the SENDING pane's own pending key). An existing conversation

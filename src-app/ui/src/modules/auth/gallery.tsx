@@ -78,21 +78,21 @@ export const gallery: ModuleGallery = {
     {
       slug: 'seeded-login-error',
       title: 'Login form — error',
-      note: 'Stores.Auth.error → the login error alert',
+      note: 'AuthStore.error → the login error alert',
       path: '/',
       initialPath: '/',
       component: lazyNamed(() => import('@/modules/auth/LoginForm'), 'LoginForm'),
       setup: async () => {
         const { Auth } = await import('@/modules/auth/Auth.store')
         await holdPatch(() =>
-          Auth.store.setState({ error: 'Invalid email or password.' } as any),
+          Auth.__setState({ error: 'Invalid email or password.' } as any),
         )
       },
     },
     {
       slug: 'seeded-register-error',
       title: 'Register form — error',
-      note: 'Stores.Auth.error → the register error alert',
+      note: 'AuthStore.error → the register error alert',
       path: '/',
       initialPath: '/',
       component: lazyNamed(
@@ -102,7 +102,7 @@ export const gallery: ModuleGallery = {
       setup: async () => {
         const { Auth } = await import('@/modules/auth/Auth.store')
         await holdPatch(() =>
-          Auth.store.setState({ error: 'That email is already registered.' } as any),
+          Auth.__setState({ error: 'That email is already registered.' } as any),
         )
       },
     },
@@ -135,7 +135,7 @@ export const gallery: ModuleGallery = {
         await holdPatch(() => {
           AppMode.__setState({ multiUserMode: true } as any)
           App.__setState({ needsSetup: null })
-          Auth.store.setState({
+          Auth.__setState({
             isInitializing: true,
             isAuthenticated: false,
           } as any)

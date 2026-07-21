@@ -1,11 +1,11 @@
 import { Fragment, createContext, useContext } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { evaluatePermission } from '@/core/permissions'
 import type {
   KnowledgeView,
   ProjectSlotName,
 } from '@/modules/projects/core/extensions/types'
 import { projectExtensionRegistry } from '@/modules/projects/core/extensions/registry'
+import { Auth } from '@/modules/auth/Auth.store'
 
 /**
  * Renders all extension components registered for a given project slot.
@@ -16,7 +16,7 @@ import { projectExtensionRegistry } from '@/modules/projects/core/extensions/reg
  *   - "managePanel" → the knowledge drawer
  *
  * Extensions read `ProjectDetail.project` directly for context
- * (mirrors how chat extensions read `Stores.Chat.conversation`). No
+ * (mirrors how chat extensions read `Chat.conversation`). No
  * props are passed to slot components.
  */
 interface ProjectExtensionSlotProps {
@@ -40,7 +40,7 @@ export function ProjectExtensionSlot({
   // user without the backing grant never sees the section whose endpoints
   // would 403. Contributions with no `permission` are always shown (they
   // are covered by the project page's own `projects::read` gate).
-  const { user, permissions } = Stores.Auth
+  const { user, permissions } = Auth
   const renderers = projectExtensionRegistry
     .renderSlot(name, view)
     .filter(

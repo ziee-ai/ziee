@@ -5,7 +5,7 @@ export const onboardingState = {
   nextEnabled: true,
   nextLoading: false,
   nextError: null as string | null,
-  // Per-user progress (owned here, not on Stores.Auth.user). `loaded` gates
+  // Per-user progress (owned here, not on Auth.user). `loaded` gates
   // the redirect so it can't mis-fire before the first fetch.
   completedGuideIds: [] as string[],
   completedStepIds: [] as string[],

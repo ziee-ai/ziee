@@ -3,8 +3,8 @@ import type {
   ProjectMcpSettingsRequest,
   ProjectMcpSettingsResponse,
 } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import type { ProjectMcpSettingsGet, ProjectMcpSettingsSet } from '../state'
+import { EventBus } from '@ziee/framework/stores'
 
 export default (set: ProjectMcpSettingsSet, _get: ProjectMcpSettingsGet) =>
   async (
@@ -24,7 +24,7 @@ export default (set: ProjectMcpSettingsSet, _get: ProjectMcpSettingsGet) =>
         s.settings = updated
         s.saving = false
       })
-      await Stores.EventBus.emit({
+      await EventBus.emit({
         type: 'project.mcp_updated',
         data: { projectId },
       })

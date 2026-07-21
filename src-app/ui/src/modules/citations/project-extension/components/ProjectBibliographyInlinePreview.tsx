@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { Book } from 'lucide-react'
 import { Button, Text } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
 import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
+import { EventBus } from '@ziee/framework/stores'
 
 /** Compact view-only summary of a project's reference list (the knowledge card).
  *  Header mirrors the file knowledge card (icon + "References" + count); refetches
@@ -31,7 +31,7 @@ export function ProjectBibliographyInlinePreview() {
         })
     }
     reload()
-    const unsub = Stores.EventBus.on(
+    const unsub = EventBus.on(
       'sync:bibliography_entry',
       reload,
       'ProjectBibliographyInlinePreview',

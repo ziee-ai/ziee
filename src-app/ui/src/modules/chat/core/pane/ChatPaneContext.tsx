@@ -35,14 +35,14 @@ const ChatPaneContext = createContext<ChatPaneHandle | null>(null)
  *
  * - Instantiates a per-pane store (`ChatPaneStore.use`) — its own EventBus group,
  *   its own conversation/messages/streaming/window state.
- * - Registers it in the `paneRegistry` so the `Stores.Chat` bridge forwards to it
+ * - Registers it in the `paneRegistry` so the `ChatStore` bridge forwards to it
  *   while it is the focused pane; deregisters on unmount.
  * - Loads (and reloads on change) the pane's conversation — `.use()` is
  *   ref-frozen so the conversationId prop can't drive a re-init on its own
  *   (Round-2 finding), hence the explicit effect.
  *
  * Pane-scoped components call `useChatPane()` to read/act on THEIR pane rather
- * than `Stores.Chat` (which is the focused pane). The single-pane path does not
+ * than `ChatStore` (which is the focused pane). The single-pane path does not
  * mount a provider — it runs on the primary pane via the bridge — so this is
  * additive and only engaged once `SplitChatView` renders panes.
  */
@@ -121,8 +121,8 @@ export function ChatPaneProvider({
 
   return (
     <ChatPaneContext.Provider value={handle}>
-      {/* Expose this pane's raw StoreApi to the `Stores.Chat` bridge so every
-          reactive `Stores.Chat.<field>` read inside this subtree resolves to
+      {/* Expose this pane's raw StoreApi to the `ChatStore` bridge so every
+          reactive `ChatStore.<field>` read inside this subtree resolves to
           THIS pane (see paneApiContext / chatBridge). */}
       <PaneApiContext.Provider
         value={store.__api__ as StoreApi<ReturnType<typeof Chat.store.getState>>}

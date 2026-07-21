@@ -1,8 +1,8 @@
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { FileCard } from '@/modules/file/components/FileCard'
 import type { File as FileEntity } from '@/api-client/types'
 import { File as FileStore } from '@/modules/file/stores/file'
+import { Chat as ChatStore } from '@/modules/chat/core/stores/chatBridge'
 
 export interface AttachedFileCardProps {
   fileId: string
@@ -35,7 +35,7 @@ export function AttachedFileCard({
   isUser,
 }: AttachedFileCardProps) {
   // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? ChatStore) as typeof ChatStore
   const fallback: FileEntity = {
     id: fileId,
     filename,

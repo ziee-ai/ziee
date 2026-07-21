@@ -1,8 +1,8 @@
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import type { UpdateProfileRequest } from '@/api-client/types'
 import { emitProfileUpdated } from '@/modules/profile/events'
 import type { ProfileGet, ProfileSet } from '../state'
+import { Auth as AuthStore } from '@/modules/auth/Auth.store'
 
 export default (set: ProfileSet, _get: ProfileGet) => {
   return async (patch: UpdateProfileRequest) => {
@@ -13,7 +13,7 @@ export default (set: ProfileSet, _get: ProfileGet) => {
     })
     try {
       const user = await ApiClient.Auth.updateProfile(patch)
-      await Stores.Auth.refreshCurrentUser()
+      await AuthStore.refreshCurrentUser()
       try {
         await emitProfileUpdated(user)
       } catch (eventError) {

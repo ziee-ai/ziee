@@ -13,6 +13,8 @@ import { clearDraft, getDraft, makeDraftKey } from '@/modules/chat/extensions/te
 import { PaneDraftKeys } from '@/modules/chat/extensions/text/paneDraftKeys'
 import type { MessageContent } from '@/api-client/types'
 import { SplitView } from '@/modules/chat/core/stores/splitView'
+import { Auth } from '@/modules/auth/Auth.store'
+import { Chat as ChatStore } from '@/modules/chat/core/stores/chatBridge'
 
 // The composer draft key captured at send START (before a new-chat conversation
 // is created), so onMessageSent — which runs AFTER creation — clears exactly the
@@ -28,7 +30,7 @@ import { SplitView } from '@/modules/chat/core/stores/splitView'
 const capturedDraftKeys = new PaneDraftKeys()
 
 /** The OWNING pane's Chat state (its own TextStore), not the focused-pane bridge.
- * `TextStore` is declaration-merged onto the `Stores.Chat` proxy, not the raw
+ * `TextStore` is declaration-merged onto the `ChatStore` proxy, not the raw
  * store's `getState()` return, so we narrow to the fields this extension uses. */
 async function ownerChatState(
   ownerPaneId?: string | null,
@@ -155,8 +157,7 @@ const textExtension: ChatExtension = createExtension({
    * Returns content field with text from TextStore
    */
   composeRequestFields: async () => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const content = Stores.Chat.$.TextStore.getText()
+    const content = ChatStore.$.TextStore.getText()
     return { content: content?.trim() || '' }
   },
 
@@ -165,8 +166,7 @@ const textExtension: ChatExtension = createExtension({
    * Only validates - does not return message (that's handled by composeRequestFields)
    */
   beforeSendMessage: async () => {
-    const { Stores } = await import('@ziee/framework/stores')
-    const content = Stores.Chat.$.TextStore.getText()
+    const content = ChatStore.$.TextStore.getText()
 
     if (!content || !content.trim()) {
       return {
@@ -185,7 +185,7 @@ const textExtension: ChatExtension = createExtension({
     // owning pane's id (which equals this focused id).
     capturedDraftKeys.set(
       SplitView.$.focusedPaneId,
-      makeDraftKey(Stores.Auth.$.user?.id, Stores.Chat.$.conversation?.id),
+      makeDraftKey(Auth.$.user?.id, ChatStore.$.conversation?.id),
     )
 
     return { cancel: false }

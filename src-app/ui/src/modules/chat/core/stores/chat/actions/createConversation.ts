@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api-client'
 import type { ChatSet, ChatInitialState } from '@/modules/chat/core/stores/chat'
+import { EventBus } from '@ziee/framework/stores'
 
 export default (set: ChatSet, _getRaw: () => ChatInitialState) => {
   return async (
@@ -20,8 +21,7 @@ export default (set: ChatSet, _getRaw: () => ChatInitialState) => {
         set({ conversation, loading: false })
 
         if (emitCreated) {
-          const { Stores } = await import('@ziee/framework/stores')
-          await Stores.EventBus.emit({
+          await EventBus.emit({
             type: 'conversation.created',
             data: { conversation },
           })

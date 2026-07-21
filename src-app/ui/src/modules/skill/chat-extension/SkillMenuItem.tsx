@@ -1,10 +1,10 @@
 import { BookOpen } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { SkillConversationDrawer } from '@/modules/skill/components/SkillConversationDrawer'
 import { SkillConversationDrawer as SkillConversationDrawerStore } from '@/modules/skill/stores/skillConversationDrawer'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * "+" dropdown entry for the per-conversation skills opt-out (Path B).
@@ -21,7 +21,7 @@ export function SkillMenuItem() {
   // mirrors McpMenuItem) — otherwise opening skills in pane B keyed the drawer to
   // pane A's conversation.
   const pane = useChatPaneOrNull()
-  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (pane?.store ?? Chat) as typeof Chat
   const conversation = chat.conversation
 
   if (!conversation?.id) return null
@@ -49,7 +49,7 @@ export function SkillConversationDrawerHost() {
   // Bind to THIS pane's conversation (split-safe) so each pane's drawer opens only
   // for its own conversation (the store is keyed by conversationId).
   const pane = useChatPaneOrNull()
-  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (pane?.store ?? Chat) as typeof Chat
   const conversation = chat.conversation
   if (!conversation?.id) return null
   return <SkillConversationDrawer conversationId={conversation.id} />

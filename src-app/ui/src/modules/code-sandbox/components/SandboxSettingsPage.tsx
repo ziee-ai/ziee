@@ -16,7 +16,7 @@ import { SandboxResourceLimitsSection } from './SandboxResourceLimitsSection'
  * tracking; limits is a plain singleton GET/PUT. Merging them would force
  * the limits flow to import machinery it doesn't need.
  *
- * Permission gating happens per-section (each section reads `Stores.Auth`
+ * Permission gating happens per-section (each section reads `Auth`
  * itself and renders a permission-denied alert or read-only form as
  * appropriate); the page-level container is just a heading + container.
  */

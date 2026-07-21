@@ -15,7 +15,7 @@ import { createSlotRegistry } from '@ziee/framework/slots'
 /**
  * Central registry for managing chat extensions
  * Handles registration, ordering, and orchestration
- * Extensions access Stores.Chat directly for conversation data
+ * Extensions access ChatStore directly for conversation data
  */
 export class ChatExtensionRegistry {
   private extensions: Map<string, ChatExtension> = new Map()
@@ -111,7 +111,7 @@ export class ChatExtensionRegistry {
       // Lazy import useChatStore to avoid circular dependency
       // Import happens at runtime when register() is called, not at module load time
       import('../stores/chat').then(({ useChatStore }) => {
-        // Inject store at root level of Chat store for reactive access via Stores.Chat.{storeName}
+        // Inject store at root level of Chat store for reactive access via ChatStore.{storeName}
         // Direct mutation is safe now that Immer middleware has been removed
         const stateObject = useChatStore.getState() as unknown as Record<
           string,
@@ -318,7 +318,7 @@ export class ChatExtensionRegistry {
    * single-pane behaviour is unchanged.
    *
    * Direct mutation (not `set`) mirrors the register-time injection: the nested
-   * store carries its own reactivity (read as `Stores.Chat.<Name>`), so adding
+   * store carries its own reactivity (read as `ChatStore.<Name>`), so adding
    * the field to the parent state object needs no subscriber notification.
    */
   injectExtensionStores(chatState: Record<string, unknown>): void {
@@ -333,7 +333,7 @@ export class ChatExtensionRegistry {
   /**
    * Initialize all extensions
    * Call this once when chat is mounted
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions access ChatStore directly for conversation data
    */
   /**
    * Initialize all extensions against a chat store (ITEM-5/34). Each extension's
@@ -589,7 +589,7 @@ export class ChatExtensionRegistry {
   /**
    * Cleanup all extensions
    * Call this when chat is unmounted
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions access ChatStore directly for conversation data
    */
   async cleanup(): Promise<void> {
     await this.cleanupExtensions()
@@ -756,7 +756,7 @@ export class ChatExtensionRegistry {
 
   /**
    * Execute afterStreamComplete hook across all extensions
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions access ChatStore directly for conversation data
    */
   async afterStreamComplete(
     message: import('@/api-client/types').MessageWithContent,
@@ -941,7 +941,7 @@ export class ChatExtensionRegistry {
 
   /**
    * Compose request fields from all extensions
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions access ChatStore directly for conversation data
    */
   async composeRequestFields(
     ctx: import('./types').ChatHookCtx,
@@ -972,7 +972,7 @@ export class ChatExtensionRegistry {
   /**
    * Execute onMessageSent hook across all extensions
    * Called after message is successfully sent, before streaming starts
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions access ChatStore directly for conversation data
    */
   async onMessageSent(ownerPaneId?: string | null): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>
@@ -1003,7 +1003,7 @@ export class ChatExtensionRegistry {
   /**
    * Execute onStreamStart hook across all extensions
    * Called when streaming starts
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions access ChatStore directly for conversation data
    */
   async onStreamStart(): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>
@@ -1034,7 +1034,7 @@ export class ChatExtensionRegistry {
   /**
    * Execute onStreamError hook across all extensions
    * Called when streaming encounters an error
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions access ChatStore directly for conversation data
    */
   async onStreamError(error: Error, ownerPaneId?: string | null): Promise<void> {
     const extensions = this.getExtensions().filter(ext =>

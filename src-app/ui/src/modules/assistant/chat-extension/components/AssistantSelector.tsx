@@ -1,10 +1,10 @@
 import { Combobox, Tooltip } from '@ziee/kit'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { newChatAssistantKey } from '@/modules/assistant/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 interface AssistantSelectorProps {
   disabled?: boolean
@@ -21,7 +21,7 @@ export function AssistantSelector({
   // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
   const pane = useChatPaneOrNull()
   const key =
-    Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
+    Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
   const selectedAssistantId = selectedByConversation[key]
 
   if (!canRead) return null

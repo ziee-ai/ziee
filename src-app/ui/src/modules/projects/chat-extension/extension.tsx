@@ -8,7 +8,6 @@ import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
 import type { Project } from '@/api-client/types'
 import { hasPermissionNow, usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import {
   createExtension,
   type ChatExtension,
@@ -17,6 +16,7 @@ import { AddToProjectModal } from '@/modules/projects/components/AddToProjectMod
 import { SplitView } from '@/modules/chat/core/stores/splitView'
 import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
 import { Projects as ProjectsStore } from '@/modules/projects/stores/projects'
+import { EventBus } from '@ziee/framework/stores'
 
 /**
  * Frontend bridge between chat (project-unaware) and the projects
@@ -348,7 +348,7 @@ function ProjectMembershipTrailing({
   // React to attach/detach happening elsewhere.
   useEffect(() => {
     const GROUP = `ProjectMembershipTrailing:${conversationId}`
-    const bus = Stores.EventBus
+    const bus = EventBus
 
     const offAttached = bus.on(
       'project.conversation_attached',
@@ -485,7 +485,7 @@ function useProjectMenuContribution(conversation: Conversation): {
   // current state next time it opens.
   useEffect(() => {
     const GROUP = `useProjectMenuContribution:${conversation.id}`
-    const bus = Stores.EventBus
+    const bus = EventBus
     const offAttached = bus.on(
       'project.conversation_attached',
       async event => {

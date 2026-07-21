@@ -16,7 +16,6 @@ import {
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect, useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { Users as UsersStore } from '@/modules/user/stores/users'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
@@ -35,6 +34,7 @@ import { ResetPasswordDrawer as ResetPasswordDrawerStore } from '@/modules/user/
 import { UserGroupsDrawer as UserGroupsDrawerStore } from '@/modules/user/components/user/userGroupsDrawer'
 import { CreateUserDrawer as CreateUserDrawerStore } from '@/modules/user/components/user/createUserDrawer'
 import { UserGroups } from '@/modules/user/stores/userGroups'
+import { Auth } from '@/modules/auth/Auth.store'
 
 export function UsersSettings() {
   // Stores
@@ -47,7 +47,7 @@ export function UsersSettings() {
     error: usersError,
   } = UsersStore
   const { error: groupsError } = UserGroups
-  const { user: currentUser } = Stores.Auth
+  const { user: currentUser } = Auth
   // Which user's activate/deactivate confirmation is open (shared by the status
   // Switch + the Activate/Deactivate Button — both open the same Confirm).
   const [activeConfirmUserId, setActiveConfirmUserId] = useState<string | null>(

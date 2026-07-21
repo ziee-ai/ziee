@@ -11,11 +11,11 @@ import { z } from 'zod'
 import { Pencil, Check, X } from 'lucide-react'
 import { IoIosArrowBack } from 'react-icons/io'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { SplitView } from '@/modules/chat/core/stores/splitView'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 interface TitleFormValues {
   title: string
@@ -56,7 +56,7 @@ export function TitleEditor() {
   // per-pane, so renaming pane B's title while pane A is focused must update pane
   // B's conversation, not the focused one (audit #3, mirrors MessageActions).
   const pane = useChatPaneOrNull()
-  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (pane?.store ?? Chat) as typeof Chat
   const { conversation } = chat
 
   const handleEditClick = () => {

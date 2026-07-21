@@ -472,7 +472,7 @@ export interface ChatExtension {
    * Groups store name and factory function together
    * If defined, both name and createStore must be provided
    *
-   * The store will be accessible via Stores.Chat.{store.name}
+   * The store will be accessible via ChatStore.{store.name}
    * Provides full reactivity, lifecycle management, and reference counting
    *
    * @example
@@ -681,7 +681,7 @@ export interface ChatExtension {
 
   /**
    * Called when streaming starts
-   * Extensions should access Stores.Chat for conversation data
+   * Extensions should access ChatStore for conversation data
    */
   onStreamStart?: () => OnStreamStartResult | Promise<OnStreamStartResult>
 
@@ -708,7 +708,7 @@ export interface ChatExtension {
   /**
    * Handle SSE events (DEPRECATED - use sseEventHandlers instead)
    * Return handled: true to prevent other extensions from processing
-   * Extensions should access Stores.Chat for conversation data
+   * Extensions should access ChatStore for conversation data
    * @deprecated Use sseEventHandlers for type-safe event handling
    */
   handleSSEEvent?: (
@@ -737,7 +737,7 @@ export interface ChatExtension {
    * Map of content types to React components
    * Extensions register components for specific content types they can render
    * More efficient than single ContentRenderer with runtime filtering
-   * Can access reactive stores directly via Stores.Chat
+   * Can access reactive stores directly via ChatStore
    *
    * @example
    * ```typescript
@@ -755,7 +755,7 @@ export interface ChatExtension {
    * Map of slot names to React components with optional order
    * Extensions register components for specific slots they want to render in
    * Order property controls render position (lower = renders first, default: 100)
-   * Can access reactive stores directly via Stores.Chat
+   * Can access reactive stores directly via ChatStore
    *
    * @example
    * ```typescript
@@ -925,7 +925,7 @@ export interface ChatExtension {
   /**
    * Cleanup extension
    * Called when extension is unregistered or chat is unmounted
-   * Extensions should access Stores.Chat for conversation data
+   * Extensions should access ChatStore for conversation data
    */
   cleanup?: (ctx: ChatExtensionContext) => void | Promise<void>
 }

@@ -1,10 +1,10 @@
-import { Stores } from '@ziee/framework/stores'
 import type { AuthProviderResponse } from '@/api-client/types'
+import { EventBus } from '@ziee/framework/stores'
 
 export const emitAuthProviderCreated = async (
   provider: AuthProviderResponse,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'auth_provider.created',
     data: { provider },
   })
@@ -13,14 +13,14 @@ export const emitAuthProviderCreated = async (
 export const emitAuthProviderUpdated = async (
   provider: AuthProviderResponse,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'auth_provider.updated',
     data: { provider },
   })
 }
 
 export const emitAuthProviderDeleted = async (providerId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'auth_provider.deleted',
     data: { providerId },
   })
@@ -38,7 +38,7 @@ export const emitAuthProviderAutoDisabled = async (
   providerId: string,
   reason: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'auth_provider.auto_disabled',
     data: { providerId, reason },
   })

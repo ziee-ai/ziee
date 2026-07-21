@@ -2,6 +2,7 @@ import {
   createExtension,
   type ChatExtension,
 } from '@/modules/chat/core/extensions'
+import { EventBus } from '@ziee/framework/stores'
 
 /**
  * Title Extension
@@ -35,8 +36,7 @@ const titleExtension: ChatExtension = createExtension({
       }))
 
       // Emit event for ChatHistory to update
-      const { Stores } = await import('@ziee/framework/stores')
-      await Stores.EventBus.emit({
+      await EventBus.emit({
         type: 'conversation.titleUpdated',
         data: {
           conversationId: currentConversation.id,

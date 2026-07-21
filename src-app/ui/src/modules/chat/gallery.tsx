@@ -735,7 +735,7 @@ export const gallery: ModuleGallery = {
     {
       slug: 'seeded-s5-conversation-error',
       title: 'Conversation page — error banner',
-      note: 'conversation loaded + Stores.Chat.error → the inline error banner (ConversationPage:142)',
+      note: 'conversation loaded + ChatStore.error → the inline error banner (ConversationPage:142)',
       path: '/chat/:conversationId',
       initialPath: '/chat/11111111-1111-1111-1111-111111111111',
       component: lazyNamed(

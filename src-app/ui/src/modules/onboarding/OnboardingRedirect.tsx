@@ -24,14 +24,15 @@
 
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import type { OnboardingSlot } from './types/OnboardingSlot'
 import { Onboarding } from '@/modules/onboarding/stores/onboarding'
+import { Auth as AuthStore } from '@/modules/auth/Auth.store'
+import { ModuleSystem } from '@ziee/framework/stores'
 
 export function OnboardingRedirect() {
-  const { isAuthenticated, user, isInitializing } = Stores.Auth
+  const { isAuthenticated, user, isInitializing } = AuthStore
   const { completedGuideIds, loaded } = Onboarding
-  const guides = (Stores.ModuleSystem.slots.get('onboarding') as
+  const guides = (ModuleSystem.slots.get('onboarding') as
     | OnboardingSlot[]
     | undefined) ?? []
   const navigate = useNavigate()

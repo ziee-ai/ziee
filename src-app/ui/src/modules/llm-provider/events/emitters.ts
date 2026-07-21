@@ -1,23 +1,23 @@
-import { Stores } from '@ziee/framework/stores'
 import type { BaseEvent } from '@ziee/framework/events'
 import type { LlmProvider } from '@/api-client/types'
+import { EventBus } from '@ziee/framework/stores'
 
 export const emitLlmProviderCreated = async (provider: LlmProvider) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_provider.created',
     data: { provider },
   })
 }
 
 export const emitLlmProviderUpdated = async (provider: LlmProvider) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_provider.updated',
     data: { provider },
   })
 }
 
 export const emitLlmProviderDeleted = async (providerId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_provider.deleted',
     data: { providerId },
   })
@@ -27,7 +27,7 @@ export const emitLlmModelEnabled = async (
   modelId: string,
   providerId: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_model.enabled',
     data: { modelId, providerId },
   })
@@ -37,7 +37,7 @@ export const emitLlmModelDisabled = async (
   modelId: string,
   providerId: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_model.disabled',
     data: { modelId, providerId },
   })
@@ -47,7 +47,7 @@ export const emitLlmModelDeleted = async (
   modelId: string,
   providerId: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_model.deleted',
     data: { modelId, providerId },
   })
@@ -57,7 +57,7 @@ export const emitLlmProviderGroupsChanged = async (
   providerId: string,
   groupIds: string[],
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_provider.groups_changed',
     data: { providerId, groupIds },
   })
@@ -67,7 +67,7 @@ export const emitGroupLlmProvidersChanged = async (
   groupId: string,
   providerIds: string[],
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_provider.group_providers_changed',
     data: { groupId, providerIds },
   })
@@ -83,7 +83,7 @@ export const emitLlmModelDownloadCompleted = async (
   providerId: string,
   modelDisplayName: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_model.download_completed',
     data: { downloadId, providerId, modelDisplayName },
   })
@@ -101,7 +101,7 @@ export const emitLlmModelDownloadFailed = async (
   modelDisplayName: string,
   errorMessage: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_model.download_failed',
     data: { downloadId, providerId, modelDisplayName, errorMessage },
   })
@@ -132,7 +132,7 @@ declare module '@ziee/framework/events' {
  * stores stay in sync.
  */
 export const emitApiKeySaved = async (providerId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'api_key.saved',
     data: { providerId },
   })
@@ -144,7 +144,7 @@ export const emitApiKeySaved = async (providerId: string) => {
  * stores stay in sync.
  */
 export const emitApiKeyDeleted = async (providerId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'api_key.deleted',
     data: { providerId },
   })

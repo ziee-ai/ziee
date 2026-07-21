@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, Text } from '@ziee/kit'
 import { ChevronDown, ChevronUp, Loader2, X } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ApiClient } from '@/api-client'
 import type { MessageSearchMatch } from '@/api-client/types'
 import { cn } from '@/lib/utils'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 interface ConversationFindBarProps {
   open: boolean
@@ -29,7 +29,7 @@ const SEARCH_PER_PAGE = 25
  * are displayed as a paginated snippet LIST (infinite-scrolls to the next page);
  * "X of Y" + Next/Prev step across the full match set. Selecting/navigating a
  * match scrolls it into view when it's loaded, else jumps to it via `around=`
- * (`Stores.Chat.jumpToMessage`) and then centers + highlights it (via the
+ * (`Chat.jumpToMessage`) and then centers + highlights it (via the
  * `onActiveMatchChange` ring). Esc / close dismisses and clears the highlight.
  */
 export function ConversationFindBar({
@@ -54,7 +54,7 @@ export function ConversationFindBar({
 
   // Bind to THIS pane's store (audit #9): finding in pane B while pane A is
   // focused must search + jump within pane B, not the focused pane.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
   const { conversation } = chat
   const conversationId = conversation?.id
   const canLoadMore = matches.length < total

@@ -1,11 +1,11 @@
 import { Button } from '@ziee/kit'
 import { SquareArrowOutUpRight } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { openConversationWindow } from '@/modules/chat/core/popout/openConversationWindow'
 import { popoutActionVisible } from '@/modules/chat/core/popout/popoutVisibility'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * "Open in new window / tab" — registered into the `chatConversationHeaderTrailing`
@@ -32,7 +32,7 @@ export function OpenInNewWindowAction() {
   // In a pane, act on THAT pane's conversation; single-pane reads the bridge.
   const conversation = pane
     ? pane.store.conversation
-    : Stores.Chat.conversation
+    : Chat.conversation
   if (!conversation) return null
 
   const isDesktop = typeof window !== 'undefined' && '__TAURI__' in window

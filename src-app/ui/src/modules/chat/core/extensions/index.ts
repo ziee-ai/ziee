@@ -18,7 +18,7 @@
  * - Define extension with createExtension()
  * - Add independent store via createStore
  * - Implement lifecycle hooks (beforeSendMessage, composeRequestFields, etc.)
- * - Access extension store via Stores.Chat.ExtensionName
+ * - Access extension store via ChatStore.ExtensionName
  *
  * Extensions are auto-registered via extensions/index.ts
  */

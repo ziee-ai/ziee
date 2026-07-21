@@ -1,11 +1,11 @@
 import { Alert, ScrollArea } from '@ziee/kit'
 import { FileCard } from '@/modules/file/components/FileCard'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { composerPaneKey } from '@/modules/file/stores/file'
 import type { FileUploadProgress } from '@/modules/file/stores/file'
 import type { File as FileEntity } from '@/api-client/types'
 import { File as FileStore } from '@/modules/file/stores/file'
+import { Chat as ChatStore } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * FilePreviewList Component
@@ -16,7 +16,7 @@ import { File as FileStore } from '@/modules/file/stores/file'
 export function FilePreviewList() {
   const pane = useChatPaneOrNull()
   // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
-  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (pane?.store ?? ChatStore) as typeof ChatStore
   // THIS pane's composer buffer key (ITEM-32): show only this pane's files.
   const paneKey = composerPaneKey(pane?.paneId)
   const {

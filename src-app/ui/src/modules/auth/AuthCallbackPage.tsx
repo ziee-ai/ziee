@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Alert, Card, Layout, Title } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@ziee/framework/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 import { SESSION_RETURN_TO_KEY } from './constants'
+import { Auth as AuthStore } from '@/modules/auth/Auth.store'
 
 const { Content } = Layout
 
@@ -103,7 +103,7 @@ export const AuthCallbackPage: React.FC = () => {
       // /me resolves so consumers don't see a half-hydrated state.
       // refresh_token stays blank: it lives in the httpOnly cookie the
       // server set on the OAuth redirect (cookie mode).
-      Stores.Auth.setAuthFromAutoLogin({
+      AuthStore.setAuthFromAutoLogin({
         user: null,
         access_token: token,
         refresh_token: '',
@@ -111,7 +111,7 @@ export const AuthCallbackPage: React.FC = () => {
       })
 
       try {
-        await Stores.Auth.initAuth()
+        await AuthStore.initAuth()
       } catch (e) {
         if (!cancelled) {
           setError(

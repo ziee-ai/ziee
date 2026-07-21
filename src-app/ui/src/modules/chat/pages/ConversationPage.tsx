@@ -37,7 +37,6 @@ import { useHeaderLeftInset } from '@/modules/layouts/app-layout/hooks/useHeader
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { ChatRightPanel } from '@/modules/chat/core/components/ChatRightPanel'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
-import { Stores } from '@ziee/framework'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'
@@ -53,12 +52,14 @@ import { PaneManagerDrawer } from '@/modules/chat/components/PaneManagerDrawer'
 import { McpComposer as McpComposerStore } from '@/modules/mcp/stores/mcpComposer'
 import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 import { SplitView as SplitViewStore } from '@/modules/chat/core/stores/splitView'
+import { Chat as ChatStore } from '@/modules/chat/core/stores/chatBridge'
+import { ModuleSystem } from '@ziee/framework/stores'
 
 /**
  * Chat route element for `/chat/:conversationId`.
  *
  * Single-pane (0–1 split panes) → the normal `ConversationPane` bound to the URL
- * conversation via `Stores.Chat` (the primary pane). Once ≥2 split panes exist it
+ * conversation via `ChatStore` (the primary pane). Once ≥2 split panes exist it
  * renders `SplitChatView`, which mounts one `ConversationPane` per pane inside a
  * `ChatPaneProvider`. Branching here on a single reactive read keeps hook order
  * stable; each branch is its own component boundary.
@@ -127,7 +128,7 @@ export default function ConversationPage() {
  * One conversation surface — message history + composer + right panel.
  *
  * Rendered in TWO contexts: as the single-pane route (no `ChatPaneProvider` →
- * `pane` is null → drives the primary `Stores.Chat`), and as a pane inside
+ * `pane` is null → drives the primary `ChatStore`), and as a pane inside
  * `SplitChatView` (wrapped in a provider → `pane` set → drives that pane's own
  * store). All store access goes through `chat`, so single-pane stays
  * byte-identical to before the split existed.
@@ -162,7 +163,7 @@ export function ConversationPane() {
   // Uniform store handle: the pane's own store in split, else the focused-pane
   // bridge (= primary) on the single-pane route. Both proxies expose the same
   // reactive-read / `.$` snapshot / action surface.
-  const chat = (pane?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (pane?.store ?? ChatStore) as typeof ChatStore
   // Split per-pane header must match the single-pane app header `HeaderBarContainer`
   // (ITEM-71 / FB-18): same 50px height, and the LEFTMOST pane reserves the same
   // left inset (shared `useHeaderLeftInset` — web 48/12, macOS-desktop 118) so its
@@ -1210,7 +1211,7 @@ export function ConversationPane() {
  * any of them.
  */
 function ConversationHeaderTrailingSlot() {
-  const { slots } = Stores.ModuleSystem
+  const { slots } = ModuleSystem
   const rawItems = slots.get('chatConversationHeaderTrailing')
   // Memoize the sorted copy — the underlying slot array is stable
   // (mutates only on module-registration changes, which don't happen

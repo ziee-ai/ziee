@@ -1,14 +1,14 @@
 import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
-import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import { fileState, type FileState } from './state'
 import type { Actions } from './actions.gen'
+import { EventBus } from '@ziee/framework/stores'
 
 /**
  * File store — chat-composer upload buffer + persistent file caches
  * (thumbnails, previews, content, view modes). Lives at FileStore
  * (registered in modules/file/module.tsx). Prior name was
- * Stores.Chat.FileStore (nested via the chat-extension framework);
+ * Chat.FileStore (nested via the chat-extension framework);
  * relocated out so file-domain state lives in the file module that
  * owns it.
  *
@@ -35,7 +35,7 @@ const FileDef = defineStore<FileState, Actions>('File', {
   state: fileState,
   actions: import.meta.glob('./actions/*.ts', { eager: true }),
   init: ({ set, get, actions, onCleanup }) => {
-    const eventBus = Stores.EventBus
+    const eventBus = EventBus
     const GROUP = 'FileStore'
     // A file's HEAD changed (restore / MCP edit / sandbox version-back),
     // possibly on another device. The content caches below are keyed by
@@ -112,7 +112,7 @@ const FileDef = defineStore<FileState, Actions>('File', {
     eventBus.on('sync:file', onFileSync, GROUP)
     eventBus.on('sync:reconnect', onReconnect, GROUP)
     onCleanup(() => {
-      Stores.EventBus.removeGroupListeners('FileStore')
+      EventBus.removeGroupListeners('FileStore')
     })
   },
 })

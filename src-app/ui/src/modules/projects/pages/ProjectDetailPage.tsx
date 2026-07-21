@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Separator, Flex, Confirm, Result, Spin, Text, Title, Paragraph, message } from '@ziee/kit'
 import { ArrowLeft, CircleX, Copy, Pencil, Trash2 } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDrawer'
@@ -21,6 +20,8 @@ import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
 import { Projects } from '@/modules/projects/stores/projects'
 import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 import { ChatHistory } from '@/modules/chat/stores/chatHistory'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
+import { EventBus } from '@ziee/framework/stores'
 
 /**
  * Project detail page — Option A layout.
@@ -200,10 +201,10 @@ export function ProjectDetailPage() {
   useEffect(() => {
     if (!projectId) return
     // Clear stale chat state from a prior session so the next send
-    // takes the auto-create branch (Stores.Chat.conversation === null).
-    Stores.Chat.reset()
+    // takes the auto-create branch (Chat.conversation === null).
+    Chat.reset()
 
-    const unsubscribe = Stores.EventBus.on(
+    const unsubscribe = EventBus.on(
       'conversation.created',
       event => {
         navigate(`/projects/${projectId}/chat/${event.data.conversation.id}`)

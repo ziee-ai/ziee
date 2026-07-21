@@ -2,11 +2,11 @@ import { Popover } from '@ziee/kit'
 import { Bot, ChevronRight } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { newChatAssistantKey } from '@/modules/assistant/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * AssistantMenuItem Component
@@ -28,7 +28,7 @@ export function AssistantMenuItem() {
   // Key by THIS pane's conversation (bridge-resolved). (ITEM-5)
   const pane = useChatPaneOrNull()
   const key =
-    Stores.Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
+    Chat.conversation?.id ?? newChatAssistantKey(pane?.paneId)
   const selectedAssistantId = selectedByConversation[key]
 
   const selectedAssistant = availableAssistants.find(

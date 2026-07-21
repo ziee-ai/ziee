@@ -13,7 +13,6 @@ import { Text } from '@ziee/kit'
 import { Loader2, MessageSquare } from 'lucide-react'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ChatMessage } from '@/modules/chat/components/ChatMessage'
-import { Stores } from '@ziee/framework/stores'
 import {
   anchorRestoreNeeded,
   captureTopAnchor,
@@ -29,6 +28,7 @@ import {
   recordMeasurements,
   widthBucket,
 } from '@/modules/chat/core/utils/measuredHeightCache'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /** A captured scroll anchor for reverse-infinite-scroll prepend (ITEM-4). */
 export interface MessageAnchor {
@@ -100,7 +100,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       loadingOlder,
       lastTurnInterrupted,
       finalizingTurn,
-    } = Stores.Chat
+    } = Chat
 
     // Ordered window (insertion order = render order).
     const messagesArray = useMemo(() => Array.from(messages.values()), [messages])

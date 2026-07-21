@@ -5,7 +5,6 @@ import { Menu, Separator } from '@ziee/kit'
 import type { MenuItem } from '@ziee/kit'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { SidebarHeaderSpacer } from '@/modules/layouts/app-layout/components/SidebarHeaderSpacer'
-import { Stores } from '@ziee/framework/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { evaluatePermission } from '@/core/permissions'
 import type {
@@ -14,6 +13,8 @@ import type {
   SidebarActionItem,
 } from '@/modules/layouts/app-layout/types'
 import { AppLayout as AppLayoutStore } from '@/modules/layouts/app-layout/appLayout'
+import { Auth } from '@/modules/auth/Auth.store'
+import { ModuleSystem } from '@ziee/framework/stores'
 
 /**
  * Split a group's active state into the EXACT current page vs. a broader
@@ -65,9 +66,9 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
   const navigate = useNavigate()
   const location = useLocation()
   const windowMinSize = useWindowMinSize()
-  const { slots } = Stores.ModuleSystem
+  const { slots } = ModuleSystem
   const { isSidebarCollapsed } = AppLayoutStore
-  const { user, permissions } = Stores.Auth
+  const { user, permissions } = Auth
 
   const isAllowed = (item: { permission?: SidebarNavItem['permission'] }) =>
     !item.permission || evaluatePermission(user, permissions, item.permission)

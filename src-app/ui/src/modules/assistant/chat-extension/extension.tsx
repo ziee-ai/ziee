@@ -13,7 +13,7 @@ import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
  * Bridges the chat composer to the assistant module. The picker state
  * lives in modules/assistant/stores/assistantPicker/
  * (registered as AssistantPicker), NOT under
- * Stores.Chat. This extension is a thin UI shim that:
+ * Chat. This extension is a thin UI shim that:
  *   - Renders the toolbar picker + status chip components.
  *   - Reads the active picker selection into outgoing chat requests
  *     (composeRequestFields).

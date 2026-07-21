@@ -1,17 +1,17 @@
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import { AuthPage } from '@/modules/auth/AuthPage'
 import { Loading } from '@/core/components/Loading'
 import { App } from '@/modules/app/stores/app'
 import { AppMode } from '@/modules/app/AppMode.store'
+import { Auth } from '@/modules/auth/Auth.store'
 
 interface AuthGuardProps {
   children: React.ReactNode
 }
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
-  const { isAuthenticated, isInitializing } = Stores.Auth
+  const { isAuthenticated, isInitializing } = Auth
   const { needsSetup } = App
   const { multiUserMode } = AppMode
   const navigate = useNavigate()
@@ -23,7 +23,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     // Any persisted token from a previous launch is stale because the
     // desktop server regenerates its JWT secret per launch.
     if (multiUserMode) {
-      Stores.Auth.initAuth()
+      Auth.initAuth()
     }
   }, [multiUserMode])
 

@@ -2,12 +2,12 @@ import { memo } from 'react'
 import { cn } from '@/lib/utils'
 import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import type { MessageContent } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
 import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 import { citationTokenize } from '@/modules/chat/core/utils/citationTokenize'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 interface TextContentProps {
   content: MessageContent
@@ -19,7 +19,7 @@ export const TextContent = memo(function TextContent({
   isUser,
 }: TextContentProps) {
   const textData = content.content as { text?: string }
-  const { isStreaming } = Stores.Chat
+  const { isStreaming } = Chat
 
   const components = useStreamdownComponents(content.id)
 

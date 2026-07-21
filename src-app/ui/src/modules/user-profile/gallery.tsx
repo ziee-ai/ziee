@@ -25,7 +25,7 @@ export const gallery: ModuleGallery = {
         // holdForever (not holdPatch): the widget can mount after a fixed hold
         // window ends under the full pass, so assert on a permanent interval.
         holdForever(() =>
-          Auth.store.setState({
+          Auth.__setState({
             user: null,
             isInitializing: true,
             isLoading: false,

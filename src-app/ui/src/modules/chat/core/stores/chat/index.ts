@@ -509,7 +509,7 @@ const chatStoreConfig = {
     const get = getRaw as () => ChatState
 
     // Idempotent: `__init__.__store__` can be invoked more than once per instance
-    // (a local pane self-inits via `.use()`, and the `Stores.Chat` proxy's lazy
+    // (a local pane self-inits via `.use()`, and the `ChatStore` proxy's lazy
     // init check may also fire it for the focused pane). Bail if this instance
     // already created its client, so we never stack a second client / auth
     // subscription.
@@ -726,7 +726,7 @@ const chatStoreConfig = {
 }
 
 /** Pane 0 — the eager primary chat store (a global singleton). Single-pane chat
- *  runs entirely on this instance, so behaviour is unchanged. The `Stores.Chat`
+ *  runs entirely on this instance, so behaviour is unchanged. The `ChatStore`
  *  bridge (chatBridge.ts) forwards to whichever pane is focused, defaulting here. */
 export const Chat = defineStore<ChatInitialState, Actions>('Chat', chatStoreConfig)
 

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { BookOpen, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button, Card, Tag, Text } from '@ziee/kit'
 import type { MessageContentDataToolResult } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
@@ -13,6 +12,7 @@ import {
   isSearchKnowledgeResult,
   parseSearchKnowledge,
 } from '../searchKnowledge'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * Inline renderer for a `search_knowledge` tool result — the retrieval
@@ -27,7 +27,7 @@ import {
  */
 export function SearchKnowledgeToolResultCard(props: ContentRendererProps) {
   // Open into THIS pane's right panel (ITEM-36), not the focused pane's.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
   const { content } = props
   if (!isSearchKnowledgeResult(content)) return <MessageFilesView {...props} />
   const block = content.content as MessageContentDataToolResult

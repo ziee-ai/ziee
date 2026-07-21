@@ -5,10 +5,10 @@ import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
 import type { BibliographyEntry } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { CitationCard } from '../../components/CitationCard'
 import { ImportCitationsModal } from '../../components/ImportCitationsModal'
 import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
+import { EventBus as EventBusStore } from '@ziee/framework/stores'
 
 /** Full management of a project's reference list — inside the knowledge drawer. */
 export function ProjectBibliographyManagePanel() {
@@ -38,7 +38,7 @@ export function ProjectBibliographyManagePanel() {
     void reload()
     // Stay current when the library changes elsewhere (import/attach/detach/delete).
     // Group-named subscription (the project's EventBus idiom) auto-dedups.
-    const unsub = Stores.EventBus.on(
+    const unsub = EventBusStore.on(
       'sync:bibliography_entry',
       () => void reload(),
       'ProjectBibliographyManagePanel',

@@ -1,6 +1,6 @@
 import { message } from '@ziee/kit'
 import { useEffect } from 'react'
-import { Stores } from '@ziee/framework/stores'
+import { EventBus as EventBusStore } from '@ziee/framework/stores'
 
 /**
  * Globally-mounted listener that converts the
@@ -25,7 +25,7 @@ export function LlmModelDownloadNotifications() {
   useEffect(() => {
     const GROUP = 'LlmModelDownloadNotifications'
 
-    Stores.EventBus.on(
+    EventBusStore.on(
       'llm_model.download_completed',
       async event => {
         const { modelDisplayName } = event.data
@@ -36,7 +36,7 @@ export function LlmModelDownloadNotifications() {
       GROUP
     )
 
-    Stores.EventBus.on(
+    EventBusStore.on(
       'llm_model.download_failed',
       async event => {
         const { modelDisplayName, errorMessage } = event.data
@@ -53,7 +53,7 @@ export function LlmModelDownloadNotifications() {
     )
 
     return () => {
-      Stores.EventBus.removeGroupListeners(GROUP)
+      EventBusStore.removeGroupListeners(GROUP)
     }
     // `message` is a stable module-level import — no need to re-subscribe.
   }, [])

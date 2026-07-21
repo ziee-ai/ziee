@@ -15,7 +15,7 @@ import { File as FileStore } from '@/modules/file/stores/file'
  * Toolbar button that triggers file picker for uploading files
  */
 export function FileUploadButton() {
-  // Access file extension store directly via Stores.Chat (reactive via store proxy)
+  // Access file extension store directly via Chat (reactive via store proxy)
   const { uploadFiles } = FileStore
   const paneKey = composerPaneKey(useChatPaneOrNull()?.paneId)
   const canUpload = usePermission(Permissions.FilesUpload)

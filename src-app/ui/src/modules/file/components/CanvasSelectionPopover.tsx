@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { MessageSquareQuote, PencilLine } from 'lucide-react'
 import { Button, message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
   buildSelectionAskMessage,
   buildSelectionEditMessage,
 } from '@/modules/file/utils/selectionEdit'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * Floating "selection → LLM" popover for the markdown canvas (ITEM-15 / ITEM-16).
@@ -17,7 +17,7 @@ import {
  *     scoped `edit_file` when the selection is unique, ITEM-16).
  * The message SHAPING is the unit-tested `selectionEdit` helpers; this component
  * captures the selection, positions the toolbar, and wires the result into the
- * conversation's composer (`Stores.Chat.$.TextStore`).
+ * conversation's composer (`Chat.$.TextStore`).
  */
 export function CanvasSelectionPopover({
   containerRef,
@@ -35,7 +35,7 @@ export function CanvasSelectionPopover({
   // Inject into THIS pane's composer, not the focused-pane bridge (audit #10): a
   // canvas viewer lives in its own pane's right panel, so "Ask/Edit in chat" from
   // pane B's viewer must target pane B's composer even when pane A is focused.
-  const paneChat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const paneChat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
 
   useEffect(() => {
     const onUp = () => {

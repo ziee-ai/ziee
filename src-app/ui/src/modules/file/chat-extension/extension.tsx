@@ -172,7 +172,7 @@ const fileExtension: ChatExtension = createExtension({
 
     // Conversation-change → clear the per-composer upload buffer.
     // Replaces the implicit chat-extension-framework scoping that
-    // the old Stores.Chat.FileStore used to get for free; now we wire
+    // the old ChatStore.FileStore used to get for free; now we wire
     // it explicitly because the store lives in the file module.
     // messageFilesCache and thumbnailUrls survive (they're keyed by
     // message/file id and used across conversations).

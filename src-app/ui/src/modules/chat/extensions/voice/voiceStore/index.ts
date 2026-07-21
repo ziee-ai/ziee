@@ -14,7 +14,7 @@ export { isRecordingSupported } from './actions/_engine'
  * each `actions/<name>.ts` thin-delegates. `immer: false` — non-serializable
  * resources (MediaRecorder / MediaStream / timers) live in module scope.
  *
- * Read as `Stores.Chat.VoiceStore`; actions are callable directly, and
+ * Read as `Chat.VoiceStore`; actions are callable directly, and
  * handler-side state reads use the `$` snapshot.
  */
 export const createVoiceStore = defineExtensionStore<VoiceStoreState, Actions>({

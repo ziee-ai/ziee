@@ -6,10 +6,10 @@ import { getBaseUrl } from '@/api-client/getBaseURL'
 import { Permissions } from '@/api-client/permissions'
 import type { MessageContentDataToolResult, MessageContent } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { MessageFilesView } from '@/modules/file/chat-extension/components/MessageFilesView'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /** The tool name a `run_from_workspace` result carries. */
 const RUN_FROM_WORKSPACE = 'run_from_workspace'
@@ -34,7 +34,7 @@ export function WorkflowWorkspaceRunCard(props: ContentRendererProps) {
   const dir = sc?.workspace_dir
   // Resolve THIS pane's conversation (ITEM-38) — a `.$` snapshot on the bridge
   // would export the FOCUSED pane's workspace, not the one this card renders in.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
   const conversationId = chat.$.conversation?.id
   const [saving, setSaving] = useState(false)
   const [downloading, setDownloading] = useState(false)

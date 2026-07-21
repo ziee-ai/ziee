@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageSquarePlus, Search, X } from 'lucide-react'
 import { Button, Empty, Input, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
-import { Stores } from '@ziee/framework/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import {
@@ -11,6 +10,7 @@ import {
 } from '@/modules/chat/core/pane/useOpenConversation'
 import { ChatHistory } from '@/modules/chat/stores/chatHistory'
 import { SplitView as SplitViewStore } from '@/modules/chat/core/stores/splitView'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * Small-screen pane manager (ITEM-83 / FB-26). Below the `md` breakpoint the split
@@ -30,7 +30,7 @@ export function PaneManagerDrawer() {
   const { conversations, isInitialized } = ChatHistory
   // The single-pane route's conversation (0 SplitView panes) — read reactively off
   // the focused-pane bridge, which resolves to the primary pane outside a split.
-  const primaryConvId = Stores.Chat.conversation?.id ?? null
+  const primaryConvId = Chat.conversation?.id ?? null
 
   const [query, setQuery] = useState('')
   const closePaneHook = useClosePane()

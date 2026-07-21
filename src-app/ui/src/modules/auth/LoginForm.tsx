@@ -15,9 +15,9 @@ import {
 } from '@ziee/kit'
 import { Lock, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import type { LoginRequest } from '@/api-client/types'
 import { ProviderButtons } from './ProviderButtons'
+import { Auth } from '@/modules/auth/Auth.store'
 
 interface LoginFormProps {
   onSwitchToRegister?: () => void
@@ -33,13 +33,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
     resolver: zodResolver(loginSchema),
     defaultValues: { username: '', password: '' },
   })
-  const { isLoading, error } = Stores.Auth
+  const { isLoading, error } = Auth
   const navigate = useNavigate()
 
   const onSubmit = async (values: LoginRequest) => {
     try {
-      Stores.Auth.clearAuthenticationError()
-      await Stores.Auth.authenticateUser(values)
+      Auth.clearAuthenticationError()
+      await Auth.authenticateUser(values)
       // Redirect to home page after successful login
       navigate('/', { replace: true })
     } catch (error) {
@@ -60,7 +60,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
             data-testid="auth-login-error"
             title={error}
             tone="error"
-            onClose={Stores.Auth.clearAuthenticationError}
+            onClose={Auth.clearAuthenticationError}
             closeLabel="Close"
           />
         </div>

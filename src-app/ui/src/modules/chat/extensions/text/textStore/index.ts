@@ -9,7 +9,7 @@ import type { Actions } from './actions.gen'
  * selectors return values consumed SYNCHRONOUSLY in handlers (e.g. the voice
  * engine reads `textStore.getText()` off the owning pane), so the actions must
  * load eagerly rather than behind a deferred dynamic import. Injected + read as
- * `Stores.Chat.TextStore`.
+ * `Chat.TextStore`.
  */
 export const createTextStore = defineExtensionStore<TextStoreState, Actions>({
   immer: true,

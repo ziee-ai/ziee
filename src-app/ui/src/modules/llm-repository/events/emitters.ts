@@ -1,22 +1,22 @@
-import { Stores } from '@ziee/framework/stores'
 import type { LlmRepository } from '@/api-client/types'
+import { EventBus } from '@ziee/framework/stores'
 
 export const emitLlmRepositoryCreated = async (repository: LlmRepository) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_repository.created',
     data: { repository },
   })
 }
 
 export const emitLlmRepositoryUpdated = async (repository: LlmRepository) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_repository.updated',
     data: { repository },
   })
 }
 
 export const emitLlmRepositoryDeleted = async (repositoryId: string) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_repository.deleted',
     data: { repositoryId },
   })
@@ -33,7 +33,7 @@ export const emitLlmRepositoryAutoDisabled = async (
   repositoryId: string,
   reason: string,
 ) => {
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'llm_repository.auto_disabled',
     data: { repositoryId, reason },
   })

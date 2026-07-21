@@ -4,9 +4,9 @@ import { Button, Text } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
 import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
+import { EventBus } from '@ziee/framework/stores'
 
 /** Compact view-only summary of a project's attached knowledge bases (the
  *  knowledge card). Mirrors ProjectBibliographyInlinePreview; refetches on
@@ -36,7 +36,7 @@ export function ProjectKnowledgeBasesInlinePreview() {
         })
     }
     reload()
-    const unsub = Stores.EventBus.on(
+    const unsub = EventBus.on(
       'sync:knowledge_base',
       reload,
       'ProjectKnowledgeBasesInlinePreview',

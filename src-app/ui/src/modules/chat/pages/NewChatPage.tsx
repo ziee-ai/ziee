@@ -2,15 +2,16 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Text, Title } from '@ziee/kit'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
-import { Stores } from '@ziee/framework/stores'
+import { Chat as ChatStore } from '@/modules/chat/core/stores/chatBridge'
+import { EventBus } from '@ziee/framework/stores'
 
 export default function NewChatPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    Stores.Chat.reset()
+    ChatStore.reset()
 
-    const unsubscribe = Stores.EventBus.on(
+    const unsubscribe = EventBus.on(
       'conversation.created',
       event => {
         navigate(`/chat/${event.data.conversation.id}`)

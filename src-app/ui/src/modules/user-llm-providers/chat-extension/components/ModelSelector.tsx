@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react'
 import { Button, Select, Tooltip } from '@ziee/kit'
 import { TriangleAlert } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import type { ProviderWithModels } from '@/api-client/types'
 import { newChatModelKey } from '@/modules/user-llm-providers/modelPicker'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ProviderApiKeyModal } from './ProviderApiKeyModal'
 import { ModelPicker } from '@/modules/user-llm-providers/modelPicker'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * ModelSelector Component
@@ -37,10 +37,10 @@ function providerNeedsApiKey(
 export function ModelSelector() {
   const { selectedByConversation, providers, error, loading } =
     ModelPicker
-  // Key the selection by THIS pane's conversation (resolved via the Stores.Chat
+  // Key the selection by THIS pane's conversation (resolved via the Chat
   // bridge → the pane's own conversation in split; the shared new-chat key when
   // there's no conversation yet), so each pane keeps its own model. (ITEM-5)
-  const { sending, conversation } = Stores.Chat
+  const { sending, conversation } = Chat
   // Per-pane new-chat key (ITEM-37): two new-chat panes keep independent models.
   const pane = useChatPaneOrNull()
   const modelKey = conversation?.id ?? newChatModelKey(pane?.paneId)

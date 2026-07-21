@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Pin, PinOff } from 'lucide-react'
 import { Button, message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { type File as FileEntity } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Deliverables } from '@/modules/file/stores/deliverables'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * Pin/unpin a file as a deliverable of the ACTIVE conversation. Renders nothing
@@ -16,7 +16,7 @@ export function DeliverablePinButton({ file }: { file: FileEntity }) {
   // Pin/unpin mutates the conversation's deliverables (`conversations::edit`).
   // Hide the affordance for users lacking it (hook precedes any early return).
   const canEditConversation = usePermission(Permissions.ConversationsEdit)
-  const conversation = Stores.Chat.conversation
+  const conversation = Chat.conversation
   const convId = conversation?.id
 
   // Lazy-loaded deliverables are async (store-kit wraps sync returns in Promise).

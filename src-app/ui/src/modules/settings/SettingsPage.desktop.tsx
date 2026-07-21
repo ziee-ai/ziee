@@ -29,8 +29,8 @@ import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowM
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect, useRef } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { AppMode } from '@/modules/app/AppMode.store'
+import { ModuleSystem } from '@ziee/framework/stores'
 
 // Settings page entries that are specific to multi-user SaaS features
 // with no equivalent on single-admin desktop. These are explicitly
@@ -91,7 +91,7 @@ export default function SettingsPage() {
   const minSize = useElementMinSize(containerRef)
   const useMobileLayout = minSize.sm
 
-  const { slots } = Stores.ModuleSystem
+  const { slots } = ModuleSystem
 
   // Compute the effective filter: start with multi-user-only IDs, then
   // auto-hide any core entry whose id has a desktop counterpart

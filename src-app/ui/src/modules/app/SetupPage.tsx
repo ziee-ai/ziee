@@ -2,10 +2,10 @@ import React from 'react'
 import { z } from 'zod'
 import { Card, Form, FormField, useForm, zodResolver, Input, Button, Alert, Title, Paragraph } from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@ziee/framework'
 import { AuthScreenLayout } from '@/modules/auth/AuthScreenLayout'
 import { EMAIL_RE } from '@/lib/validation'
 import { App } from '@/modules/app/stores/app'
+import { Auth as AuthStore } from '@/modules/auth/Auth.store'
 
 const setupSchema = z
   .object({
@@ -77,7 +77,7 @@ export default function SetupPage() {
       })
 
       // Use the login credentials to authenticate
-      await Stores.Auth.authenticateUser({
+      await AuthStore.authenticateUser({
         username: values.username,
         password: values.password,
       })

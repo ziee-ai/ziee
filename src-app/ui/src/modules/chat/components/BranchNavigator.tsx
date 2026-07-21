@@ -1,8 +1,8 @@
 import { Button, Space, Text } from '@ziee/kit'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { useMessageContext } from '@/modules/chat/core/MessageContext'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * Core component rendered via MessageContext in ChatMessage.
@@ -21,7 +21,7 @@ export function BranchNavigator() {
   // Bind to THIS pane's store (ITEM-38): activateBranch would otherwise route to
   // the FOCUSED pane, corrupting the other pane's window on same-conversation
   // splits. Captured once so it can't drift across the await.
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
   const { forkPoints, conversation } = chat
 
   if (!msg || !conversation) return null

@@ -15,8 +15,8 @@ import { z } from 'zod'
 import { EMAIL_RE } from '@/lib/validation'
 import { Lock, Mail, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import type { CreateUserRequest } from '@/api-client/types'
+import { Auth } from '@/modules/auth/Auth.store'
 
 interface RegisterFormProps {
   onSwitchToLogin?: () => void
@@ -62,13 +62,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       confirmPassword: '',
     },
   })
-  const { isLoading, error } = Stores.Auth
+  const { isLoading, error } = Auth
   const navigate = useNavigate()
 
   const onSubmit = async (values: RegisterFormValues) => {
     try {
-      Stores.Auth.clearAuthenticationError()
-      await Stores.Auth.registerNewUser({
+      Auth.clearAuthenticationError()
+      await Auth.registerNewUser({
         username: values.username,
         email: values.email,
         password: values.password,
@@ -92,7 +92,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           data-testid="auth-register-error"
           title={error}
           tone="error"
-          onClose={Stores.Auth.clearAuthenticationError}
+          onClose={Auth.clearAuthenticationError}
           closeLabel="Close"
           className="mb-4"
         />

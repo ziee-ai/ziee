@@ -1,6 +1,7 @@
 import { projectConfigKey } from '../state'
 import type { McpComposerSet, McpComposerGet } from '../state'
 import type { DisabledServer } from '@/api-client/types'
+import { EventBus } from '@ziee/framework/stores'
 
 /**
  * Save the project's MCP defaults. Mirrors saveConversationConfig
@@ -62,8 +63,7 @@ export default (set: McpComposerSet, get: McpComposerGet) => async (
   // Fire `project.mcp_updated` so the dedicated ProjectMcpSettings
   // store (used by the project panel) refetches and the UI reflects
   // the new defaults. Dynamic import to avoid module cycle.
-  const { Stores } = await import('@ziee/framework/stores')
-  await Stores.EventBus.emit({
+  await EventBus.emit({
     type: 'project.mcp_updated',
     data: { projectId },
   })

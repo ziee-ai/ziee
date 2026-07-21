@@ -16,12 +16,12 @@ import {
   Progress,
 } from '@ziee/kit'
 import { CircleCheck, Book, ArrowLeft } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import type { OnboardingSlot } from './types/OnboardingSlot'
 import type { OnboardingStepProps } from './types/onboarding'
 import { Onboarding as OnboardingStore } from '@/modules/onboarding/stores/onboarding'
 import { ApiKeysStep } from '@/modules/onboarding/guides/getting-started/components/apiKeysStep'
 import { McpServersStep } from '@/modules/onboarding/guides/getting-started/components/mcpServersStep'
+import { ModuleSystem } from '@ziee/framework/stores'
 
 export default function OnboardingPage() {
   const navigate = useNavigate()
@@ -33,7 +33,7 @@ export default function OnboardingPage() {
   const completedGuideIds = OnboardingStore.completedGuideIds
   const completedStepIds = OnboardingStore.completedStepIds
   const loaded = OnboardingStore.loaded
-  const slots = Stores.ModuleSystem.slots
+  const slots = ModuleSystem.slots
 
   // Holds the async action registered by the current step (not in store — functions don't go in Zustand/immer)
   const beforeNextRef = useRef<(() => Promise<void>) | null>(null)

@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api-client'
 import type { ChatSet, ChatInitialState, ChatState } from '@/modules/chat/core/stores/chat'
+import { EventBus } from '@ziee/framework/stores'
 
 export default (set: ChatSet, getRaw: () => ChatInitialState) => {
   const get = getRaw as unknown as () => ChatState
@@ -23,8 +24,7 @@ export default (set: ChatSet, getRaw: () => ChatInitialState) => {
         }))
 
         if (updates.title !== undefined) {
-          const { Stores } = await import('@ziee/framework/stores')
-          await Stores.EventBus.emit({
+          await EventBus.emit({
             type: 'conversation.titleUpdated',
             data: {
               conversationId: conversation.id,

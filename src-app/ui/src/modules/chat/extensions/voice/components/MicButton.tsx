@@ -2,12 +2,12 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { Captions, CaptionsOff, Loader2, Mic, Square, X } from 'lucide-react'
 import { Button, Popover, Tooltip } from '@ziee/kit'
 import { cn } from '@/lib/utils'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { isRecordingSupported } from '../voiceStore'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { useRecordingOwner } from '../voiceRecordingLock'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 const PRIVACY_HINT_KEY = 'ziee.voice.privacyHintDismissed'
 const NOT_READY_HELP_ID = 'voice-mic-not-ready-help'
@@ -42,7 +42,7 @@ export function MicButton() {
   // bridge — so each pane's mic drives + shows its OWN recording state, and
   // unmounting a background pane cancels ITS recording, never the focused pane's.
   const pane = useChatPaneOrNull()
-  const voice = ((pane?.store ?? Stores.Chat) as typeof Stores.Chat).VoiceStore
+  const voice = ((pane?.store ?? Chat) as typeof Chat).VoiceStore
   // Exclusive recording (DEC-61 A1): while another pane owns the mic, this pane's
   // start affordance is disabled.
   const recordingOwner = useRecordingOwner()

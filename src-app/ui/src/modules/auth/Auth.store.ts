@@ -1,4 +1,4 @@
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore , registerLazyStore } from '@ziee/framework/store-kit'
 import { ApiClient } from '@/api-client'
 import { setUnauthorizedHandler } from '@ziee/framework/api-client/core'
 import type {
@@ -7,7 +7,8 @@ import type {
   LoginRequest,
   User,
 } from '@/api-client/types'
-import { type StoreProxy, Stores } from '@ziee/framework/stores'
+import { type StoreProxy} from '@ziee/framework/stores'
+import { EventBus as EventBusStore } from '@ziee/framework/stores'
 
 /**
  * Map an API/login failure to safe, actionable user-facing copy.
@@ -378,7 +379,7 @@ function refreshSessionImpl(): Promise<boolean> {
   return refreshSessionInFlight
 }
 
-export const Auth = defineStore('Auth', {
+const AuthDef = defineStore('Auth', {
   persist: {
     name: 'auth-storage',
     // expiresAt/expiresIn ride along with the token so a reloaded tab re-arms
@@ -770,7 +771,7 @@ export const Auth = defineStore('Auth', {
   init: ({ set, get: getRaw, onCleanup }) => {
     const get = getRaw as () => AuthState
 
-            const eventBus = Stores.EventBus
+            const eventBus = EventBusStore
             const GROUP = 'AuthStore'
 
             // Silent refresh: register as the api-client's on-401 handler
@@ -856,7 +857,7 @@ export const Auth = defineStore('Auth', {
             onlineListener = null
           }
           refreshFallback = null
-          Stores.EventBus.removeGroupListeners('AuthStore')
+          EventBusStore.removeGroupListeners('AuthStore')
           if (visibilityListener) {
             document.removeEventListener('visibilitychange', visibilityListener)
             visibilityListener = null
@@ -866,4 +867,6 @@ export const Auth = defineStore('Auth', {
   },
 })
 
-export const useAuthStore = Auth.store
+export const useAuthStore = AuthDef.store
+
+export const Auth = registerLazyStore(AuthDef)

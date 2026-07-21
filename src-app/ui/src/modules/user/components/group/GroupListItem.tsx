@@ -11,10 +11,11 @@ import {
 } from '@ziee/kit'
 import { type Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission, evaluatePermission } from '@/core/permissions'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
 import type { GroupWidget } from '@/modules/user/types/GroupWidget'
+import { Auth } from '@/modules/auth/Auth.store'
+import { ModuleSystem } from '@ziee/framework/stores'
 
 interface GroupListItemProps {
   group: Group
@@ -31,10 +32,10 @@ export function GroupListItem({
   onViewMembers,
 }: GroupListItemProps) {
   // Get items for the userGroup slot from global registry
-  const { slots } = Stores.ModuleSystem
+  const { slots } = ModuleSystem
   const userGroupWidgets = (slots.get('userGroup') || []) as GroupWidget[]
 
-  const { user, permissions } = Stores.Auth
+  const { user, permissions } = Auth
   const canReadMembers = usePermission(Permissions.GroupsRead)
   const canEdit = usePermission(Permissions.GroupsEdit)
   const canDelete = usePermission(Permissions.GroupsDelete)

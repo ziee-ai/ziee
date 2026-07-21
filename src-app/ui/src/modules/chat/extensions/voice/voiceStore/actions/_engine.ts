@@ -2,7 +2,6 @@ import { message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { paneRegistry } from '@/modules/chat/core/stores/chatBridge'
 import {
   acquireRecordingLock,
@@ -19,6 +18,7 @@ import {
 } from '../../voiceLogic'
 import type { VoiceStoreGet, VoiceStoreSet } from '../state'
 import { SplitView } from '@/modules/chat/core/stores/splitView'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * The voice-dictation state machine — the entire former `Voice.store.ts` action
@@ -161,7 +161,7 @@ function ownerTextStore(
       ).TextStore
     }
   }
-  return Stores.Chat.$.TextStore
+  return Chat.$.TextStore
 }
 
 /**

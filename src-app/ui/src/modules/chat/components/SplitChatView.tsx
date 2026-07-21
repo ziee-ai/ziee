@@ -14,7 +14,7 @@ import { SplitView as SplitViewStore } from '@/modules/chat/core/stores/splitVie
  * `ChatPaneStore` via `ChatPaneProvider`. A vertical drag divider between panes
  * resizes the left pane (`dividerWidths`); the focused pane carries an inset ring
  * (no dimming of the others). Pointer-down anywhere in a pane focuses it, so
- * handler-time `Stores.Chat` actions route to the pane the user is acting on.
+ * handler-time `Chat` actions route to the pane the user is acting on.
  *
  * Only mounted for ≥2 panes (the brancher in `ConversationPage`); single-pane
  * stays on the plain `ConversationPane` path.

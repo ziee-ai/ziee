@@ -1,4 +1,3 @@
-import { Stores } from '@ziee/framework/stores'
 import { Fragment, useEffect, useState } from 'react'
 import { Alert, Button, Card, Progress, Text } from '@ziee/kit'
 import { ChevronDown } from 'lucide-react'
@@ -30,6 +29,7 @@ import {
 } from '@/modules/mcp/chat-extension/toolRun'
 import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
 import { McpServer as McpServerStore } from '@/modules/mcp/stores/mcpServer'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
  * MCP Tool Call UI Component
@@ -150,11 +150,11 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
   // Using getToolCall() method doesn't trigger re-renders when store updates
   const { toolCalls } = McpComposer
   const { servers } = McpServerStore
-  // Hoisted above the early returns below: `Stores.Chat.messages` is a reactive
+  // Hoisted above the early returns below: `Chat.messages` is a reactive
   // store-proxy access that calls a hook on every render, so it MUST run on every
   // render path — otherwise a re-render that early-returns (e.g. once `toolCall`
   // is tracked) calls fewer hooks → "Rendered fewer hooks than expected" crash.
-  const { messages } = Stores.Chat
+  const { messages } = Chat
   const toolUseData = data.content as MessageContentDataToolUse
 
   if (!toolUseData.id) {
@@ -966,14 +966,13 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Allow empty text when there are pending tool approvals
   beforeSendMessage: async () => {
-    const { Stores } = await import('@ziee/framework/stores')
     const { approvalKeyOf } = await import('@/modules/mcp/stores/mcpComposer')
     const mcpStore = McpComposer
 
     // Check if there are approval decisions queued to send for THIS (sending =
     // focused) conversation (ITEM-33) — not another pane's.
     const approvalDecisions = mcpStore.getApprovalDecisions(
-      approvalKeyOf(Stores.Chat.$.conversation?.id),
+      approvalKeyOf(Chat.$.conversation?.id),
     )
     const hasApprovalDecisions = approvalDecisions.length > 0
 
@@ -1145,13 +1144,12 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Clear approval decisions after message is sent
   onMessageSent: async ownerPaneId => {
-    const { Stores } = await import('@ziee/framework/stores')
     const { paneRegistry } = await import('@/modules/chat/core/stores/chatBridge')
     // Read via `$` snapshot (state fields + actions both live on getState())
     const mcpStore = McpComposer.$
 
     // Resolve the SENDING pane's conversation from the threaded `ownerPaneId`, NOT
-    // a `Stores.Chat.$` read (the FOCUSED pane) — in split view the sender may not
+    // a `Chat.$` read (the FOCUSED pane) — in split view the sender may not
     // be focused by the time this async hook runs, so a `.$` read would transfer the
     // wrong pane's pending config (ITEM-51). Single-pane falls back to the bridge.
     const paneState = ownerPaneId
@@ -1159,7 +1157,7 @@ const mcpExtension: ChatExtension = createExtension({
           | { conversation?: { id?: string } }
           | undefined)
       : undefined
-    const conversation = paneState?.conversation ?? Stores.Chat.$.conversation
+    const conversation = paneState?.conversation ?? Chat.$.conversation
 
     // Handle new conversation creation: a freshly-minted conversation has no config
     // of its own yet → move THIS pane's own pending config (keyed by ownerPaneId)

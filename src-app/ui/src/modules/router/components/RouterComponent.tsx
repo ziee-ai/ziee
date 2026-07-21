@@ -9,6 +9,7 @@ import {
 } from 'react-router-dom'
 import { Button, Result } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
+import { ModuleSystem } from '@ziee/framework/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
 import { usePermission } from '@/core/permissions'
@@ -153,12 +154,12 @@ export function RouterComponent() {
   // work in a useEffect. Used by e.g. the onboarding module to handle
   // its own redirect logic without auth or router needing to know
   // about it.
-  const routerEffects = (Stores.ModuleSystem.slots.get('routerEffects') ||
+  const routerEffects = (ModuleSystem.slots.get('routerEffects') ||
     []) as Array<{ id: string; component: ComponentType }>
 
   // Route guards contributed by features (auth fills this). The router owns
   // the slot type and composes the guards; it does NOT import any guard.
-  const guards = (Stores.ModuleSystem.slots.get('routeGuards') ||
+  const guards = (ModuleSystem.slots.get('routeGuards') ||
     []) as Array<{ id: string; component: ComponentType<{ children: ReactNode }> }>
 
   if (guards.length === 0 && protectedRoutes.length > 0) {

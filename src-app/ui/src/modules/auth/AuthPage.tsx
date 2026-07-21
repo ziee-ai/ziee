@@ -1,17 +1,17 @@
 import { useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { LoginForm } from '@/modules/auth/LoginForm'
 import { RegisterForm } from '@/modules/auth/RegisterForm'
 import { AuthScreenLayout } from '@/modules/auth/AuthScreenLayout'
+import { Auth } from '@/modules/auth/Auth.store'
 
 type AuthMode = 'login' | 'register'
 
 export const AuthPage: React.FC = () => {
   const [mode, setMode] = useState<AuthMode>('login')
-  const { isAuthenticated } = Stores.Auth
+  const { isAuthenticated } = Auth
 
   const handleSwitchToRegister = () => {
-    Stores.Auth.clearAuthenticationError()
+    Auth.clearAuthenticationError()
     setMode('register')
   }
 
@@ -30,7 +30,7 @@ export const AuthPage: React.FC = () => {
         {mode === 'register' && (
           <RegisterForm
             onSwitchToLogin={() => {
-              Stores.Auth.clearAuthenticationError()
+              Auth.clearAuthenticationError()
               setMode('login')
             }}
           />

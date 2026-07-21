@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { Button, Popover, Tooltip, message } from '@ziee/kit'
 import { Plus, SendHorizontal as SendIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Stores } from '@ziee/framework/stores'
 import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
 import { EditingMessageBanner } from '@/modules/chat/components/EditingMessageBanner'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 interface ChatInputProps {
   disabled?: boolean
@@ -26,7 +26,7 @@ export function ChatInput({
   const [plusOpen, setPlusOpen] = useState(false)
 
   // Get stores
-  const { sendMessage, sending, isStreaming } = Stores.Chat
+  const { sendMessage, sending, isStreaming } = Chat
 
   // Extensions can block the Send button via `useSendBlocker`. File's
   // chat-extension uses this to gate Send while uploads are in flight

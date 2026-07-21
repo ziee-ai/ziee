@@ -30,7 +30,7 @@ export default createModule({
   dependencies: ['router'],
   stores: [
     {
-      // `Stores.Chat` is the focused-pane BRIDGE (forwards to the focused pane,
+      // `ChatStore` is the focused-pane BRIDGE (forwards to the focused pane,
       // default = the primary pane); single-pane forwards to the primary so
       // behaviour is unchanged.
       name: 'Chat',

@@ -5,9 +5,9 @@ import { ApiClient } from '@/api-client'
 import { type KnowledgeBase } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
 import { KnowledgeBases } from '@/modules/knowledge-base/stores/knowledgeBases'
+import { EventBus } from '@ziee/framework/stores'
 
 /**
  * Full management of a project's attached knowledge bases — inside the knowledge
@@ -39,7 +39,7 @@ export function ProjectKnowledgeBasesManagePanel() {
 
   useEffect(() => {
     void reload()
-    const unsub = Stores.EventBus.on(
+    const unsub = EventBus.on(
       'sync:knowledge_base',
       () => void reload(),
       'ProjectKnowledgeBasesManagePanel',

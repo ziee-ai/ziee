@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { Button, Empty, Tabs, Text } from '@ziee/kit'
 import { CircleAlert, X } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { resolvePanelRenderer } from '@/modules/chat/core/stores/chat'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
+import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 function ActivePanelContent() {
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
   const { tabs, activeId } = chat.rightPanel
   const activeTab = tabs.find(t => t.id === activeId)
   // Empty body when there's literally no tab to display — this is the
@@ -47,7 +47,7 @@ function ActivePanelContent() {
 }
 
 function PanelTabs({ onCloseAll, asTitle = false }: { onCloseAll?: () => void; asTitle?: boolean }) {
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
   const { tabs, activeId } = chat.rightPanel
 
   if (tabs.length === 0) return null
@@ -125,7 +125,7 @@ export function ChatRightPanel({
   inPane?: boolean
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const chat = (useChatPaneOrNull()?.store ?? Stores.Chat) as typeof Stores.Chat
+  const chat = (useChatPaneOrNull()?.store ?? Chat) as typeof Chat
   const { rightPanel } = chat
   // `narrow` = the conversation PAGE is small (element-width, sidebar-aware),
   // not the window — so an open sidebar on a wide window still gets the drawer.

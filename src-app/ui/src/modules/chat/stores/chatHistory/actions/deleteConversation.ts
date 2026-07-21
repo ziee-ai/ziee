@@ -1,6 +1,7 @@
 import { ApiClient } from '@/api-client'
 import type { ChatHistoryGet, ChatHistorySet } from '../state'
 import refillRecentFactory from './refillRecentIfEmptied'
+import { EventBus } from '@ziee/framework/stores'
 
 export default (set: ChatHistorySet, get: ChatHistoryGet) => {
   const refillRecent = refillRecentFactory(set, get)
@@ -39,8 +40,7 @@ export default (set: ChatHistorySet, get: ChatHistoryGet) => {
       await refillRecent()
       // Broadcast deletion so other widgets drop the row (closes audit F5).
       // Import-late to avoid a cycle through `@ziee/framework/stores`.
-      const { Stores } = await import('@ziee/framework/stores')
-      await Stores.EventBus.emit({ type: 'conversation.deleted', data: { conversationId: id } })
+      await EventBus.emit({ type: 'conversation.deleted', data: { conversationId: id } })
     } catch (error) {
       console.error('[ChatHistory] Failed to delete conversation:', error)
       set({ error: 'Failed to delete conversation', deleting: false })
