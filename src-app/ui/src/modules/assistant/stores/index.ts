@@ -1,5 +1,5 @@
 // Only export hooks, not action functions
-export { useUserAssistantsStore } from './UserAssistants.store'
+export { useUserAssistantsStore } from './userAssistants'
 export { useTemplateAssistantsStore } from './templateAssistants'
 export { useAssistantPickerStore } from './assistantPicker'
 
