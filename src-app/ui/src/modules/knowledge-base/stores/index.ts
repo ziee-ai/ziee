@@ -1,4 +1,4 @@
-export { KnowledgeBases, useKnowledgeBasesStore } from './KnowledgeBases.store'
+export { KnowledgeBases, useKnowledgeBasesStore } from './knowledgeBases'
 export {
   KnowledgeBaseDetail,
   useKnowledgeBaseDetailStore,
