@@ -1,5 +1,5 @@
 import { createExtension, type ChatExtension } from '@/modules/chat/core/extensions'
-import { createVoiceStore } from './Voice.store'
+import { createVoiceStore } from './voiceStore'
 import { MicButton } from './components/MicButton'
 
 /**

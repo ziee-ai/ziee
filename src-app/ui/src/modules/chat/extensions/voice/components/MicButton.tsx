@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
-import { isRecordingSupported } from '../Voice.store'
+import { isRecordingSupported } from '../voiceStore'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { useRecordingOwner } from '../voiceRecordingLock'
 
