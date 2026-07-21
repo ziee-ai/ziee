@@ -59,11 +59,11 @@ export const gallery: ModuleGallery = {
         const { RuntimeUpdate } = await import(
           '@/modules/llm-local-runtime/stores/RuntimeUpdate.store'
         )
-        const { RuntimeConfig } = await import(
-          '@/modules/llm-local-runtime/stores/RuntimeConfig.store'
+        const { RuntimeConfigRaw } = await import(
+          '@/modules/llm-local-runtime/stores/runtimeConfig'
         )
         await holdPatch(() => {
-          RuntimeConfig.store.setState({
+          RuntimeConfigRaw.setState({
             gpu: {
               platform: 'linux',
               arch: 'x86_64',
@@ -108,14 +108,14 @@ export const gallery: ModuleGallery = {
         const { RuntimeUpdate } = await import(
           '@/modules/llm-local-runtime/stores/RuntimeUpdate.store'
         )
-        const { RuntimeConfig } = await import(
-          '@/modules/llm-local-runtime/stores/RuntimeConfig.store'
+        const { RuntimeConfigRaw } = await import(
+          '@/modules/llm-local-runtime/stores/runtimeConfig'
         )
         const { RuntimeDownloadProgress } = await import(
           '@/modules/llm-local-runtime/stores/RuntimeDownloadProgress.store'
         )
         await holdPatch(() => {
-          RuntimeConfig.store.setState({
+          RuntimeConfigRaw.setState({
             gpu: {
               platform: 'linux',
               arch: 'x86_64',

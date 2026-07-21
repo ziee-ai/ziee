@@ -61,7 +61,7 @@ import type { useRuntimeVersionStore } from './stores/runtimeVersion'
 import type { useRuntimeUpdateStore } from './stores/RuntimeUpdate.store'
 import type { useRuntimeDownloadDrawerStore } from './stores/RuntimeDownloadDrawer.store'
 import type { useRuntimeDeleteConfirmStore } from './stores/RuntimeDeleteConfirm.store'
-import type { useRuntimeConfigStore } from './stores/RuntimeConfig.store'
+import type { useRuntimeConfigStore } from './stores/runtimeConfig'
 import type { useRuntimeModelUsageStore } from './stores/RuntimeModelUsage.store'
 import type { useRuntimeDownloadProgressStore } from './stores/RuntimeDownloadProgress.store'
 
