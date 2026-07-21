@@ -25,9 +25,9 @@ export const gallery: ModuleGallery = {
         'ProviderButtons',
       ),
       setup: async () => {
-        const { AuthProviders } = await import('@/modules/auth/AuthProviders.store')
+        const { AuthProviders } = await import('@/modules/auth/authProviders')
         await holdPatch(() =>
-          AuthProviders.store.setState({ isLoading: true, hasLoaded: false } as any),
+          AuthProviders.__setState({ isLoading: true, hasLoaded: false } as any),
         )
       },
     },
@@ -42,9 +42,9 @@ export const gallery: ModuleGallery = {
         'ProviderButtons',
       ),
       setup: async () => {
-        const { AuthProviders } = await import('@/modules/auth/AuthProviders.store')
+        const { AuthProviders } = await import('@/modules/auth/authProviders')
         await holdPatch(() =>
-          AuthProviders.store.setState({
+          AuthProviders.__setState({
             isLoading: false,
             hasLoaded: true,
             error: 'Unable to reach the sign-in service.',
@@ -64,9 +64,9 @@ export const gallery: ModuleGallery = {
         'ProviderButtons',
       ),
       setup: async () => {
-        const { AuthProviders } = await import('@/modules/auth/AuthProviders.store')
+        const { AuthProviders } = await import('@/modules/auth/authProviders')
         await holdPatch(() =>
-          AuthProviders.store.setState({
+          AuthProviders.__setState({
             isLoading: false,
             hasLoaded: true,
             error: null,
