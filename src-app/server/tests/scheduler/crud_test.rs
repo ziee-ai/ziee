@@ -177,6 +177,7 @@ async fn quota_returns_422_at_cap() {
             "min_interval_seconds": 300,
             "max_consecutive_failures": 5,
             "notification_retention_days": 30,
+            "max_horizon_days": 7,
         }))
         .send()
         .await

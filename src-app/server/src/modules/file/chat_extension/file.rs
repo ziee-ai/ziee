@@ -123,6 +123,14 @@ impl ChatExtension for FileExtension {
                     content: vec![ContentBlock::Text { text: manifest }],
                 },
             );
+        }
+        // Attach the files_mcp server whenever the model is tool-capable — even in
+        // an EMPTY conversation — so the model can author the first file. The
+        // manifest injection above stays gated on `manifest_available` (only
+        // describe files that exist), and the collector drops files_mcp's READ
+        // tools when no files exist yet (see `mcp.rs` auto-mode filter): write
+        // tools always, read tools once there's something to read.
+        if tool_capable {
             context
                 .metadata
                 .insert("attach_files_mcp".to_string(), serde_json::json!("true"));

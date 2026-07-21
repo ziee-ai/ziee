@@ -253,14 +253,14 @@ fn detect_mime_from_extension(name: &str) -> &'static str {
 /// the `artifact_stream::read_artifact` REST download handler, which re-derives
 /// `artifacts_dir` from the workspace layout rather than trusting the
 /// persisted `ArtifactMeta::host_path`.
-pub fn artifact_host_path(
-    artifacts_dir: &Path,
-    step_id: &str,
-    filename: &str,
-) -> Result<PathBuf, AppError> {
-    // Path safety: neither segment may escape the run's artifact tree. The
-    // axum `{step_id}` / `{filename}` captures can't contain a literal `/`,
-    // but a bare `..` segment would still climb out.
+/// Path-safety guard for the untrusted `{step_id}`/`{filename}` URL captures:
+/// neither segment may escape the run's artifact tree. The axum captures can't
+/// contain a literal `/`, but a bare `..` segment (or an absolute filename) would
+/// still climb out. Extracted so the streaming handler can FAIL-FAST on a
+/// malicious path BEFORE any DB lookup — a traversal attempt must be rejected
+/// (400) regardless of whether the run id exists — while `artifact_host_path`
+/// re-checks as defense-in-depth just before joining.
+pub fn validate_artifact_path_components(step_id: &str, filename: &str) -> Result<(), AppError> {
     if step_id.contains("..") || step_id.contains('/') || step_id.contains('\\') {
         return Err(AppError::bad_request(
             "ARTIFACT_PATH_INVALID",
@@ -273,6 +273,17 @@ pub fn artifact_host_path(
             format!("artifact filename '{filename}' is not safe"),
         ));
     }
+    Ok(())
+}
+
+pub fn artifact_host_path(
+    artifacts_dir: &Path,
+    step_id: &str,
+    filename: &str,
+) -> Result<PathBuf, AppError> {
+    // Path safety re-check (defense-in-depth; the streaming handler already
+    // validated these captures up front, before the run lookup).
+    validate_artifact_path_components(step_id, filename)?;
     Ok(artifacts_dir.join(step_id).join(filename))
 }
 

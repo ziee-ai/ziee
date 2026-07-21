@@ -259,16 +259,21 @@ export const gallery: ModuleGallery = {
       slug: 'deep-chat-tool-approval',
       title: 'Conversation — tool approval pending',
       conversationId: CHAT_DEEP_CONVERSATION_IDS.toolRunning,
-      note: 'McpComposer toolCall in pending_approval → the inline "Tool Approval Required" prompt (approve-once / approve-conv / deny)',
+      note: 'McpComposer toolCall in pending_approval → the inline "Tool Approval Required" prompt (ITEM-50 full-disclosure: data-egress host + full tool description + concrete args; approve-once / approve-conv / deny)',
       setup: async () => {
         await whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolRunning)
         useMcpComposerStore.getState().addToolCall({
           tool_use_id: 'toolu_running_1',
-          server: 'code_sandbox',
+          server: 'Acme Weather',
           server_id: 'a1b2c3d4-0000-5000-8000-000000000001',
-          tool_name: 'execute_command',
+          tool_name: 'get_forecast',
           status: 'pending_approval',
-          input: { command: 'ls -la /workspace' },
+          input: { location: 'San Francisco, CA', units: 'metric', days: 5 },
+          // ITEM-50: external tool → surface the concrete destination host + the
+          // tool's full exact advertised description on the approval card.
+          dest_host: 'api.weather.example.com',
+          description:
+            'Fetch a multi-day weather forecast for a location from the Acme Weather API. The location is sent verbatim to the upstream service; results are not cached.',
         })
       },
     },
@@ -444,6 +449,72 @@ export const gallery: ModuleGallery = {
     },
   ],
   seeded: [
+    // ── Agent task list (ITEM-36): mid-stream mixed state — the evolving,
+    //    followable checklist. `in_progress` shows its active_form; others
+    //    show content; completed is struck through. ─────────────────────────────
+    {
+      slug: 'seeded-agent-task-list',
+      title: 'Agent task list — in progress',
+      note: 'TaskListChecklist: 2 done / 1 in_progress / 2 pending (CC dual-form render)',
+      path: '/',
+      initialPath: '/',
+      component: lazyProps(
+        () => import('@/modules/chat/components/agent-activity/TaskListChecklist'),
+        'TaskListChecklist',
+        {
+          items: [
+            { id: 't1', content: 'Read the failing spec', active_form: 'Reading the failing spec', status: 'completed' },
+            { id: 't2', content: 'Reproduce the bug', active_form: 'Reproducing the bug', status: 'completed' },
+            { id: 't3', content: 'Fix the off-by-one in the parser', active_form: 'Fixing the off-by-one in the parser', status: 'in_progress' },
+            { id: 't4', content: 'Run the test suite', active_form: 'Running the test suite', status: 'pending' },
+            { id: 't5', content: 'Write a regression test', active_form: 'Writing a regression test', status: 'pending' },
+          ],
+        },
+      ),
+    },
+    // ── Delegated sub-agents (ITEM-4): fan-out still running (per-child status). ──
+    {
+      slug: 'seeded-agent-subagents-running',
+      title: 'Delegated sub-agents — running',
+      note: 'SubAgentActivityCard: 3 children (1 done / 1 running / 1 running), rollup = running',
+      path: '/',
+      initialPath: '/',
+      component: lazyProps(
+        () => import('@/modules/chat/components/agent-activity/SubAgentActivityCard'),
+        'SubAgentActivityCard',
+        {
+          activity: {
+            children: [
+              { id: 'c1', label: 'Search PubMed for BRCA1 trials', status: 'completed' },
+              { id: 'c2', label: 'Summarise the ClinicalTrials.gov results', status: 'running' },
+              { id: 'c3', label: 'Cross-check the ChEMBL targets', status: 'running' },
+            ],
+          },
+        },
+      ),
+    },
+    // ── Delegated sub-agents (ITEM-4): fan-out finished, all terminal (one child
+    //    failed — rollup = failed). ──────────────────────────────────────────────
+    {
+      slug: 'seeded-agent-subagents-done',
+      title: 'Delegated sub-agents — done',
+      note: 'SubAgentActivityCard: all terminal (1 failed), rollup = failed',
+      path: '/',
+      initialPath: '/',
+      component: lazyProps(
+        () => import('@/modules/chat/components/agent-activity/SubAgentActivityCard'),
+        'SubAgentActivityCard',
+        {
+          activity: {
+            children: [
+              { id: 'c1', label: 'Search PubMed for BRCA1 trials', status: 'completed' },
+              { id: 'c2', label: 'Summarise the ClinicalTrials.gov results', status: 'completed' },
+              { id: 'c3', label: 'Cross-check the ChEMBL targets', status: 'failed' },
+            ],
+          },
+        },
+      ),
+    },
     {
       slug: 'seeded-recent-convos-loading',
       title: 'Recent chats widget — loading',

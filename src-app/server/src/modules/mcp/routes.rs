@@ -184,4 +184,21 @@ pub fn admin_routes() -> ApiRouter {
                 user_policy_handlers::update_user_policy_docs,
             ),
         )
+        // Admin per-(server, tool) approval-mode defaults (ITEM-54 / DEC-112).
+        // Path uses the `/mcp/servers/{id}` shape per spec; both handlers gate
+        // on the system-MCP admin perms and 404 on a foreign / non-system id.
+        .api_route(
+            "/mcp/servers/{id}/tool-approvals",
+            get_with(
+                tool_approvals::get_server_tool_approvals,
+                tool_approvals::get_server_tool_approvals_docs,
+            ),
+        )
+        .api_route(
+            "/mcp/servers/{id}/tool-approvals/{tool}",
+            put_with(
+                tool_approvals::set_server_tool_approval,
+                tool_approvals::set_server_tool_approval_docs,
+            ),
+        )
 }

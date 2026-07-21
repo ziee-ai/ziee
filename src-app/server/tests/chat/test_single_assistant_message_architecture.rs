@@ -354,5 +354,15 @@ async fn get_branch_messages_via_api(
 
     assert_eq!(response.status(), 200, "Should get messages successfully");
 
-    response.json().await.expect("Should parse response as array")
+    // `GET /conversations/{id}/messages` returns a `PaginatedMessages` object
+    // ({ messages, has_more_before, has_more_after }), not a bare array — extract
+    // the `messages` field (older tests assumed a top-level array).
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Should parse response as PaginatedMessages object");
+    body["messages"]
+        .as_array()
+        .expect("PaginatedMessages.messages must be an array")
+        .clone()
 }

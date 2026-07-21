@@ -39,6 +39,25 @@ pub fn files_mcp_server_id() -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_URL, b"files.ziee.internal")
 }
 
+/// The mutating (write) file tools — the ones gated by `require_write` in
+/// `handlers.rs`. Single source of truth used by the chat extension to decide
+/// which files_mcp tools attach in an EMPTY conversation: the write tools attach
+/// whenever the model is tool-capable (so it can author the FIRST file — and
+/// create→edit within one turn), while the read tools attach only once files
+/// exist (the same `files_manifest_available` signal that gates the manifest).
+pub const WRITE_TOOLS: &[&str] = &[
+    "create_file",
+    "edit_file",
+    "edit_file_lines",
+    "rewrite_file",
+    "convert_document",
+];
+
+/// True for a mutating file tool (see [`WRITE_TOOLS`]).
+pub fn is_write_tool(tool_name: &str) -> bool {
+    WRITE_TOOLS.contains(&tool_name)
+}
+
 #[distributed_slice(MODULE_ENTRIES)]
 static FILES_MCP_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
     name: "files_mcp",

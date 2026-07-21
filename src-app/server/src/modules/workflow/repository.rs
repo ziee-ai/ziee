@@ -4,11 +4,15 @@
 //! step metadata, etc.).
 
 
+use axum::http::StatusCode;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::models::{CreateWorkflow, CreateWorkflowRun, Workflow, WorkflowRun, WorkflowRunStatus};
-use super::types::WorkflowRunSummary;
+use super::models::{
+    CreateBackgroundRun, CreateWorkflow, CreateWorkflowRun, JobKind, RunNote, Workflow,
+    WorkflowRun, WorkflowRunStatus,
+};
+use super::types::{BackgroundRunDetail, BackgroundRunSummary, WorkflowRunSummary};
 use crate::common::AppError;
 
 pub struct WorkflowRepository {
@@ -188,7 +192,20 @@ pub async fn insert(pool: &PgPool, request: CreateWorkflow) -> Result<Workflow, 
     )
     .fetch_one(pool)
     .await
-    .map_err(AppError::database_error)?;
+    .map_err(|err| match &err {
+        // FIX-2: a concurrent create/import with the same (name, version, owner)
+        // trips the partial unique index `uniq_workflows_user_name_version_owner`
+        // (or `uniq_workflows_system_name_version`) — the TOCTOU backstop for two
+        // requests that both passed the application-level pre-check. Surface the
+        // SAME typed 409 the create handler's pre-check returns, instead of a
+        // generic 500. SQLSTATE 23505 = unique_violation.
+        sqlx::Error::Database(db) if db.is_unique_violation() => AppError::new(
+            StatusCode::CONFLICT,
+            "WORKFLOW_NAME_EXISTS",
+            "a workflow with this name already exists — choose a different name",
+        ),
+        _ => AppError::database_error(err),
+    })?;
     Ok(row)
 }
 
@@ -406,6 +423,7 @@ pub async fn insert_run(
         RETURNING
             id,
             workflow_id,
+            job_kind,
             conversation_id,
             user_id,
             model_id,
@@ -439,6 +457,114 @@ pub async fn insert_run(
     .await
     .map_err(AppError::database_error)?;
     Ok(row)
+}
+
+/// Insert a generalized BACKGROUND run (ITEM-14 / ITEM-17): a non-`workflow`
+/// `JobKind` row with `workflow_id = NULL` — a detached sub-agent turn or a
+/// fire-and-forget sandbox exec that reuses the runner's heartbeat +
+/// `mark_running`/`mark_status` guards + `RunHandle` registry but has NO backing
+/// `workflows` bundle. The row starts `pending`; the caller (typically
+/// [`super::runner::spawn_background_run`]) registers a handle + drives it. We do
+/// NOT synthesize a fake ephemeral workflow row (DEC-22).
+///
+/// `run_kind` is fixed to `'normal'` (a background run is never a workflow
+/// test/dry-run). Rejects a `Workflow` kind: that path has a bundle and MUST go
+/// through [`insert_run`] with a real `workflow_id` (the DB coherence CHECK
+/// `workflow_runs_job_kind_workflow_id_check` is the backstop).
+// Seam (ITEM-17): called by `spawn_background_run` / the background drivers in a
+// later tranche; the backbone ships + tests the create path now.
+#[allow(dead_code)]
+pub async fn insert_background_run(
+    pool: &PgPool,
+    request: CreateBackgroundRun,
+) -> Result<WorkflowRun, AppError> {
+    if matches!(request.job_kind, JobKind::Workflow) {
+        return Err(AppError::internal_error(
+            "insert_background_run: 'workflow' kind requires a bundle — use insert_run",
+        ));
+    }
+    let row = sqlx::query_as!(
+        WorkflowRun,
+        r#"
+        INSERT INTO workflow_runs (
+            workflow_id, job_kind, conversation_id, user_id, model_id,
+            sandbox_flavor, run_kind, invocation_source, inputs_json
+        )
+        VALUES (NULL, $1, $2, $3, $4, $5, 'normal', $6, $7)
+        RETURNING
+            id,
+            workflow_id,
+            job_kind,
+            conversation_id,
+            user_id,
+            model_id,
+            sandbox_flavor,
+            run_kind,
+            inputs_json as "inputs_json: _",
+            step_outputs_json as "step_outputs_json: _",
+            step_item_progress_json as "step_item_progress_json: _",
+            step_logs_json as "step_logs_json: _",
+            step_artifacts_json as "step_artifacts_json: _",
+            pending_elicitation_json as "pending_elicitation_json: _",
+            final_output_json as "final_output_json: _",
+            step_progress_json as "step_progress_json: _",
+            status,
+            current_step,
+            error_message,
+            total_tokens,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        "#,
+        request.job_kind.as_str(),
+        request.conversation_id,
+        request.user_id,
+        request.model_id,
+        request.sandbox_flavor,
+        request.invocation_source,
+        request.inputs_json,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row)
+}
+
+/// Owner-scoped run fetch. Returns the row ONLY when it belongs to `user_id`; a
+/// foreign or missing id yields `None` so the caller returns 404 — never leaking
+/// another user's run (DEC-36 / CODING_GUIDELINES §1). Works for every
+/// `job_kind`, including background runs with a NULL `workflow_id`. The
+/// background surface must NOT use this directly (it would read/steer a classic
+/// workflow run through `/api/background/*`) — it composes the background-only
+/// [`find_background_run_for_owner`] on top of this. Kept as the general
+/// owner-scope primitive.
+pub async fn find_run_for_owner(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<WorkflowRun>, AppError> {
+    Ok(find_run(pool, run_id).await?.filter(|r| r.user_id == user_id))
+}
+
+/// Background-only owner-scoped run fetch: like [`find_run_for_owner`] but ALSO
+/// enforces the background boundary (`job_kind <> 'workflow'`). A classic
+/// workflow run — even the caller's OWN — yields `None`, so the background
+/// surface returns 404 and a workflow run cannot be read (`check_status` /
+/// `collect_result`), cancelled, or steered (run notes) through
+/// `/api/background/*` or the background MCP tools (mirroring
+/// [`get_background_run_detail`]'s `job_kind <> 'workflow'` filter; DEC-36 /
+/// CODING_GUIDELINES §1 — classic workflow runs are served/managed by their own
+/// `/api/workflows/*` surface). A foreign or missing id still yields `None`
+/// (never leaks another user's run). This is the SINGLE choke point every
+/// background read/cancel/steer path resolves through, so the `job_kind` boundary
+/// the list/detail endpoints enforce also covers those paths consistently.
+pub async fn find_background_run_for_owner(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<WorkflowRun>, AppError> {
+    Ok(find_run_for_owner(pool, run_id, user_id)
+        .await?
+        .filter(|r| r.job_kind != JobKind::Workflow.as_str()))
 }
 
 /// Terminal-status write (H3). Guards against clobbering an already
@@ -661,6 +787,125 @@ pub async fn persist_step_logs(
     Ok(())
 }
 
+/// Cap on the number of most-recent agent-activity entries retained per step
+/// in `step_logs_json` (a bounded ring — older entries are trimmed off the
+/// front so a long agent run can't bloat the row unbounded).
+pub const AGENT_ACTIVITY_MAX_ENTRIES: i64 = 500;
+
+/// Durably append one `kind: agent` activity entry to
+/// `workflow_runs.step_logs_json`, under a per-step key holding an ordered
+/// array (`<step_id>::agent_activity`, kept distinct from the step's captured
+/// stdout/stderr log map under the bare `<step_id>` key). The whole append +
+/// trim-to-`AGENT_ACTIVITY_MAX_ENTRIES` runs in ONE atomic UPDATE statement so
+/// fire-and-forget concurrent appends can't lose or duplicate entries. The
+/// retained window is the `AGENT_ACTIVITY_MAX_ENTRIES` HIGHEST-`seq` entries
+/// (NOT the last-N-inserted): appends commit in row-lock order, which can differ
+/// from `seq` order, so trimming by insertion ordinal could drop a higher-`seq`
+/// entry and keep a lower one. The kept entries are re-emitted in ascending
+/// `seq` order.
+pub async fn append_agent_activity(
+    pool: &PgPool,
+    run_id: Uuid,
+    step_id: &str,
+    entry: &serde_json::Value,
+) -> Result<(), AppError> {
+    let key = format!("{step_id}::agent_activity");
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET step_logs_json = jsonb_set(
+                coalesce(step_logs_json, '{}'::jsonb),
+                ARRAY[$2::text],
+                coalesce((
+                    SELECT jsonb_agg(elem ORDER BY (elem ->> 'seq')::numeric)
+                    FROM (
+                        SELECT elem
+                        FROM jsonb_array_elements(
+                            coalesce(step_logs_json -> $2, '[]'::jsonb)
+                                || jsonb_build_array($3::jsonb)
+                        ) AS t(elem)
+                        ORDER BY (elem ->> 'seq')::numeric DESC NULLS LAST
+                        LIMIT $4
+                    ) recent
+                ), '[]'::jsonb),
+                true
+            ),
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        run_id,
+        key,
+        entry,
+        AGENT_ACTIVITY_MAX_ENTRIES,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Replace an existing workflow's steps/inputs IN PLACE — a builder edit that
+/// re-materializes the on-disk bundle (new `extracted_path` contents + sha /
+/// size / file_count) and swaps the compiled IR, WITHOUT changing the row id
+/// (run-history FKs must survive). Distinct from `update`, which only touches
+/// display metadata.
+pub async fn update_definition(
+    pool: &PgPool,
+    id: Uuid,
+    extracted_path: &str,
+    bundle_sha256: &str,
+    bundle_size_bytes: i64,
+    file_count: i32,
+    compiled_ir_json: Option<serde_json::Value>,
+) -> Result<Workflow, AppError> {
+    let row = sqlx::query_as!(
+        Workflow,
+        r#"
+        UPDATE workflows SET
+            extracted_path = $2,
+            bundle_sha256 = $3,
+            bundle_size_bytes = $4,
+            file_count = $5,
+            compiled_ir_json = $6,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING
+            id,
+            name,
+            version,
+            display_name,
+            description,
+            extracted_path,
+            bundle_sha256,
+            bundle_size_bytes,
+            file_count,
+            entry_point,
+            tags as "tags: _",
+            scope,
+            owner_user_id,
+            created_by,
+            enabled,
+            is_dev,
+            ephemeral,
+            conversation_id,
+            compiled_ir_json as "compiled_ir_json: _",
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        "#,
+        id,
+        extracted_path,
+        bundle_sha256,
+        bundle_size_bytes,
+        file_count,
+        compiled_ir_json,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?
+    .ok_or_else(|| AppError::not_found("Workflow"))?;
+    Ok(row)
+}
+
 /// Set or clear the pending elicitation slot.
 pub async fn set_pending_elicitation(
     pool: &PgPool,
@@ -721,6 +966,70 @@ pub async fn get_elicit_response(
     .await
     .map_err(AppError::database_error)?;
     Ok(row.and_then(|r| r.elicit_response_json))
+}
+
+/// Read the durable agent transcript (a JSON array of `ai_providers::ChatMessage`)
+/// for a run — the resume source for the `kind: agent` step (DEC-8). NULL ⇒ the
+/// agent has not started (an empty transcript).
+pub async fn get_agent_transcript(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Option<serde_json::Value>, AppError> {
+    let row = sqlx::query!(
+        r#"SELECT agent_transcript_json as "agent_transcript_json: serde_json::Value" FROM workflow_runs WHERE id = $1"#,
+        run_id,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row.and_then(|r| r.agent_transcript_json))
+}
+
+/// Replace the durable agent transcript for a run (whole-array write — the agent
+/// host's `TranscriptStore` load/append/replace_head all round-trip through this).
+pub async fn set_agent_transcript(
+    pool: &PgPool,
+    run_id: Uuid,
+    value: serde_json::Value,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET agent_transcript_json = $2,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        run_id,
+        value,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Flag whether the runner is currently inside an agent step (ITEM-17). Set TRUE
+/// on agent-step entry so the boot sweep SPARES a crashed `running` agent run
+/// (marks it `resumable`) instead of failing it; cleared on step exit.
+pub async fn set_resumable_agent(
+    pool: &PgPool,
+    run_id: Uuid,
+    resumable: bool,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET resumable_agent = $2,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        run_id,
+        resumable,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
 }
 
 pub async fn set_final_output(
@@ -789,7 +1098,7 @@ pub async fn cancel_cas(
         SET status = 'cancelled',
             error_message = 'cancelled by user',
             updated_at = NOW()
-        WHERE id = $1 AND status IN ('pending', 'running', 'waiting')
+        WHERE id = $1 AND status IN ('pending', 'running', 'waiting', 'resumable')
         RETURNING status
         "#,
         run_id,
@@ -801,14 +1110,76 @@ pub async fn cancel_cas(
 }
 
 /// Startup sweep: flip every still-pending/running row created BEFORE
-/// `cutoff` to `failed`. M-3: the `created_at < cutoff` bound prevents the
-/// sweep (spawned detached at module init) from racing — and clobbering — a
-/// run legitimately started in the boot window after `cutoff` was captured.
+/// `cutoff` to `failed`, EXCEPT the kinds whose per-`JobKind` policy spares them
+/// (DEC-76). M-3: the `created_at < cutoff` bound prevents the sweep (spawned
+/// detached at module init) from racing — and clobbering — a run legitimately
+/// started in the boot window after `cutoff` was captured.
+///
+/// Disposition order (each step only touches rows still `pending`/`running`):
+///  1. `resumable_agent = TRUE` → `resumable` (a crash inside a workflow `agent`
+///     step — re-driven from `agent_transcript_json` via its workflow bundle).
+///  2. any `JobKind` whose registered `orphan_sweep` is `Resumable`
+///     → `resumable` — decentralized: iterate the policy registry, no hardcoded
+///     kind list, so a future replayable kind auto-participates (ITEM-17/DEC-76).
+///     NO built-in kind declares `Resumable` today (a background sub-agent has no
+///     bundle to replay → it is `Fail`), so this step is a no-op forward-compat
+///     seam until such a kind ships; step 1 remains the live `resumable` producer.
+///  3. everything else (`workflow`, `sandbox_exec`, `subagent`, any `Fail`-policy
+///     or unknown kind — fail-closed) → `failed`.
 pub async fn fail_orphaned_runs(
     pool: &PgPool,
     cutoff: time::OffsetDateTime,
 ) -> Result<u64, AppError> {
-    // Sweep in bounded batches rather than one mass UPDATE: a single
+    // Step 1 — ITEM-17: FIRST spare crashed `running` agent runs — a run that
+    // crashed while inside an agent step (`resumable_agent = true`) becomes
+    // `resumable` (NOT `failed`) so the boot path re-drives it from its persisted
+    // `agent_transcript_json`. This runs before the fail-sweep below, so those
+    // rows are no longer `running` and the fail-sweep skips them.
+    sqlx::query!(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'resumable',
+            updated_at = NOW()
+        WHERE status = 'running'
+          AND resumable_agent = TRUE
+          AND created_at < $1
+        "#,
+        cutoff,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    // Step 2 — DEC-76 per-JobKind policy: spare every orphaned run whose kind
+    // declares a `Resumable` orphan-sweep (work that replays from a durable
+    // checkpoint the boot path can reload). Decentralized: walk the registered
+    // policies rather than naming a kind, so a future replayable kind is swept
+    // correctly with no edit here. NO built-in kind is `Resumable` today (a
+    // background sub-agent has no workflow bundle for `resume_run` to replay → it
+    // is `Fail`), so this loop currently matches nothing — it's the forward-compat
+    // seam. A `Fail`-policy kind (workflow / sandbox_exec / subagent) is left for
+    // the fail-sweep below; an UNKNOWN kind is fail-closed (never spared here).
+    for policy in super::job_kind::JOB_KIND_POLICIES.iter() {
+        if policy.orphan_sweep == super::job_kind::OrphanSweepPolicy::Resumable {
+            sqlx::query!(
+                r#"
+                UPDATE workflow_runs
+                SET status = 'resumable',
+                    updated_at = NOW()
+                WHERE status IN ('pending', 'running')
+                  AND job_kind = $1
+                  AND created_at < $2
+                "#,
+                policy.job_kind,
+                cutoff,
+            )
+            .execute(pool)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+    }
+
+    // Step 3 — sweep in bounded batches rather than one mass UPDATE: a single
     // statement would take row locks on every matching orphan at once,
     // which on a large backlog holds a long write-lock span and bloats the
     // WAL in one transaction. Each batch commits independently (LIMIT via a
@@ -849,6 +1220,18 @@ pub async fn fail_orphaned_runs(
     Ok(total)
 }
 
+/// ITEM-17: every run parked in the `resumable` crash-resume state, oldest
+/// first. The boot path re-drives each via `resume_run` after the startup sweep.
+pub async fn list_resumable_run_ids(pool: &PgPool) -> Result<Vec<Uuid>, AppError> {
+    let ids = sqlx::query_scalar!(
+        r#"SELECT id FROM workflow_runs WHERE status = 'resumable' ORDER BY created_at ASC"#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(ids)
+}
+
 pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>, AppError> {
     let row = sqlx::query_as!(
         WorkflowRun,
@@ -856,6 +1239,7 @@ pub async fn find_run(pool: &PgPool, run_id: Uuid) -> Result<Option<WorkflowRun>
         SELECT
             id,
             workflow_id,
+            job_kind,
             conversation_id,
             user_id,
             model_id,
@@ -1153,7 +1537,12 @@ pub async fn list_runs_for_workflow(
     let rows = sqlx::query_as!(
         WorkflowRunSummary,
         r#"
-        SELECT id, workflow_id, status, invocation_source,
+        SELECT id,
+               -- workflow_id is now nullable (background runs), but this query
+               -- filters WHERE workflow_id = $1, so every returned row has it
+               -- set — force non-null so the summary DTO stays a plain Uuid.
+               workflow_id as "workflow_id!",
+               status, invocation_source,
                conversation_id, model_id, total_tokens,
                created_at as "created_at: _"
         FROM workflow_runs
@@ -1212,6 +1601,7 @@ pub async fn list_runs_for_user(
         SELECT
             id,
             workflow_id,
+            job_kind,
             conversation_id,
             user_id,
             model_id,
@@ -1243,4 +1633,688 @@ pub async fn list_runs_for_user(
     .await
     .map_err(AppError::database_error)?;
     Ok(rows)
+}
+
+/// ITEM-8: the acting user's BACKGROUND runs (`job_kind <> 'workflow'`),
+/// newest-first, paginated, with optional `status` / `kind` filters — a COMPACT
+/// projection (no heavy JSONB blobs; `has_result` merely flags whether a
+/// `final_output_json` exists, read fully via `collect_result`). Owner-scoped
+/// (`user_id = $1`; a foreign run is simply absent — never leaked).
+///
+/// Index-friendly: the existing `(user_id, created_at DESC)` index
+/// (`idx_workflow_runs_user_created`) serves the scan + ordering; `job_kind` and
+/// `status` (both separately indexed) are residual filters. Returns
+/// `(rows, total)` for the paginated response. Pushes every filter to SQL (§4 —
+/// no in-memory filtering / N+1).
+pub async fn list_background_runs_for_user(
+    pool: &PgPool,
+    user_id: Uuid,
+    page: i64,
+    per_page: i64,
+    status: Option<&str>,
+    kind: Option<&str>,
+) -> Result<(Vec<BackgroundRunSummary>, i64), AppError> {
+    let per_page = per_page.clamp(1, 500);
+    let offset = (page - 1).max(0) * per_page;
+
+    let rows = sqlx::query_as!(
+        BackgroundRunSummary,
+        r#"
+        SELECT
+            id,
+            job_kind,
+            status,
+            conversation_id,
+            model_id,
+            NULLIF(left(inputs_json->>'task', 200), '') as "label?",
+            (final_output_json IS NOT NULL) as "has_result!",
+            error_message,
+            total_tokens,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflow_runs
+        WHERE user_id = $1
+          AND job_kind <> 'workflow'
+          AND ($2::text IS NULL OR status = $2)
+          AND ($3::text IS NULL OR job_kind = $3)
+        ORDER BY created_at DESC
+        LIMIT $4 OFFSET $5
+        "#,
+        user_id,
+        status,
+        kind,
+        per_page,
+        offset,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    let total = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as "count!"
+        FROM workflow_runs
+        WHERE user_id = $1
+          AND job_kind <> 'workflow'
+          AND ($2::text IS NULL OR status = $2)
+          AND ($3::text IS NULL OR job_kind = $3)
+        "#,
+        user_id,
+        status,
+        kind,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?
+    .count;
+
+    Ok((rows, total))
+}
+
+/// Owner-scoped detail fetch for one BACKGROUND run (ITEM-8 follow-up) — the
+/// getter backing `GET /api/background/runs/{run_id}`. Unlike the compact list,
+/// this projects the `final_output_json` result body so the FE can render a
+/// completed run's output without a `collect_result` MCP round-trip.
+///
+/// Owner-scoped (`user_id = $2`) AND background-only (`job_kind <> 'workflow'`):
+/// a foreign, missing, OR classic-workflow-kind run yields `None` → the handler
+/// returns 404, never leaking another user's run and never serving a heavy
+/// workflow run through this endpoint (`GET /api/workflows/runs/{id}` owns those;
+/// DEC-36 / CODING_GUIDELINES §1). Serves the same identity/state/timing columns
+/// as the summary plus the result body — the workflow-only step/log/artifact
+/// blobs (which a background run never has) stay unprojected (§4 — no `SELECT *`).
+pub async fn get_background_run_detail(
+    pool: &PgPool,
+    run_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<BackgroundRunDetail>, AppError> {
+    let row = sqlx::query_as!(
+        BackgroundRunDetail,
+        r#"
+        SELECT
+            id,
+            job_kind,
+            status,
+            conversation_id,
+            model_id,
+            NULLIF(left(inputs_json->>'task', 200), '') as "label?",
+            (final_output_json IS NOT NULL) as "has_result!",
+            final_output_json as "final_output_json: _",
+            error_message,
+            total_tokens,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
+        FROM workflow_runs
+        WHERE id = $1
+          AND user_id = $2
+          AND job_kind <> 'workflow'
+        "#,
+        run_id,
+        user_id,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(row)
+}
+
+// ── ITEM-25: durable steering-note queue (Group F) ──────────────────────────
+//
+// A user posts a note to a RUNNING background run; the detached agent-core loop
+// consumes pending notes at its next iteration boundary. The REST enqueue/list
+// live in `background_mcp` (owns `/api/background/` + `background::use`); the
+// durable STORAGE + these repository fns are the backbone's (the run-notes table
+// FKs `workflow_runs`). Ownership is the CALLER'S job — every REST path resolves
+// the run via `find_run_for_owner` FIRST, so these fns are owner-agnostic
+// (mirrors `insert_background_run`).
+
+/// DEC-79 bounded depth: keep at most this many PENDING (unconsumed) notes per
+/// run. `enqueue_run_note` drop-oldest-trims to this bound on insert.
+pub const MAX_PENDING_RUN_NOTES: i64 = 8;
+
+/// Enqueue one steering note against a background run (ITEM-25). Honors DEC-79's
+/// bounded depth: within ONE txn it drop-oldest-trims the pending set to
+/// `MAX_PENDING_RUN_NOTES - 1` BEFORE inserting, so at most 8 notes stay pending
+/// (the newest win). Owner-agnostic — the REST handler resolves ownership first.
+pub async fn enqueue_run_note(
+    pool: &PgPool,
+    run_id: Uuid,
+    note: &str,
+) -> Result<RunNote, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // Drop-oldest: delete the oldest pending rows beyond the newest (MAX-1), so
+    // that after the insert below the pending count is exactly <= MAX.
+    sqlx::query!(
+        r#"DELETE FROM background_run_notes
+           WHERE id IN (
+               SELECT id FROM background_run_notes
+               WHERE run_id = $1 AND consumed_at IS NULL
+               ORDER BY created_at DESC OFFSET $2
+           )"#,
+        run_id,
+        (MAX_PENDING_RUN_NOTES - 1).max(0),
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    let row = sqlx::query_as!(
+        RunNote,
+        r#"INSERT INTO background_run_notes (run_id, note)
+           VALUES ($1, $2)
+           RETURNING id, run_id, note,
+                     created_at as "created_at: _",
+                     consumed_at as "consumed_at: _""#,
+        run_id,
+        note,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(row)
+}
+
+/// List a run's PENDING (unconsumed) steering notes, oldest-first. Owner-agnostic
+/// (the REST GET resolves the run's owner first). Backs the `GET` list endpoint.
+pub async fn list_pending_run_notes(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Vec<RunNote>, AppError> {
+    sqlx::query_as!(
+        RunNote,
+        r#"SELECT id, run_id, note,
+                  created_at as "created_at: _",
+                  consumed_at as "consumed_at: _"
+           FROM background_run_notes
+           WHERE run_id = $1 AND consumed_at IS NULL
+           ORDER BY created_at ASC"#,
+        run_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// CONSUME a run's pending steering notes: atomically stamp them consumed and
+/// return them oldest-first. Idempotent per note — a second call returns only
+/// notes queued since (already-consumed rows are skipped).
+///
+/// THIS IS THE SEAM THE AGENT-CORE LOOP CALLS (ITEM-25 / DEC-79 — now WIRED).
+/// `agent_dispatch::RunNoteSteerPort` backs `agent_core::SteerNotePort` with this
+/// fn; `build_detached_agent_core` threads it into the `AgentCore` ONLY for the
+/// background sub-agent driver (`background_mcp::execute_subagent_run`). At each
+/// iteration boundary (after cancel/budget, before `run_contribute` /
+/// `transcript.load`) `AgentCore::run` drains the pending notes and appends each
+/// as a `[steering]` user message so it reaches the model on the next call.
+pub async fn consume_pending_run_notes(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Vec<RunNote>, AppError> {
+    let mut rows = sqlx::query_as!(
+        RunNote,
+        r#"UPDATE background_run_notes
+           SET consumed_at = now()
+           WHERE run_id = $1 AND consumed_at IS NULL
+           RETURNING id, run_id, note,
+                     created_at as "created_at: _",
+                     consumed_at as "consumed_at: _""#,
+        run_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    // RETURNING order isn't guaranteed — deliver oldest-first (turn order).
+    rows.sort_by_key(|n| n.created_at);
+    Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    // DB-gated in-source tests (backbone / ITEM-14/17/29). They SOFT-SKIP when
+    // `DATABASE_URL` is unset / unreachable (mirroring the suite's env-gated
+    // real-stack tests, e.g. `web_search::repository`), so `cargo test --lib`
+    // without Postgres stays green; they run for real wherever `DATABASE_URL`
+    // points at a migrated DB (which includes migration 202607190700).
+    async fn connect() -> Option<PgPool> {
+        let url = std::env::var("DATABASE_URL").ok()?;
+        let pool = match PgPoolOptions::new().max_connections(2).connect(&url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return None;
+            }
+        };
+        // Probe: soft-skip if the ambient DB predates migration 202607190700
+        // (an un-migrated `postgres` DB), so these never HARD-fail — they only
+        // run against a DB where the backbone columns exist.
+        let migrated: Option<String> = sqlx::query_scalar(
+            "SELECT column_name FROM information_schema.columns \
+             WHERE table_schema='public' AND table_name='workflow_runs' \
+               AND column_name='job_kind'",
+        )
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten();
+        if migrated.is_none() {
+            eprintln!("skip: workflow_runs.job_kind absent — DB not migrated to 202607190700");
+            return None;
+        }
+        Some(pool)
+    }
+
+    /// Insert a throwaway user (the `workflow_runs.user_id` FK target, SDK-owned
+    /// `users` table). Uses a UUID-derived unique username/email so parallel
+    /// in-source tests never collide. Deleting this user CASCADE-removes its runs
+    /// (`workflow_runs_user_id_fkey ON DELETE CASCADE`) — the sole cleanup.
+    async fn make_user(pool: &PgPool) -> Uuid {
+        let uid = Uuid::new_v4();
+        // Runtime (unchecked) query: keeps the test decoupled from the exact
+        // SDK users schema (only username + email are required NOT-NULL columns).
+        sqlx::query("INSERT INTO users (id, username, email) VALUES ($1, $2, $3)")
+            .bind(uid)
+            .bind(format!("bgtest_{}", uid.simple()))
+            .bind(format!("bgtest_{}@example.invalid", uid.simple()))
+            .execute(pool)
+            .await
+            .expect("insert throwaway user");
+        uid
+    }
+
+    async fn cleanup_user(pool: &PgPool, user_id: Uuid) {
+        let _ = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(pool)
+            .await;
+    }
+
+    fn bg_req(user_id: Uuid, kind: JobKind) -> CreateBackgroundRun {
+        CreateBackgroundRun {
+            job_kind: kind,
+            conversation_id: None,
+            user_id,
+            model_id: None,
+            sandbox_flavor: None,
+            invocation_source: "conversation".into(),
+            inputs_json: serde_json::json!({}),
+        }
+    }
+
+    // TEST-47 (ITEM-14): a `job_kind='sandbox_exec'` + NULL `workflow_id` row
+    // persists / round-trips, its heartbeat bumps `updated_at`, and it reaches a
+    // terminal state — all WITHOUT ever loading a `workflow.yaml`. The late
+    // terminal write is a CAS no-op (TEST-132 end-to-end).
+    #[tokio::test]
+    async fn background_run_round_trips_and_heartbeats_without_workflow_yaml() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+
+        // Persist a bundle-less background run.
+        let row = insert_background_run(&pool, bg_req(user_id, JobKind::SandboxExec))
+            .await
+            .expect("insert background run");
+        assert!(row.workflow_id.is_none(), "background run has NULL workflow_id");
+        assert_eq!(row.job_kind, "sandbox_exec");
+        assert_eq!(JobKind::from_db_str(&row.job_kind), Some(JobKind::SandboxExec));
+        assert_eq!(row.status, "pending");
+        let run_id = row.id;
+
+        // pending → running via the guarded transition.
+        mark_running(&pool, run_id).await.expect("mark_running");
+        let running = find_run(&pool, run_id).await.unwrap().unwrap();
+        assert_eq!(running.status, "running");
+        let before = running.updated_at;
+
+        // Heartbeat bumps updated_at (the no-progress liveness signal) without
+        // changing status.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        heartbeat(&pool, run_id).await.expect("heartbeat");
+        let beat = find_run(&pool, run_id).await.unwrap().unwrap();
+        assert!(
+            beat.updated_at > before,
+            "heartbeat must advance updated_at ({:?} !> {:?})",
+            beat.updated_at,
+            before
+        );
+        assert_eq!(beat.status, "running", "heartbeat must not change status");
+
+        // Reach a terminal state; no workflow bundle was ever loaded.
+        set_final_output(&pool, run_id, serde_json::json!({"exit_code": 0}))
+            .await
+            .unwrap();
+        mark_status(&pool, run_id, WorkflowRunStatus::Completed, None)
+            .await
+            .expect("mark completed");
+        let done = find_run(&pool, run_id).await.unwrap().unwrap();
+        assert_eq!(done.status, "completed");
+        assert!(WorkflowRunStatus::from_db_str(&done.status).unwrap().is_terminal());
+        assert_eq!(done.final_output_json, Some(serde_json::json!({"exit_code": 0})));
+
+        // TEST-132: a LATE terminal write is a CAS no-op — the completed row is
+        // never resurrected to failed.
+        mark_status(&pool, run_id, WorkflowRunStatus::Failed, Some("late"))
+            .await
+            .unwrap();
+        let still = find_run(&pool, run_id).await.unwrap().unwrap();
+        assert_eq!(still.status, "completed", "terminal CAS must be a no-op");
+
+        // Owner-scoped read seam: owner sees it, a stranger gets None (→ 404).
+        assert!(find_run_for_owner(&pool, run_id, user_id).await.unwrap().is_some());
+        assert!(
+            find_run_for_owner(&pool, run_id, Uuid::new_v4())
+                .await
+                .unwrap()
+                .is_none(),
+            "cross-user fetch must be None (404), never leak the row"
+        );
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    // TEST-47 (spawn seam): `runner::spawn_background_run` fire-and-forgets a
+    // background run reusing mark_running + the heartbeat + the guarded terminal
+    // `mark_status`, reaching `completed` with the driver's final output — with no
+    // workflow.yaml.
+    #[tokio::test]
+    async fn spawn_background_run_drives_to_terminal() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+
+        let run_id = crate::modules::workflow::runner::spawn_background_run(
+            &pool,
+            bg_req(user_id, JobKind::SubAgent),
+            |_pool, _run_id, _handle| async move {
+                crate::modules::workflow::runner::BackgroundOutcome::Completed {
+                    final_output: Some(serde_json::json!({"answer": 42})),
+                }
+            },
+        )
+        .await
+        .expect("spawn background run");
+
+        // Poll for terminal (the driver completes immediately; allow slack for
+        // the detached task + terminal write).
+        let mut terminal = None;
+        for _ in 0..100 {
+            let run = find_run(&pool, run_id).await.unwrap().unwrap();
+            if WorkflowRunStatus::from_db_str(&run.status)
+                .is_some_and(|s| s.is_terminal())
+            {
+                terminal = Some(run);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let run = terminal.expect("background run should reach terminal");
+        assert_eq!(run.status, "completed");
+        assert!(run.workflow_id.is_none());
+        assert_eq!(run.job_kind, "subagent");
+        assert_eq!(run.final_output_json, Some(serde_json::json!({"answer": 42})));
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    // TEST-42 / TEST-133 (ITEM-29 / DEC-76): the boot orphan-sweep applies a
+    // PER-JobKind policy and always reaches a TERMINAL state. A crashed
+    // `subagent` orphan is `failed` (a background sub-agent has NO workflow bundle
+    // for `resume_run` to replay — leaving it `resumable` stranded it non-terminal
+    // forever), and a `sandbox_exec` orphan is `failed` (a killed subprocess can't
+    // replay). Both rows are aged past the cutoff so ONLY they are swept (the
+    // sweep is global; other tests' fresh rows are newer than the cutoff).
+    #[tokio::test]
+    async fn boot_sweep_is_per_job_kind() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+
+        let sub = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .unwrap();
+        let sand = insert_background_run(&pool, bg_req(user_id, JobKind::SandboxExec))
+            .await
+            .unwrap();
+        // Simulate crashed in-flight orphans aged 2 days (older than the cutoff).
+        for id in [sub.id, sand.id] {
+            sqlx::query(
+                "UPDATE workflow_runs SET status='running', created_at = now() - interval '2 days' WHERE id = $1",
+            )
+            .bind(id)
+            .execute(&pool)
+            .await
+            .expect("age the orphan row");
+        }
+
+        // Cutoff 1 day ago: sweeps ONLY rows older than that (our 2-day rows),
+        // never a concurrently-running test's ~now rows.
+        let cutoff = time::OffsetDateTime::now_utc() - time::Duration::days(1);
+        fail_orphaned_runs(&pool, cutoff).await.expect("sweep");
+
+        let sub_after = find_run(&pool, sub.id).await.unwrap().unwrap();
+        let sand_after = find_run(&pool, sand.id).await.unwrap().unwrap();
+
+        // A background subagent orphan reaches a TERMINAL `failed` (NOT the
+        // intermediate `resumable`): it has no bundle to replay, so it must be
+        // terminalized on boot or `check_status`/`collect_result` would hang.
+        assert_eq!(
+            sub_after.status, "failed",
+            "subagent orphan must be terminalized as failed (no bundle to replay)"
+        );
+        assert!(
+            WorkflowRunStatus::from_db_str(&sub_after.status).is_some_and(|s| s.is_terminal()),
+            "subagent orphan status must be terminal"
+        );
+        assert_eq!(
+            sub_after.error_message.as_deref(),
+            Some("server restart during execution"),
+            "the fail-sweep stamps the restart error on the subagent orphan"
+        );
+        assert_eq!(
+            sand_after.status, "failed",
+            "sandbox_exec orphan must fail (subprocess gone)"
+        );
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    // FINDING-2 (background-boundary): `find_background_run_for_owner` is the
+    // single choke point the background read/cancel/steer paths resolve through.
+    // It is owner-scoped (like `find_run_for_owner`) AND enforces the
+    // background-only boundary (`job_kind <> 'workflow'`): a caller's OWN classic
+    // workflow run resolves via `find_run_for_owner` but is EXCLUDED here (→ the
+    // handlers 404 it), so a workflow run cannot be read / cancelled / steered via
+    // the background surface. Cross-user is still excluded (never leak).
+    #[tokio::test]
+    async fn find_background_run_for_owner_excludes_workflow_kind() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+
+        // A background (subagent) run → visible through the background choke point.
+        let bg = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .expect("insert subagent run");
+        assert!(
+            find_background_run_for_owner(&pool, bg.id, user_id)
+                .await
+                .unwrap()
+                .is_some(),
+            "a background run is visible through the background owner-resolution"
+        );
+
+        // A REAL classic workflow run (job_kind='workflow' requires a bundle FK).
+        let workflow_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflows \
+                (id, name, extracted_path, bundle_sha256, bundle_size_bytes, file_count, entry_point, scope, owner_user_id) \
+             VALUES ($1, $2, '/tmp/bg-boundary-none', 'deadbeef', 0, 0, 'workflow.yaml', 'user', $3)",
+        )
+        .bind(workflow_id)
+        .bind(format!("bg-boundary-{}", workflow_id.simple()))
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("insert workflow");
+        let wf_run_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_runs (id, workflow_id, user_id, job_kind, status) \
+             VALUES ($1, $2, $3, 'workflow', 'running')",
+        )
+        .bind(wf_run_id)
+        .bind(workflow_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("insert workflow run");
+
+        // Owner CAN resolve it via the general owner-scope fetch …
+        assert!(
+            find_run_for_owner(&pool, wf_run_id, user_id)
+                .await
+                .unwrap()
+                .is_some(),
+            "the owner resolves its own workflow run via find_run_for_owner"
+        );
+        // … but the BACKGROUND choke point EXCLUDES it (job_kind='workflow') → 404.
+        assert!(
+            find_background_run_for_owner(&pool, wf_run_id, user_id)
+                .await
+                .unwrap()
+                .is_none(),
+            "a classic workflow run is excluded from the background surface (→ 404)"
+        );
+
+        // Cross-user is still excluded through the background choke point.
+        assert!(
+            find_background_run_for_owner(&pool, bg.id, Uuid::new_v4())
+                .await
+                .unwrap()
+                .is_none(),
+            "cross-user fetch must be None (404), never leak the row"
+        );
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    // ── ITEM-25: steering-note queue ────────────────────────────────────────
+
+    /// enqueue → list-pending roundtrip, then consume marks them consumed
+    /// (idempotent: a second consume yields nothing, and list-pending empties).
+    #[tokio::test]
+    async fn run_notes_enqueue_list_consume_roundtrip() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+        let run = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .expect("insert subagent run");
+
+        // Two notes queue and list oldest-first, both pending.
+        let a = enqueue_run_note(&pool, run.id, "check the second table too")
+            .await
+            .expect("enqueue a");
+        let b = enqueue_run_note(&pool, run.id, "prefer the 2024 revision")
+            .await
+            .expect("enqueue b");
+        assert!(a.consumed_at.is_none() && b.consumed_at.is_none());
+
+        let pending = list_pending_run_notes(&pool, run.id).await.unwrap();
+        assert_eq!(pending.len(), 2, "both notes pending");
+        assert_eq!(pending[0].note, "check the second table too", "oldest-first");
+        assert_eq!(pending[1].note, "prefer the 2024 revision");
+
+        // Consume returns both, oldest-first, and stamps consumed_at.
+        let consumed = consume_pending_run_notes(&pool, run.id).await.unwrap();
+        assert_eq!(consumed.len(), 2);
+        assert_eq!(consumed[0].note, "check the second table too");
+        assert!(consumed.iter().all(|n| n.consumed_at.is_some()));
+
+        // Idempotent: pending is now empty; a second consume yields nothing.
+        assert!(list_pending_run_notes(&pool, run.id).await.unwrap().is_empty());
+        assert!(consume_pending_run_notes(&pool, run.id).await.unwrap().is_empty());
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    /// DEC-79 bounded depth: enqueuing past `MAX_PENDING_RUN_NOTES` drops the
+    /// OLDEST pending — only the newest 8 survive.
+    #[tokio::test]
+    async fn run_notes_enqueue_is_bounded_drop_oldest() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+        let run = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .expect("insert subagent run");
+
+        let over = MAX_PENDING_RUN_NOTES + 1; // 9
+        for i in 0..over {
+            enqueue_run_note(&pool, run.id, &format!("note-{i}"))
+                .await
+                .expect("enqueue");
+            // Distinct created_at so the drop-oldest ORDER BY is deterministic.
+            tokio::time::sleep(std::time::Duration::from_millis(3)).await;
+        }
+
+        let pending = list_pending_run_notes(&pool, run.id).await.unwrap();
+        assert_eq!(
+            pending.len() as i64,
+            MAX_PENDING_RUN_NOTES,
+            "pending is capped at MAX_PENDING_RUN_NOTES"
+        );
+        // note-0 (oldest) was dropped; note-1..note-8 remain, oldest-first.
+        assert_eq!(pending[0].note, "note-1", "oldest surviving is note-1 (note-0 dropped)");
+        assert_eq!(pending.last().unwrap().note, format!("note-{}", over - 1));
+
+        cleanup_user(&pool, user_id).await;
+    }
+
+    /// Deleting the run CASCADES its notes away (FK ON DELETE CASCADE).
+    #[tokio::test]
+    async fn run_notes_cascade_on_run_delete() {
+        let Some(pool) = connect().await else {
+            eprintln!("skip: DATABASE_URL unset");
+            return;
+        };
+        let user_id = make_user(&pool).await;
+        let run = insert_background_run(&pool, bg_req(user_id, JobKind::SubAgent))
+            .await
+            .expect("insert subagent run");
+        enqueue_run_note(&pool, run.id, "will be cascaded")
+            .await
+            .expect("enqueue");
+        assert_eq!(list_pending_run_notes(&pool, run.id).await.unwrap().len(), 1);
+
+        delete_run_row(&pool, run.id).await.expect("delete run");
+
+        let remaining: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM background_run_notes WHERE run_id = $1")
+                .bind(run.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(remaining, 0, "notes are deleted with their run (cascade)");
+
+        cleanup_user(&pool, user_id).await;
+    }
 }

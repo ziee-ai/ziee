@@ -45,6 +45,7 @@ declare_repositories! {
     code_sandbox: CodeSandboxRepository => crate::modules::code_sandbox,
     memory: MemoryRepository => crate::modules::memory,
     summarization: SummarizationRepository => crate::modules::summarization,
+    agent: AgentRepository => crate::modules::agent,
     assistant_core_memory: AssistantCoreMemoryRepository => crate::modules::assistant_core_memory,
     project: ProjectRepository => crate::modules::project,
     onboarding: OnboardingRepository => crate::modules::onboarding,

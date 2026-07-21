@@ -27,6 +27,9 @@ use crate::hub::mock_release_server::spawn_mock_hub;
 
 
 mod access_and_durability;
+mod builder_agent_activity_test;
+mod builder_crud_test;
+mod builder_validate_def_test;
 mod elicit;
 mod elicit_data_seeding;
 mod install_from_hub;
@@ -52,6 +55,8 @@ mod validate_and_dry_run;
 mod conversation_elicit;
 mod test_endpoint;
 mod diamond_dag;
+mod agent_step_test;
+mod agent_step_resume_test;
 mod group_widget_endpoints;
 
 /// Reverse-DNS name of the fixture workflow the mock catalog serves.

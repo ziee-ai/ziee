@@ -807,6 +807,25 @@ impl StreamingService {
         use crate::utils::cancellation::CANCELLATION_TRACKER;
         use futures_util::StreamExt as _;
 
+        // Re-home cutover (ITEM-24): route through the shared agent-core loop when
+        // OPTED IN (`ZIEE_CHAT_AGENT_CORE=1`). The default remained legacy after the
+        // blind audit surfaced real approval-resume + tool-error control-flow bugs
+        // (the RegistryBridge-vs-ports resume-execution collision, tool-error aborts,
+        // partial-suspend orphans): the flip is HELD until those are fixed +
+        // re-verified. The happy-path streaming/persist/tool paths are verified; the
+        // opt-in lets that soak while the resume/error paths are hardened.
+        if std::env::var("ZIEE_CHAT_AGENT_CORE").as_deref() == Ok("1") {
+            return crate::modules::chat::agent_host::dispatcher::start_generation_agent_core(
+                self.pool.clone(),
+                self.extension_registry.clone(),
+                branch_id,
+                conversation_id,
+                user_id,
+                request,
+            )
+            .await;
+        }
+
         // Serialize: at most ONE in-flight generation per conversation. The
         // replay buffer is keyed by conversation and carries no message id to
         // demux two concurrent turns, so a second send (rapid double-send /
@@ -996,7 +1015,7 @@ impl StreamingService {
     /// Each provider handles Role::Tool correctly:
     /// - Anthropic: converts to "user" with tool_result content
     /// - OpenAI: converts to "tool" role
-    async fn convert_history_to_messages_with_extensions(
+    pub(crate) async fn convert_history_to_messages_with_extensions(
         history: &[crate::modules::chat::core::types::MessageWithContent],
         extension_registry: Option<&Arc<ExtensionRegistry>>,
         context: &StreamContext,

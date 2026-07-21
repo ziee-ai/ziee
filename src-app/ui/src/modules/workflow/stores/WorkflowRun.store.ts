@@ -10,6 +10,81 @@ import {
   type RunProgressSubscription,
   subscribeRunProgress,
 } from '@/modules/workflow/sse/runProgressClient'
+import type { AgentActivityEntry } from '@/modules/workflow/components/run/activityDescriptors'
+
+/** Cap on the most-recent agent-activity rows retained per step in the client
+ *  store. Mirrors the backend `AGENT_ACTIVITY_MAX_ENTRIES` (repository.rs) so a
+ *  long run can't grow this array without bound. When exceeded we drop the
+ *  lowest-`seq` (oldest) rows, matching the backend's chronological trim. */
+export const AGENT_ACTIVITY_MAX_ENTRIES = 500
+
+/** Trim the (ascending-by-seq) list in place to the most-recent
+ *  `AGENT_ACTIVITY_MAX_ENTRIES`, dropping the lowest-seq head. Bounded work
+ *  (≤ overflow count), so it keeps per-frame merges O(1) amortized. */
+function trimActivity(list: AgentActivityEntry[]) {
+  if (list.length > AGENT_ACTIVITY_MAX_ENTRIES) {
+    list.splice(0, list.length - AGENT_ACTIVITY_MAX_ENTRIES)
+  }
+}
+
+/** Merge one agent-activity payload into an ordered, seq-deduped list (ascending
+ *  by `seq`). Re-emitting the same seq (e.g. a `running`→`ok` status upgrade)
+ *  REPLACES the existing row in place rather than appending a duplicate.
+ *
+ *  O(1) amortized: `seq` is monotonic and frames almost always arrive in order,
+ *  so the common cases (new tail / tail status-upgrade) are constant time; only
+ *  a genuinely out-of-order straggler pays an O(n) scan. The stored array is
+ *  then capped so memory can't grow unbounded over a long run. */
+export function mergeAgentActivity(list: AgentActivityEntry[], entry: AgentActivityEntry) {
+  const n = list.length
+  if (n === 0) {
+    list.push(entry)
+  } else {
+    const last = list[n - 1]
+    if (entry.seq > last.seq) {
+      // Common case: strictly newer → append (O(1)).
+      list.push(entry)
+    } else if (entry.seq === last.seq) {
+      // Common case: status upgrade on the newest row → replace tail (O(1)).
+      list[n - 1] = entry
+    } else {
+      // Rare: out-of-order seq. Locate the first row ≥ entry.seq and either
+      // replace (dedupe) or splice-insert to preserve ascending order.
+      const i = list.findIndex(e => e.seq >= entry.seq)
+      if (i >= 0 && list[i].seq === entry.seq) list[i] = entry
+      else if (i >= 0) list.splice(i, 0, entry)
+      else list.push(entry)
+    }
+  }
+  trimActivity(list)
+}
+
+/** Bulk-merge a persisted activity array into `list` in O(n + m) — one seq→index
+ *  map, in-place replace for existing seqs, append + a single sort for the new
+ *  ones — instead of an O(n²) per-element `findIndex`. Used by snapshot
+ *  rehydrate, where the persisted array can be large. */
+export function mergeAgentActivityBatch(
+  list: AgentActivityEntry[],
+  incoming: AgentActivityEntry[],
+) {
+  if (incoming.length === 0) return
+  const idxBySeq = new Map<number, number>()
+  list.forEach((e, i) => idxBySeq.set(e.seq, i))
+  let appended = false
+  for (const e of incoming) {
+    const i = idxBySeq.get(e.seq)
+    if (i !== undefined) {
+      list[i] = e // replace in place (dedupe / status upgrade)
+    } else {
+      list.push(e)
+      appended = true
+    }
+  }
+  // Persisted rows are chronological, but re-sort once only if we appended, to
+  // restore the ascending-seq invariant defensively.
+  if (appended) list.sort((a, b) => a.seq - b.seq)
+  trimActivity(list)
+}
 
 /** Per-step output metadata (mirrors backend `OutputMeta`). Content lives on
  *  disk; this is the snapshot blob in `step_outputs_json[step_id]`. Its
@@ -45,6 +120,11 @@ export interface StepProgress {
   itemProgress?: ItemProgress
   /** Live sandbox-step progress tracks (P2), keyed by track id ("" = default). */
   tracks?: Record<string, ProgressTrack>
+  /** Ordered agent ACTIVITY TIMELINE for a `kind:agent` step — accreting rows
+   *  (search/read/draft/gate…) deduped + ordered by `seq`. Fed by the
+   *  `agent_activity` tracks on the StepProgress frame (kept OUT of `tracks`) and
+   *  rehydrated from `step_logs_json["<stepId>::agent_activity"]` on snapshot. */
+  agentActivity?: AgentActivityEntry[]
   outputPreview?: string
   error?: string
   tokensUsed?: number
@@ -140,6 +220,28 @@ export const WorkflowRun = defineStore('WorkflowRun', {
                 const s = ensureStep(v, d.current_step)
                 s.tracks = d.step_progress_json as Record<string, ProgressTrack>
               }
+              // Rehydrate the agent ACTIVITY TIMELINE from durable per-step
+              // history so reopening a completed/resumed run replays every row.
+              // Persisted as `step_logs_json["<stepId>::agent_activity"]` → an
+              // array of `agent_activity` payloads. Array-merge (dedupe by seq).
+              const logs = (d.step_logs_json ?? {}) as Record<string, unknown>
+              const AGENT_SUFFIX = '::agent_activity'
+              for (const [key, value] of Object.entries(logs)) {
+                if (!key.endsWith(AGENT_SUFFIX) || !Array.isArray(value)) continue
+                const stepId = key.slice(0, -AGENT_SUFFIX.length)
+                // Guard the empty derived stepId: a key that is EXACTLY
+                // "::agent_activity" would otherwise materialize a phantom
+                // `ensureStep(v, '')` step. Skip it (and any array with no
+                // well-formed entries).
+                if (!stepId) continue
+                const wellFormed = (value as AgentActivityEntry[]).filter(
+                  raw => raw && typeof raw === 'object' && typeof raw.seq === 'number',
+                )
+                if (wellFormed.length === 0) continue
+                const s = ensureStep(v, stepId)
+                if (!s.agentActivity) s.agentActivity = []
+                mergeAgentActivityBatch(s.agentActivity, wellFormed)
+              }
               // Hydrate per-step output + artifact metadata (metadata only;
               // content fetched lazily via readOutput / readArtifact).
               const outputs = (d.step_outputs_json ?? {}) as Record<string, StepOutputMeta>
@@ -197,6 +299,14 @@ export const WorkflowRun = defineStore('WorkflowRun', {
               const s = ensureStep(v, d.step_id)
               if (!s.tracks) s.tracks = {}
               for (const t of d.tracks) {
+                // Agent-activity tracks feed the dedicated ACTIVITY TIMELINE, not
+                // the generic track map — and the `done`-delete path must NOT
+                // apply (a completed activity row stays visible in history).
+                if (t.kind.type === 'agent_activity') {
+                  if (!s.agentActivity) s.agentActivity = []
+                  mergeAgentActivity(s.agentActivity, t.kind)
+                  continue
+                }
                 const id = t.id ?? ''
                 // `done` tracks were delivered once + evicted backend-side.
                 if (t.done) delete s.tracks[id]

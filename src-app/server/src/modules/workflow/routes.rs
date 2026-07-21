@@ -6,12 +6,12 @@
 //! re-bind the hub install handlers (same as `skill/routes.rs`); the hub
 //! module's `/api/hub/workflows/...` routes remain too.
 //!
-//! NOTE — no plain `POST /api/workflows` (or `/api/workflows/system`)
-//! create endpoint: a hand-authored workflow bundle has no source of
-//! truth without a file upload, so `import` (multipart tarball) IS the
-//! create path. install-from-hub + import cover the real flows. This
-//! mirrors the skills surface, which also omits a plain create. (An
-//! intentional impl-differs vs. the plan's endpoint list — see plan §3.)
+//! NOTE — `POST /api/workflows` creates a USER-scope workflow from a posted
+//! `WorkflowDef` JSON (the visual builder's "save new"); it serializes the def
+//! to a one-file bundle and runs the same validate+compile+insert core as
+//! `import`. There is still no plain `POST /api/workflows/system` — system
+//! authoring stays admin-multipart-only. install-from-hub + import + the builder
+//! create/edit-definition endpoints cover the real flows.
 
 
 use aide::axum::{
@@ -45,6 +45,11 @@ pub fn user_routes() -> ApiRouter {
             // the canonical user-facing path (mirrors skill/routes.rs).
             post_with(handlers::install_from_hub, handlers::install_from_hub_docs),
         )
+        // Create from a posted WorkflowDef (visual builder "save new")
+        .api_route(
+            "/workflows",
+            post_with(dev::create_user_workflow, dev::create_user_workflow_docs),
+        )
         .api_route(
             "/workflows/{id}",
             get_with(handlers::get_user_workflow, handlers::get_user_workflow_docs),
@@ -54,6 +59,21 @@ pub fn user_routes() -> ApiRouter {
             put_with(
                 handlers::update_user_workflow,
                 handlers::update_user_workflow_docs,
+            ),
+        )
+        // Editable definition read (builder load) + in-place replace (builder save)
+        .api_route(
+            "/workflows/{id}/definition",
+            get_with(
+                handlers::get_workflow_definition,
+                handlers::get_workflow_definition_docs,
+            ),
+        )
+        .api_route(
+            "/workflows/{id}/definition",
+            put_with(
+                dev::update_user_workflow_definition,
+                dev::update_user_workflow_definition_docs,
             ),
         )
         .api_route(
@@ -116,6 +136,10 @@ pub fn user_routes() -> ApiRouter {
         .api_route(
             "/workflows/validate",
             post_with(dev::validate_workflow, dev::validate_workflow_docs),
+        )
+        .api_route(
+            "/workflows/validate-def",
+            post_with(dev::validate_workflow_def, dev::validate_workflow_def_docs),
         )
         .api_route(
             "/workflows/import",

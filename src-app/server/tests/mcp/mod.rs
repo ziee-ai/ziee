@@ -16,6 +16,8 @@ mod run_in_sandbox_test;
 mod approval_claim_test;
 mod elicitation_mcp_test;
 mod mcp_approval_loop_test;
+mod agent_core_tool_bridge_test;
+mod agent_core_multiturn_bridge_test;
 mod mcp_approval_workflow_test;
 mod mcp_content_test;
 mod mcp_defaults_test;
@@ -25,6 +27,8 @@ mod mcp_loop_settings_test;
 mod mcp_sampling_test;
 mod mcp_streaming_workflow_test;
 mod resource_link_test;
+// Admin per-(server, tool) approval-mode defaults (ITEM-54 / DEC-112)
+mod tool_approvals_test;
 // ============================================================================
 // Runtime Tests
 // ============================================================================

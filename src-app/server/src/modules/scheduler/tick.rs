@@ -129,11 +129,30 @@ pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::E
             continue;
         }
 
+        let kind = task.schedule_kind();
+
+        // ITEM-21/DEC-42: a self-paced task's next fire comes from the model's
+        // proposal, not a fixed schedule. Advance-before-dispatch = DISARM the row
+        // (`next_run_at` NULL, stays enabled) so the next tick can't re-claim it
+        // while its turn runs; the post-dispatch write-back (`fire_task`) re-arms
+        // `next_run_at` from the clamped proposal, or self-completes on stop/expiry.
+        if matches!(kind, ScheduleKind::SelfPaced) {
+            if let Err(e) = repository::disarm_self_paced(pool, task.id, now).await {
+                tracing::warn!("scheduler.tick: disarm_self_paced {} failed: {e:?}", task.id);
+                continue;
+            }
+            let pool = pool.clone();
+            let config = config.clone();
+            tokio::spawn(async move {
+                fire_task(&pool, &config, &task, "schedule", now).await;
+            });
+            continue;
+        }
+
         // Advance `next_run_at` SYNCHRONOUSLY before dispatch (coalesced catch-up:
         // skip missed intervals). This both prevents the next tick from re-claiming
         // the row and — crucially — means a slow/hung dispatch can't starve the
         // loop, because the actual firing is spawned off the tick.
-        let kind = task.schedule_kind();
         let next = schedule::next_occurrence(
             kind,
             task.run_at,
@@ -238,6 +257,115 @@ pub async fn fire_task(
         tracing::warn!("scheduler.tick: insert_run {} failed: {e:?}", task.id);
     }
 
+    // ITEM-21/DEC-42/44/45: self-paced write-back — a SCHEDULED self-paced firing
+    // re-arms `next_run_at` (or self-completes on stop/expiry). run-now is
+    // off-schedule (must not touch schedule bookkeeping), so it's excluded.
+    //
+    // GATED ON `outcome.success`: the self-paced next-fire / goal-seeking verdict /
+    // self-complete are computed ONLY for a firing that actually SUCCEEDED. On a
+    // FAILED firing `record_outcome` (above) is authoritative — it already stamped
+    // the failure `paused_reason` (the terminal class, or `max_failures` once the
+    // consecutive-failure cap is crossed) and honored that cap. Running the
+    // write-back on a failure would call `arm_self_paced(Disable, "completed")`
+    // (there is no proposal on a failed turn), which OVERWRITES the real failure
+    // reason with `'completed'` (masking the failure as success in the UI) AND
+    // disables the loop on the FIRST transient blip (bypassing the cap entirely
+    // for self-paced tasks). So on failure we leave the row exactly as
+    // `record_outcome` left it — a transient failure under the cap stays enabled
+    // for its next natural re-fire; a terminal / cap-crossing failure is disabled
+    // with the true failure reason.
+    // Goal-seeking runs on ANY successful self-paced firing — INCLUDING `run_now`:
+    // a manual fire of a goal-seeking loop must be able to EVALUATE its result and
+    // self-complete (`done`) or re-arm (`not_done`). Plain self-paced re-arming
+    // stays off `run_now` (off-schedule must not touch schedule bookkeeping) — that
+    // exclusion moves to the `else if trigger != "run_now"` branch below.
+    if outcome.success && matches!(task.schedule_kind(), ScheduleKind::SelfPaced) {
+        let (min_interval, max_horizon) = settings::get(pool)
+            .await
+            .map(|s| (i64::from(s.min_interval_seconds), i64::from(s.max_horizon_days)))
+            .unwrap_or((300, 7));
+
+        if let Some(condition) = task.completion_condition.as_deref() {
+            // ITEM-24 / DEC-61/62/63: GOAL-SEEKING write-back. A single isolated,
+            // cheap, INDEPENDENT model call judges this turn's result artifact
+            // against the completion condition. `done` self-stops ('completed');
+            // `not_done` re-arms another turn (reusing the self-paced clamp) until
+            // the `goal_seek_max_turns` cap OR the `max_horizon_days` backstop →
+            // stop 'incomplete'. Any evaluator error/timeout is `not_done` — the
+            // loop keeps working and NEVER falsely reports success.
+            let (eval_model_id, max_turns) =
+                match crate::core::Repos.agent.get_admin_settings().await {
+                    Ok(s) => (
+                        s.goal_eval_model_id.or(task.model_id),
+                        i64::from(s.goal_seek_max_turns),
+                    ),
+                    Err(e) => {
+                        tracing::warn!(
+                            "scheduler.tick: goal-seek settings read failed for {}: {e:?}",
+                            task.id
+                        );
+                        (task.model_id, 10)
+                    }
+                };
+            // The evaluator sees ONLY the result artifact + the condition.
+            let artifact = outcome.result_text.as_deref().unwrap_or("");
+            let verdict = match eval_model_id {
+                Some(mid) => {
+                    super::goal_eval::evaluate(mid, task.user_id, condition, artifact).await
+                }
+                // No resolvable model → can't confirm completion → keep working.
+                None => super::goal_eval::GoalVerdict::NotDone,
+            };
+            // Turn counter: scheduled runs (incl. the row just inserted above).
+            let turns = repository::count_scheduled_runs_for_task(pool, task.id)
+                .await
+                .unwrap_or(0);
+            let (sp_outcome, reason) = match super::goal_eval::decide(
+                verdict,
+                turns,
+                max_turns,
+                min_interval,
+                max_horizon,
+                task.created_at,
+                now,
+            ) {
+                super::goal_eval::GoalOutcome::Done => {
+                    (schedule::SelfPacedOutcome::Disable, "completed")
+                }
+                super::goal_eval::GoalOutcome::Continue(t) => {
+                    (schedule::SelfPacedOutcome::Fire(t), "completed")
+                }
+                super::goal_eval::GoalOutcome::Incomplete => {
+                    (schedule::SelfPacedOutcome::Disable, "incomplete")
+                }
+            };
+            if let Err(e) = repository::arm_self_paced(pool, task.id, sp_outcome, now, reason).await
+            {
+                tracing::warn!("scheduler.tick: goal arm_self_paced {} failed: {e:?}", task.id);
+            }
+        } else if trigger != "run_now" {
+            // Plain self-paced (ITEM-21 / DEC-42): feed the model's `schedule_next`
+            // proposal — drained off this firing's turn — to the EXISTING clamp +
+            // write-back. `Some(delay)` re-arms at the clamped instant; `Some(stop)`
+            // self-completes; ABSENT (the model didn't call the tool, or the
+            // agent-core chat path isn't active) ⇒ the default-cadence behavior is
+            // unchanged (`self_paced_writeback(None) => Disable`, self-complete).
+            let proposal = outcome.schedule_proposal.clone();
+            let sp_outcome = dispatch::self_paced_writeback(
+                proposal.as_ref(),
+                min_interval,
+                max_horizon,
+                task.created_at,
+                now,
+            );
+            if let Err(e) =
+                repository::arm_self_paced(pool, task.id, sp_outcome, now, "completed").await
+            {
+                tracing::warn!("scheduler.tick: arm_self_paced {} failed: {e:?}", task.id);
+            }
+        }
+    }
+
     // Notify the owner's devices that the task (its runs/state) changed.
     super::events::emit_task(crate::modules::sync::SyncAction::Update, task.id, task.user_id, None);
 }
@@ -278,6 +406,7 @@ mod tests {
             last_result_fingerprint: None,
             last_result_signature_json: None,
             bound_conversation_id: None,
+            completion_condition: None,
             allowed_unattended_tools: serde_json::json!([]),
             created_at: now,
             updated_at: now,

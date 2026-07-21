@@ -31,6 +31,7 @@ use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{
     WorkflowListResponse, WorkflowRunRequest, WorkflowRunStartResponse,
 };
+use crate::modules::workflow::validate;
 
 /// Re-export wrapper: `POST /api/workflows/install-from-hub` (user) +
 /// `POST /api/workflows/system/install-from-hub` (admin) bind the
@@ -102,6 +103,39 @@ pub fn get_user_workflow_docs(op: TransformOperation) -> TransformOperation {
         .tag("Workflows")
         .summary("Get a workflow by id")
         .response::<200, Json<Workflow>>()
+}
+
+/// Return the editable `WorkflowDef` (steps / inputs / outputs) parsed from the
+/// workflow's on-disk bundle — the source the visual builder loads. Owner-scoped
+/// exactly like `get_user_workflow` (a group-restricted system workflow the
+/// caller can't access, or a foreign id, 404s rather than leaking).
+pub async fn get_workflow_definition(
+    auth: RequirePermissions<(WorkflowsRead,)>,
+    AxumPath(id): AxumPath<Uuid>,
+) -> ApiResult<Json<validate::WorkflowDef>> {
+    let wf = repository::find_by_id(Repos.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Workflow"))?;
+    if !repository::user_can_access(Repos.pool(), auth.user.id, id).await? {
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Workflow").into());
+    }
+    let wf_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
+    let content = tokio::fs::read_to_string(&wf_path).await.map_err(|e| {
+        AppError::internal_error(format!("failed to read workflow.yaml at {}: {e}", wf_path.display()))
+    })?;
+    let def = validate::parse_workflow_yaml(&content)?;
+    Ok((StatusCode::OK, Json(def)))
+}
+
+pub fn get_workflow_definition_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsRead,)>(op)
+        .id("Workflow.getDefinition")
+        .tag("Workflows")
+        .summary("Get a workflow's editable definition (steps/inputs/outputs)")
+        .description("Parses the workflow's on-disk workflow.yaml into the typed WorkflowDef the visual builder edits. Owner-scoped: a foreign or inaccessible id returns 404.")
+        .response::<200, Json<validate::WorkflowDef>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<404, (), _>(|r| r.description("Workflow not found or not accessible"))
 }
 
 /// Best-effort cleanup of a single run's on-disk artifacts (run-created file

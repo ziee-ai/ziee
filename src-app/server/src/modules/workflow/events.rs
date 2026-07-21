@@ -246,6 +246,48 @@ pub enum ProgressKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         total: Option<u32>,
     },
+    /// A single structured entry in a `kind: agent` step's activity stream —
+    /// one observed agent-loop event (a thought, a tool call, a tool result, an
+    /// assistant message, a human gate, or a context compaction). Each carries a
+    /// monotonically-increasing `seq` and rides its own track id
+    /// (`agent-<seq>`) so distinct entries accumulate rather than collapsing
+    /// into a single log line. Persisted durably (see
+    /// `repository::append_agent_activity`).
+    AgentActivity {
+        /// Monotonic per-step sequence number (ordering key for the FE).
+        seq: u64,
+        kind: AgentActivityKind,
+        /// The tool name for `tool_call` / `tool_result` entries.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool: Option<String>,
+        /// Short human-readable headline (byte-capped at 512).
+        title: String,
+        /// Optional longer body (byte-capped at 16 KiB).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+        status: AgentActivityStatus,
+    },
+}
+
+/// The category of one `AgentActivity` entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentActivityKind {
+    Thinking,
+    ToolCall,
+    ToolResult,
+    Message,
+    Gate,
+    Compaction,
+}
+
+/// Lifecycle status of one `AgentActivity` entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentActivityStatus {
+    Running,
+    Ok,
+    Error,
 }
 
 /// One live progress track inside a sandbox step. `id` keys parallel substeps
@@ -361,5 +403,53 @@ impl CapturingEmitter {
 impl ProgressEmitter for CapturingEmitter {
     fn emit(&self, ev: SSEWorkflowRunEvent) {
         self.events.lock().unwrap().push(ev);
+    }
+}
+
+// TEST-6 — `ProgressKind::AgentActivity` serde round-trips under the
+// `type:"agent_activity"` tag (the new `kind: agent` progress variant), and the
+// pre-existing variants still round-trip unchanged.
+#[cfg(test)]
+mod agent_activity_serde_tests {
+    use super::*;
+
+    #[test]
+    fn agent_activity_round_trips_under_type_tag() {
+        let ev = ProgressKind::AgentActivity {
+            seq: 7,
+            kind: AgentActivityKind::ToolCall,
+            tool: Some("web_search".into()),
+            title: "calling web_search".into(),
+            detail: Some("query=rust".into()),
+            status: AgentActivityStatus::Running,
+        };
+        let v = serde_json::to_value(&ev).expect("serialize AgentActivity");
+        // Internally-tagged under `type` (rename_all = snake_case).
+        assert_eq!(v["type"], "agent_activity", "tagged discriminant: {v}");
+        assert_eq!(v["seq"], 7, "seq carried: {v}");
+        assert_eq!(v["kind"], "tool_call", "kind snake_case: {v}");
+        assert_eq!(v["status"], "running", "status snake_case: {v}");
+        assert_eq!(v["tool"], "web_search", "tool carried: {v}");
+        let back: ProgressKind =
+            serde_json::from_value(v).expect("deserialize AgentActivity");
+        assert_eq!(back, ev, "AgentActivity round-trips to an equal value");
+    }
+
+    #[test]
+    fn existing_variants_still_round_trip() {
+        for ev in [
+            ProgressKind::Status { message: "hi".into() },
+            ProgressKind::Bar { fraction: 0.4 },
+            ProgressKind::Counter { current: 2.0, total: 5.0, unit: Some("files".into()) },
+            ProgressKind::Log { line: "log line".into() },
+            ProgressKind::Phase { name: "compile".into(), index: Some(1), total: Some(3) },
+        ] {
+            let v = serde_json::to_value(&ev).expect("serialize variant");
+            let back: ProgressKind =
+                serde_json::from_value(v.clone()).expect("deserialize variant");
+            assert_eq!(back, ev, "variant round-trips unchanged: {v}");
+            // The new variant must not have displaced the existing tags.
+            assert_ne!(v["type"], "agent_activity", "existing variant keeps its tag: {v}");
+        }
     }
 }

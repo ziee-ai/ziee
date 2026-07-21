@@ -450,4 +450,59 @@ mod tests {
         assert!(get(run_id).is_some(), "unbounded handle must not be reaped");
         unregister(run_id);
     }
+
+    // TEST-49 (ITEM-14/15, LOCK-2): registering a `JobKind` is ADDITIVE — a kind
+    // is discovered by walking the decentralized policy registry, never a central
+    // `match` — so the backbone extends without editing a dispatch site. (The
+    // full policy-shape assertions live alongside the registry in `job_kind.rs`;
+    // here we pin the additive-lookup property from the RunHandle-registry side.)
+    #[test]
+    fn job_kind_registry_is_additive_no_central_match() {
+        use crate::modules::workflow::job_kind::{JOB_KIND_POLICIES, policy_for};
+        // Every shipped kind resolves via the slice lookup (no hardcoded arm).
+        assert!(JOB_KIND_POLICIES.len() >= 3);
+        for k in ["workflow", "sandbox_exec", "subagent"] {
+            assert!(policy_for(k).is_some(), "kind '{k}' resolves via the registry");
+        }
+        // An unregistered kind is None (a new kind plugs in by REGISTERING, not
+        // by editing this lookup).
+        assert!(policy_for("not_a_registered_kind").is_none());
+    }
+
+    // TEST-49 (LOCK-2 invariant): there is exactly ONE durable background-run
+    // substrate — `workflow_runs`. NO separate `background_jobs` table exists.
+    // DB-gated: soft-skips without `DATABASE_URL` (mirrors the suite's env-gated
+    // real-stack tests); runs for real against the migrated DB.
+    #[tokio::test]
+    async fn no_background_jobs_table_exists() {
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("skip: DATABASE_URL unset — cannot check the schema");
+                return;
+            }
+        };
+        let pool = match sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip: DB unreachable ({e})");
+                return;
+            }
+        };
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM information_schema.tables \
+             WHERE table_schema = 'public' AND table_name = 'background_jobs'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("query information_schema");
+        assert_eq!(
+            count, 0,
+            "LOCK-2: no separate background_jobs table — workflow_runs is the sole substrate"
+        );
+    }
 }

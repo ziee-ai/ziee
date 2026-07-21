@@ -138,6 +138,16 @@ fn io_err(detail: impl Into<String>) -> AppError {
 async fn conversation_model_authored_files(
     ctx: &SandboxContext,
 ) -> Result<Vec<crate::modules::file::models::File>, AppError> {
+    // The artifact-fallback resolves model-authored files via the global DB pool
+    // (`model_authored_file_ids` + `Repos.file`). In a pool-less context — a
+    // `cargo test --lib` unit run never binds the pool — treat it as "no authored
+    // files" (the fallback is simply absent, exactly like a conversation with zero
+    // authored artifacts) rather than panicking on the unbound `Repos`. In
+    // production the repositories are always initialized, so this guard is a no-op
+    // and the runtime behavior is byte-identical.
+    if !crate::core::is_repos_initialized() {
+        return Ok(Vec::new());
+    }
     let ids = crate::modules::file::available_files::model_authored_file_ids(
         ctx.conversation_id,
         ctx.user_id,
@@ -747,9 +757,14 @@ mod tests {
             .await
             .expect_err("must error");
         let msg = format!("{err:?}");
+        // A file that exists in neither the workspace nor the conversation's
+        // files (attachments / model-authored artifacts) returns a clean
+        // `FILE_NOT_FOUND` 404 — never a panic or a leaked internal error.
+        // (Pre-artifact-fallback this surfaced as a raw workspace read error;
+        // the current path returns the more helpful not-found error.)
         assert!(
-            msg.contains("read") || msg.contains("WORKSPACE_IO_ERROR"),
-            "msg: {msg}"
+            msg.contains("FILE_NOT_FOUND") || msg.contains("not found"),
+            "read of a missing file must return a clean FILE_NOT_FOUND error; msg: {msg}"
         );
     }
 

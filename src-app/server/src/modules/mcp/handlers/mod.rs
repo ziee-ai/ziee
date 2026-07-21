@@ -5,6 +5,7 @@ pub mod groups;
 pub mod runtime;
 pub mod system;
 pub mod test_connection;
+pub mod tool_approvals;
 pub mod user;
 
 // Re-export user handlers

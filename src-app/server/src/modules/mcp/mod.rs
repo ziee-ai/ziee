@@ -1,3 +1,4 @@
+pub(crate) mod agent_tool_call;
 pub mod chat_extension;
 pub mod client;
 pub mod connection_health;
