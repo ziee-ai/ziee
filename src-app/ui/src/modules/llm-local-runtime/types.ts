@@ -62,7 +62,7 @@ import type { useRuntimeUpdateStore } from './stores/RuntimeUpdate.store'
 import type { useRuntimeDownloadDrawerStore } from './stores/runtimeDownloadDrawer'
 import type { useRuntimeDeleteConfirmStore } from './stores/runtimeDeleteConfirm'
 import type { useRuntimeConfigStore } from './stores/runtimeConfig'
-import type { useRuntimeModelUsageStore } from './stores/RuntimeModelUsage.store'
+import type { useRuntimeModelUsageStore } from './stores/runtimeModelUsage'
 import type { useRuntimeDownloadProgressStore } from './stores/runtimeDownloadProgress'
 
 declare module '@ziee/framework/stores' {
