@@ -1,5 +1,4 @@
 import { createModule } from '@ziee/framework'
-import { Stores } from '@ziee/framework/stores'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { useFileStore } from './stores/file'
 import { ProjectFilesDef } from './project-extension/stores/projectFiles'
@@ -15,6 +14,7 @@ import './project-extension/extension'
 // Augments AppEvents with project.file_attached/detached event types
 // (relocated from projects/events as part of the project↔file inversion).
 import './project-extension/events/types'
+import { FilePreviewDrawer as FilePreviewDrawerStore } from '@/modules/file/stores/filePreviewDrawer'
 
 const FilePreviewDrawer = lazyWithPreload(() =>
   import('./components/FilePreviewDrawer').then(m => ({
@@ -71,7 +71,7 @@ export default createModule({
       id: 'file-preview-drawer',
       component: FilePreviewDrawer,
       shouldMount: () =>
-        useDelayedFalse(() => Stores.FilePreviewDrawer.isOpen),
+        useDelayedFalse(() => FilePreviewDrawerStore.isOpen),
       order: 50,
     },
   ],

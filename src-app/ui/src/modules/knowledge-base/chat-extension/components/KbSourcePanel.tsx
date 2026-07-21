@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { Spinner } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import { FilePanel } from '@/modules/file/components/FilePanel'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import {
@@ -9,6 +8,7 @@ import {
   scopedHighlightKey,
 } from '@/modules/file/viewers/highlightScope'
 import { PdfHighlight as PdfHighlightStore } from '@/modules/file/stores/pdfHighlight'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 /** Serializable payload for a `kb_source` right-panel tab. */
 export interface KbSourceData {
@@ -33,7 +33,7 @@ export interface KbSourceData {
  * endpoint yields an empty set) and simply open at the top.
  */
 export function KbSourcePanel({ fileId, page, charStart, charEnd, snippet }: KbSourceData) {
-  const { messageFilesCache } = Stores.File
+  const { messageFilesCache } = FileStore
   const file = messageFilesCache.get(fileId) ?? null
   // Per-pane (ITEM-49): scope the highlight/find-query keys by this pane so two
   // panes opening the SAME document's citations don't clobber each other. null on
@@ -43,14 +43,14 @@ export function KbSourcePanel({ fileId, page, charStart, charEnd, snippet }: KbS
   const hlKey = scopedHighlightKey(paneScope, fileId)
 
   useEffect(() => {
-    if (!file) void Stores.File.getFileEntityById(fileId)
+    if (!file) void FileStore.getFileEntityById(fileId)
   }, [fileId, file])
 
   // Non-PDF (text/markdown/code) viewers have no page geometry — drive
   // find-in-document to the passage prefix so it highlights + scrolls to it.
   useEffect(() => {
     const isPdf = file?.mime_type === 'application/pdf'
-    if (file && !isPdf && snippet) Stores.File.setFileFindQuery(hlKey, snippet)
+    if (file && !isPdf && snippet) FileStore.setFileFindQuery(hlKey, snippet)
   }, [file, hlKey, snippet])
 
   // Fetch + publish the highlight target (page + fraction-normalized rects).

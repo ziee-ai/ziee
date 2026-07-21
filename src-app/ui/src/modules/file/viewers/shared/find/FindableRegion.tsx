@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { FindBar } from './FindBar'
 import { useFindInDocument, type HighlightNames } from './useFindInDocument'
 import { isHighlightSupported } from './highlightSupported'
@@ -7,6 +6,7 @@ import {
   scopedHighlightKey,
   useFileHighlightScope,
 } from '@/modules/file/viewers/highlightScope'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 // ── Module-level open-find registry ──────────────────────────────────────────
 // A single document-level Ctrl/Cmd-F listener drives whichever mounted region is
@@ -98,7 +98,7 @@ export function FindableRegion({
   className?: string
 }) {
   const supported = isHighlightSupported()
-  const open = Stores.File.fileFindOpen.get(fileId) ?? false
+  const open = FileStore.fileFindOpen.get(fileId) ?? false
   const [query, setQuery] = useState('')
   // An external query (e.g. a KB citation's passage text) drives find to
   // highlight + scroll to it — the text/markdown analog of the PDF highlight.
@@ -106,7 +106,7 @@ export function FindableRegion({
   // don't share one find-query; null scope → the bare fileId key (unchanged).
   const hlScope = useFileHighlightScope()
   const externalQuery =
-    Stores.File.fileFindQuery.get(scopedHighlightKey(hlScope, fileId)) ?? ''
+    FileStore.fileFindQuery.get(scopedHighlightKey(hlScope, fileId)) ?? ''
   useEffect(() => {
     if (externalQuery) setQuery(externalQuery)
   }, [externalQuery])
@@ -133,11 +133,11 @@ export function FindableRegion({
   )
 
   const openFind = useCallback(() => {
-    Stores.File.setFileFindOpen(fileId, true)
+    FileStore.setFileFindOpen(fileId, true)
   }, [fileId])
 
   const close = useCallback(() => {
-    Stores.File.setFileFindOpen(fileId, false)
+    FileStore.setFileFindOpen(fileId, false)
     // Restore focus into the viewer so keyboard focus doesn't drop to <body>.
     regionRef.current?.focus()
   }, [fileId])

@@ -4,8 +4,9 @@ import { useState } from 'react'
 import type { IndexItem } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SkillDetailsDrawer } from './SkillDetailsDrawer'
+import { HubInstalled } from '@/modules/hub/stores/hub-installed-store'
+import { HubSkills } from '@/modules/hub/modules/skill/stores/hub-skills-store'
 
 interface SkillHubCardProps {
   item: IndexItem
@@ -17,8 +18,8 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
   const canInstall = usePermission(Permissions.SkillsInstall)
   const canManageSystem = usePermission(Permissions.SkillsManageSystem)
 
-  const installing = Stores.HubSkills.installing[item.name] ?? false
-  const installedRows = Stores.HubInstalled.items
+  const installing = HubSkills.installing[item.name] ?? false
+  const installedRows = HubInstalled.items
   const state: 'none' | 'user' | 'system' = (() => {
     const rows = installedRows.filter(
       r => r.hub_id === item.name && r.hub_category === 'skill',
@@ -31,7 +32,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
 
   const handleInstallForMe = async () => {
     try {
-      await Stores.HubSkills.installForMe(item.name)
+      await HubSkills.installForMe(item.name)
       message.success(`Installed "${title}"`)
     } catch {
       message.error('Install failed')
@@ -40,7 +41,7 @@ export function SkillHubCard({ item }: SkillHubCardProps) {
 
   const handleInstallForEveryone = async () => {
     try {
-      await Stores.HubSkills.installForEveryone(item.name)
+      await HubSkills.installForEveryone(item.name)
       message.success(`Installed "${title}" for everyone`)
     } catch {
       message.error('Install failed')

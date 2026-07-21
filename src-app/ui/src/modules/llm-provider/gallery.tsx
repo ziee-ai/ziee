@@ -13,7 +13,6 @@ import {
   lazyProps,
   whenTrue,
 } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
 import {
   firstEnabledRemoteProviderId,
   llmGroupsList,
@@ -22,6 +21,10 @@ import {
 } from '@/dev/gallery/fixtures/llm-providers'
 import { GroupLlmProvidersAssignment } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
 import { LlmProviderDrawer as LlmProviderDrawerStore } from '@/modules/llm-provider/components/llmProviderDrawer'
+import { AddLocalLlmModelUploadDrawer as AddLocalLlmModelUploadDrawerStore } from '@/modules/llm-provider/stores/llmModelDrawers/addLocalLlmModelUploadDrawer'
+import { AddRemoteLlmModelDrawer as AddRemoteLlmModelDrawerStore } from '@/modules/llm-provider/stores/llmModelDrawers/addRemoteLlmModelDrawer'
+import { EditLlmModelDrawer as EditLlmModelDrawerStore } from '@/modules/llm-provider/stores/llmModelDrawers/editLlmModelDrawer'
+import { AddLocalLlmModelDownloadDrawer as AddLocalLlmModelDownloadDrawerStore } from '@/modules/llm-provider/stores/llmModelDrawers/addLocalLlmModelDownloadDrawer'
 
 const provider = llmProvidersList.providers[0]
 const group = llmGroupsList.groups[0]
@@ -63,7 +66,7 @@ export const gallery: ModuleGallery = {
         'EditLlmModelDrawer',
       ),
       open: () =>
-        Stores.EditLlmModelDrawer.openEditLlmModelDrawer(
+        EditLlmModelDrawerStore.openEditLlmModelDrawer(
           (llmProvidersList.providers[0] as any)?.id ?? 'model-1',
         ),
     },
@@ -76,7 +79,7 @@ export const gallery: ModuleGallery = {
         'AddRemoteLlmModelDrawer',
       ),
       open: () =>
-        Stores.AddRemoteLlmModelDrawer.openAddRemoteLlmModelDrawer(
+        AddRemoteLlmModelDrawerStore.openAddRemoteLlmModelDrawer(
           provider.id,
           (provider as any).provider_type ?? 'openai',
         ),
@@ -91,7 +94,7 @@ export const gallery: ModuleGallery = {
         'AddLocalLlmModelUploadDrawer',
       ),
       open: () =>
-        Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(provider.id),
+        AddLocalLlmModelUploadDrawerStore.openAddLocalLlmModelUploadDrawer(provider.id),
     },
     {
       slug: 'overlay-add-local-llm-model-download-drawer',
@@ -104,7 +107,7 @@ export const gallery: ModuleGallery = {
         'AddLocalLlmModelDownloadDrawer',
       ),
       open: () =>
-        Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
+        AddLocalLlmModelDownloadDrawerStore.openAddLocalLlmModelDownloadDrawer(
           provider.id,
         ),
     },
@@ -244,7 +247,7 @@ export const gallery: ModuleGallery = {
               },
             ],
           } as any)
-          ViewDownloadDrawer.store.setState({
+          ViewDownloadDrawer.__setState({
             open: true,
             downloadId: 's3-dl-failed',
           } as any)
@@ -301,7 +304,7 @@ export const gallery: ModuleGallery = {
               },
             ],
           } as any)
-          ViewDownloadDrawer.store.setState({
+          ViewDownloadDrawer.__setState({
             open: true,
             downloadId: 's3-dl-active',
           } as any)

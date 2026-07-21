@@ -11,7 +11,7 @@ const SkillConversationDrawerDef = defineStore<
   state: skillConversationDrawerState,
   actions: import.meta.glob('./actions/*.ts'),
 })
-registerLazyStore(SkillConversationDrawerDef)
-export { SkillConversationDrawerDef as SkillConversationDrawer }
+
+export const SkillConversationDrawer = registerLazyStore(SkillConversationDrawerDef)
 export const useSkillConversationDrawerStore =
   SkillConversationDrawerDef.store

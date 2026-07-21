@@ -4,6 +4,7 @@ import { Stores } from '@ziee/framework/stores'
 import { AuthPage } from '@/modules/auth/AuthPage'
 import { Loading } from '@/core/components/Loading'
 import { App } from '@/modules/app/stores/app'
+import { AppMode } from '@/modules/app/AppMode.store'
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -12,7 +13,7 @@ interface AuthGuardProps {
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const { isAuthenticated, isInitializing } = Stores.Auth
   const { needsSetup } = App
-  const { multiUserMode } = Stores.AppMode
+  const { multiUserMode } = AppMode
   const navigate = useNavigate()
   const location = useLocation()
 

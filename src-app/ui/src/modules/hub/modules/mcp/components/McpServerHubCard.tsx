@@ -4,11 +4,12 @@ import { type HubMCPServer, type TransportType } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { useState } from 'react'
 import { McpServerDetailsDrawer } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 import type { McpServerDrawerPrefill } from '@/modules/mcp/stores/mcpServerDrawer/state'
 import { McpServerDrawer as McpServerDrawerStore } from '@/modules/mcp/stores/mcpServerDrawer'
+import { AppMode } from '@/modules/app/AppMode.store'
+import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
 
 interface McpServerHubCardProps {
   server: HubMCPServer
@@ -36,7 +37,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const [installingSystem, setInstallingSystem] = useState(false)
   const canInstall = usePermission(Permissions.HubMcpServersCreate)
   const canInstallSystem = usePermission(Permissions.McpServersAdminCreate)
-  const { multiUserMode } = Stores.AppMode
+  const { multiUserMode } = AppMode
 
   const slug = deriveSlug(server.name)
   // Leaf (after the first `/` in the reverse-DNS name) — used only as
@@ -48,9 +49,9 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
     return slash >= 0 ? server.name.slice(slash + 1) : server.name
   })()
   // Prefer the catalog-curated title over the bare leaf. Subscribe to
-  // `Stores.HubCatalog.catalog` so the title updates when the catalog
+  // `HubCatalog.catalog` so the title updates when the catalog
   // refreshes (e.g. mid-test against the mock Pages server).
-  const indexItem = Stores.HubCatalog.catalog?.items?.find(
+  const indexItem = HubCatalog.catalog?.items?.find(
     it => it.category === 'mcp-server' && it.name === server.name,
   )
   const displayTitle = indexItem?.title ?? leaf

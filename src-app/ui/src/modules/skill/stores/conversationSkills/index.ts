@@ -22,8 +22,8 @@ const ConversationSkillsDef = defineStore<ConversationSkillsState, Actions>('Con
   },
 })
 // Re-export as `ConversationSkills` so gallery code using `.store.setState` continues to work.
-registerLazyStore(ConversationSkillsDef)
-export { ConversationSkillsDef as ConversationSkills }
+
+export const ConversationSkills = registerLazyStore(ConversationSkillsDef)
 export const useConversationSkillsStore = ConversationSkillsDef.store
 
 /** Helper: which of the user's installed skills are currently hidden in this

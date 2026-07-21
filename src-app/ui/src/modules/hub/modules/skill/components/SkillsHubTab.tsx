@@ -2,17 +2,18 @@ import { Eraser, Search, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { MultiSelect, Input, Button, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@ziee/framework/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 import { SkillHubCard } from './SkillHubCard'
+import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
+import { HubInstalled } from '@/modules/hub/stores/hub-installed-store'
 
 export function SkillsHubTab() {
   // Subscribe to the shared catalog so the list re-renders on refresh.
-  const catalog = Stores.HubCatalog.catalog
-  const loading = Stores.HubCatalog.loading
-  const serverVersion = Stores.HubCatalog.serverVersion
+  const catalog = HubCatalog.catalog
+  const loading = HubCatalog.loading
+  const serverVersion = HubCatalog.serverVersion
   // Touch the installed list so install badges stay fresh.
-  void Stores.HubInstalled.items
+  void HubInstalled.items
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
 

@@ -1,4 +1,3 @@
-import { Stores } from '@ziee/framework/stores'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import { InlineFilePreview } from './InlineFilePreview'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
@@ -9,6 +8,7 @@ import type {
   File as FileEntity,
 } from '@/api-client/types'
 import type { InlineFileSource } from '@/modules/file/types/viewer'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 /**
  * Pull the `resource_links` carried by a `tool_result` content block. The
@@ -106,7 +106,7 @@ export function MessageFilesView({ content }: ContentRendererProps) {
 
   // Reactive subscription — re-renders when getMessageFile() resolves the
   // full entity (e.g. once a thumbnail becomes available).
-  const messageFilesCache = Stores.File.messageFilesCache
+  const messageFilesCache = FileStore.messageFilesCache
 
   return (
     <div
@@ -122,7 +122,7 @@ export function MessageFilesView({ content }: ContentRendererProps) {
           const fallback = buildFallbackFile(source.fileId, source)
           file = messageFilesCache.get(source.fileId) ?? fallback
           // Deferred inside the store action — safe to call during render.
-          Stores.File.getMessageFile(source.fileId, fallback)
+          FileStore.getMessageFile(source.fileId, fallback)
         }
         const viewer = file
           ? getViewer(file.filename, file.mime_type ?? undefined)

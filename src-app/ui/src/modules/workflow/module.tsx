@@ -1,11 +1,11 @@
 import { Workflow as WorkflowIcon } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
-import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
+import { GroupSystemWorkflowsAssignment as GroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
 import '@/modules/workflow/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
 
@@ -49,7 +49,7 @@ export default createModule({
       id: 'group-system-workflows-assignment-drawer',
       component: GroupSystemWorkflowsAssignmentDrawer,
       shouldMount: () =>
-        useDelayedFalse(() => Stores.GroupSystemWorkflowsAssignment.isOpen),
+        useDelayedFalse(() => GroupSystemWorkflowsAssignmentStore.isOpen),
       order: 100,
     },
   ],

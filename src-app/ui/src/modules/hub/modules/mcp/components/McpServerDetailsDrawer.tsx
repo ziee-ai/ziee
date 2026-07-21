@@ -3,7 +3,7 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Flex, Tag, Card, Text, Title } from '@ziee/kit'
 import { Link } from 'lucide-react'
 import type { HubMCPServer } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
+import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
 
 interface McpServerDetailsDrawerProps {
   server: HubMCPServer | null
@@ -38,7 +38,7 @@ export function McpServerDetailsDrawer({
     const slash = server.name.indexOf('/')
     return slash >= 0 ? server.name.slice(slash + 1) : server.name
   })()
-  const indexItem = Stores.HubCatalog.catalog?.items?.find(
+  const indexItem = HubCatalog.catalog?.items?.find(
     it => it.category === 'mcp-server' && it.name === server.name,
   )
   const displayTitle = indexItem?.title ?? leaf

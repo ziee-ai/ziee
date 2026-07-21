@@ -4,9 +4,10 @@ import { type HubAssistant } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { useState } from 'react'
 import { AssistantDetailsDrawer } from '@/modules/hub/modules/assistants/components/AssistantDetailsDrawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
+import { AppMode } from '@/modules/app/AppMode.store'
+import { HubAssistants } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 
 interface AssistantHubCardProps {
   assistant: HubAssistant
@@ -22,7 +23,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   // Templates target a multi-user fleet. On a single-admin desktop
   // (multiUserMode === false) there's no one to template for — hide the
   // "Use as Template" affordance entirely.
-  const { multiUserMode } = Stores.AppMode
+  const { multiUserMode } = AppMode
 
   // Check if assistant was already created from this hub assistant
   const isAlreadyCreated =
@@ -39,7 +40,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
     setIsCreating(true)
     try {
       // Create a user assistant from the hub assistant via store action
-      await Stores.HubAssistants.createFromHub({
+      await HubAssistants.createFromHub({
         hub_id: assistant.name,
         name: assistant.name,
         description: assistant.description,
@@ -81,7 +82,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
       // the assistant repo unsets ALL other template defaults in a
       // single transaction when a new default is set, which would
       // silently bump the existing default off auto-clone duty.
-      await Stores.HubAssistants.createTemplateFromHub({
+      await HubAssistants.createTemplateFromHub({
         hub_id: assistant.name,
         name: assistant.name,
         description: assistant.description,

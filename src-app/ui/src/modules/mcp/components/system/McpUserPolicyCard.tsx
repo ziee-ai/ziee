@@ -10,12 +10,12 @@ import {
 } from '@ziee/kit'
 import { Paragraph, message } from '@ziee/kit'
 import { useEffect, useMemo, useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { McpUserPolicy } from '@/modules/mcp/stores/mcpUserPolicy'
 import { SandboxFlavors } from '@/modules/code-sandbox/stores/sandboxFlavors'
+import { AppMode } from '@/modules/app/AppMode.store'
 
 interface PolicyForm {
   http: boolean
@@ -31,7 +31,7 @@ interface PolicyForm {
  * retention window. Hidden on single-admin desktop (multiUserMode=false).
  */
 export function McpUserPolicyCard() {
-  const { multiUserMode } = Stores.AppMode
+  const { multiUserMode } = AppMode
   const { policy } = McpUserPolicy
   const allowedTransports = useMemo(
     () => policy?.allowed_transports ?? [],

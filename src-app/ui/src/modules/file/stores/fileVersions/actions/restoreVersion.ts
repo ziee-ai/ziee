@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import loadVersionsFactory from './loadVersions'
 import type { FileVersionsGet, FileVersionsSet } from '../state'
+import { File } from '@/modules/file/stores/file'
 
 export default (set: FileVersionsSet, get: FileVersionsGet) => {
   const loadVersions = loadVersionsFactory(set, get)
@@ -10,7 +10,7 @@ export default (set: FileVersionsSet, get: FileVersionsGet) => {
     await loadVersions(fileId)
     // Refresh the head entity shown in panels / cards.
     try {
-      await Stores.File.loadMessageFile(fileId)
+      await File.loadMessageFile(fileId)
     } catch {
       /* best-effort */
     }

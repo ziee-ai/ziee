@@ -1,9 +1,9 @@
 import { Spin } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { RawCodeView } from '../shared/RawCodeView'
 import { FindableRegion } from '../shared/find/FindableRegion'
+import { File } from '@/modules/file/stores/file'
 
 export function WebBody(props: FileViewerSlotProps) {
   // Web viewer is not inline-capable (XSS surface; deferred). Type guard
@@ -12,7 +12,7 @@ export function WebBody(props: FileViewerSlotProps) {
   const { file } = props
   const content = useFileTextContent(file)
   const mode = useFileViewMode(file.id)
-  const wordWrap = Stores.File.fileWordWrap.get(file.id) ?? false
+  const wordWrap = File.fileWordWrap.get(file.id) ?? false
 
   if (content === null) {
     return <div className="flex items-center justify-center h-full"><Spin label="Loading" /></div>

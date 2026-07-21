@@ -1,6 +1,5 @@
 import { Plus, Search, Eraser } from 'lucide-react'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
@@ -11,6 +10,7 @@ import { Button, Card, ErrorState, Flex, Text, Input, Select, Tabs } from '@ziee
 import { ListPagination } from '@/components/common/ListPagination'
 import { SystemMcpServer } from '@/modules/mcp/stores/systemMcpServer'
 import { McpServerDrawer as McpServerDrawerStore } from '@/modules/mcp/stores/mcpServerDrawer'
+import { AppMode } from '@/modules/app/AppMode.store'
 
 export function SystemMcpServersPage() {
   const {
@@ -30,7 +30,7 @@ export function SystemMcpServersPage() {
   // Inside .map() the hook count becomes a function of
   // filteredServers.length — empty on first render, N on the second
   // → "Rendered more hooks than during the previous render."
-  const { multiUserMode } = Stores.AppMode
+  const { multiUserMode } = AppMode
 
   const clearAllFilters = () => {
     setSearchTerm('')
@@ -152,7 +152,7 @@ export function SystemMcpServersPage() {
         )}
 
         {/* Servers List. The per-row GroupsAssignmentCard is hidden on
-            single-admin desktop (Stores.AppMode.multiUserMode=false)
+            single-admin desktop (AppMode.multiUserMode=false)
             because there are no user groups to assign to there. */}
         <div className="flex flex-col gap-3">
           {filteredServers.map(server => (

@@ -10,11 +10,11 @@ import {
 } from 'lucide-react'
 import { useInRouterContext, useNavigate } from 'react-router-dom'
 import { Button, Segmented, Tooltip } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { message } from '@ziee/kit'
 import { isHighlightSupported } from './find/highlightSupported'
 import { FilePreviewDrawer } from '@/modules/file/stores/filePreviewDrawer'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 /**
  * Shared chrome building blocks for file viewer headers. Viewers compose
@@ -39,12 +39,12 @@ import { FilePreviewDrawer } from '@/modules/file/stores/filePreviewDrawer'
 
 export function RawToggle({ file }: { file: FileEntity }) {
   if (file.text_page_count === 0) return null
-  const mode = Stores.File.fileViewModes.get(file.id) ?? 'compiled'
+  const mode = FileStore.fileViewModes.get(file.id) ?? 'compiled'
   return (
     <Segmented
       value={mode}
       onChange={(v: string) =>
-        Stores.File.setFileViewMode(file.id, v as 'compiled' | 'raw')
+        FileStore.setFileViewMode(file.id, v as 'compiled' | 'raw')
       }
       data-testid="file-viewer-mode-segmented"
       options={[
@@ -90,7 +90,7 @@ export function RawToggle({ file }: { file: FileEntity }) {
 
 export function CopyButton({ file }: { file: FileEntity }) {
   const handleCopy = async () => {
-    // `Stores.File.$` is the raw zustand getState — bypasses
+    // `FileStore.$` is the raw zustand getState — bypasses
     // the reactive proxy, safe to use inside event handlers. The
     // proxy's `.get` trap calls useEffect/useStore on every
     // property access (see core/stores.ts:266), which is a Rules-
@@ -101,10 +101,10 @@ export function CopyButton({ file }: { file: FileEntity }) {
     // `undefined` = not loaded, or a prior load FAILED — File.store doesn't
     // cache an error sentinel, it just leaves the entry absent. So a cold/failed
     // read drives the load itself and re-reads (a retry on each click).
-    let text = Stores.File.$.fileTextContents.get(file.id)
+    let text = FileStore.$.fileTextContents.get(file.id)
     if (text === undefined) {
-      await Stores.File.loadFileTextContent(file.id, file)
-      text = Stores.File.$.fileTextContents.get(file.id)
+      await FileStore.loadFileTextContent(file.id, file)
+      text = FileStore.$.fileTextContents.get(file.id)
     }
     if (text === undefined || text === '') {
       message.error('Failed to load file content')
@@ -150,7 +150,7 @@ export function DownloadButton({ file }: { file: FileEntity }) {
       // action; Base UI flips it to the bottom only if it would clip.
       icon={<Download />}
       onClick={() => {
-        Stores.File.downloadFile(file).catch(() =>
+        FileStore.downloadFile(file).catch(() =>
           message.error('Failed to download file'),
         )
       }}
@@ -177,7 +177,7 @@ function findShortcutLabel(): string {
 
 export function FindButton({ file }: { file: FileEntity }) {
   if (!isHighlightSupported()) return null
-  const open = Stores.File.fileFindOpen.get(file.id) ?? false
+  const open = FileStore.fileFindOpen.get(file.id) ?? false
   return (
     <Button
       variant="ghost"
@@ -186,7 +186,7 @@ export function FindButton({ file }: { file: FileEntity }) {
       aria-label="Find in document"
       aria-pressed={open}
       icon={<Search />}
-      onClick={() => Stores.File.setFileFindOpen(file.id, !open)}
+      onClick={() => FileStore.setFileFindOpen(file.id, !open)}
       data-testid="file-viewer-find-btn"
     />
   )
@@ -197,7 +197,7 @@ export function FindButton({ file }: { file: FileEntity }) {
 // line with horizontal scroll; on wraps them. Coordinated via File.store.fileWordWrap.
 
 export function WrapToggle({ file }: { file: FileEntity }) {
-  const on = Stores.File.fileWordWrap.get(file.id) ?? false
+  const on = FileStore.fileWordWrap.get(file.id) ?? false
   return (
     <Button
       variant={on ? 'default' : 'ghost'}
@@ -206,7 +206,7 @@ export function WrapToggle({ file }: { file: FileEntity }) {
       aria-label="Toggle word wrap"
       aria-pressed={on}
       icon={<WrapText />}
-      onClick={() => Stores.File.setFileWordWrap(file.id, !on)}
+      onClick={() => FileStore.setFileWordWrap(file.id, !on)}
       data-testid="file-viewer-wrap-btn"
     />
   )

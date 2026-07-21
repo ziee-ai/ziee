@@ -16,12 +16,12 @@ import { ApiClient } from '@/api-client'
 import type { Skill } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { SkillScopeBadge } from './SkillScopeBadge'
 import { SystemSkill } from '@/modules/skill/stores/systemSkill'
 import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
 import { Skill as SkillStore } from '@/modules/skill/stores/skill'
+import { ConversationSkills } from '@/modules/skill/stores/conversationSkills'
 
 /** Build a readable markdown summary from the skill's persisted
  *  metadata. This renders the parsed FRONTMATTER only (`description`,
@@ -59,7 +59,7 @@ export function SkillDetailDrawer() {
   // the conversation's available listing loads — reading
   // `$.available` (non-reactive) meant the checkbox stayed false
   // for an actually-hidden skill if `available` wasn't loaded yet.
-  const availableMap = Stores.ConversationSkills.available
+  const availableMap = ConversationSkills.available
   const conversationAvailable = conversationId
     ? availableMap[conversationId]
     : undefined
@@ -75,7 +75,7 @@ export function SkillDetailDrawer() {
     if (conversationAvailable) {
       setHidden(!conversationAvailable.some(s => s.id === skill.id))
     } else {
-      void Stores.ConversationSkills.loadAvailable(conversationId)
+      void ConversationSkills.loadAvailable(conversationId)
     }
   }, [isOpen, skill, conversationId, conversationAvailable])
 
@@ -136,9 +136,9 @@ export function SkillDetailDrawer() {
     if (!conversationId) return
     try {
       if (next) {
-        await Stores.ConversationSkills.hide(skill.id, conversationId)
+        await ConversationSkills.hide(skill.id, conversationId)
       } else {
-        await Stores.ConversationSkills.unhide(skill.id, conversationId)
+        await ConversationSkills.unhide(skill.id, conversationId)
       }
       setHidden(next)
     } catch {

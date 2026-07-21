@@ -3,7 +3,7 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-// CRITICAL: enable store type declaration merging (registers `Stores.Citations`).
+// CRITICAL: enable store type declaration merging (registers `CitationsStore`).
 import './types'
 // Side-effect: register the "References" knowledge kind on the project page,
 // independent of the projects module's load order.

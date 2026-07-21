@@ -4,8 +4,9 @@ import { useState } from 'react'
 import type { IndexItem } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { WorkflowDetailsDrawer } from './WorkflowDetailsDrawer'
+import { HubInstalled } from '@/modules/hub/stores/hub-installed-store'
+import { HubWorkflows } from '@/modules/hub/modules/workflow/stores/hub-workflows-store'
 
 interface WorkflowHubCardProps {
   item: IndexItem
@@ -17,12 +18,12 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
   const canInstall = usePermission(Permissions.WorkflowsInstall)
   const canManageSystem = usePermission(Permissions.WorkflowsManageSystem)
 
-  const installing = Stores.HubWorkflows.installing[item.name] ?? false
+  const installing = HubWorkflows.installing[item.name] ?? false
   // Derive install state from the REACTIVE installed-items field (not
   // the store's `installStateFor` function — reading a stable fn ref in
   // render subscribes to the fn key, not the underlying data, so the
   // badge would go stale on external uninstall / cross-device sync).
-  const installedRows = Stores.HubInstalled.items
+  const installedRows = HubInstalled.items
   const state: 'none' | 'user' | 'system' = (() => {
     const rows = installedRows.filter(
       r => r.hub_id === item.name && r.hub_category === 'workflow',
@@ -35,7 +36,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
 
   const handleInstallForMe = async () => {
     try {
-      await Stores.HubWorkflows.installForMe(item.name)
+      await HubWorkflows.installForMe(item.name)
       message.success(`Installed "${title}"`)
     } catch {
       message.error('Install failed')
@@ -44,7 +45,7 @@ export function WorkflowHubCard({ item }: WorkflowHubCardProps) {
 
   const handleInstallForEveryone = async () => {
     try {
-      await Stores.HubWorkflows.installForEveryone(item.name)
+      await HubWorkflows.installForEveryone(item.name)
       message.success(`Installed "${title}" for everyone`)
     } catch {
       message.error('Install failed')

@@ -1,5 +1,5 @@
-import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 /**
  * Read the cached text contents for a file, triggering an async load
@@ -19,8 +19,8 @@ export function useFileTextContent(
   skip = false,
 ): string | null {
   if (skip || !file) return null
-  const content = Stores.File.fileTextContents.get(file.id) ?? null
-  if (content === null) Stores.File.getFileTextContent(file.id, file)
+  const content = FileStore.fileTextContents.get(file.id) ?? null
+  if (content === null) FileStore.getFileTextContent(file.id, file)
   return content
 }
 
@@ -28,5 +28,5 @@ export function useFileTextContent(
  *  when `fileId` is empty (skip mode for inline context). */
 export function useFileViewMode(fileId: string): 'compiled' | 'raw' {
   if (!fileId) return 'compiled'
-  return Stores.File.fileViewModes.get(fileId) ?? 'compiled'
+  return FileStore.fileViewModes.get(fileId) ?? 'compiled'
 }

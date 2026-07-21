@@ -1,7 +1,6 @@
 import { Plug } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
-import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { useMcpUserPolicyStore } from './stores/mcpUserPolicy'
 import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/mcpServerGroupsAssignmentCard'
@@ -12,6 +11,7 @@ import {
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
+import { GroupSystemMcpServersAssignment as GroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
 import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import '@/modules/mcp/project-extension/events/types' // Project↔MCP event declaration merging
@@ -102,7 +102,7 @@ export default createModule({
       id: 'group-system-mcp-servers-assignment-drawer',
       component: GroupSystemMcpServersAssignmentDrawer,
       shouldMount: () =>
-        useDelayedFalse(() => Stores.GroupSystemMcpServersAssignment.isOpen),
+        useDelayedFalse(() => GroupSystemMcpServersAssignmentStore.isOpen),
       order: 100,
     },
   ],

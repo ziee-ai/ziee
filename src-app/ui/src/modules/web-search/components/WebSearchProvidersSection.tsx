@@ -15,10 +15,10 @@ import {
   Paragraph,
   message,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { WebSearchAdmin } from '@/modules/web-search/stores/webSearchAdmin'
 
 /**
  * Provider configuration, rendered GENERICALLY from the `GET /providers`
@@ -26,7 +26,7 @@ import { SettingsFormActions } from '@/modules/settings/components/SettingsFormA
  * ONE Save button in the card footer that persists every provider at once.
  */
 export function WebSearchProvidersSection() {
-  const { providers, loading } = Stores.WebSearchAdmin
+  const { providers, loading } = WebSearchAdmin
   const canManage = usePermission(Permissions.WebSearchAdminManage)
 
   // Nested defaults: { <providerKey>: { <field>: '', api_key: '' } }.
@@ -69,7 +69,7 @@ export function WebSearchProvidersSection() {
         if (p.needs_api_key && v.api_key && v.api_key.trim().length > 0) {
           body.api_key = v.api_key.trim()
         }
-        await Stores.WebSearchAdmin.updateProvider(p.key, body)
+        await WebSearchAdmin.updateProvider(p.key, body)
       }
       message.success('Search providers saved')
       form.reset(buildDefaults()) // clears the api_key inputs
@@ -82,7 +82,7 @@ export function WebSearchProvidersSection() {
 
   const clearKey = async (providerKey: string, displayName: string) => {
     try {
-      await Stores.WebSearchAdmin.updateProvider(providerKey, { api_key: '' })
+      await WebSearchAdmin.updateProvider(providerKey, { api_key: '' })
       message.success(`${displayName} API key cleared`)
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to clear key')

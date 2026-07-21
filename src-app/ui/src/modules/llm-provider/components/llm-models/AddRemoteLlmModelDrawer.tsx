@@ -16,13 +16,13 @@ import {
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useMemo, useState } from 'react'
 import type { DiscoveredModel } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { BASIC_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
 import { mapDiscoveredModelToForm } from '@/modules/llm-provider/components/llm-models/discoveredModelForm'
 import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
+import { AddRemoteLlmModelDrawer as AddRemoteLlmModelDrawerStore } from '@/modules/llm-provider/stores/llmModelDrawers/addRemoteLlmModelDrawer'
 
 // The picker sources its options from `GET /discover-models` (catalog + live
 // /v1/models). display_name + description reuse BASIC_MODEL_FIELDS (minus the
@@ -56,7 +56,7 @@ export function AddRemoteLlmModelDrawer() {
     },
   })
 
-  const { open, providerId } = Stores.AddRemoteLlmModelDrawer
+  const { open, providerId } = AddRemoteLlmModelDrawerStore
   const canCreate = usePermission(Permissions.LlmModelsCreate)
 
   // Discovered models + state for THIS provider. Read the reactive proxy fields
@@ -137,7 +137,7 @@ export function AddRemoteLlmModelDrawer() {
       })
 
       resetAll()
-      Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()
+      AddRemoteLlmModelDrawerStore.closeAddRemoteLlmModelDrawer()
       message.success('Model added successfully')
     } catch (error) {
       console.error('Failed to add model:', error)
@@ -149,7 +149,7 @@ export function AddRemoteLlmModelDrawer() {
 
   const handleCancel = () => {
     resetAll()
-    Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()
+    AddRemoteLlmModelDrawerStore.closeAddRemoteLlmModelDrawer()
   }
 
   return (

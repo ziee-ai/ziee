@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { composerPaneKey } from '@/modules/file/stores/file'
 import {
@@ -10,6 +9,7 @@ import {
 } from '@/modules/file/constants'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 /**
  * FileUploadArea Component
@@ -82,7 +82,7 @@ export function FileUploadArea() {
       if (files.length > 0) {
         // uploadFiles is an action — callable directly from a raw DOM event
         // listener (actions are hook-free, safe outside React render).
-        Stores.File.uploadFiles(paneKeyRef.current, files).catch((error: unknown) => {
+        FileStore.uploadFiles(paneKeyRef.current, files).catch((error: unknown) => {
           console.error('Upload failed:', error)
           message.error('Failed to upload files')
         })

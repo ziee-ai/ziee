@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Search } from 'lucide-react'
 import { Button, Card, Flex, Input, Tag, Text } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import type { KnowledgeSearchHit } from '@/api-client/types'
 import { KnowledgeBaseDetail } from '@/modules/knowledge-base/stores/knowledgeBaseDetail'
 import { FilePreviewDrawer } from '@/modules/file/stores/filePreviewDrawer'
 import { PdfHighlight as PdfHighlightStore } from '@/modules/file/stores/pdfHighlight'
+import { File } from '@/modules/file/stores/file'
 
 /**
  * Detail-page "test retrieval" box (FB-8 / DEC-40) — runs the same retrieval
@@ -22,7 +22,7 @@ export function KnowledgeBaseSearchPanel({ kbId }: { kbId: string }) {
   const run = () => void KnowledgeBaseDetail.searchKb(kbId, q)
 
   const openHit = async (h: KnowledgeSearchHit) => {
-    const file = await Stores.File.getFileEntityById(h.file_id)
+    const file = await File.getFileEntityById(h.file_id)
     if (file.mime_type === 'application/pdf') {
       try {
         const res = await ApiClient.File.getTextRects({
@@ -37,7 +37,7 @@ export function KnowledgeBaseSearchPanel({ kbId }: { kbId: string }) {
       }
     } else {
       // Non-PDF: drive find-in-document to the passage prefix (scroll+highlight).
-      Stores.File.setFileFindQuery(h.file_id, (h.content ?? '').trim().slice(0, 60))
+      File.setFileFindQuery(h.file_id, (h.content ?? '').trim().slice(0, 60))
     }
     FilePreviewDrawer.openPreview(file)
   }

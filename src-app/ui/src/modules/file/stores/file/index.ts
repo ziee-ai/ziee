@@ -6,7 +6,7 @@ import type { Actions } from './actions.gen'
 
 /**
  * File store — chat-composer upload buffer + persistent file caches
- * (thumbnails, previews, content, view modes). Lives at Stores.File
+ * (thumbnails, previews, content, view modes). Lives at FileStore
  * (registered in modules/file/module.tsx). Prior name was
  * Stores.Chat.FileStore (nested via the chat-extension framework);
  * relocated out so file-domain state lives in the file module that

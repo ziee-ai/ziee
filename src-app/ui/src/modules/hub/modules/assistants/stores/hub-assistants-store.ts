@@ -4,7 +4,7 @@ import type {
   CreateAssistantFromHubRequest,
   HubAssistant,
 } from '@/api-client/types'
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import {
   emitAssistantCreated,
   emitAssistantDeleted,
@@ -12,7 +12,7 @@ import {
   emitAssistantTemplateDeleted,
 } from '@/modules/assistant/events'
 
-export const HubAssistants = defineStore('HubAssistants', {
+const HubAssistantsDef = defineStore('HubAssistants', {
   immer: true,
   state: {
     assistants: [] as HubAssistant[],
@@ -173,4 +173,6 @@ export const HubAssistants = defineStore('HubAssistants', {
   },
 })
 
-export const useHubAssistantsStore = HubAssistants.store
+export const useHubAssistantsStore = HubAssistantsDef.store
+
+export const HubAssistants = registerLazyStore(HubAssistantsDef)

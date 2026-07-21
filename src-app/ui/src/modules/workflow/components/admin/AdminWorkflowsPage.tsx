@@ -4,7 +4,6 @@ import { ListPagination } from '@/components/common/ListPagination'
 import { useEffect, useState } from 'react'
 import { Permissions } from '@/api-client/permissions'
 import { Can } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { ImportWorkflowDialog } from '@/modules/workflow/components/ImportWorkflowDialog'
 import { WorkflowDetailDrawer } from '@/modules/workflow/components/WorkflowDetailDrawer'
@@ -12,6 +11,7 @@ import { WorkflowScopeBadge } from '@/modules/workflow/components/WorkflowScopeB
 import { AdminWorkflowGroupAssignment } from './AdminWorkflowGroupAssignment'
 import { SystemWorkflow } from '@/modules/workflow/stores/systemWorkflow'
 import { WorkflowDrawer } from '@/modules/workflow/stores/workflowDrawer'
+import { AppMode } from '@/modules/app/AppMode.store'
 
 /**
  * `/settings/workflows-admin` — lists system-scope workflows. Admins
@@ -20,7 +20,7 @@ import { WorkflowDrawer } from '@/modules/workflow/stores/workflowDrawer'
  */
 export function AdminWorkflowsPage() {
   const { systemWorkflows, loading, error } = SystemWorkflow
-  const { multiUserMode } = Stores.AppMode
+  const { multiUserMode } = AppMode
   const [importOpen, setImportOpen] = useState(false)
 
   // Client-side pagination (the store loads the full list via listSystem()).

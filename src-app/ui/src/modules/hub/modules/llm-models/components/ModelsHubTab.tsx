@@ -2,16 +2,17 @@ import { Eraser, LayoutGrid, Search } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { MultiSelect, Select, Text, Button, Input, ErrorState, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@ziee/framework/stores'
 import { ModelHubCard } from '@/modules/hub/modules/llm-models/components/ModelHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
+import { HubModels } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
+import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
 
 export function ModelsHubTab() {
-  const { models, loading, error } = Stores.HubModels // Auto-loads via __init__
+  const { models, loading, error } = HubModels // Auto-loads via __init__
   // Cross-reference each model id with the catalog so we know its
   // min_ziee_version. The catalog store loads /hub/index lazily.
-  const catalog = Stores.HubCatalog.catalog
-  const serverVersion = Stores.HubCatalog.serverVersion
+  const catalog = HubCatalog.catalog
+  const serverVersion = HubCatalog.serverVersion
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   // v2 Phase 7 dropped `popularity_score` + the model-wide `size_gb`,
@@ -84,7 +85,7 @@ export function ModelsHubTab() {
         resource="hub models"
         description="The hub catalog couldn't be loaded. Check your connection and try again."
         details={error}
-        onRetry={() => Stores.HubModels.loadModels()}
+        onRetry={() => HubModels.loadModels()}
         data-testid="hub-models-error"
       />
     )

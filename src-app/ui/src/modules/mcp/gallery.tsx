@@ -223,7 +223,7 @@ export const gallery: ModuleGallery = {
           './stores/mcpUserPolicy'
         )
         await holdPatch(() => {
-          AppMode.store.setState({ multiUserMode: true } as any)
+          AppMode.__setState({ multiUserMode: true } as any)
           McpUserPolicy.store.setState({
             policy: {
               allowed_transports: [],

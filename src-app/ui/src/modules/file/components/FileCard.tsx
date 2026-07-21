@@ -6,13 +6,13 @@ import {
   AttachmentDescription, AttachmentActions, AttachmentTrigger,
 } from '@ziee/kit'
 import { Confirm } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type File as FileEntity } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import type { FileUploadProgress } from '@/modules/file/stores/file'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 import { FilePreviewDrawer } from '@/modules/file/stores/filePreviewDrawer'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 function formatFileSize(bytes: number): string {
   // A missing / malformed size (undefined, null, NaN) must never render as
@@ -95,14 +95,14 @@ export function FileCard({
   const [removeOpen, setRemoveOpen] = useState(false)
 
   // Reactive subscription: re-render when the thumbnail blob URL lands.
-  const thumbnailUrls = Stores.File.thumbnailUrls
+  const thumbnailUrls = FileStore.thumbnailUrls
   const thumbnailUrl = file ? (thumbnailUrls.get(file.id) ?? null) : null
   // Trigger the thumbnail load on first render when this file has one
   // (idempotent — guarded by thumbnailLoadingSet in the store). loadMessageFile
   // no longer eager-loads thumbnails, so each displaying component owns its own
   // load — mirrors ImageBody.
   if (file?.has_thumbnail && file.preview_page_count > 0 && !thumbnailUrl) {
-    Stores.File.getThumbnailUrl(file.id, file)
+    FileStore.getThumbnailUrl(file.id, file)
   }
 
   // Trigger lazy load on cache miss. The action is deferred inside the
@@ -111,7 +111,7 @@ export function FileCard({
   // guarded by `has_thumbnail && preview_page_count > 0` so non-image
   // files don't trigger a wasted fetch.
   if (file && !thumbnailUrl) {
-    Stores.File.getThumbnailUrl(file.id, file)
+    FileStore.getThumbnailUrl(file.id, file)
   }
 
   const handleCardClick = () => {
@@ -322,7 +322,7 @@ export function FileCard({
                   aria-label={`Download ${file.filename}`}
                   data-testid="file-card-download-btn"
                   onClick={() => {
-                    Stores.File.downloadFile(file)
+                    FileStore.downloadFile(file)
                       .catch(() => kitMessage.error('Failed to download file'))
                   }}
                 />

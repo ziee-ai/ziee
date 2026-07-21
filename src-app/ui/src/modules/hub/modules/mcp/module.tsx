@@ -1,11 +1,11 @@
 import { createModule } from '@ziee/framework'
-import { Stores } from '@ziee/framework/stores'
 import { Plug } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/mcp/types'
+import { McpUserPolicy } from '@/modules/mcp/stores/mcpUserPolicy'
 
 const McpServersHubTab = lazyWithPreload(() =>
   import('./components/McpServersHubTab').then(m => ({
@@ -53,7 +53,7 @@ export default createModule({
           if (hasPermissionNow(Permissions.McpServersAdminCreate)) {
             return true
           }
-          const policy = Stores.McpUserPolicy.$.policy
+          const policy = McpUserPolicy.$.policy
           return !!policy && policy.allowed_transports.length > 0
         },
         refresh: async () => {

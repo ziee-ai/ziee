@@ -1,11 +1,11 @@
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import {
   addLocalLlmModelDownloadDrawerState,
   type AddLocalLlmModelDownloadDrawerState,
 } from './state'
 import type { Actions } from './actions.gen'
 
-export const AddLocalLlmModelDownloadDrawer = defineStore<
+const AddLocalLlmModelDownloadDrawerDef = defineStore<
   AddLocalLlmModelDownloadDrawerState,
   Actions
 >('AddLocalLlmModelDownloadDrawer', {
@@ -13,4 +13,6 @@ export const AddLocalLlmModelDownloadDrawer = defineStore<
   actions: import.meta.glob('./actions/*.ts'),
 })
 export const useAddLocalLlmModelDownloadDrawerStore =
-  AddLocalLlmModelDownloadDrawer.store
+  AddLocalLlmModelDownloadDrawerDef.store
+
+export const AddLocalLlmModelDownloadDrawer = registerLazyStore(AddLocalLlmModelDownloadDrawerDef)

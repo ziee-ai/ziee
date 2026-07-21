@@ -1,5 +1,5 @@
 // Main hub module types — registers the catalog + installed stores so
-// callers can do `Stores.HubCatalog.catalog` / `Stores.HubInstalled.items`
+// callers can do `HubCatalogStore.catalog` / `HubInstalledStore.items`
 // with full type safety.
 import type { StoreProxy } from '@ziee/framework/stores'
 import type { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'

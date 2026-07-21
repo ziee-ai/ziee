@@ -1,8 +1,8 @@
 import { ErrorState, Spin } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { WebSearchGlobalSection } from './WebSearchGlobalSection'
 import { WebSearchProvidersSection } from './WebSearchProvidersSection'
+import { WebSearchAdmin } from '@/modules/web-search/stores/webSearchAdmin'
 
 /**
  * Web Search admin settings — one page, two cards: global settings + provider
@@ -12,7 +12,7 @@ import { WebSearchProvidersSection } from './WebSearchProvidersSection'
 export function WebSearchSettingsPage() {
   // Both loaders write the same `error` field; surface it so a failed initial
   // load isn't silently swallowed (mirrors SandboxResourceLimitsSection).
-  const { error, loading, settings } = Stores.WebSearchAdmin
+  const { error, loading, settings } = WebSearchAdmin
 
   // Full-page spinner on initial load instead of relying only on section-level
   // spinners (which flash when loading is briefly false before init fires).
@@ -42,7 +42,7 @@ export function WebSearchSettingsPage() {
           resource="web search settings"
           description="The web search settings couldn't be loaded. Check your connection and try again."
           details={error}
-          onRetry={() => void Stores.WebSearchAdmin.load()}
+          onRetry={() => void WebSearchAdmin.load()}
           data-testid="websearch-settings-error"
         />
       </SettingsPageContainer>

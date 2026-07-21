@@ -151,7 +151,7 @@ export const gallery: ModuleGallery = {
               ],
             ]),
           } as any)
-          RuntimeDownloadProgress.store.setState({
+          RuntimeDownloadProgress.__setState({
             activeByKey: new Map([
               [
                 'llamacpp@1.2.0@cpu',

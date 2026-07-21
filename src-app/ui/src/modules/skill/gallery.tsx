@@ -7,7 +7,6 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyBound, lazyNamed, lazyProps } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
 import { llmGroupsList } from '@/dev/gallery/fixtures/llm-providers'
 import {
   SKILLS_CONVERSATION_ID,
@@ -16,6 +15,7 @@ import {
 } from '@/dev/gallery/fixtures/skills'
 import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
 import { GroupSystemSkillsAssignment } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
+import { SkillConversationDrawer as SkillConversationDrawerStore } from '@/modules/skill/stores/skillConversationDrawer'
 
 const noop = () => {}
 
@@ -34,7 +34,7 @@ async function seedSkills(
   )
   await holdPatch(() => {
     useSkillStore.setState({ skills, loading: false } as any)
-    ConversationSkills.store.setState({
+    ConversationSkills.__setState({
       available: { [SKILLS_CONVERSATION_ID]: available },
       loading: { [SKILLS_CONVERSATION_ID]: false },
       error: null,
@@ -48,7 +48,7 @@ async function seedSkillsLoading(): Promise<void> {
     '@/modules/skill/stores/conversationSkills'
   )
   await holdPatch(() =>
-    ConversationSkills.store.setState({
+    ConversationSkills.__setState({
       available: {},
       loading: { [SKILLS_CONVERSATION_ID]: true },
       error: null,
@@ -78,7 +78,7 @@ export const gallery: ModuleGallery = {
         { conversationId: SKILLS_CONVERSATION_ID },
       ),
       open: () => {
-        Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
+        SkillConversationDrawerStore.openDrawer(SKILLS_CONVERSATION_ID)
         void seedSkills(skillsList, skillsAvailable)
       },
       interactions: [
@@ -102,7 +102,7 @@ export const gallery: ModuleGallery = {
         { conversationId: SKILLS_CONVERSATION_ID },
       ),
       open: () => {
-        Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
+        SkillConversationDrawerStore.openDrawer(SKILLS_CONVERSATION_ID)
         void seedSkills([], [])
       },
     },
@@ -116,7 +116,7 @@ export const gallery: ModuleGallery = {
         { conversationId: SKILLS_CONVERSATION_ID },
       ),
       open: () => {
-        Stores.SkillConversationDrawer.openDrawer(SKILLS_CONVERSATION_ID)
+        SkillConversationDrawerStore.openDrawer(SKILLS_CONVERSATION_ID)
         void seedSkillsLoading()
       },
     },
@@ -161,7 +161,7 @@ export const gallery: ModuleGallery = {
           '@/modules/skill/stores/conversationSkills'
         )
         await holdPatch(() =>
-          ConversationSkills.store.setState({
+          ConversationSkills.__setState({
             available: {},
             loading: { 'conv-1': true },
             error: null,
@@ -185,7 +185,7 @@ export const gallery: ModuleGallery = {
           '@/modules/skill/stores/conversationSkills'
         )
         await holdPatch(() =>
-          ConversationSkills.store.setState({
+          ConversationSkills.__setState({
             available: {},
             loading: { 'conv-1': false },
             error: 'Failed to load skills.',
@@ -211,7 +211,7 @@ export const gallery: ModuleGallery = {
         const { useSkillStore } = await import('@/modules/skill/stores/skill')
         await holdPatch(() => {
           useSkillStore.setState({ skills: [] } as any)
-          ConversationSkills.store.setState({
+          ConversationSkills.__setState({
             available: { 'conv-1': [] },
             loading: { 'conv-1': false },
             error: null,

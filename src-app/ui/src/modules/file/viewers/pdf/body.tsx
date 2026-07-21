@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react'
 import { File, TriangleAlert } from 'lucide-react'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import { Alert, Button, ScrollArea, Spin, Text } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 // NOTE: since the PDF.js viewer (`pdfjs-body.tsx`) took over the
 // `application/pdf` entry, `PdfBody` is the **office/image** path — it renders
@@ -21,12 +21,12 @@ export function PdfBody(props: FileViewerSlotProps) {
   // page slot loads. Calling the `getPreviewPageUrls()` action instead
   // would only subscribe to the function reference (whose identity never
   // changes), so the body would freeze at the initial placeholder array.
-  const previewPageUrls = Stores.File.previewPageUrls
+  const previewPageUrls = FileStore.previewPageUrls
   const cachedUrls = previewPageUrls.get(file.id)
-  const pageUrls = cachedUrls ?? Stores.File.getPreviewPageUrls(file)
+  const pageUrls = cachedUrls ?? FileStore.getPreviewPageUrls(file)
   // Subscribe to per-page errors so a settled failure renders an error/retry
   // slot rather than a spinner that never resolves (finding #17).
-  const pageErrors = Stores.File.previewPageErrors.get(file.id)
+  const pageErrors = FileStore.previewPageErrors.get(file.id)
 
   // Total page count of the source document, when the backend was able
   // to compute it (PDF / DOCX-via-PDF). May be undefined for
@@ -54,9 +54,9 @@ export function PdfBody(props: FileViewerSlotProps) {
     // slot is short, so relying only on visibility would flag them all as
     // visible and load everything — the reserved placeholder height (below)
     // plus this eager first request keep the window small.
-    Stores.File.requestPreviewPage(file, 1)
-    Stores.File.requestPreviewPage(file, 2)
-    Stores.File.requestPreviewPage(file, 3)
+    FileStore.requestPreviewPage(file, 1)
+    FileStore.requestPreviewPage(file, 2)
+    FileStore.requestPreviewPage(file, 3)
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -64,9 +64,9 @@ export function PdfBody(props: FileViewerSlotProps) {
           const idx = Number((entry.target as HTMLElement).dataset.pageIndex)
           if (Number.isNaN(idx)) continue
           // visible page (idx+1) + the next 2
-          Stores.File.requestPreviewPage(file, idx + 1)
-          Stores.File.requestPreviewPage(file, idx + 2)
-          Stores.File.requestPreviewPage(file, idx + 3)
+          FileStore.requestPreviewPage(file, idx + 1)
+          FileStore.requestPreviewPage(file, idx + 2)
+          FileStore.requestPreviewPage(file, idx + 3)
         }
       },
       { root, rootMargin: '200px 0px' },
@@ -146,7 +146,7 @@ export function PdfBody(props: FileViewerSlotProps) {
               <Button
                 size="default"
                 variant="outline"
-                onClick={() => Stores.File.retryPreviewPage(file, i + 1)}
+                onClick={() => FileStore.retryPreviewPage(file, i + 1)}
                 data-testid={`file-pdf-page-retry-${i + 1}`}
               >
                 Retry

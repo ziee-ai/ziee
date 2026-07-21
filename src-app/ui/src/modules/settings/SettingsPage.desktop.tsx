@@ -30,6 +30,7 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect, useRef } from 'react'
 import { Stores } from '@ziee/framework/stores'
+import { AppMode } from '@/modules/app/AppMode.store'
 
 // Settings page entries that are specific to multi-user SaaS features
 // with no equivalent on single-admin desktop. These are explicitly
@@ -44,7 +45,7 @@ import { Stores } from '@ziee/framework/stores'
 //  - `mcp-servers`: personal/user MCP. Hidden on desktop in favour of
 //    `mcp-admin` (System MCP, kept visible). The page's per-row group-
 //    assignment widget + user-policy card are hidden via
-//    `Stores.AppMode.multiUserMode` (false on desktop).
+//    `AppMode.multiUserMode` (false on desktop).
 //  - `profile`: account display name + password. The single desktop
 //    admin is auto-provisioned with a fixed username and uses Tauri's
 //    auto-login; no profile to present or edit.

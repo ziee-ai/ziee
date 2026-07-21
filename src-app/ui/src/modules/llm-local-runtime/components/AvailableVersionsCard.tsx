@@ -13,7 +13,6 @@ import {
   Text,
   message,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import type { DownloadSnapshot, GpuDetectionResponse } from '@/api-client/types'
@@ -21,6 +20,7 @@ import type { RuntimeAvailableVersion, RuntimeEngine } from '../types'
 import { HoverRow, formatBytes } from './_engineVersionsShared'
 import { RuntimeConfig } from '@/modules/llm-local-runtime/stores/runtimeConfig'
 import { RuntimeUpdate } from '@/modules/llm-local-runtime/stores/runtimeUpdate'
+import { RuntimeDownloadProgress } from '@/modules/llm-local-runtime/stores/runtimeDownloadProgress'
 
 const BACKEND_LABEL: Record<string, string> = {
   cpu: 'CPU',
@@ -52,7 +52,7 @@ const BACKEND_LABEL: Record<string, string> = {
 export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
   const { gpu, loadingGpu } = RuntimeConfig
   const { updateChecks, checking, error: updateError } = RuntimeUpdate
-  const { activeByKey } = Stores.RuntimeDownloadProgress
+  const { activeByKey } = RuntimeDownloadProgress
 
   const updateCheck = updateChecks.get(engine)
   const isChecking = checking.get(engine) || false
@@ -108,7 +108,7 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
       // is registered; the SSE subscription opened by the store
       // drives the progress bar. A page reload re-attaches via
       // the store's loadActive() on mount, so the bar survives.
-      await Stores.RuntimeDownloadProgress.startDownload({
+      await RuntimeDownloadProgress.startDownload({
         engine,
         version: v.version,
         platform,

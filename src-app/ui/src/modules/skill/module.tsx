@@ -1,7 +1,6 @@
 import { BookOpen } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
-import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
@@ -10,6 +9,7 @@ import {
   } from '@/modules/skill/stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
+import { GroupSystemSkillsAssignment as GroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
 import '@/modules/skill/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
 
@@ -56,7 +56,7 @@ export default createModule({
       id: 'group-system-skills-assignment-drawer',
       component: GroupSystemSkillsAssignmentDrawer,
       shouldMount: () =>
-        useDelayedFalse(() => Stores.GroupSystemSkillsAssignment.isOpen),
+        useDelayedFalse(() => GroupSystemSkillsAssignmentStore.isOpen),
       order: 100,
     },
   ],

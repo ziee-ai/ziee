@@ -2,15 +2,16 @@ import { Eraser, Search, Workflow } from 'lucide-react'
 import { Input, MultiSelect, Button, Empty } from '@ziee/kit'
 import { useMemo, useState } from 'react'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@ziee/framework/stores'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
 import { WorkflowHubCard } from './WorkflowHubCard'
+import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
+import { HubInstalled } from '@/modules/hub/stores/hub-installed-store'
 
 export function WorkflowsHubTab() {
-  const catalog = Stores.HubCatalog.catalog
-  const loading = Stores.HubCatalog.loading
-  const serverVersion = Stores.HubCatalog.serverVersion
-  void Stores.HubInstalled.items
+  const catalog = HubCatalog.catalog
+  const loading = HubCatalog.loading
+  const serverVersion = HubCatalog.serverVersion
+  void HubInstalled.items
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
 

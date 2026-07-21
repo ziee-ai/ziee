@@ -20,6 +20,6 @@ const RuntimeDownloadProgressDef = defineStore<RuntimeDownloadProgressState, Act
 // `registerLazyStore` registers the raw definition in the `Stores` global.
 // We re-export the raw definition as `RuntimeDownloadProgress` so gallery code
 // that does `RuntimeDownloadProgress.store.setState(...)` continues to work.
-registerLazyStore(RuntimeDownloadProgressDef)
-export { RuntimeDownloadProgressDef as RuntimeDownloadProgress }
+
+export const RuntimeDownloadProgress = registerLazyStore(RuntimeDownloadProgressDef)
 export const useRuntimeDownloadProgressStore = RuntimeDownloadProgressDef.store

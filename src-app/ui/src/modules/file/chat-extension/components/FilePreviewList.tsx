@@ -5,6 +5,7 @@ import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { composerPaneKey } from '@/modules/file/stores/file'
 import type { FileUploadProgress } from '@/modules/file/stores/file'
 import type { File as FileEntity } from '@/api-client/types'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 /**
  * FilePreviewList Component
@@ -26,7 +27,7 @@ export function FilePreviewList() {
     removeFile,
     removeUploadingFile,
     retryUpload,
-  } = Stores.File
+  } = FileStore
 
   // Filter the shared buffers to this pane's owned entries.
   const paneSelected = Array.from(

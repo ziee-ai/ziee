@@ -2,14 +2,15 @@ import { Bot, Search, Eraser } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { Combobox, MultiSelect, Text, Button, Input, ErrorState, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@ziee/framework/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
+import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
+import { HubAssistants } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 
 export function AssistantsHubTab() {
-  const { assistants, loading, error } = Stores.HubAssistants // Auto-loads via __init__
-  const catalog = Stores.HubCatalog.catalog
-  const serverVersion = Stores.HubCatalog.serverVersion
+  const { assistants, loading, error } = HubAssistants // Auto-loads via __init__
+  const catalog = HubCatalog.catalog
+  const serverVersion = HubCatalog.serverVersion
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   // v2 Phase 7 dropped `popularity_score`; sort by name only.
@@ -79,7 +80,7 @@ export function AssistantsHubTab() {
         resource="hub assistants"
         description="The hub catalog couldn't be loaded. Check your connection and try again."
         details={error}
-        onRetry={() => Stores.HubAssistants.loadAssistants()}
+        onRetry={() => HubAssistants.loadAssistants()}
         data-testid="hub-assistants-error"
       />
     )

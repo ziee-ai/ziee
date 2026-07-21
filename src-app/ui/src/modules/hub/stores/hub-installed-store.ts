@@ -1,13 +1,13 @@
 import { ApiClient } from '@/api-client'
 import type { HubInstalledResponse, HubInstalledRow } from '@/api-client/types'
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 
 /**
  * Backs the "Installed" hub tab — every tracked hub install the caller can see
  * (per-user installs always; system-wide installs when the caller has
  * `hub::catalog::read`).
  */
-export const HubInstalled = defineStore('HubInstalled', {
+const HubInstalledDef = defineStore('HubInstalled', {
   immer: true,
   state: {
     items: [] as HubInstalledRow[],
@@ -34,4 +34,6 @@ export const HubInstalled = defineStore('HubInstalled', {
   },
 })
 
-export const useHubInstalledStore = HubInstalled.store
+export const useHubInstalledStore = HubInstalledDef.store
+
+export const HubInstalled = registerLazyStore(HubInstalledDef)

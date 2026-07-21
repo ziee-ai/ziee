@@ -3,12 +3,12 @@ import { Alert, message } from '@ziee/kit'
 import { Table } from '@ziee/kit/kit/table'
 import type { TableColumn } from '@ziee/kit/kit/table'
 import { detectNumericColumns } from '@ziee/kit/kit/table-view-core'
-import { Stores } from '@ziee/framework/stores'
 import { cn } from '@/lib/utils'
 import { ExpandableCell } from './ExpandableCell'
 import { TabularToolbar } from './TabularToolbar'
 import type { ExportColumn, TabularRecord } from './tableView'
 import { DELIMITED_MAX_ROWS, parseDelimitedText } from './parse'
+import { File } from '@/modules/file/stores/file'
 
 /** Above this row count, switch the grid to row virtualization (needs a
  *  definite scroll-viewport height); at or below it, render a plain table so
@@ -132,7 +132,7 @@ export function DelimitedTable({ text, delimiter, fileName, fileId, fill = false
   // selectionRef is already formula-neutralized by the kit (sanitizeClipboard).
   const publishView = useCallback(() => {
     if (!fileId) return
-    Stores.File.setFileTabularView(fileId, {
+    File.setFileTabularView(fileId, {
       rows: viewRef.current,
       columns: activeColumns(),
       delimiter,
@@ -161,7 +161,7 @@ export function DelimitedTable({ text, delimiter, fileName, fileId, fill = false
   // a view that is no longer rendered.
   useEffect(() => {
     if (!fileId) return
-    return () => Stores.File.clearFileTabularView(fileId)
+    return () => File.clearFileTabularView(fileId)
   }, [fileId])
 
   return (

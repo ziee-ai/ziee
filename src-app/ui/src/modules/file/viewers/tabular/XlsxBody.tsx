@@ -4,7 +4,6 @@ import { Tabs } from '@ziee/kit/kit/tabs'
 import { Table } from '@ziee/kit/kit/table'
 import type { TableColumn } from '@ziee/kit/kit/table'
 import { detectNumericColumns } from '@ziee/kit/kit/table-view-core'
-import { Stores } from '@ziee/framework/stores'
 import { cn } from '@/lib/utils'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { ExpandableCell } from './ExpandableCell'
@@ -18,6 +17,7 @@ import {
   viewToXlsxBlob,
 } from './tableView'
 import { XLSX_MAX_ROWS, capRows } from './parse'
+import { File } from '@/modules/file/stores/file'
 
 /** Above this row count a sheet switches to row virtualization (needs a definite
  *  scroll height); at/below it renders a plain table that hugs its content, so a
@@ -223,12 +223,12 @@ export function XlsxBody(props: FileViewerSlotProps) {
   // XLSX is not inline-capable (binary parse + heavy bundle). Guard for
   // type-narrowing; chat dispatcher won't reach here for source-shaped props.
   const file = 'file' in props ? props.file : null
-  const { fileBinaryContents } = Stores.File
+  const { fileBinaryContents } = File
   const fileBinaryContent = file
     ? (fileBinaryContents.get(file.id) ?? null)
     : null
   if (file && fileBinaryContent === null) {
-    Stores.File.getFileBinaryContent(file.id, file)
+    File.getFileBinaryContent(file.id, file)
   }
   const [sheets, setSheets] = useState<Sheet[]>([])
   const [loading, setLoading] = useState(true)

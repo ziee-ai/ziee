@@ -5,7 +5,7 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/llm-repository/types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
-import { Stores } from '@ziee/framework/stores'
+import { LlmRepositoryDrawer as LlmRepositoryDrawerStore } from '@/modules/llm-repository/stores/llmRepositoryDrawer'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const LlmRepositorySettings = lazyWithPreload(() =>
@@ -45,7 +45,7 @@ export default createModule({
       // GroupLlmProvidersAssignmentDrawer). Without this the drawer's chunk +
       // its `GET /api/llm-repositories` fetch fired on EVERY route (incl. the
       // logged-out login page) for a component that is closed 99% of the time.
-      shouldMount: () => useDelayedFalse(() => Stores.LlmRepositoryDrawer.open),
+      shouldMount: () => useDelayedFalse(() => LlmRepositoryDrawerStore.open),
       order: 100,
     },
   ],

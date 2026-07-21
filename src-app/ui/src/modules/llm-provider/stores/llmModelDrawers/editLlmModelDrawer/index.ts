@@ -1,11 +1,11 @@
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import {
   editLlmModelDrawerState,
   type EditLlmModelDrawerState,
 } from './state'
 import type { Actions } from './actions.gen'
 
-export const EditLlmModelDrawer = defineStore<
+const EditLlmModelDrawerDef = defineStore<
   EditLlmModelDrawerState,
   Actions
 >('EditLlmModelDrawer', {
@@ -17,4 +17,6 @@ export const EditLlmModelDrawer = defineStore<
     })
   },
 })
-export const useEditLlmModelDrawerStore = EditLlmModelDrawer.store
+export const useEditLlmModelDrawerStore = EditLlmModelDrawerDef.store
+
+export const EditLlmModelDrawer = registerLazyStore(EditLlmModelDrawerDef)

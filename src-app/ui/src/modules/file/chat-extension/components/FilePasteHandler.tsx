@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { composerPaneKey } from '@/modules/file/stores/file'
 import { usePermission } from '@/core/permissions'
@@ -9,6 +8,7 @@ import {
   MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE,
   MAX_FILE_UPLOAD_LABEL,
 } from '@/modules/file/constants'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 /**
  * FilePasteHandler (ITEM-8 — paste image from clipboard)
@@ -17,7 +17,7 @@ import {
  * root via the `[data-chat-composer]` marker on ChatInput and attaches a
  * `paste` listener there. When the clipboard carries image files/items, they
  * are routed through the SAME upload path as drag-drop and the attach button
- * (`Stores.File.uploadFiles`), so limits/permissions/behavior are identical.
+ * (`FileStore.uploadFiles`), so limits/permissions/behavior are identical.
  *
  * Plain-text paste is left untouched (not intercepted, no preventDefault), so
  * pasting text into the textarea behaves exactly as before. Chat stays
@@ -81,7 +81,7 @@ export function FilePasteHandler() {
       if (files.length > 0) {
         // uploadFiles is an action — callable directly from a raw DOM event
         // listener (actions are hook-free, safe outside React render).
-        Stores.File.uploadFiles(paneKeyRef.current, files).catch((error: unknown) => {
+        FileStore.uploadFiles(paneKeyRef.current, files).catch((error: unknown) => {
           console.error('Paste upload failed:', error)
           message.error('Failed to upload pasted image')
         })

@@ -2,12 +2,12 @@ import { CalendarClock } from 'lucide-react'
 
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
-import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useSchedulerDrawerStore } from '@/modules/scheduler/stores/schedulerDrawer'
+import { SchedulerDrawer as SchedulerDrawerStore } from '@/modules/scheduler/stores/schedulerDrawer'
 import '@/modules/scheduler/types' // register Stores.* (declaration merge)
 import '@/modules/settings/types/SettingsSlots'
 
@@ -61,7 +61,7 @@ export default createModule({
     {
       id: 'scheduled-task-form-drawer',
       component: ScheduledTaskFormDrawer,
-      shouldMount: () => useDelayedFalse(() => Stores.SchedulerDrawer.open),
+      shouldMount: () => useDelayedFalse(() => SchedulerDrawerStore.open),
       order: 100,
     },
   ],

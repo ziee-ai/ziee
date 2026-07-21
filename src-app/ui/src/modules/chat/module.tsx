@@ -105,7 +105,7 @@ export default createModule({
         component: RecentConversationsWidget,
         order: 10,
         // Gate: this widget lists the user's conversations and fetches
-        // them on mount (`Stores.ChatHistory.loadConversations()`). The
+        // them on mount (`ChatHistory.loadConversations()`). The
         // sibling `chats` nav entry is gated on ConversationsRead — match
         // it here so a user without the grant never sees the list nor
         // fires the 403 fetch.

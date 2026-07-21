@@ -1,12 +1,12 @@
 import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import { webSearchAdminInitialState, type WebSearchAdminState } from './state'
 import type { Actions } from './actions.gen'
 
 /** WebSearchAdmin — folder-pattern store: state.ts + index.ts + actions/. Actions
  *  auto-register from `./actions/*.ts` by filename (no hand-written map). */
-export const WebSearchAdmin = defineStore<WebSearchAdminState, Actions>('WebSearchAdmin', {
+const WebSearchAdminDef = defineStore<WebSearchAdminState, Actions>('WebSearchAdmin', {
   immer: true,
   state: webSearchAdminInitialState,
   actions: import.meta.glob('./actions/*.ts'),
@@ -21,4 +21,6 @@ export const WebSearchAdmin = defineStore<WebSearchAdminState, Actions>('WebSear
     reload()
   },
 })
-export const useWebSearchAdminStore = WebSearchAdmin.store
+export const useWebSearchAdminStore = WebSearchAdminDef.store
+
+export const WebSearchAdmin = registerLazyStore(WebSearchAdminDef)

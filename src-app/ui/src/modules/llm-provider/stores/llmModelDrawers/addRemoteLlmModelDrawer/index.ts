@@ -1,15 +1,17 @@
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import {
   addRemoteLlmModelDrawerState,
   type AddRemoteLlmModelDrawerState,
 } from './state'
 import type { Actions } from './actions.gen'
 
-export const AddRemoteLlmModelDrawer = defineStore<
+const AddRemoteLlmModelDrawerDef = defineStore<
   AddRemoteLlmModelDrawerState,
   Actions
 >('AddRemoteLlmModelDrawer', {
   state: addRemoteLlmModelDrawerState,
   actions: import.meta.glob('./actions/*.ts'),
 })
-export const useAddRemoteLlmModelDrawerStore = AddRemoteLlmModelDrawer.store
+export const useAddRemoteLlmModelDrawerStore = AddRemoteLlmModelDrawerDef.store
+
+export const AddRemoteLlmModelDrawer = registerLazyStore(AddRemoteLlmModelDrawerDef)

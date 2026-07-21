@@ -4,7 +4,6 @@ import { ListPagination } from '@/components/common/ListPagination'
 import { useEffect, useState } from 'react'
 import { Permissions } from '@/api-client/permissions'
 import { Can } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { ImportSkillDialog } from '@/modules/skill/components/ImportSkillDialog'
 import { SkillDetailDrawer } from '@/modules/skill/components/SkillDetailDrawer'
@@ -12,6 +11,7 @@ import { SkillScopeBadge } from '@/modules/skill/components/SkillScopeBadge'
 import { AdminSkillGroupAssignment } from './AdminSkillGroupAssignment'
 import { SystemSkill } from '@/modules/skill/stores/systemSkill'
 import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
+import { AppMode } from '@/modules/app/AppMode.store'
 
 /**
  * `/settings/admin/skills` — lists system-scope skills with per-skill
@@ -20,7 +20,7 @@ import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
  */
 export function AdminSkillsPage() {
   const { systemSkills, loading, error } = SystemSkill
-  const { multiUserMode } = Stores.AppMode
+  const { multiUserMode } = AppMode
   const [importOpen, setImportOpen] = useState(false)
 
   // Client-side pagination (the store loads the full list).

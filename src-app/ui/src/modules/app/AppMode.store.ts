@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 
 /**
  * Portable "what kind of build is this" flag for core UI code that branches on
@@ -18,11 +18,13 @@ declare module '@ziee/framework/stores' {
   }
 }
 
-export const AppMode = defineStore('AppMode', {
+const AppModeDef = defineStore('AppMode', {
   state: { multiUserMode: true },
   actions: set => ({
     setMultiUserMode: (value: boolean) => set({ multiUserMode: value }),
   }),
 })
 
-export const useAppModeStore = AppMode.store
+export const useAppModeStore = AppModeDef.store
+
+export const AppMode = registerLazyStore(AppModeDef)

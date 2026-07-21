@@ -1,11 +1,11 @@
 import { Spin } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { AttachedFileCard } from '@/modules/file/chat-extension/components/AttachedFileCard'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 import type {
   MessageContentDataImage,
   File as FileEntity,
 } from '@/api-client/types'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 /**
  * Renderer for `image` message content blocks. Previously unhandled — they fell
@@ -96,11 +96,11 @@ export function ImageContent({ content, isUser }: ContentRendererProps) {
   // `file` source — resolve the entity + its authenticated preview blob URL.
   const fileId = source.file_id
   const fallback = fallbackFile(fileId, data.alt_text)
-  const file = Stores.File.messageFilesCache.get(fileId) ?? fallback
-  Stores.File.getMessageFile(fileId, fallback)
+  const file = FileStore.messageFilesCache.get(fileId) ?? fallback
+  FileStore.getMessageFile(fileId, fallback)
   // Subscribe to the blob-url Map directly so we re-render once it resolves.
-  const url = Stores.File.thumbnailUrls.get(fileId) ?? null
-  if (url === null) Stores.File.getThumbnailUrl(fileId, file)
+  const url = FileStore.thumbnailUrls.get(fileId) ?? null
+  if (url === null) FileStore.getThumbnailUrl(fileId, file)
   if (!url) {
     return (
       <div className="flex items-center py-4">

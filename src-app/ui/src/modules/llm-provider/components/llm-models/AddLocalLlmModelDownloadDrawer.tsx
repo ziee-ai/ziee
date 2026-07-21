@@ -13,7 +13,6 @@ import {
 } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {} from '@/modules/llm-provider/stores'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
 import { type FileFormat, type EngineType, type RepositoryFileListResponse } from '@/api-client/types'
@@ -21,6 +20,8 @@ import { Permissions } from '@/api-client/permissions'
 import { LlmModelDownload } from '@/modules/llm-provider/stores/llmModelDownload'
 import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 import { LlmRepository as LlmRepositoryStore } from '@/modules/llm-repository/stores/llmRepository'
+import { ViewDownloadDrawer } from '@/modules/llm-provider/stores/llmModelDrawers/viewDownloadDrawer'
+import { AddLocalLlmModelDownloadDrawer as AddLocalLlmModelDownloadDrawerStore } from '@/modules/llm-provider/stores/llmModelDrawers/addLocalLlmModelDownloadDrawer'
 
 const formatForShape = (shape: string): FileFormat | undefined => {
   if (shape === 'gguf') return 'gguf'
@@ -63,8 +64,8 @@ export function AddLocalLlmModelDownloadDrawer() {
     },
   })
 
-  const { open: addMode, providerId } = Stores.AddLocalLlmModelDownloadDrawer
-  const { open: viewMode, downloadId } = Stores.ViewDownloadDrawer
+  const { open: addMode, providerId } = AddLocalLlmModelDownloadDrawerStore
+  const { open: viewMode, downloadId } = ViewDownloadDrawer
   const { downloads } = LlmModelDownload
   // Read repositories from the canonical LlmRepository store (whose
   // __init__ hits /api/llm-repositories once and caches; filter here
@@ -120,8 +121,8 @@ export function AddLocalLlmModelDownloadDrawer() {
 
   // Helper function to close the modal
   const handleCloseModal = () => {
-    Stores.AddLocalLlmModelDownloadDrawer.closeAddLocalLlmModelDownloadDrawer()
-    Stores.ViewDownloadDrawer.closeViewDownloadDrawer()
+    AddLocalLlmModelDownloadDrawerStore.closeAddLocalLlmModelDownloadDrawer()
+    ViewDownloadDrawer.closeViewDownloadDrawer()
     setLoading(false)
     setDetected(null)
     form.reset()
@@ -296,7 +297,7 @@ export function AddLocalLlmModelDownloadDrawer() {
           // this shared drawer from add-mode to View-Download-Details mode
           // (`open = viewMode || addMode`), so the editable form (its submit
           // button) is replaced by the read-only view.
-          Stores.ViewDownloadDrawer.openViewDownloadDrawer,
+          ViewDownloadDrawer.openViewDownloadDrawer,
         )
 
         message.success('Download started successfully')

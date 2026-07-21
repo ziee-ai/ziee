@@ -31,7 +31,7 @@ export const gallery: ModuleGallery = {
           '@/modules/web-search/stores/webSearchAdmin'
         )
         await holdPatch(() =>
-          WebSearchAdmin.store.setState({
+          WebSearchAdmin.__setState({
             loading: true,
             settings: null,
             providers: [],

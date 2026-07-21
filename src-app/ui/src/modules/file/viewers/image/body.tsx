@@ -1,10 +1,10 @@
 import { FileImage } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Spin } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { getSource } from '../shared/source'
 import { DEFAULT_IMAGE_VIEW, clampTranslate } from './zoom'
+import { File } from '@/modules/file/stores/file'
 
 export function ImageBody(props: FileViewerSlotProps) {
   const { file, url, name } = getSource(props)
@@ -57,13 +57,13 @@ function ImagePanelBody({ file }: { file: NonNullable<ReturnType<typeof getSourc
   // render — calling the `getThumbnailUrl()` action instead would only
   // subscribe to the function reference, not the Map's contents, so we
   // wouldn't re-render when loadThumbnail finishes.
-  const thumbnailUrls = Stores.File.thumbnailUrls
+  const thumbnailUrls = File.thumbnailUrls
   const thumbnailUrl = thumbnailUrls.get(fileId) ?? null
   // Trigger background load on first call (idempotent — guarded by
   // thumbnailLoadingSet inside the store).
-  if (thumbnailUrl === null) Stores.File.getThumbnailUrl(fileId, file)
+  if (thumbnailUrl === null) File.getThumbnailUrl(fileId, file)
 
-  const view = Stores.File.imageViewStates.get(fileId) ?? DEFAULT_IMAGE_VIEW
+  const view = File.imageViewStates.get(fileId) ?? DEFAULT_IMAGE_VIEW
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const [translate, setTranslate] = useState({ x: 0, y: 0 })
@@ -136,7 +136,7 @@ function ImagePanelBody({ file }: { file: NonNullable<ReturnType<typeof getSourc
     const onWheel = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
       e.preventDefault()
-      Stores.File.zoomImage(fileId, Math.exp(-e.deltaY * 0.0015))
+      File.zoomImage(fileId, Math.exp(-e.deltaY * 0.0015))
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)

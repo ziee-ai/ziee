@@ -10,7 +10,7 @@ export default createModule({
   routes: [],
   // BOOT-CRITICAL: the theme is applied at first paint from ConfigClient
   // (ThemeProvider, root). It must be eagerly registered — like Auth — so
-  // `Stores.ConfigClient`/the handle resolves before any lazy consumer loads.
+  // `ConfigClientStore`/the handle resolves before any lazy consumer loads.
   // Do NOT lazify this one.
   stores: [
     {

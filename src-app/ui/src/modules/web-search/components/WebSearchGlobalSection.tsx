@@ -19,10 +19,10 @@ import {
   useForm,
 } from '@ziee/kit'
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
+import { WebSearchAdmin } from '@/modules/web-search/stores/webSearchAdmin'
 
 const MIB = 1024 * 1024
 
@@ -40,7 +40,7 @@ type FormValues = {
  * each reorder/add/remove; the caps form saves on its own Save button.
  */
 export function WebSearchGlobalSection() {
-  const { settings, providers, loading, savingSettings } = Stores.WebSearchAdmin
+  const { settings, providers, loading, savingSettings } = WebSearchAdmin
   const canManage = usePermission(Permissions.WebSearchAdminManage)
 
   const form = useForm<FormValues>()
@@ -67,7 +67,7 @@ export function WebSearchGlobalSection() {
 
   const onSubmit = async (v: FormValues) => {
     try {
-      await Stores.WebSearchAdmin.updateSettings({
+      await WebSearchAdmin.updateSettings({
         enabled: v.enabled,
         max_results: v.max_results,
         fetch_max_bytes: v.fetch_max_mib * MIB,
@@ -91,7 +91,7 @@ export function WebSearchGlobalSection() {
   const saveChain = async (next: string[]) => {
     setSavingChain(true)
     try {
-      await Stores.WebSearchAdmin.updateSettings({ provider_chain: next })
+      await WebSearchAdmin.updateSettings({ provider_chain: next })
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to update provider chain')
     } finally {

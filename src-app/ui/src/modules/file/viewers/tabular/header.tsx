@@ -1,10 +1,10 @@
 import { ClipboardCopy, FileDown } from 'lucide-react'
 import { Button, Space, message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { CopyButton, RawToggle } from '../shared/chrome'
 import { copyTabularSelection, exportTabularView } from './tableView'
 import type { FileViewerSlotProps } from '../../types/viewer'
+import { File as FileStore } from '@/modules/file/stores/file'
 
 // ── TabularViewActions ───────────────────────────────────────────────────────
 // The view-aware Export + Copy-selection affordances for the CSV/TSV header.
@@ -16,13 +16,13 @@ import type { FileViewerSlotProps } from '../../types/viewer'
 function TabularViewActions({ file }: { file: FileEntity }) {
   // Reactive read (re-enables + retitles when the body publishes); handlers
   // re-read the raw snapshot via `$` at click time so they act on the latest view.
-  const view = Stores.File.fileTabularView.get(file.id)
+  const view = FileStore.fileTabularView.get(file.id)
   const hasView = !!view
   // Name the delimited format the download will use (mirrors the removed
   // toolbar's "Export CSV"/"Export TSV" labels).
   const exportLabel = view?.delimiter === '\t' ? 'Export view (TSV)' : 'Export view (CSV)'
   const onCopySelection = async () => {
-    const v = Stores.File.$.fileTabularView.get(file.id)
+    const v = FileStore.$.fileTabularView.get(file.id)
     if (!v) return
     // Mirror chrome.tsx's CopySelectionButton: warn (don't clobber the clipboard)
     // when nothing is selected, rather than silently copying the whole view.
@@ -34,7 +34,7 @@ function TabularViewActions({ file }: { file: FileEntity }) {
     else message.error('Failed to copy')
   }
   const onExport = () => {
-    const v = Stores.File.$.fileTabularView.get(file.id)
+    const v = FileStore.$.fileTabularView.get(file.id)
     if (!v) return
     try {
       exportTabularView(v)

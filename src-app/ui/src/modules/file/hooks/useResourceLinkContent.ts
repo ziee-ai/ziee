@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
+import { File } from '@/modules/file/stores/file'
 
 /**
  * URL-keyed cache for fetched resource_link text contents.
@@ -7,7 +7,7 @@ import { Stores } from '@ziee/framework/stores'
  * Lives at module scope so it survives component unmount/remount
  * (collapse-then-expand, scrolling a long message off and back on
  * screen, switching conversations and returning). Mirrors the
- * dedup behaviour of `Stores.File.fileTextContents` but
+ * dedup behaviour of `File.fileTextContents` but
  * keyed by URL rather than UUID, because chat-inline `resource_link`
  * blocks have no FileEntity.
  *
@@ -77,7 +77,7 @@ export function useResourceLinkContent(
       // error caches because they outlive both the store __destroy__
       // and individual component unmounts in a way that matches user
       // expectations (collapse-then-expand should not re-fetch).
-      promise = Stores.File.fetchResourceLinkText(url)
+      promise = File.fetchResourceLinkText(url)
         .then(text => {
           textCache.set(url, text)
           inFlight.delete(url)

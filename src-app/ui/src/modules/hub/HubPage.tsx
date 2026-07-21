@@ -26,6 +26,7 @@ import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowM
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { McpUserPolicy } from '@/modules/mcp/stores/mcpUserPolicy'
 import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
+import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
 
 export function HubPage() {
   const { activeTab: urlActiveTab } = useParams()
@@ -90,19 +91,19 @@ export function HubPage() {
     permissions,
     Permissions.HubCatalogManage,
   )
-  const hubVersion = Stores.HubCatalog.hubVersion
-  const serverVersion = Stores.HubCatalog.serverVersion
+  const hubVersion = HubCatalog.hubVersion
+  const serverVersion = HubCatalog.serverVersion
 
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      await Stores.HubCatalog.refresh()
+      await HubCatalog.refresh()
       // The refresh handler returns an updated/new_version tuple,
       // but the user just needs a success toast.
-      // Read via `$` snapshot (not the render-only `Stores.HubCatalog.*`
+      // Read via `$` snapshot (not the render-only `HubCatalog.*`
       // reactive read, which calls a hook — illegal inside this async handler
       // and throws React #321, swallowing the success toast).
-      message.success(`Hub catalog refreshed to v${Stores.HubCatalog.$.hubVersion ?? '?'}`)
+      message.success(`Hub catalog refreshed to v${HubCatalog.$.hubVersion ?? '?'}`)
       // Trigger each visible tab's own refresh hook so per-tab lists
       // re-render against the new catalog (the back-compat per-category
       // endpoints already serve from the rotated `current/` dir).

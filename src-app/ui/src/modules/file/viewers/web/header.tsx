@@ -1,5 +1,4 @@
 import { Space } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import {
   CopyButton,
   CopySelectionButton,
@@ -8,11 +7,12 @@ import {
   WrapToggle,
 } from '../shared/chrome'
 import type { FileViewerSlotProps } from '../../types/viewer'
+import { File } from '@/modules/file/stores/file'
 
 export function WebHeader(props: FileViewerSlotProps) {
   if (!('file' in props)) return null
   const { file } = props
-  const isRaw = (Stores.File.fileViewModes.get(file.id) ?? 'compiled') === 'raw'
+  const isRaw = (File.fileViewModes.get(file.id) ?? 'compiled') === 'raw'
   return (
     <Space size="small">
       {/* Find + copy-selection operate on the raw text; the rendered iframe is a

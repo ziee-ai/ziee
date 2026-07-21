@@ -16,12 +16,12 @@ import {
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { formatBytes } from '@/utils/downloadUtils'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
 import { LlmModelUpload } from '@/modules/llm-provider/stores/llmModelUpload'
+import { AddLocalLlmModelUploadDrawer as AddLocalLlmModelUploadDrawerStore } from '@/modules/llm-provider/stores/llmModelDrawers/addLocalLlmModelUploadDrawer'
 
 /**
  * File with metadata for display
@@ -46,7 +46,7 @@ export function AddLocalLlmModelUploadDrawer() {
 
   const { uploading, uploadProgress, overallUploadProgress } =
     LlmModelUpload
-  const { open, providerId } = Stores.AddLocalLlmModelUploadDrawer
+  const { open, providerId } = AddLocalLlmModelUploadDrawerStore
   const canCreate = usePermission(Permissions.LlmModelsCreate)
 
   /**
@@ -293,7 +293,7 @@ export function AddLocalLlmModelUploadDrawer() {
       setFilteredFiles([])
 
       // Close drawer
-      Stores.AddLocalLlmModelUploadDrawer.closeAddLocalLlmModelUploadDrawer()
+      AddLocalLlmModelUploadDrawerStore.closeAddLocalLlmModelUploadDrawer()
 
       // Note: Model will be added to provider automatically by the component's parent
       // when the drawer closes and the provider detail page refreshes
@@ -329,7 +329,7 @@ export function AddLocalLlmModelUploadDrawer() {
     setSelectedFiles([])
     setFilteredFiles([])
 
-    Stores.AddLocalLlmModelUploadDrawer.closeAddLocalLlmModelUploadDrawer()
+    AddLocalLlmModelUploadDrawerStore.closeAddLocalLlmModelUploadDrawer()
   }
 
   // Update filtered files when format changes

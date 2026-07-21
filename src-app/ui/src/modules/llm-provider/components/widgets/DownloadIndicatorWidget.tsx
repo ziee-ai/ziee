@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { X, Download, RotateCw } from 'lucide-react'
 import { Badge, Button, Flex, Popover, Tooltip, message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { useHubModelDownloadGate } from '@/modules/hub/modules/llm-models/hooks/useHubModelDownloadGate'
 import type {
@@ -10,6 +9,7 @@ import type {
   FileFormat,
 } from '@/api-client/types'
 import { LlmModelDownload } from '@/modules/llm-provider/stores/llmModelDownload'
+import { HubModels } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 
 /**
  * Rebuild a `DownloadFromRepositoryRequest` from a failed
@@ -113,7 +113,7 @@ export function DownloadIndicatorWidget() {
     // toast carries the backend's error message.
     const repoPath = d.request_data.repository_path
     // Snapshot via `.$` — `handleRetry` is an event handler,
-    // not a render path. The bare `Stores.HubModels.models` proxy
+    // not a render path. The bare `HubModels.models` proxy
     // would call React hooks outside render. See
     // `feedback_stores_state_in_handlers` in project memory.
     // v2 Phase 7: walk every source's identifier (the source
@@ -121,7 +121,7 @@ export function DownloadIndicatorWidget() {
     // the download path; matching against ALL of them lets a model
     // with multiple sources still be detected on retry).
     const hubModel = repoPath
-      ? Stores.HubModels.$.models.find(m =>
+      ? HubModels.$.models.find(m =>
           (m.sources ?? []).some(s => s.identifier === repoPath),
         )
       : undefined
@@ -140,7 +140,7 @@ export function DownloadIndicatorWidget() {
         return
       }
       try {
-        await Stores.HubModels.downloadModelFromHub(
+        await HubModels.downloadModelFromHub(
           hubModel.name,
           d.provider_id,
           d.request_data.display_name ?? hubModel.display_name,

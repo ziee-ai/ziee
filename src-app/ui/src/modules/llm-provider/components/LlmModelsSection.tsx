@@ -15,12 +15,15 @@ import { message } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { useParams } from 'react-router-dom'
 import { useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import { usePermission } from '@/core/permissions'
 import { type LlmModel } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
+import { AddLocalLlmModelUploadDrawer } from '@/modules/llm-provider/stores/llmModelDrawers/addLocalLlmModelUploadDrawer'
+import { AddRemoteLlmModelDrawer } from '@/modules/llm-provider/stores/llmModelDrawers/addRemoteLlmModelDrawer'
+import { EditLlmModelDrawer } from '@/modules/llm-provider/stores/llmModelDrawers/editLlmModelDrawer'
+import { AddLocalLlmModelDownloadDrawer } from '@/modules/llm-provider/stores/llmModelDrawers/addLocalLlmModelDownloadDrawer'
 
 export function LlmModelsSection() {
   const { providerId } = useParams<{ providerId?: string }>()
@@ -142,11 +145,11 @@ export function LlmModelsSection() {
     if (!currentProvider) return
     if (currentProvider.provider_type === 'local') {
       // For local providers, open the upload drawer by default
-      Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
+      AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
         currentProvider.id,
       )
     } else {
-      Stores.AddRemoteLlmModelDrawer.openAddRemoteLlmModelDrawer(
+      AddRemoteLlmModelDrawer.openAddRemoteLlmModelDrawer(
         currentProvider.id,
         currentProvider.provider_type,
       )
@@ -155,7 +158,7 @@ export function LlmModelsSection() {
 
   const handleEditLlmModel = (modelId: string) => {
     if (!currentProvider) return
-    Stores.EditLlmModelDrawer.openEditLlmModelDrawer(modelId)
+    EditLlmModelDrawer.openEditLlmModelDrawer(modelId)
   }
 
   // Reconcile this remote provider's saved models against its live model list —
@@ -269,7 +272,7 @@ export function LlmModelsSection() {
                   label: 'Upload from Files',
                   icon: <Upload />,
                   onClick: () =>
-                    Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
+                    AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
                       currentProvider.id,
                     ),
                 },
@@ -278,7 +281,7 @@ export function LlmModelsSection() {
                   label: 'Download from Repository',
                   icon: <Plus />,
                   onClick: () =>
-                    Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
+                    AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
                       currentProvider.id,
                     ),
                 },

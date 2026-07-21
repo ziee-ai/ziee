@@ -7,7 +7,7 @@ import type {
 } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
@@ -43,7 +43,7 @@ export async function reloadAllTabs(): Promise<void> {
  */
 export type Compat = { status: 'ok' } | { status: 'too_old'; required: string }
 
-export const HubCatalog = defineStore('HubCatalog', {
+const HubCatalogDef = defineStore('HubCatalog', {
   immer: true,
   state: {
     catalog: null as Catalog | null,
@@ -118,7 +118,7 @@ export const HubCatalog = defineStore('HubCatalog', {
   },
 })
 
-export const useHubCatalogStore = HubCatalog.store
+export const useHubCatalogStore = HubCatalogDef.store
 
 // -------- helpers consumable by per-tab components --------
 
@@ -161,3 +161,5 @@ export function compatOf(item: IndexItem, serverVersion: string | null): Compat 
     ? { status: 'ok' }
     : { status: 'too_old', required: item.min_ziee_version }
 }
+
+export const HubCatalog = registerLazyStore(HubCatalogDef)

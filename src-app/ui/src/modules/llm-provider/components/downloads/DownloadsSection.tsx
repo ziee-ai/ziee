@@ -1,10 +1,10 @@
 import { Card } from '@ziee/kit'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type DownloadInstance } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { LlmModelDownload } from '@/modules/llm-provider/stores/llmModelDownload'
+import { ViewDownloadDrawer } from '@/modules/llm-provider/stores/llmModelDrawers/viewDownloadDrawer'
 
 interface DownloadsSectionProps {
   providerId: string
@@ -41,7 +41,7 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
   }
 
   const handleViewDetails = (downloadId: string) => {
-    Stores.ViewDownloadDrawer.openViewDownloadDrawer(downloadId)
+    ViewDownloadDrawer.openViewDownloadDrawer(downloadId)
   }
 
   return (

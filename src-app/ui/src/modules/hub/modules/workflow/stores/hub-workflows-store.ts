@@ -1,9 +1,10 @@
-import { defineStore } from '@ziee/framework/store-kit'
-import { Stores } from '@ziee/framework/stores'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 import { useSystemWorkflowStore } from '@/modules/workflow/stores/systemWorkflow'
 import { useWorkflowStore } from '@/modules/workflow/stores/workflow'
+import { HubCatalog as HubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
+import { HubInstalled } from '@/modules/hub/stores/hub-installed-store'
 
 /**
  * Hub-workflows tab store. Workflows have no category-specific catalog endpoint,
@@ -11,7 +12,7 @@ import { useWorkflowStore } from '@/modules/workflow/stores/workflow'
  * and install-tracking from the shared installed-store. Install actions delegate
  * to the workflow module's user / system stores.
  */
-export const HubWorkflows = defineStore('HubWorkflows', {
+const HubWorkflowsDef = defineStore('HubWorkflows', {
   immer: true,
   state: {
     installing: {} as Record<string, boolean>,
@@ -76,9 +77,11 @@ export const HubWorkflows = defineStore('HubWorkflows', {
     }
   },
   init: () => {
-    void Stores.HubCatalog.loadCatalog()
-    void Stores.HubInstalled.loadInstalled()
+    void HubCatalogStore.loadCatalog()
+    void HubInstalled.loadInstalled()
   },
 })
 
-export const useHubWorkflowsStore = HubWorkflows.store
+export const useHubWorkflowsStore = HubWorkflowsDef.store
+
+export const HubWorkflows = registerLazyStore(HubWorkflowsDef)

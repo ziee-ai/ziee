@@ -1,7 +1,7 @@
 import { Dialog } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { ConversationSkillsPanel } from './ConversationSkillsPanel'
 import { SkillDetailDrawer } from './SkillDetailDrawer'
+import { SkillConversationDrawer as SkillConversationDrawerStore } from '@/modules/skill/stores/skillConversationDrawer'
 
 interface SkillConversationDrawerProps {
   conversationId: string
@@ -21,7 +21,7 @@ export function SkillConversationDrawer({
   // split, clicking "Skills in this chat" in one pane doesn't render every pane's
   // dialog. The detail sub-drawer (a global singleton) mounts only for the open
   // pane, avoiding N stacked copies across panes.
-  const open = Stores.SkillConversationDrawer.openConversationId === conversationId
+  const open = SkillConversationDrawerStore.openConversationId === conversationId
 
   return (
     <>
@@ -29,7 +29,7 @@ export function SkillConversationDrawer({
         open={open}
         data-testid="skill-conversation-dialog"
         onOpenChange={(v) => {
-          if (!v) Stores.SkillConversationDrawer.closeDrawer()
+          if (!v) SkillConversationDrawerStore.closeDrawer()
         }}
         title="Skills in this conversation"
         footer={null}

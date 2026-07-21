@@ -4,10 +4,11 @@ import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { SkillConversationDrawer } from '@/modules/skill/components/SkillConversationDrawer'
+import { SkillConversationDrawer as SkillConversationDrawerStore } from '@/modules/skill/stores/skillConversationDrawer'
 
 /**
  * "+" dropdown entry for the per-conversation skills opt-out (Path B).
- * Opening it sets `Stores.SkillConversationDrawer.openConversationId` to THIS
+ * Opening it sets `SkillConversationDrawerStore.openConversationId` to THIS
  * pane's conversation; the Dialog itself is
  * hosted by `SkillConversationDrawerHost` from an always-mounted composer slot
  * — NOT here. The "+" dropdown unmounts its items when it closes (which this
@@ -33,7 +34,7 @@ export function SkillMenuItem() {
       icon={<BookOpen />}
       label="Skills in this chat"
       onClick={() => {
-        Stores.SkillConversationDrawer.openDrawer(conversationId)
+        SkillConversationDrawerStore.openDrawer(conversationId)
         close()
       }}
     />

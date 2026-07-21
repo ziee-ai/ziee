@@ -1,7 +1,6 @@
 import { Button, Card, Flex, Form, useForm, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
-import { Stores } from '@/modules/llm-provider/stores'
 import { LlmModelCapabilitiesSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { LlmModelLlamaCppSettingsSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelLlamaCppSettingsSection'
@@ -12,6 +11,7 @@ import {
 } from '@/modules/llm-provider/constants/llmModelParameters'
 import type { ModelCapabilities, ModelParameters, UpdateLlmModelRequest } from '@/api-client/types'
 import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
+import { EditLlmModelDrawer as EditLlmModelDrawerStore } from '@/modules/llm-provider/stores/llmModelDrawers/editLlmModelDrawer'
 
 /**
  * Edit drawer for both local and remote LLM models
@@ -30,7 +30,7 @@ export function EditLlmModelDrawer() {
     },
   })
 
-  const { open, modelId } = Stores.EditLlmModelDrawer
+  const { open, modelId } = EditLlmModelDrawerStore
   const currentModel = modelId
     ? LlmProvider.providers
         .flatMap(p => p.llm_models || [])
@@ -77,7 +77,7 @@ export function EditLlmModelDrawer() {
           : {}),
       })
 
-      Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
+      EditLlmModelDrawerStore.closeEditLlmModelDrawer()
       message.success('Model updated successfully')
     } catch (error) {
       console.error('Failed to update model:', error)
@@ -89,7 +89,7 @@ export function EditLlmModelDrawer() {
 
   const handleCancel = () => {
     form.reset()
-    Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
+    EditLlmModelDrawerStore.closeEditLlmModelDrawer()
   }
 
   return (

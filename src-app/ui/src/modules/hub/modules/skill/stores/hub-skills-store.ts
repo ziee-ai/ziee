@@ -1,9 +1,10 @@
-import { defineStore } from '@ziee/framework/store-kit'
-import { Stores } from '@ziee/framework/stores'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 import { useSkillStore } from '@/modules/skill/stores/skill'
 import { useSystemSkillStore } from '@/modules/skill/stores/systemSkill'
+import { HubCatalog as HubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
+import { HubInstalled } from '@/modules/hub/stores/hub-installed-store'
 
 /**
  * Hub-skills tab store. Skills have no category-specific catalog endpoint, so
@@ -11,7 +12,7 @@ import { useSystemSkillStore } from '@/modules/skill/stores/systemSkill'
  * and install-tracking from the shared installed-store. Install actions delegate
  * to the skill module's user / system stores.
  */
-export const HubSkills = defineStore('HubSkills', {
+const HubSkillsDef = defineStore('HubSkills', {
   immer: true,
   state: {
     installing: {} as Record<string, boolean>,
@@ -78,9 +79,11 @@ export const HubSkills = defineStore('HubSkills', {
   },
   init: () => {
     // Ensure the shared catalog + installed lists are loaded so the tab has data.
-    void Stores.HubCatalog.loadCatalog()
-    void Stores.HubInstalled.loadInstalled()
+    void HubCatalogStore.loadCatalog()
+    void HubInstalled.loadInstalled()
   },
 })
 
-export const useHubSkillsStore = HubSkills.store
+export const useHubSkillsStore = HubSkillsDef.store
+
+export const HubSkills = registerLazyStore(HubSkillsDef)

@@ -14,12 +14,12 @@ import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import { Component, createElement, type JSX, type ReactNode } from 'react'
 import type { FileViewerSlotProps } from '../../types/viewer'
-import { Stores } from '@ziee/framework/stores'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { useResourceLinkContent } from '../../hooks/useResourceLinkContent'
 import { RawCodeView } from '../shared/RawCodeView'
 import { FindableRegion } from '../shared/find/FindableRegion'
 import { getSource } from '../shared/source'
+import { File } from '@/modules/file/stores/file'
 // ----- Inlined from @/modules/chat/core/utils/ (generic utilities, no chat deps) -----
 
 function isLocalImageUrl(url: string): boolean {
@@ -196,7 +196,7 @@ export function MarkdownBody(props: FileViewerSlotProps) {
   const inlineContent = useResourceLinkContent(url, !!file)
   const content = file ? rightPanelContent : inlineContent
   const mode = useFileViewMode(file?.id ?? '')
-  const wordWrap = file ? Stores.File.fileWordWrap.get(file.id) ?? false : false
+  const wordWrap = file ? File.fileWordWrap.get(file.id) ?? false : false
 
   if (content === '__error__') {
     return (

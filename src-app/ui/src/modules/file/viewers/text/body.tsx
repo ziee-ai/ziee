@@ -1,11 +1,11 @@
 import { Spin } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import { useFileTextContent } from '../shared/hooks'
 import { useResourceLinkContent } from '../../hooks/useResourceLinkContent'
 import { RawCodeView } from '../shared/RawCodeView'
 import { FindableRegion } from '../shared/find/FindableRegion'
 import { getSource } from '../shared/source'
+import { File } from '@/modules/file/stores/file'
 
 export function TextBody(props: FileViewerSlotProps) {
   const { file, url } = getSource(props)
@@ -13,7 +13,7 @@ export function TextBody(props: FileViewerSlotProps) {
   const inlineContent = useResourceLinkContent(url, !!file)
   const content = file ? rightPanelContent : inlineContent
   // Read the wrap flag reactively (right-panel only; inline has no fileId).
-  const wordWrap = file ? Stores.File.fileWordWrap.get(file.id) ?? false : false
+  const wordWrap = file ? File.fileWordWrap.get(file.id) ?? false : false
 
   if (content === '__error__') {
     return (

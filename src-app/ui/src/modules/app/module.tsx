@@ -1,8 +1,9 @@
-import { createModule, Stores } from '@ziee/framework'
+import { createModule} from '@ziee/framework'
 import { useAppModeStore } from '@/modules/app/AppMode.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { App as AppStore } from '@/modules/app/stores/app'
 
 const SetupPage = lazyWithPreload(() => import('./SetupPage'))
 
@@ -12,7 +13,7 @@ const SetupPage = lazyWithPreload(() => import('./SetupPage'))
  * it can use `useNavigate` but renders nothing.
  */
 function SetupRedirect() {
-  const needsSetup = Stores.App.needsSetup
+  const needsSetup = AppStore.needsSetup
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -61,8 +62,8 @@ export default createModule({
   },
   initialize: async () => {
     // Check setup status on app initialization
-    await Stores.App.checkSetupStatus()
-    if (Stores.App.$.needsSetup) {
+    await AppStore.checkSetupStatus()
+    if (AppStore.$.needsSetup) {
       console.log('Application needs setup')
     } else {
       console.log('Application is already set up')

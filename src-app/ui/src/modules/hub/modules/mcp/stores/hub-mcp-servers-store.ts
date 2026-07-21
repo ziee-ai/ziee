@@ -4,10 +4,10 @@ import type {
   HubMCPServer,
   McpServer,
 } from '@/api-client/types'
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
 import { emitMcpServerCreated, emitMcpServerDeleted } from '@/modules/mcp/events'
 
-export const HubMcpServers = defineStore('HubMcpServers', {
+const HubMcpServersDef = defineStore('HubMcpServers', {
   immer: true,
   state: {
     servers: [] as HubMCPServer[],
@@ -152,4 +152,6 @@ export const HubMcpServers = defineStore('HubMcpServers', {
   },
 })
 
-export const useHubMcpServersStore = HubMcpServers.store
+export const useHubMcpServersStore = HubMcpServersDef.store
+
+export const HubMcpServers = registerLazyStore(HubMcpServersDef)

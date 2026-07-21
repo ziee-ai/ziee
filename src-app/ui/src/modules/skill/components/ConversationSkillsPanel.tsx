@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { deriveHiddenSkills } from '@/modules/skill/stores'
 import {
   Alert,
@@ -13,6 +12,7 @@ import {
 } from '@ziee/kit'
 import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
 import { Skill } from '@/modules/skill/stores/skill'
+import { ConversationSkills } from '@/modules/skill/stores/conversationSkills'
 
 interface ConversationSkillsPanelProps {
   conversationId: string
@@ -27,13 +27,13 @@ export function ConversationSkillsPanel({
   conversationId,
 }: ConversationSkillsPanelProps) {
   const { skills } = Skill
-  const available = Stores.ConversationSkills.available[conversationId]
-  const loading = Stores.ConversationSkills.loading[conversationId]
-  const error = Stores.ConversationSkills.error
+  const available = ConversationSkills.available[conversationId]
+  const loading = ConversationSkills.loading[conversationId]
+  const error = ConversationSkills.error
 
 
   useEffect(() => {
-    Stores.ConversationSkills.loadAvailable(conversationId)
+    ConversationSkills.loadAvailable(conversationId)
   }, [conversationId])
 
   // NOTE: no manual loadSkills() here — reading `Skill.skills`
@@ -76,9 +76,9 @@ export function ConversationSkillsPanel({
   const handleToggle = async (skillId: string, visible: boolean) => {
     try {
       if (visible) {
-        await Stores.ConversationSkills.unhide(skillId, conversationId)
+        await ConversationSkills.unhide(skillId, conversationId)
       } else {
-        await Stores.ConversationSkills.hide(skillId, conversationId)
+        await ConversationSkills.hide(skillId, conversationId)
       }
     } catch {
       message.error('Failed to update skill visibility')

@@ -2,9 +2,10 @@ import { useState, useMemo, lazy, Suspense, ChangeEvent } from 'react'
 import { Button, Input, MultiSelect, Combobox, Text, ErrorState, Empty } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { Plug, Search, Eraser } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
 import { compatOf } from '@/modules/hub/stores/hub-catalog-store'
+import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
+import { HubMcpServers } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
 const McpServerDrawer = lazy(() =>
   import('@/modules/mcp/components/common/McpServerDrawer').then(m => ({
     default: m.McpServerDrawer,
@@ -12,9 +13,9 @@ const McpServerDrawer = lazy(() =>
 )
 
 export function McpServersHubTab() {
-  const { servers, loading, error } = Stores.HubMcpServers // Auto-loads via __init__
-  const catalog = Stores.HubCatalog.catalog
-  const serverVersion = Stores.HubCatalog.serverVersion
+  const { servers, loading, error } = HubMcpServers // Auto-loads via __init__
+  const catalog = HubCatalog.catalog
+  const serverVersion = HubCatalog.serverVersion
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [sortBy, setSortBy] = useState('popular')
@@ -95,7 +96,7 @@ export function McpServersHubTab() {
         resource="hub MCP servers"
         description="The hub catalog couldn't be loaded. Check your connection and try again."
         details={error}
-        onRetry={() => Stores.HubMcpServers.loadServers()}
+        onRetry={() => HubMcpServers.loadServers()}
         data-testid="hub-mcp-error"
       />
     )
