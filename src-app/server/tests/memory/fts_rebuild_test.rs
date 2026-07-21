@@ -215,7 +215,8 @@ async fn fts_rebuild_different_dictionary_runs_and_status_reaches_completion() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 200);
+    // The rebuild is dispatched asynchronously → 202 Accepted (poll status below).
+    assert_eq!(res.status(), 202);
     let body: Value = res.json().await.unwrap();
     assert_eq!(body["started"], true, "different dictionary must start a rebuild: {body}");
 
@@ -276,10 +277,12 @@ async fn test_fts_rebuild_trigger_and_status() {
         .unwrap();
     assert_eq!(s0["in_progress"], false, "no rebuild running initially: {s0}");
 
-    // Trigger the rebuild.
+    // Trigger the rebuild. The endpoint takes a required `dictionary` body
+    // (FtsRebuildRequest) — without it the Json extractor rejects with 415.
     let trigger = client
         .post(server.api_url("/memory/admin/fts/rebuild"))
         .header("Authorization", &bearer)
+        .json(&serde_json::json!({ "dictionary": "english" }))
         .send()
         .await
         .unwrap();
