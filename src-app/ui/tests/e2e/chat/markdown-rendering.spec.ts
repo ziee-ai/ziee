@@ -350,6 +350,193 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
     expect(await firstDetails.evaluate(el => (el as HTMLDetailsElement).open)).toBe(false)
   })
 
+  // --- paper-grouped references (ziee#167) ----------------------------------
+  //
+  // The BioGnosia RAG service cites one footnote per retrieved CHUNK and labels
+  // same-paper chunks `P.1`, `P.2`. GFM renumbers footnotes sequentially and
+  // keeps the label only in the anchor id/href, so what the READER sees is
+  // decided entirely here — hence these assert rendered text, not markup.
+
+  // Two chunks of one paper, then a second paper cited through a single chunk.
+  // That second paper keeps a FLAT label — "2", not "2-1" — because the
+  // hierarchy should only appear where it carries information. It is also the
+  // sharpest case: GFM numbers by first reference, so this ref sits at ordinal
+  // position 3 and would DISPLAY as "3" if the renderer trusted GFM.
+  const GROUPED_ANSWER = [
+    'Caspase-8 gates the switch[^1-1][^1-2] and PTEN modulates it[^2].',
+    '',
+    '[^1-1]: Short et al. (2024). Regulated cell death. *Cell Death Differ*. https://doi.org/10.1038/s41418-024-01346-x',
+    '    > Caspase-8 acts as a molecular switch.',
+    '',
+    '[^1-2]: Short et al. (2024). Regulated cell death. *Cell Death Differ*. https://doi.org/10.1038/s41418-024-01346-x',
+    '    > Loss of caspase-8 redirects to necroptosis.',
+    '',
+    '[^2]: Doe J, Roe A (2021). PTEN and HR repair. *Nature*.',
+    '    > PTEN loss impairs homologous recombination.',
+  ].join('\n')
+
+  test('TEST-7: adjacent citations are comma-separated, lone refs and exponents are not', async ({
+    page,
+    testInfra,
+  }) => {
+    // The bug: `[^1][^2][^3]` rendered as one run-together blob, "123".
+    await seedAssistantWithText(
+      page,
+      testInfra.baseURL,
+      'Three here[^1][^2][^3]. One here[^4]. An exponent: E = mc<sup>2</sup>.\n\n' +
+        ['[^1]: One.', '[^2]: Two.', '[^3]: Three.', '[^4]: Four.'].join('\n\n'),
+    )
+    const bubble = assistantBubble(page)
+    // `innerText` omits ::before content, so read the marks the CSS keys off.
+    const marked = await bubble.evaluate(el =>
+      [...el.querySelectorAll('sup')].map(s => ({
+        ref: !!s.querySelector('a[data-footnote-ref]'),
+        comma: s.classList.contains('footnote-ref-adjacent'),
+        before: getComputedStyle(s, '::before').content,
+      })),
+    )
+    const refs = marked.filter(m => m.ref)
+    // The run of three: only the 2nd and 3rd get a comma.
+    expect(refs.slice(0, 3).map(m => m.comma)).toEqual([false, true, true])
+    expect(refs[1].before).toBe('", "')
+    // The LATER, standalone citation must NOT gain a comma — it is a `sup + sup`
+    // CSS match (text between is ignored by the combinator) but not a real run.
+    expect(refs[3].comma).toBe(false)
+    // A real exponent is never marked.
+    expect(marked.filter(m => !m.ref).every(m => !m.comma)).toBe(true)
+  })
+
+  test('TEST-8: DEGRADATION — a plain sequential footnote set renders exactly as before', async ({
+    page,
+    testInfra,
+  }) => {
+    // The renderer is shared with the citations + knowledge_base modules. A
+    // set with no hierarchical label must not be grouped, relabelled, or
+    // renumbered — one flat <li> each, showing GFM's own ordinal.
+    await seedAssistantWithText(
+      page,
+      testInfra.baseURL,
+      'A[^1] and B[^2].\n\n[^1]: First body.\n\n[^2]: Second body.',
+    )
+    const bubble = assistantBubble(page)
+    const details = bubble.locator('details.footnote-section')
+    await expect(details).toBeVisible({ timeout: 5000 })
+
+    // No grouping wrappers were introduced.
+    await expect(bubble.locator('li.footnote-paper')).toHaveCount(0)
+    await expect(bubble.locator('ol.footnote-excerpts')).toHaveCount(0)
+    // Exactly two flat definition items, in the top-level list.
+    await expect(details.locator('> ol > li')).toHaveCount(2)
+    // Inline markers still display GFM's ordinals, not a P.C label.
+    expect(await bubble.locator('sup a').first().innerText()).toBe('1')
+    expect(await bubble.locator('sup a').nth(1).innerText()).toBe('2')
+  })
+
+  test('TEST-9: same-paper chunks merge into one entry with 1.1/1.2 excerpts', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedAssistantWithText(page, testInfra.baseURL, GROUPED_ANSWER)
+    const bubble = assistantBubble(page)
+
+    // (c) inline markers show the LABEL, not GFM's sequential 1/2/3. The third
+    // marker is the giveaway twice over: its ordinal position is 3, so seeing
+    // "2" proves both that the label won AND that a FLAT label is left flat.
+    const refs = bubble.locator('sup a')
+    expect(await refs.nth(0).innerText()).toBe('1.1')
+    expect(await refs.nth(1).innerText()).toBe('1.2')
+    expect(await refs.nth(2).innerText()).toBe('2')
+
+    const details = bubble.locator('details.footnote-section')
+    await expect(details).toBeVisible({ timeout: 5000 })
+    await details.evaluate(el => el.setAttribute('open', ''))
+
+    // (b) one bibliographic entry per PAPER, not one per chunk — 2, not 3.
+    // Scoped to the TOP-LEVEL list: a bare `ol > li` would also match the
+    // nested excerpt items and count 4.
+    const entries = details.locator('> ol > li')
+    await expect(entries.first()).toBeVisible()
+    await expect(entries).toHaveCount(2)
+    // Only the MULTI-chunk paper becomes a nested entry; the single-chunk one
+    // stays flat, exactly as it renders today.
+    const paper = bubble.locator('li.footnote-paper')
+    await expect(paper).toHaveCount(1)
+    // The duplicated header appears ONCE, and the nesting is self-explanatory.
+    expect((await paper.innerText()).match(/Regulated cell death/g)).toHaveLength(1)
+    await expect(paper).toContainText('2 cited excerpts')
+    // The flat entry has no sub-list and no count caption.
+    const flat = entries.nth(1)
+    await expect(flat).not.toContainText('cited excerpts')
+    expect(await flat.locator('ol.footnote-excerpts').count()).toBe(0)
+
+    // Both excerpts survive, labelled beneath their paper.
+    const excerpts = paper.first().locator('ol.footnote-excerpts > li')
+    await expect(excerpts).toHaveCount(2)
+    await expect(excerpts.nth(0)).toContainText('1.1')
+    await expect(excerpts.nth(1)).toContainText('1.2')
+
+    // Clicking inline 1.2 expands THAT excerpt (the anchor id survived grouping).
+    await refs.nth(1).click()
+    await expect(
+      excerpts.nth(1).locator('details.footnote-quote'),
+    ).toHaveJSProperty('open', true)
+    await expect(excerpts.nth(1)).toContainText('redirects to necroptosis')
+  })
+
+  test('TEST-10: sanitization survives the footnote grouper, grouped and sequential', async ({
+    page,
+    testInfra,
+  }) => {
+    // The grouper is appended to `rehypePlugins`, which REPLACES Streamdown's
+    // default chain — so the defaults (raw → sanitize → harden) are spread back
+    // in first. If that spread is ever dropped, this test is what catches it.
+    const payload = '<script>window.XSS_PWNED = true</script>' +
+      '<img src=x onerror="window.XSS_PWNED = true">'
+
+    for (const [shape, markdown] of [
+      // Grouped shape: plugin ACTIVE. Payload in the body, in a bib header, and
+      // inside a grouped excerpt.
+      [
+        'grouped',
+        [
+          `Body ${payload} text[^1-1][^1-2].`,
+          '',
+          `[^1-1]: Short et al. (2024). ${payload} Journal.`,
+          `    > Excerpt one ${payload}`,
+          '',
+          `[^1-2]: Short et al. (2024). ${payload} Journal.`,
+          `    > Excerpt two ${payload}`,
+        ].join('\n'),
+      ],
+      // Sequential shape: plugin BAILS. Same chain must still hold.
+      ['sequential', `Body ${payload}[^1].\n\n[^1]: A body ${payload}\n\n    > ${payload}`],
+    ] as const) {
+      await page.addInitScript(() => {
+        ;(window as any).XSS_PWNED = false
+      })
+      await seedAssistantWithText(page, testInfra.baseURL, markdown)
+      const bubble = assistantBubble(page)
+      await bubble
+        .locator('details.footnote-section')
+        .evaluate(el => el.setAttribute('open', ''))
+
+      expect(
+        await page.evaluate(() => (window as any).XSS_PWNED),
+        `${shape}: no payload executed`,
+      ).toBe(false)
+      // No live script element and no event-handler attribute anywhere in the
+      // rendered message — including inside the regrouped reference list.
+      expect(
+        await bubble.evaluate(el => el.querySelectorAll('script').length),
+        `${shape}: no <script> element`,
+      ).toBe(0)
+      expect(
+        await bubble.evaluate(el => el.querySelectorAll('[onerror]').length),
+        `${shape}: no onerror attribute`,
+      ).toBe(0)
+    }
+  })
+
   test('raw <script> tags in markdown do not execute', async ({
     page,
     testInfra,
