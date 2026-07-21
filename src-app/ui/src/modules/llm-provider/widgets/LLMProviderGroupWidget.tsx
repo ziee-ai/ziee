@@ -5,7 +5,7 @@ import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
-import { LlmProviderGroupWidgetStore } from './LLMProviderGroupWidget.store'
+import { LlmProviderGroupWidgetStore } from './llmProviderGroupWidget'
 
 /**
  * Widget that displays LLM Providers assigned to a group.
