@@ -11,7 +11,7 @@ import type {
 } from '@/modules/llm-provider/stores'
 import type { useProviderGroupAssignmentCardStore } from '@/modules/llm-provider/components/providerGroupAssignmentCard'
 import type { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
-import type { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
+import type { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
