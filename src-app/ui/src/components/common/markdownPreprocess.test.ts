@@ -78,12 +78,18 @@ test('math spans are protected from the reference-link pass', () => {
   )
 })
 
-test('math delimiters outside code are converted', () => {
+test('display math outside code is converted, inline is left alone', () => {
   assert.equal(
     preprocessMarkdown('Given \\[ E = mc^2 \\] we conclude.'),
     'Given \n$$\nE = mc^2\n$$\n we conclude.',
   )
-  assert.equal(preprocessMarkdown('inline \\( x^2 \\) here'), 'inline $x^2$ here')
+  // inline `\( … \)` is byte-identical to POSIX BRE grouping, so it passes
+  // through untouched — converting it would mangle sed/grep prose
+  assert.equal(preprocessMarkdown('inline \\( x^2 \\) here'), 'inline \\( x^2 \\) here')
+  assert.equal(
+    preprocessMarkdown("[docs] and sed -e 's/\\(foo\\)/bar/'\n\n[docs]: http://x"),
+    "[docs](http://x) and sed -e 's/\\(foo\\)/bar/'\n\n[docs]: http://x",
+  )
 })
 
 test('non-math input is unchanged by the math pass', () => {
@@ -137,7 +143,7 @@ test('the early return still short-circuits delimiter-free input', () => {
   const plain = 'plain prose with no brackets at all'
   assert.equal(preprocessMarkdown(plain), plain)
   assert.equal(preprocessMarkdown(''), '')
-  // ...but a string with `\(` and no `[` must NO LONGER short-circuit, or inline
-  // math would never be converted (the bug the widened guard fixes).
-  assert.equal(preprocessMarkdown('energy \\( E \\) here'), 'energy $E$ here')
+  // a string with `\(` and no `[` short-circuits, which is correct now that
+  // inline is passthrough — `\[` always contains `[`, so nothing is missed
+  assert.equal(preprocessMarkdown('energy \\( E \\) here'), 'energy \\( E \\) here')
 })

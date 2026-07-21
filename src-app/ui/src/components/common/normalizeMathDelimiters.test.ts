@@ -24,13 +24,32 @@ test('display delimiters become block math', () => {
   check('literal \\\\[ not math \\\\]', 'literal \\\\[ not math \\\\]')
 })
 
-// TEST-2 — `\( … \)` becomes INLINE math, with no newline injected.
-test('inline delimiters become inline math', () => {
-  check('Energy \\( E = mc^2 \\) is nice.', 'Energy $E = mc^2$ is nice.')
-  check('- a \\( x \\) b', '- a $x$ b')
+// TEST-2 — inline `\( … \)` is DELIBERATELY NOT converted. It is byte-identical
+// to POSIX BRE group syntax, and no structural rule separates a sed command from
+// real math — `To escape use \( and \)` is whitespace-padded exactly like
+// `\( E = mc^2 \)`. Converting it would delete the backslashes and italicise
+// ordinary prose. Inline math still renders via `$…$`.
+test('inline delimiters pass through untouched', () => {
+  // the shell/regex family — the reason this branch does not exist
+  check(
+    "Ran: sed -e 's/\\(foo\\)/bar/' on 3 files",
+    "Ran: sed -e 's/\\(foo\\)/bar/' on 3 files",
+  )
+  check('Pattern \\(a\\|b\\) matched 4 lines', 'Pattern \\(a\\|b\\) matched 4 lines')
+  check("grep -E '\\(x\\)' file.txt", "grep -E '\\(x\\)' file.txt")
 
-  // `\\` is a LaTeX row break; the `(` after it does not open inline math
+  // prose documenting LaTeX escaping — padded exactly like real math, which is
+  // why no heuristic could have told them apart
+  check('To escape use \\( and \\) in LaTeX.', 'To escape use \\( and \\) in LaTeX.')
+
+  // ...and genuine inline math is left alone too: that is the accepted tradeoff
+  check('Energy \\( E = mc^2 \\) is nice.', 'Energy \\( E = mc^2 \\) is nice.')
+  check('- a \\( x \\) b', '- a \\( x \\) b')
   check('a\\\\(b)', 'a\\\\(b)')
+
+  // an inline pair INSIDE a display block still rides along in the body, since
+  // only the outer display delimiters are rewritten
+  check('\\[ a \\( b \\) c \\]', '$$\na \\( b \\) c\n$$')
 })
 
 // TEST-3 — block positioning: the `$$` must open at a line start, and every
@@ -81,23 +100,29 @@ test('guards leave unsafe cases untouched', () => {
 
   // empty delimiters are not math
   check('\\[\\]', '\\[\\]')
-  check('\\(  \\)', '\\(  \\)')
 
   // a table row is newline-terminated — downgrade to inline rather than break it
   check('| a | \\[ x^2 \\] |', '| a | $x^2$ |')
 
-  // a `$` inside INLINE content would close the span early
-  check('\\( a $ b \\)', '\\( a $ b \\)')
+  // a nested `\[` means the lazy closer matched the INNER `\]`; converting would
+  // leave a dangling literal `\]`, so the whole thing is left alone
+  check('\\[ a \\[ b \\] c \\]', '\\[ a \\[ b \\] c \\]')
 
-  // ...but display is safe, because its closer must be a line of only `$$`
+  // a display body containing `$` is safe — its closer must be a line of only `$$`
   check('\\[ \\text{cost} = \\$5 \\]', '$$\n\\text{cost} = \\$5\n$$')
+
+  // ...but when a table/link downgrade forces the INLINE form, a `$` in the body
+  // would close the span early, so that case stays literal
+  check('| a | \\[ x $ y \\] |', '| a | \\[ x $ y \\] |')
 })
 
 // TEST-5 — streaming safety (an unclosed opener simply doesn't match, so the
 // partial renders exactly as it does today) and idempotence.
 test('partial and pre-existing math pass through unchanged', () => {
   check('streaming \\[ \\frac{k}', 'streaming \\[ \\frac{k}')
-  check('partial \\( x', 'partial \\( x')
+
+  // a display body longer than the ReDoS cap simply doesn't convert
+  check(`\\[ ${'x'.repeat(2100)} \\]`, `\\[ ${'x'.repeat(2100)} \\]`)
 
   // the complete pair converts; the trailing partial is left for the next frame
   check('\\[ a \\] then \\[ b', '$$\na\n$$\n then \\[ b')
@@ -116,7 +141,6 @@ test('partial and pre-existing math pass through unchanged', () => {
 test('CRLF input produces the same block structure as LF', () => {
   check('Given \r\n\\[ x^2 \\]\r\nafter', 'Given \r\n$$\nx^2\n$$\r\nafter')
   check('- first \\[ x_1 \\]\r\n- second', '- first \n  $$\n  x_1\n  $$\r\n- second')
-  check('inline \\( x \\)\r\nnext', 'inline $x$\r\nnext')
   // a CRLF blank line inside the delimiters still trips the runaway guard
   check('\\[ a\r\n\r\nb \\]', '\\[ a\r\n\r\nb \\]')
 })

@@ -38,7 +38,8 @@ import {
  * stylesheet. The former `[[no-katex-remark-rehype]]` directive is
  * retired — it outlived the code it described. Because remark-math only
  * understands `$` delimiters, `preprocessMarkdown` normalizes LaTeX's
- * own `\[ … \]` / `\( … \)` into `$$…$$` / `$…$` first (issue #177).
+ * own display `\[ … \]` into `$$ … $$` first (issue #177). Inline
+ * `\( … \)` is deliberately left alone — it is POSIX BRE grouping.
  */
 
 const assistantTextMessage = (id: string, text: string): MockMessageWithContent => ({
@@ -249,7 +250,7 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
   // equations with LaTeX's own `\[ … \]`, markdown ate the `\[` as a character
   // escape, and the equation surfaced as raw LaTeX. These are the exact strings
   // from the issue screenshot.
-  test('renders \\[ … \\] display math and \\( … \\) inline math (issue #177)', async ({
+  test('renders \\[ … \\] display math (issue #177)', async ({
     page,
     testInfra,
   }) => {
@@ -259,27 +260,40 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
       'Steady state:\n\n' +
         '\\[ \\frac{d^2C(x)}{dx^2} - \\frac{k}{D}C(x) = 0 \\]\n\n' +
         'with solution\n\n' +
-        '\\[ C(x) = C_0 \\, e^{-x/\\lambda}, \\quad \\lambda = \\sqrt{D/k} \\]\n\n' +
-        'where \\( x^2 \\) is the squared depth.',
+        '\\[ C(x) = C_0 \\, e^{-x/\\lambda}, \\quad \\lambda = \\sqrt{D/k} \\]',
     )
     const bubble = assistantBubble(page)
     await expect(bubble).toContainText('Steady state')
 
-    // Both display equations render as KaTeX display blocks...
+    // Both display equations render as KaTeX display blocks.
     await expect(bubble.locator('.katex-display').first()).toBeVisible({
       timeout: 10000,
     })
     expect(
       await bubble.evaluate(el => el.querySelectorAll('.katex-display').length),
     ).toBe(2)
-    // ...and the inline one renders too (3 .katex total: 2 display + 1 inline).
-    expect(
-      await bubble.evaluate(el => el.querySelectorAll('.katex').length),
-    ).toBe(3)
 
     // The raw LaTeX must be GONE — this is the actual user-visible bug.
     await expect(bubble).not.toContainText('\\frac{d^2C(x)}{dx^2}')
     await expect(bubble).not.toContainText('\\sqrt{D/k}')
+  })
+
+  // Inline `\( … \)` is deliberately NOT converted: it is byte-identical to POSIX
+  // BRE grouping, so converting it would delete the backslashes from ordinary
+  // shell prose. This pins that decision at the rendered-DOM level.
+  test('leaves inline \\( … \\) untouched so sed/grep prose survives', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedAssistantWithText(
+      page,
+      testInfra.baseURL,
+      "Ran: sed -e 's/\\(foo\\)/bar/' on 3 files.\n\nTo escape use \\( and \\) in LaTeX.",
+    )
+    const bubble = assistantBubble(page)
+    await expect(bubble).toContainText("sed -e 's/\\(foo\\)/bar/' on 3 files")
+    await expect(bubble).toContainText('To escape use \\( and \\) in LaTeX.')
+    expect(await bubble.evaluate(el => el.querySelectorAll('.katex').length)).toBe(0)
   })
 
   // TEST-8 — the main correctness risk: a `\[` inside code must stay literal.
@@ -290,7 +304,7 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
     await seedAssistantWithText(
       page,
       testInfra.baseURL,
-      'Escaping in LaTeX source:\n\n```tex\n\\[ x^2 \\]\n```\n\nand inline `\\( y \\)` too.',
+      'Escaping in LaTeX source:\n\n```tex\n\\[ x^2 \\]\n```\n\nand inline `\\[ y \\]` too.',
     )
     const bubble = assistantBubble(page)
     await expect(bubble).toContainText('Escaping in LaTeX source')
@@ -299,7 +313,7 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
 
     // The delimiters survive verbatim inside the fence and the inline span...
     await expect(codeBlock).toContainText('\\[ x^2 \\]')
-    await expect(bubble.locator('code', { hasText: '\\( y \\)' }).first()).toBeVisible()
+    await expect(bubble.locator('code', { hasText: '\\[ y \\]' }).first()).toBeVisible()
     // ...and nothing in the bubble was turned into math.
     expect(await bubble.evaluate(el => el.querySelectorAll('.katex').length)).toBe(0)
   })

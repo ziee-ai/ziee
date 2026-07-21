@@ -20,7 +20,16 @@ const IMG_RE =
 // A `$$…$$` or `$…$` math span. The bracket-bearing passes below must not reach
 // inside one: `$$ a[1] $$` alongside a `[1]: url` definition would otherwise have
 // its `[1]` rewritten into a link, corrupting the equation.
-const MATH_SPAN_RE = /(\$\$[\s\S]*?\$\$|\$[^$\n]*\$)/
+//
+// This is an APPROXIMATION of micromark-extension-math's tokenizer, deliberately
+// kept conservative. The `\n(?!\s*\n)` clause is the important part: math can span
+// lines but NOT a blank line, so without it two unrelated `$$` occurrences
+// paragraphs apart would swallow everything between them and silently disable the
+// reference-link and image passes over that whole region. Known remaining
+// divergences from the real parser: a single-`$` span never spans a newline (the
+// real one may), and a `$$$x$$$` run is matched by delimiter text rather than by
+// matched run length.
+const MATH_SPAN_RE = /(\$\$(?:[^\n]|\n(?!\s*\n))*?\$\$|\$[^$\n]*\$)/
 
 const normId = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase()
 
@@ -52,17 +61,18 @@ function isSameOriginImage(url: string): boolean {
  *    it's a `data:` URI or already wrapped in a link. Same-origin images are
  *    left intact.
  *
- * 3. **LaTeX math delimiters** — models write display math as `\[ … \]` and inline
- *    as `\( … \)`, but remark-math only understands `$`. Markdown eats the `\[` as
- *    a character escape, so the equation leaks through as raw LaTeX (issue #177).
- *    `normalizeMathDelimiters` rewrites them into the `$$…$$` / `$…$` forms KaTeX
+ * 3. **LaTeX display-math delimiters** — models write display math as `\[ … \]`,
+ *    but remark-math only understands `$`. Markdown eats the `\[` as a character
+ *    escape, so the equation leaks through as raw LaTeX (issue #177).
+ *    `normalizeMathDelimiters` rewrites it into the `$$ … $$` block form KaTeX
  *    receives. It runs FIRST, and its output is then split back out so passes (1)
- *    and (2) never reach inside a math span.
+ *    and (2) never reach inside a math span. Inline `\( … \)` is deliberately NOT
+ *    converted — see that module's header.
  */
 export function preprocessMarkdown(md: string): string {
-  if (typeof md !== 'string') return md
-  // `\[` is covered by the `[` test; `\(` is not, hence the second check.
-  if (md.indexOf('[') === -1 && md.indexOf('\\(') === -1) return md
+  // `\[` contains `[`, so the original guard already admits every input the math
+  // pass could act on — no widening needed.
+  if (typeof md !== 'string' || md.indexOf('[') === -1) return md
 
   DEF_RE.lastIndex = 0
   const defs = new Map<string, { url: string; title?: string }>()

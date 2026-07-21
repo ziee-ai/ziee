@@ -1,32 +1,46 @@
-// LLMs commonly write math with LaTeX's own delimiters — `\[ … \]` for display and
-// `\( … \)` for inline — but remark-math (via @streamdown/math) is a micromark
-// SYNTAX extension hard-wired to `$`, with no delimiter configuration. Markdown
-// then eats the `\[` as a character escape, so the equation leaks through as a
-// literal `[` followed by raw LaTeX (issue #177).
+// LLMs commonly write DISPLAY math with LaTeX's own delimiters — `\[ … \]` — but
+// remark-math (via @streamdown/math) is a micromark SYNTAX extension hard-wired to
+// `$`, with no delimiter configuration. Markdown then eats the `\[` as a character
+// escape, so the equation leaks through as a literal `[` followed by raw LaTeX
+// (issue #177).
 //
 // The rewrite has to happen on the RAW STRING, before Streamdown parses: by the
 // time any mdast plugin could run, tokenization has already mangled the LaTeX
 // (`x_1 … y_1` consumed as emphasis, backslash escapes dropped). Same layer as the
 // sibling `citationTokenize` / `preprocessMarkdown` pre-tokenizers.
 //
-// NOTE: this function does NOT skip code blocks — its caller owns that. It is
-// invoked from `preprocessMarkdown`, inside the code-fence split loop that already
-// protects fenced blocks and inline spans.
-
-// Both delimiter pairs in ONE alternation so a single `lastIndex` walk consumes
-// them left to right — that is what stops a `\(` sitting INSIDE an already-matched
-// `\[ … \]` from being re-matched as inline math.
+// INLINE `\( … \)` IS DELIBERATELY NOT CONVERTED. It is byte-identical to POSIX
+// BRE group syntax, so converting it corrupts ordinary prose that no reader would
+// consider math:
 //
-// The lookbehind guards the OPENER only, rejecting a doubly-escaped `\\[` (a
-// literal backslash the model escaped) and the LaTeX row-break collision `a\\(b)`.
-// The closer is deliberately UNguarded: `\[ x \\\]` — a row break immediately
-// before the closer — is valid LaTeX and must still match. Over-matching is bounded
-// by the blank-line guard below.
-const MATH_RE = /(?<!\\)\\\[([\s\S]*?)\\\]|(?<!\\)\\\(([\s\S]*?)\\\)/g
+//     sed -e 's/\(foo\)/bar/'      would become   sed -e 's/$foo$/bar/'
+//     Pattern \(a\|b\) matched     would become   Pattern $a\|b$ matched
+//     To escape use \( and \).     would become   To escape use $and$.
+//
+// and there is no structural rule that separates those from a real `\( E=mc^2 \)`
+// — the last example is whitespace-padded exactly like genuine math. Since inline
+// math already renders via `$…$` (singleDollarTextMath is enabled), the tradeoff
+// is one-sided: convert display only, and never risk mangling prose. Issue #177
+// is a display-math report.
+
+// Display delimiters only. The lookbehind guards the OPENER, rejecting a
+// doubly-escaped `\\[` (a literal backslash the model escaped). The closer is
+// deliberately UNguarded: `\[ x \\\]` — a LaTeX row break immediately before the
+// closer — is valid and must still match.
+//
+// The length cap is a ReDoS bound, not a style choice. An unbounded lazy
+// `[\s\S]*?` rescans to end-of-string for EVERY unmatched opener, which is
+// quadratic in document size — and because this runs on every streaming frame it
+// compounds again over a response. Capping the body makes each scan O(cap) rather
+// than O(n): measured 4x-per-doubling before the cap, 2x after. 2000 chars is far
+// beyond any real display equation; a longer one simply doesn't convert, which is
+// the same degrade-don't-corrupt contract every other guard follows.
+const MATH_RE = /(?<!\\)\\\[([\s\S]{0,2000}?)\\\]/g
 
 // Leading indent, blockquote markers, then an optional list marker. Used to
 // reconstruct the prefix every continuation line of a block needs in order to stay
-// inside its container.
+// inside its container. The 1-9 digit bound is CommonMark's ordered-list-marker
+// limit.
 const CONTAINER_RE = /^([ \t]*)((?:> ?)*)([ \t]*)(?:([-*+]|\d{1,9}[.)])([ \t]+))?/
 
 /**
@@ -35,13 +49,12 @@ const CONTAINER_RE = /^([ \t]*)((?:> ?)*)([ \t]*)(?:([-*+]|\d{1,9}[.)])([ \t]+))
  * becomes equivalent-width spaces (a continuation line must align under the item's
  * content, not repeat the bullet).
  *
- * Returns `null` for an indented code block (4+ spaces with no bullet or quote),
+ * Returns `null` for an indented code block (4+ columns with no bullet or quote),
  * which must never be touched.
  */
 function continuationPrefix(lineHead: string): string | null {
-  const m = CONTAINER_RE.exec(lineHead)
-  if (!m) return ''
-  const [, lead, bq, mid, marker, gap] = m
+  // CONTAINER_RE is anchored and every group is optional, so exec always matches.
+  const [, lead, bq, mid, marker, gap] = CONTAINER_RE.exec(lineHead)!
   // A tab counts as 4 columns of indentation in CommonMark, so `\t\[ x \]` is an
   // indented CODE block just as `    \[ x \]` is — measure columns, not chars.
   const indentColumns = lead.replace(/\t/g, '    ').length
@@ -52,17 +65,21 @@ function continuationPrefix(lineHead: string): string | null {
 /**
  * Is the match sitting inside a link destination or title — `[t](http://x "…")`?
  * Injecting a newline there would break the link syntax outright (corruption, not
- * degradation), so those downgrade to inline math the same way a table row does.
- * True when the last `](` on the line has no `)` after it.
+ * degradation). True when the last `](` on the line has no `)` after it.
  */
 function inLinkTarget(lineHead: string): boolean {
   const open = lineHead.lastIndexOf('](')
   return open !== -1 && !lineHead.includes(')', open + 2)
 }
 
+/** Emit inline math, unless a `$` in the body would close the span early. */
+const asInlineMath = (inner: string, whole: string): string =>
+  inner.includes('$') ? whole : `$${inner}$`
+
 /**
- * Rewrite LaTeX-delimited math into the `$`-delimited forms remark-math parses:
- * `\[ … \]` → block math, `\( … \)` → inline math.
+ * Rewrite LaTeX display delimiters `\[ … \]` into the `$$ … $$` block form that
+ * remark-math parses. Inline `\( … \)` is passed through UNCHANGED — see the
+ * module header for why.
  *
  * Two parser mechanics drive the block form, both verified against the installed
  * micromark-extension-math rather than assumed:
@@ -81,42 +98,35 @@ function inLinkTarget(lineHead: string): boolean {
  */
 export function normalizeMathDelimiters(md: string): string {
   if (typeof md !== 'string') return md
-  if (md.indexOf('\\[') === -1 && md.indexOf('\\(') === -1) return md
+  if (md.indexOf('\\[') === -1) return md
 
   return md.replace(
     MATH_RE,
-    (
-      whole: string,
-      display: string | undefined,
-      inline: string | undefined,
-      offset: number,
-      str: string,
-    ) => {
-      const inner = (display ?? inline ?? '').trim()
+    (whole: string, display: string, offset: number, str: string) => {
+      const inner = display.trim()
       if (!inner) return whole
 
       // A blank line can't occur inside real math, but it CAN occur when an
       // unclosed `\[` runs on until some later `\]` — this bounds the damage to a
       // single paragraph instead of swallowing the rest of the message.
-      // `\r?` throughout: an uploaded .md / SKILL.md may be CRLF.
+      // `\r?` throughout: an uploaded .md may be CRLF.
       if (/\r?\n[ \t]*\r?\n/.test(inner)) return whole
-
-      // Inline needs no block positioning. A `$` in the content would close the
-      // span early and corrupt the rest of the line, so leave those alone.
-      if (display === undefined) {
-        return inner.includes('$') ? whole : `$${inner}$`
-      }
 
       // A body line that is exactly `$$` would close the fence early.
       if (inner.split(/\r?\n/).some(line => line.trim() === '$$')) return whole
 
+      // A nested `\[` means the lazy closer matched the INNER `\]`, so converting
+      // would emit a block plus a dangling literal `\]`. Not valid LaTeX anyway —
+      // leave the whole thing alone rather than produce unbalanced output.
+      if (inner.includes('\\[')) return whole
+
       const lineHead = str.slice(str.lastIndexOf('\n', offset - 1) + 1, offset)
 
       // Two places a newline cannot go: a table row (newline-terminated) and a
-      // link destination/title (newline breaks the link syntax). Both downgrade
+      // link destination/title (a newline breaks the link syntax). Both downgrade
       // to inline math, which still renders and cannot corrupt the construct.
       if (lineHead.includes('|') || inLinkTarget(lineHead)) {
-        return inner.includes('$') ? whole : `$${inner}$`
+        return asInlineMath(inner, whole)
       }
 
       const prefix = continuationPrefix(lineHead)

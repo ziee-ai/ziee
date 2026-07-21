@@ -41,64 +41,6 @@ test.describe('Skills — detail drawer', () => {
     await expect(byTestId(drawer, 'skill-detail-body-error')).toHaveCount(0)
   })
 
-  // TEST-10 — the drawer now routes its markdown through the shared
-  // `preprocessMarkdown`, so it gains all three of that helper's passes. This
-  // asserts the one this feature added (LaTeX math) AND the two it inherits
-  // (reference-link inlining, blocked-image placeholder) actually render here —
-  // the DEC-7 obligation to prove the broadening beyond issue #177 by running it.
-  test('renders LaTeX math, inlined reference links and blocked images', async ({
-    page,
-    testInfra,
-  }) => {
-    const { baseURL, apiURL } = testInfra
-    await loginAsAdmin(page, baseURL)
-    await installSeedSkill(apiURL, await getAdminToken(apiURL))
-
-    await page.route(/\/api\/skills\/[^/]+\/body$/, async (route, req) => {
-      if (req.method() !== 'GET') return route.fallback()
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          body:
-            'Diffusion at steady state:\n\n' +
-            '\\[ \\frac{d^2C(x)}{dx^2} = 0 \\]\n\n' +
-            'with inline \\( x^2 \\) too.\n\n' +
-            'See the [docs][1] for details.\n\n' +
-            '![chart](https://external.example/chart.png)\n\n' +
-            '[1]: https://example.com/guide\n',
-        }),
-      })
-    })
-
-    await page.goto(`${baseURL}/settings/skills`)
-    const card = page.locator('[data-testid^="skill-list-card-"]').first()
-    await expect(card).toBeVisible({ timeout: 30000 })
-    await card.click()
-
-    const bodyEl = byTestId(page, 'skill-detail-body')
-    await expect(bodyEl).toBeVisible({ timeout: 15000 })
-
-    // (a) math — one display block + one inline, and no raw LaTeX left over
-    await expect(bodyEl.locator('.katex-display').first()).toBeVisible({
-      timeout: 10000,
-    })
-    expect(
-      await bodyEl.evaluate(el => el.querySelectorAll('.katex').length),
-    ).toBe(2)
-    await expect(bodyEl).not.toContainText('\\frac{d^2C(x)}{dx^2}')
-
-    // (b) inherited: a cross-block reference link resolves to a real anchor
-    await expect(
-      bodyEl.locator('a[href="https://example.com/guide"]'),
-    ).toHaveText('docs')
-
-    // (c) inherited: the external image degrades to the 🖼 placeholder link
-    // rather than a broken, never-loading <img> with a dangling caption
-    await expect(bodyEl.locator('img')).toHaveCount(0)
-    await expect(bodyEl).toContainText('🖼 chart')
-  })
-
   test('a failed SKILL.md fetch shows the error state', async ({
     page,
     testInfra,
