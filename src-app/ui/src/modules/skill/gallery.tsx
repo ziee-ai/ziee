@@ -26,12 +26,12 @@ async function seedSkills(
   skills: typeof skillsList,
   available: typeof skillsAvailable,
 ): Promise<void> {
-  const { SkillStoreDef } = await import('@/modules/skill/stores/Skill.store')
+  const { useSkillStore } = await import('@/modules/skill/stores/skill')
   const { ConversationSkills } = await import(
     '@/modules/skill/stores/ConversationSkills.store'
   )
   await holdPatch(() => {
-    SkillStoreDef.store.setState({ skills, loading: false } as any)
+    useSkillStore.setState({ skills, loading: false } as any)
     ConversationSkills.store.setState({
       available: { [SKILLS_CONVERSATION_ID]: available },
       loading: { [SKILLS_CONVERSATION_ID]: false },
@@ -206,9 +206,9 @@ export const gallery: ModuleGallery = {
         const { ConversationSkills } = await import(
           '@/modules/skill/stores/ConversationSkills.store'
         )
-        const { SkillStoreDef } = await import('@/modules/skill/stores/Skill.store')
+        const { useSkillStore } = await import('@/modules/skill/stores/skill')
         await holdPatch(() => {
-          SkillStoreDef.store.setState({ skills: [] } as any)
+          useSkillStore.setState({ skills: [] } as any)
           ConversationSkills.store.setState({
             available: { 'conv-1': [] },
             loading: { 'conv-1': false },

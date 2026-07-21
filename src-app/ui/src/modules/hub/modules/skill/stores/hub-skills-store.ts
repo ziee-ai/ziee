@@ -2,7 +2,7 @@ import { defineStore } from '@ziee/framework/store-kit'
 import { Stores } from '@ziee/framework/stores'
 import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
 import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
-import { useSkillStore } from '@/modules/skill/stores/Skill.store'
+import { useSkillStore } from '@/modules/skill/stores/skill'
 import { useSystemSkillStore } from '@/modules/skill/stores/SystemSkill.store'
 
 /**
