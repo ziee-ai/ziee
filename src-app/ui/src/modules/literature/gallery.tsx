@@ -22,11 +22,11 @@ export const gallery: ModuleGallery = {
         'LitSearchConnectorsSection',
       ),
       setup: async () => {
-        const { LitSearchAdmin } = await import(
-          '@/modules/literature/stores/LitSearchAdmin.store'
+        const { useLitSearchAdminStore } = await import(
+          '@/modules/literature/stores/litSearchAdmin'
         )
         await holdPatch(() =>
-          LitSearchAdmin.store.setState({
+          useLitSearchAdminStore.setState({
             loading: true,
             settings: null,
             connectors: [],

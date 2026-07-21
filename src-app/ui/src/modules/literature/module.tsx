@@ -4,7 +4,7 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useLitSearchAdminStore } from './stores/LitSearchAdmin.store'
+import { useLitSearchAdminStore } from './stores/litSearchAdmin'
 import { useLitSearchUserKeysStore } from './stores/LitSearchUserKeys.store'
 import './types' // CRITICAL: enable store + panel-renderer type declaration merging
 

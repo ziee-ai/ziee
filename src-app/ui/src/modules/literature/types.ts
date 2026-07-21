@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useLitSearchAdminStore } from './stores/LitSearchAdmin.store'
+import type { useLitSearchAdminStore } from './stores/litSearchAdmin'
 import type { useLitSearchUserKeysStore } from './stores/LitSearchUserKeys.store'
 
 declare module '@ziee/framework/stores' {
