@@ -12,7 +12,7 @@ import {
   useWorkflowStore,
 } from '@/modules/workflow/stores'
 import { useGroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/groupSystemWorkflowsWidget'
-import { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer.store'
+import { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/workflow/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types

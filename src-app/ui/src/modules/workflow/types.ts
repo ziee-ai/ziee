@@ -7,7 +7,7 @@ import type {
   useWorkflowStore,
 } from '@/modules/workflow/stores'
 import type { useGroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/groupSystemWorkflowsWidget'
-import type { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer.store'
+import type { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
