@@ -3,7 +3,7 @@ import type { useFileStore } from './stores/File.store'
 import type { useFilePreviewDrawerStore } from './stores/FilePreviewDrawer.store'
 import type { useFileVersionsStore } from './stores/fileVersions'
 import type { usePdfHighlightStore } from './stores/PdfHighlight.store'
-import type { useDeliverablesStore } from './stores/Deliverables.store'
+import type { useDeliverablesStore } from './stores/deliverables'
 import type { ProjectFilesDef } from './project-extension/stores/projectFiles'
 
 declare module '@ziee/framework/stores' {

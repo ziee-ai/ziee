@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Pin, PinOff } from 'lucide-react'
 import { Button, message } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
@@ -16,11 +17,30 @@ export function DeliverablePinButton({ file }: { file: FileEntity }) {
   const canEditConversation = usePermission(Permissions.ConversationsEdit)
   const conversation = Stores.Chat.conversation
   const convId = conversation?.id
-  // Reactive read so the pinned state updates when the list refetches.
-  const byConv = Stores.Deliverables.byConversation
+
+  // Lazy-loaded deliverables are async (store-kit wraps sync returns in Promise).
+  // Read cached reactively; fall back to async load on first render.
+  const [list, setList] = useState<FileEntity[]>(() => {
+    if (!convId) return []
+    return Stores.Deliverables.byConversation.get(convId) ?? []
+  })
+
+  useEffect(() => {
+    if (!convId) return
+    const cached = Stores.Deliverables.byConversation.get(convId)
+    if (cached) {
+      setList(cached)
+      return
+    }
+    // First render with no cached data — trigger async load.
+    let cancelled = false
+    void Stores.Deliverables.getForConversation(convId).then(result => {
+      if (!cancelled) setList(result)
+    })
+    return () => { cancelled = true }
+  }, [convId])
+
   if (!convId || !canEditConversation) return null
-  const list =
-    byConv.get(convId) ?? Stores.Deliverables.getForConversation(convId)
   const isDeliverable = list.some(f => f.id === file.id)
 
   const toggle = async () => {
