@@ -4,7 +4,7 @@ import type { useVoiceDownloadProgressStore } from './stores/voiceDownloadProgre
 import type { useVoiceInstanceStore } from './stores/voiceInstance'
 import type { useVoiceModelStore } from './stores/voiceModel'
 import type { useVoiceModelDownloadProgressStore } from './stores/VoiceModelDownloadProgress.store'
-import type { useVoiceModelUpdateStore } from './stores/VoiceModelUpdate.store'
+import type { useVoiceModelUpdateStore } from './stores/voiceModelUpdate'
 import type { useVoiceModelUploadStore } from './stores/VoiceModelUpload.store'
 import type { useVoiceRuntimeVersionStore } from './stores/voiceRuntimeVersion'
 import type { useVoiceUpdateStore } from './stores/VoiceUpdate.store'
