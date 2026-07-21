@@ -112,7 +112,7 @@ export const gallery: ModuleGallery = {
           '@/modules/llm-local-runtime/stores/runtimeConfig'
         )
         const { RuntimeDownloadProgress } = await import(
-          '@/modules/llm-local-runtime/stores/RuntimeDownloadProgress.store'
+          '@/modules/llm-local-runtime/stores/runtimeDownloadProgress'
         )
         await holdPatch(() => {
           RuntimeConfigRaw.setState({
