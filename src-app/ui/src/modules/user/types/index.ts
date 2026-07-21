@@ -3,7 +3,7 @@ import type { StoreProxy } from '@ziee/framework/stores'
 // re-tethering the lazy Users store through the barrel.
 import type { useUsersStore } from '@/modules/user/stores/users'
 import type { useUserGroupsStore } from '@/modules/user/stores'
-import type { useUserGroupDrawerStore } from '@/modules/user/components/group/EditUserGroupDrawer.store'
+import type { useUserGroupDrawerStore } from '@/modules/user/components/group/editUserGroupDrawer'
 import type { useGroupMembersDrawerStore } from '@/modules/user/components/group/GroupMembersDrawer.store'
 import type { useCreateUserDrawerStore } from '@/modules/user/components/user/CreateUserDrawer.store'
 import type { useEditUserDrawerStore } from '@/modules/user/components/user/EditUserDrawer.store'
