@@ -5,7 +5,7 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useModelPickerStore } from './modelPicker'
-import { useUserLlmProvidersStore } from './UserLlmProviders.store'
+import { useUserLlmProvidersStore } from './userLlmProviders'
 import { useUserProviderKeysStore } from './userProviderKeys'
 import './types'
 

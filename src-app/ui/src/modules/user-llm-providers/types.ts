@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useUserLlmProvidersStore } from './UserLlmProviders.store'
+import type { useUserLlmProvidersStore } from './userLlmProviders'
 import type { useModelPickerStore } from './modelPicker'
 import type { useUserProviderKeysStore } from './userProviderKeys'
 
