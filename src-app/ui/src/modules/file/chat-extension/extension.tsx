@@ -96,7 +96,7 @@ function ComposerFileListeners() {
 
 // Augment the central PanelRendererMap so `displayInRightPanel({ type: 'file',
 // data: ... })` and `registerPanelRenderer('file', ...)` are type-checked.
-declare module '@/modules/chat/core/stores/Chat.store' {
+declare module '@/modules/chat/core/stores/chat' {
   interface PanelRendererMap {
     file: { fileId: string; version?: number }
   }
@@ -145,7 +145,7 @@ const fileExtension: ChatExtension = createExtension({
     // restored from localStorage after reload. The renderer receives the
     // serialized `data` ({ fileId }) and looks the actual File entity up
     // from FileStore at render time.
-    const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
+    const { registerPanelRenderer } = await import('@/modules/chat/core/stores/chat')
     const { FilePanel: FilePanelComponent } = await import('@/modules/file/components/FilePanel')
     const { File: FileOutlinedIcon } = await import('lucide-react')
     const { Spin: SpinComponent } = await import('@ziee/kit')

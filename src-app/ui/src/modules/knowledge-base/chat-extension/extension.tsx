@@ -26,7 +26,7 @@ import type { KbSourceData } from './components/KbSourcePanel'
 
 // Augment the central PanelRendererMap so `displayInRightPanel({ type:
 // 'kb_source', data })` and `registerPanelRenderer('kb_source', …)` type-check.
-declare module '@/modules/chat/core/stores/Chat.store' {
+declare module '@/modules/chat/core/stores/chat' {
   interface PanelRendererMap {
     kb_source: KbSourceData
   }
@@ -44,7 +44,7 @@ const knowledgeBaseExtension: ChatExtension = createExtension({
 
   initialize: async (ctx) => {
     const { registerPanelRenderer } = await import(
-      '@/modules/chat/core/stores/Chat.store'
+      '@/modules/chat/core/stores/chat'
     )
     const { Stores } = await import('@ziee/framework/stores')
     const { KbSourcePanel } = await import('./components/KbSourcePanel')
