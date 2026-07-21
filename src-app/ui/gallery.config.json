@@ -13,6 +13,11 @@
   "testidOut": "../../sdk/packages/kit/src/testIds.generated.ts",
   "runtimeBaselineModule": "src/dev/gallery/runtime-baseline.js",
   "visualConfig": "playwright.visual.config.ts",
-  "visualSpecs": ["layout.spec.ts", "states.spec.ts", "overlays.spec.ts"],
+  "visualSpecs": [
+    "layout.spec.ts",
+    "states.spec.ts",
+    "overlays.spec.ts",
+    "chat-collapse-borders.spec.ts"
+  ],
   "visualSnapshotSpecs": ["gallery.spec.ts"]
 }

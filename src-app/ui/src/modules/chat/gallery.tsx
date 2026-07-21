@@ -198,6 +198,37 @@ export const gallery: ModuleGallery = {
       setup: () => whenLoaded(CHAT_DEEP_CONVERSATION_IDS.toolGroup),
     },
     {
+      // issue-183 (collapse-border-overlay): a LONG assistant turn that clamps,
+      // with thinking + tool-call cards INSIDE the clamped region. A kit Card's
+      // border is `ring-1` — a box-shadow painted entirely OUTSIDE its own box —
+      // and the clamped container applies BOTH `overflow-hidden` and a
+      // `mask-image`, each of which clips to the border box (`mask-clip` defaults
+      // to `border-box`). Flush against the container, the whole ring landed in
+      // the clipped zone, so the boxes rendered with no left/right border and
+      // read as washed out. Only the collapsed state was affected, because both
+      // clips are gated on `isClamped`.
+      // The turn interleaves thinking → text → tool → text → tool → answer so one
+      // card sits above the mask ramp (≈288px) and one straddles it.
+      slug: 'deep-chat-collapsed-tool-boxes',
+      title: 'Conversation — collapsed message with thinking + tool cards',
+      conversationId: CHAT_DEEP_CONVERSATION_IDS.collapsedToolBoxes,
+      note: 'a clamped long turn whose cards sit inside the fold — their borders must stay crisp collapsed AND expanded',
+      setup: () => whenLoaded(CHAT_DEEP_CONVERSATION_IDS.collapsedToolBoxes),
+      interactions: [
+        {
+          // The expanded state is the CONTROL: it was always rendering correctly
+          // (no mask, no clip), so shooting it alongside the collapsed state is
+          // what proves the fix converged the two rather than breaking expand.
+          name: 'expand-collapsed-message',
+          note: 'click Show more → the unclamped turn (no mask, no clip) as the crisp-border control',
+          steps: async d => {
+            await d.click('collapsible-toggle')
+            await d.wait(300)
+          },
+        },
+      ],
+    },
+    {
       // Live MCP-composer tool-call in COMPLETED status: seeding McpComposer.toolCalls
       // for the running conversation's tool_use block id makes McpToolCallUI render
       // the completed status marker (mcp/chat-extension/extension.tsx:69/70).
