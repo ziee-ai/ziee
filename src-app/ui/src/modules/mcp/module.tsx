@@ -5,7 +5,7 @@ import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { useMcpUserPolicyStore } from './stores/mcpUserPolicy'
 import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
-import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard.store'
+import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/mcpServerGroupsAssignmentCard'
 import { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
 import {
   useMcpComposerStore,
