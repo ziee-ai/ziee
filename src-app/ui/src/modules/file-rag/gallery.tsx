@@ -23,12 +23,12 @@ export const gallery: ModuleGallery = {
         'FileRagAdminPage',
       ),
       setup: async () => {
-        const { FileRagAdmin } = await import(
-          '@/modules/file-rag/stores/FileRagAdmin.store'
+        const { FileRagAdminStore } = await import(
+          '@/modules/file-rag/stores/fileRagAdmin'
         )
-        await whenTrue(() => FileRagAdmin.store.getState().settings != null)
+        await whenTrue(() => FileRagAdminStore.getState().settings != null)
         await holdPatch(() =>
-          FileRagAdmin.store.setState({
+          FileRagAdminStore.setState({
             error: 'Failed to save Document RAG settings.',
           } as any),
         )
