@@ -1,6 +1,6 @@
 import { createModule } from '@ziee/framework'
 import { lazy } from 'react'
-import { useApiKeysStepStore } from './components/ApiKeysStep.store'
+import { useApiKeysStepStore } from './components/apiKeysStep'
 import { useMcpServersStepStore } from './components/mcpServersStep'
 import { useMemorySetupStepStore } from './components/memorySetupStep'
 import './types'

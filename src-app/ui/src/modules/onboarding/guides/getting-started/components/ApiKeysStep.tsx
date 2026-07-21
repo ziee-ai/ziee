@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useApiKeysStepStore } from './ApiKeysStep.store'
+import { useApiKeysStepStore } from './apiKeysStep'
 import {
   Spin,
   ErrorState,

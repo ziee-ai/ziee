@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useApiKeysStepStore } from './components/ApiKeysStep.store'
+import type { useApiKeysStepStore } from './components/apiKeysStep'
 import type { useMcpServersStepStore } from './components/mcpServersStep'
 import type { useMemorySetupStepStore } from './components/memorySetupStep'
 
