@@ -30,9 +30,10 @@ fn parse_kind(s: &str) -> Result<ScheduleKind, (StatusCode, AppError)> {
     match s {
         "once" => Ok(ScheduleKind::Once),
         "recurring" => Ok(ScheduleKind::Recurring),
+        "self_paced" => Ok(ScheduleKind::SelfPaced),
         _ => Err(AppError::bad_request(
             "SCHEDULER_BAD_SCHEDULE_KIND",
-            "schedule_kind must be 'once' or 'recurring'",
+            "schedule_kind must be 'once', 'recurring', or 'self_paced'",
         )
         .into()),
     }
@@ -123,7 +124,7 @@ async fn validate_allowed_tools(
 pub async fn create_task(
     auth: RequirePermissions<(SchedulerUse,)>,
     origin: SyncOrigin,
-    Json(body): Json<CreateScheduledTask>,
+    Json(mut body): Json<CreateScheduledTask>,
 ) -> ApiResult<Json<ScheduledTask>> {
     // Field validation.
     let name = body.name.trim();
@@ -209,6 +210,22 @@ pub async fn create_task(
     // The unattended allow-list may only narrow the user's own access (ITEM-15).
     validate_allowed_tools(auth.user.id, &body.allowed_unattended_tools).await?;
 
+    // ITEM-22/DEC-46: a caller-supplied bound conversation must belong to the
+    // user — verify ownership BEFORE binding so a foreign/nonexistent id yields
+    // 404 (never binds another user's conversation). `get_conversation` is
+    // owner-scoped (returns None for a foreign id).
+    if let Some(cid) = body.bound_conversation_id {
+        if Repos
+            .chat
+            .core
+            .get_conversation(cid, auth.user.id)
+            .await?
+            .is_none()
+        {
+            return Err(AppError::not_found("Conversation").into());
+        }
+    }
+
     // Delivery-mode enums (400, not a DB-CHECK 500).
     if !matches!(body.notify_mode.as_str(), "always" | "silent")
         || !matches!(body.notify_on.as_str(), "always" | "on_change")
@@ -221,6 +238,33 @@ pub async fn create_task(
     }
 
     let kind = parse_kind(&body.schedule_kind)?;
+
+    // ITEM-24 / DEC-61/62/63: a non-blank `completion_condition` makes this a
+    // GOAL-SEEKING task, which runs ONLY on the self-paced prompt write-back path
+    // (an isolated evaluator re-fires turns until the condition is met). Normalize
+    // a blank to None; a real condition must be a self-paced prompt task and is
+    // length-capped (a clean 400, not a DB-CHECK 500).
+    match body.completion_condition.as_deref() {
+        Some(c) if c.trim().is_empty() => body.completion_condition = None,
+        Some(c) if c.len() > super::models::MAX_COMPLETION_CONDITION_LEN => {
+            return Err(AppError::bad_request(
+                "SCHEDULER_BAD_CONDITION",
+                "completion_condition exceeds the length limit",
+            )
+            .into());
+        }
+        Some(_) => {
+            if body.target_kind != "prompt" || !matches!(kind, ScheduleKind::SelfPaced) {
+                return Err(AppError::bad_request(
+                    "SCHEDULER_BAD_CONDITION",
+                    "a completion_condition (goal-seeking) requires a self-paced prompt task",
+                )
+                .into());
+            }
+        }
+        None => {}
+    }
+
     let admin = settings::get(Repos.pool()).await?;
 
     // Quota (422).
@@ -268,12 +312,28 @@ pub fn create_task_docs(op: TransformOperation) -> TransformOperation {
         .response::<201, Json<ScheduledTask>>()
 }
 
+/// Query params for `GET /api/scheduled-tasks` (ITEM-23/DEC-47). An optional
+/// `conversation_id` filters to the tasks BOUND to that conversation (the in-chat
+/// "attached loops/schedules" list); omitting it returns all of the user's tasks
+/// (back-compat).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListTasksParams {
+    #[serde(default)]
+    pub conversation_id: Option<Uuid>,
+}
+
 /// GET /api/scheduled-tasks
 #[debug_handler]
 pub async fn list_tasks(
     auth: RequirePermissions<(SchedulerUse,)>,
+    Query(params): Query<ListTasksParams>,
 ) -> ApiResult<Json<Vec<ScheduledTask>>> {
-    let tasks = repository::list_for_user(Repos.pool(), auth.user.id).await?;
+    let tasks = match params.conversation_id {
+        Some(cid) => {
+            repository::list_for_user_by_conversation(Repos.pool(), auth.user.id, cid).await?
+        }
+        None => repository::list_for_user(Repos.pool(), auth.user.id).await?,
+    };
     Ok((StatusCode::OK, Json(tasks)))
 }
 
@@ -597,6 +657,7 @@ pub async fn update_admin_settings(
         || !(60..=86400).contains(&body.min_interval_seconds)
         || !(1..=100).contains(&body.max_consecutive_failures)
         || !(0..=3650).contains(&body.notification_retention_days)
+        || !(1..=365).contains(&body.max_horizon_days)
     {
         return Err(AppError::bad_request(
             "SCHEDULER_SETTINGS_RANGE",

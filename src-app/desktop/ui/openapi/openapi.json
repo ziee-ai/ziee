@@ -11381,6 +11381,74 @@
         ]
       }
     },
+    "/api/conversations/{id}/compact": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Manually compact a conversation's context",
+        "description": "Regenerate the active branch's rolling summary and emit a `historyReplaced` timeline marker. Outbound-only: stored messages are never rewritten or deleted.",
+        "operationId": "Conversation.compact",
+        "requestBody": {
+          "description": "Request body for `POST /conversations/{id}/compact` (ITEM-61 / DEC-137).",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompactConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          },
+          "400": {
+            "description": "No active branch or model"
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/conversations/{id}/messages": {
       "get": {
         "tags": [
@@ -14322,6 +14390,89 @@
         ]
       }
     },
+    "/api/mcp/servers/{id}/tool-approvals": {
+      "get": {
+        "tags": [
+          "MCP Servers - System"
+        ],
+        "summary": "List a system MCP server's tools + per-tool approval modes",
+        "description": "Return a SYSTEM MCP server's advertised tools (live `tools/list`, with an `tools_unreachable` fallback when the server can't be reached) and, per tool, the EFFECTIVE admin approval mode = the per-tool override if set, else the server default (`manual_approve`). Admin-only (`mcp_servers_admin::read`). A foreign / non-system id returns 404.",
+        "operationId": "McpServerToolApprovals.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          },
+          "200": {
+            "description": "GET response: the server's advertised tools, each with its effective mode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerToolApprovalsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/tool-approvals/{tool}": {
+      "put": {
+        "tags": [
+          "MCP Servers - System"
+        ],
+        "summary": "Set or clear a system MCP server tool's approval override",
+        "description": "Set (`mode`) or clear (`mode: null`) the ADMIN per-tool approval override for one tool of a SYSTEM MCP server. The override is consulted by the chat approval gate BEFORE the conversation / user default (override wins). Admin-only (`mcp_servers_admin::edit`). A foreign / non-system id returns 404.",
+        "operationId": "McpServerToolApprovals.set",
+        "requestBody": {
+          "description": "PUT body: the override to set, or `null`/omitted to CLEAR it.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetToolApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          },
+          "200": {
+            "description": "PUT response: the tool's effective mode after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetToolApprovalResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/elicitation/{elicitation_id}/respond": {
       "post": {
         "tags": [
@@ -16463,233 +16614,6 @@
         }
       }
     },
-    "/api/summarization/settings": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Read deployment-wide summarization settings",
-        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
-        "operationId": "SummarizationAdmin.get",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
-                        "name": "SummarizationSettingsRead",
-                        "value": "summarization::settings::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Update deployment-wide summarization settings",
-        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
-        "operationId": "SummarizationAdmin.update",
-        "requestBody": {
-          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SummarizationAdminSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/conversations/{id}/summary": {
-      "get": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Get the active-branch summary for a conversation (null if none)",
-        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
-        "operationId": "Summarization.getConversationSummary",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/ConversationSummary"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/_test/summarization/refresh": {
-      "post": {
-        "tags": [
-          "Summarization"
-        ],
-        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
-        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
-        "operationId": "SummarizationTest.refresh",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRefreshRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
-                        "name": "SummarizationSettingsManage",
-                        "value": "summarization::settings::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: summarization::settings::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/memories": {
       "get": {
         "tags": [
@@ -17636,6 +17560,233 @@
                     ]
                   },
                   "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/summarization/settings": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Read deployment-wide summarization settings",
+        "description": "Returns the singleton deployment-wide summarization settings (enable flag, trigger thresholds, model, prompt).",
+        "operationId": "SummarizationAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read deployment-wide summarization settings (model + thresholds + prompt overrides).",
+                        "name": "SummarizationSettingsRead",
+                        "value": "summarization::settings::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Update deployment-wide summarization settings",
+        "description": "Tri-state partial update — every field is optional. Missing field = no change; explicit JSON null = clear back to compiled default. Returns 400 on range / placeholder / keep<trigger / unknown-llm-model violations before any DB write.",
+        "operationId": "SummarizationAdmin.update",
+        "requestBody": {
+          "description": "Partial-update request for the singleton admin settings row.\n\n The four nullable fields (model id + the two prompts) use the\n `Option<Option<T>>` tri-state:\n   missing  → `None`        → leave the column alone\n   `null`   → `Some(None)`  → clear the column\n   value    → `Some(Some(v))` → set the column",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSummarizationAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide summarization admin settings (singleton row).\n\n `default_summarization_model_id` is intentionally nullable: when\n NULL, the chat extension falls back to the conversation's own\n model (zero-config). The token thresholds + prompt overrides are\n runtime-tunable knobs for operators with workloads that need a\n different shape than the compiled defaults.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummarizationAdminSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed (out-of-range token threshold, missing prompt placeholder, keep>=trigger, unknown default_summarization_model_id, or model that is not chat-capable)."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/summary": {
+      "get": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Get the active-branch summary for a conversation (null if none)",
+        "description": "Returns the rolling summary for the conversation's active branch, or null when no summary has been generated yet.",
+        "operationId": "Summarization.getConversationSummary",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConversationSummary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/summarization/refresh": {
+      "post": {
+        "tags": [
+          "Summarization"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "Debug-build-only endpoint that runs a synchronous summary refresh for deterministic tests. Not present in release builds.",
+        "operationId": "SummarizationTest.refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update deployment-wide summarization settings (enable, model, thresholds, prompts).",
+                        "name": "SummarizationSettingsManage",
+                        "value": "summarization::settings::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: summarization::settings::manage",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -19005,162 +19156,6 @@
           },
           "401": {
             "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory": {
-      "get": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "List the caller's core memory blocks for an assistant",
-        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
-        "operationId": "CoreMemory.list",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read own assistant core memory blocks.",
-                        "name": "CoreMemoryRead",
-                        "value": "memory::core::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CoreMemoryBlock"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/core-memory": {
-      "put": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Create or update a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.upsert",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreMemoryBlock"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
-      "delete": {
-        "tags": [
-          "CoreMemory"
-        ],
-        "summary": "Delete a core memory block",
-        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
-        "operationId": "CoreMemory.delete",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Upsert / delete own assistant core memory blocks.",
-                        "name": "CoreMemoryWrite",
-                        "value": "memory::core::write"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: memory::core::write",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Deleted"
           }
         },
         "security": [
@@ -21138,6 +21133,162 @@
         ]
       }
     },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -21359,6 +21510,356 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/background/runs": {
+      "get": {
+        "tags": [
+          "background"
+        ],
+        "summary": "List the acting user's background runs",
+        "description": "Owner-scoped, newest-first, paginated list of the caller's background runs (detached sub-agent / sandbox-exec runs — never classic workflow runs). Optional `status` / `kind` filters; `page`/`per_page` clamped (default 50, cap 500). Compact summaries only — the full result is fetched separately via `collect_result`.",
+        "operationId": "Background.listRuns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "description": "Filter to a single background job kind (`subagent` / `sandbox_exec`).",
+            "schema": {
+              "description": "Filter to a single background job kind (`subagent` / `sandbox_exec`).",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "description": "Page size; clamped to `1..=500` server-side (default 50).",
+            "schema": {
+              "description": "Page size; clamped to `1..=500` server-side (default 50).",
+              "type": "integer",
+              "format": "int64",
+              "default": 50
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "description": "Filter to a single run status (`pending` / `running` / `waiting` /\n `resumable` / `completed` / `failed` / `cancelled`).",
+            "schema": {
+              "description": "Filter to a single run status (`pending` / `running` / `waiting` /\n `resumable` / `completed` / `failed` / `cancelled`).",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.",
+                        "name": "BackgroundUse",
+                        "value": "background::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: background::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Paginated response for `GET /api/background/runs` (mirrors\n `McpToolCallListResponse`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundRunListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/background/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "background"
+        ],
+        "summary": "Get one background run incl. its full result",
+        "description": "Owner-scoped detail for a single background run (a detached sub-agent / sandbox-exec run — never a classic workflow run), including the full `final_output_json` result body plus status, error, timings, kind, and tokens. This is the getter the FE uses to render a COMPLETED run's result — the list endpoint returns only compact summaries with `has_result`. A foreign / missing / classic-workflow-kind run → 404 (never leaked; classic workflow runs are served by `GET /api/workflows/runs/{id}`).",
+        "operationId": "Background.getRun",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.",
+                        "name": "BackgroundUse",
+                        "value": "background::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: background::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /\n sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`\n result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and\n adds the collected result, so the FE can render a completed run's output without a\n second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.\n The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still\n excluded — a background run has none, and a classic `workflow`-kind run is served\n by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundRunDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Run not found / not owned"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/background/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "background"
+        ],
+        "summary": "Cancel a running background run",
+        "description": "Marks a non-terminal background run cancelled and signals the detached task to stop (reusing the run-cancel CAS + the in-memory `RunHandle` cancel). Owner-scoped (a foreign/missing run → 404); an already-finished run → 409.",
+        "operationId": "Background.cancelRun",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.",
+                        "name": "BackgroundUse",
+                        "value": "background::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: background::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Cancel-run acknowledgement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundRunCancelAck"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Run not found / not owned"
+          },
+          "409": {
+            "description": "Run already finished"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/background/runs/{run_id}/notes": {
+      "get": {
+        "tags": [
+          "background"
+        ],
+        "summary": "List a running background run's pending steering notes",
+        "description": "Returns the run's not-yet-consumed steering notes, oldest-first. Owner-scoped (a foreign/missing run → 404).",
+        "operationId": "Background.listRunNotes",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.",
+                        "name": "BackgroundUse",
+                        "value": "background::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: background::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunNote"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Run not found / not owned"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "background"
+        ],
+        "summary": "Queue a steering note to a running background run",
+        "description": "Enqueues a durable steering note the detached sub-agent picks up on its next turn. Owner-scoped (a foreign/missing run → 404); a finished run → 409. The pending queue is bounded (newest 8 kept).",
+        "operationId": "Background.postRunNote",
+        "requestBody": {
+          "description": "Enqueue-a-steering-note request body\n (`POST /api/background/runs/{run_id}/notes`). The note is capped + trimmed by\n the handler before it reaches the durable queue.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRunNote"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.",
+                        "name": "BackgroundUse",
+                        "value": "background::use"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: background::use",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "One durable STEERING NOTE queued against a running background run (ITEM-25 /\n Group F). A user posts a note to a RUNNING background run (a detached\n `JobKind::SubAgent` turn); the detached agent-core loop consumes pending notes\n at its next iteration boundary and appends them to the transcript so the model\n reads them on the next turn. `consumed_at` is NULL while pending, stamped when\n the loop consumes it. Rows live in `background_run_notes`, FK'd to the run\n (ON DELETE CASCADE) — deleting the run deletes its notes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunNote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty or over-length note"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Run not found / not owned"
+          },
+          "409": {
+            "description": "Run already finished"
           }
         },
         "security": [
@@ -21928,6 +22429,21 @@
         "summary": "List your scheduled tasks",
         "description": "\n\n**Required Permission:** `scheduler::use`\n\nCreate, run, test, and manage your own scheduled/recurring tasks.",
         "operationId": "ScheduledTask.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid",
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -25884,11 +26400,33 @@
           "default_sandbox_mode": {
             "type": "string"
           },
+          "delegate_enabled": {
+            "description": "On-demand `delegate` enable switch (ITEM-2 / DEC-2). Default false. When\n true, the TOP-LEVEL hosts (workflow `kind: agent` step + the agent-core\n chat path behind `ZIEE_CHAT_AGENT_CORE`) set `ToolScope.allow_delegate`,\n so agent-core offers the core `delegate` tool. Children / fan-out stay\n false (`fanout.rs` caps `max_depth = 1`); a plain bool like\n `reviewer_enabled` (no bounds).",
+            "type": "boolean"
+          },
+          "fan_out_max_children_per_call": {
+            "description": "Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates\n with an explicit \"capped at N\" note. Threaded into the crate's\n `SubagentLimits.max_children_per_call`.",
+            "type": "integer",
+            "format": "int32"
+          },
           "fan_out_max_depth": {
             "type": "integer",
             "format": "int32"
           },
           "fan_out_max_threads": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "goal_eval_model_id": {
+            "description": "Goal-seeking evaluator model (ITEM-24 / DEC-61). NULL ⇒ fall back to the\n goal-seeking run's OWN model (mirrors `reviewer_model_id`). Resolved under\n the run owner's RBAC at evaluation time.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "goal_seek_max_turns": {
+            "description": "Max turns a goal-seeking loop may fire before stopping 'incomplete'\n (ITEM-24 / DEC-62). Default 10, range 1..=50; the `max_horizon_days`\n backstop is the other ceiling.",
             "type": "integer",
             "format": "int32"
           },
@@ -25935,6 +26473,9 @@
           "default_max_steps",
           "fan_out_max_threads",
           "fan_out_max_depth",
+          "fan_out_max_children_per_call",
+          "goal_seek_max_turns",
+          "delegate_enabled",
           "updated_at"
         ]
       },
@@ -26628,6 +27169,204 @@
           "running",
           "ready",
           "version"
+        ]
+      },
+      "BackgroundRunCancelAck": {
+        "description": "Cancel-run acknowledgement.",
+        "type": "object",
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "description": "`\"cancelled\"` when the run was flipped; `\"already_terminal\"` on the benign\n race where the run reached terminal between the ownership check and the CAS.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "run_id"
+        ]
+      },
+      "BackgroundRunDetail": {
+        "description": "Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /\n sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`\n result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and\n adds the collected result, so the FE can render a completed run's output without a\n second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.\n The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still\n excluded — a background run has none, and a classic `workflow`-kind run is served\n by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "description": "Terminal error text for a failed run (else `None`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "final_output_json": {
+            "description": "The full result body of a completed run (`None` until a result exists).\n This is the field the compact [`BackgroundRunSummary`] deliberately omits."
+          },
+          "has_result": {
+            "description": "True when a `final_output_json` is present (a result was collected).",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "job_kind": {
+            "description": "Background-run discriminator (`subagent` / `sandbox_exec`); never\n `workflow` (the detail 404s on those).",
+            "type": "string"
+          },
+          "label": {
+            "description": "Short human label derived from the run's spec (the sub-agent `task`),\n capped at 200 chars; `None` when the spec carried no task text.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "description": "Last transition time — the effective \"finished_at\" for a terminal run.",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "job_kind",
+          "status",
+          "has_result",
+          "total_tokens",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "BackgroundRunListResponse": {
+        "description": "Paginated response for `GET /api/background/runs` (mirrors\n `McpToolCallListResponse`).",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackgroundRunSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_pages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "runs",
+          "total",
+          "page",
+          "per_page",
+          "total_pages"
+        ]
+      },
+      "BackgroundRunSummary": {
+        "description": "Compact BACKGROUND-run summary (ITEM-8) — one detached sub-agent /\n sandbox-exec run (`job_kind <> 'workflow'`) projected WITHOUT the heavy JSONB\n blobs the full `WorkflowRun` carries (step outputs / logs / artifacts /\n `final_output_json`). The full result is read separately via `collect_result`;\n this row only tells the FE's \"your background tasks\" list what/when/state +\n whether a result is ready. Backs `GET /api/background/runs`.",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "description": "Terminal error text for a failed run (else `None`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_result": {
+            "description": "True when a `final_output_json` is present (a result can be collected).",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "job_kind": {
+            "description": "Background-run discriminator (`subagent` / `sandbox_exec`); never\n `workflow` (the list filters those out).",
+            "type": "string"
+          },
+          "label": {
+            "description": "Short human label derived from the run's spec (the sub-agent `task`),\n capped at 200 chars; `None` when the spec carried no task text.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "description": "Last transition time — the effective \"finished_at\" for a terminal run.",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "job_kind",
+          "status",
+          "has_result",
+          "total_tokens",
+          "created_at",
+          "updated_at"
         ]
       },
       "BatchReport": {
@@ -27356,6 +28095,20 @@
           "created_at",
           "updated_at"
         ]
+      },
+      "CompactConversationRequest": {
+        "description": "Request body for `POST /conversations/{id}/compact` (ITEM-61 / DEC-137).",
+        "type": "object",
+        "properties": {
+          "focus": {
+            "description": "Optional focus hint steering what the compaction should preserve. Advisory\n today (the rolling summary is regenerated from the full active-branch\n history); reserved for a future focus-aware summarizer.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
       },
       "ConfigField": {
         "description": "A non-secret config field a provider needs — drives the generic admin UI.",
@@ -28646,6 +29399,19 @@
           }
         }
       },
+      "CreateRunNote": {
+        "description": "Enqueue-a-steering-note request body\n (`POST /api/background/runs/{run_id}/notes`). The note is capped + trimmed by\n the handler before it reaches the durable queue.",
+        "type": "object",
+        "properties": {
+          "note": {
+            "description": "The steering note the running agent should pick up on its next turn\n (non-empty; capped at 4000 characters by the handler).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ]
+      },
       "CreateScheduledTask": {
         "description": "Create-task request body.",
         "type": "object",
@@ -28664,6 +29430,23 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "bound_conversation_id": {
+            "description": "ITEM-22 / DEC-46: bind a prompt-kind task to an EXISTING conversation (the\n \"schedule/loop THIS chat\" affordance) so its firings append to that chat\n instead of a fresh per-task conversation. Ownership is verified at create\n time (a foreign id → 404); `None` keeps the create-a-conversation default.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "completion_condition": {
+            "description": "ITEM-24 / DEC-61/62/63: the goal-seeking \"done when…\" completion condition.\n A non-blank value makes this a goal-seeking task and (validated in the\n handler) requires `schedule_kind = 'self_paced'` + `target_kind = 'prompt'`.\n `None`/blank ⇒ an ordinary task.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           },
           "cron_expr": {
             "type": [
@@ -33228,6 +34011,39 @@
           }
         }
       },
+      "ListBackgroundRunsQuery": {
+        "description": "Query params for `GET /api/background/runs`.",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "Filter to a single background job kind (`subagent` / `sandbox_exec`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          },
+          "per_page": {
+            "description": "Page size; clamped to `1..=500` server-side (default 50).",
+            "type": "integer",
+            "format": "int64",
+            "default": 50
+          },
+          "status": {
+            "description": "Filter to a single run status (`pending` / `running` / `waiting` /\n `resumable` / `completed` / `failed` / `cancelled`).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
       "ListCitationsQuery": {
         "description": "`?project_id=` filter for listing.",
         "type": "object",
@@ -33428,6 +34244,20 @@
               "string",
               "null"
             ],
+            "default": null
+          }
+        }
+      },
+      "ListTasksParams": {
+        "description": "Query params for `GET /api/scheduled-tasks` (ITEM-23/DEC-47). An optional\n `conversation_id` filters to the tasks BOUND to that conversation (the in-chat\n \"attached loops/schedules\" list); omitting it returns all of the user's tasks\n (back-compat).",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
             "default": null
           }
         }
@@ -38702,6 +39532,42 @@
           "run_id"
         ]
       },
+      "RunNote": {
+        "description": "One durable STEERING NOTE queued against a running background run (ITEM-25 /\n Group F). A user posts a note to a RUNNING background run (a detached\n `JobKind::SubAgent` turn); the detached agent-core loop consumes pending notes\n at its next iteration boundary and appends them to the transcript so the model\n reads them on the next turn. `consumed_at` is NULL while pending, stamped when\n the loop consumes it. Rows live in `background_run_notes`, FK'd to the run\n (ON DELETE CASCADE) — deleting the run deletes its notes.",
+        "type": "object",
+        "properties": {
+          "consumed_at": {
+            "description": "NULL while pending; set to the consume time once the loop reads it.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note": {
+            "description": "The steering text the running agent should pick up next turn.",
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "note",
+          "created_at"
+        ]
+      },
       "RunsPage": {
         "description": "A page of run history (ITEM-41) — the paged envelope the runs panel consumes.\n Mirrors `mcp/tool_calls`' page shape.",
         "type": "object",
@@ -39096,6 +39962,60 @@
             ]
           },
           {
+            "description": "The agent's live task list changed (ITEM-36 / DEC-56) — carries the full\n current list so the `TaskListChecklist` re-renders in place. A CORE\n variant (not an extension `SSEChatStreamEventVariants` one) because the\n agent-core loop, not a chat extension, is its source (`event_sink.rs`\n maps `AgentEvent::TaskListChanged` here).",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "taskListChanged"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamTaskListChangedData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "description": "A `delegate` fan-out's per-child status changed (ITEM-4 / DEC-65) —\n carries the full current sub-agent list so the timeline\n `SubAgentActivityCard` re-renders in place. A CORE variant (like\n `TaskListChanged`) because the agent-core loop's `fan_out`, not a chat\n extension, is its source (`event_sink.rs` maps\n `AgentEvent::SubAgentActivity` here).",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "subAgentActivity"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamSubAgentActivityData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "description": "The conversation's context was COMPACTED (ITEM-61 / DEC-137) — the manual\n `/compact` affordance or the loop's automatic compaction folded leading\n history into the rolling summary. A CORE variant (its sources are the\n agent-core loop's `AgentEvent::HistoryReplaced` via `event_sink.rs` and the\n `POST /conversations/{id}/compact` handler), so the chat timeline can render\n a \"context compacted\" marker in place.",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "historyReplaced"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamHistoryReplacedData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
             "type": "object",
             "properties": {
               "type": {
@@ -39233,10 +40153,45 @@
           }
         ]
       },
+      "SSEChatStreamHistoryReplacedData": {
+        "description": "Data for the `historyReplaced` SSE event (ITEM-61 / DEC-137). Emitted when the\n conversation's context is COMPACTED — either the agent loop's automatic\n compaction (`AgentEvent::HistoryReplaced`, forwarded by `event_sink.rs`) or the\n manual `POST /conversations/{id}/compact` affordance — so the chat timeline\n renders a \"context compacted\" marker in place. Compaction is OUTBOUND-ONLY (the\n stored `message_contents` are never rewritten/deleted; only the rolling\n `conversation_summaries` row is upserted), so this is a display signal, not a\n data mutation. Routed via `publish_raw_event` (the raw side-channel).",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "description": "The conversation whose context was compacted.",
+            "type": "string",
+            "format": "uuid"
+          },
+          "summary_upto": {
+            "description": "How many leading transcript messages were folded into the rolling summary\n (0 when the manual endpoint summarized without a loop-relative index).",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "conversation_id",
+          "summary_upto"
+        ]
+      },
       "SSEChatStreamMcpApprovalRequiredData": {
         "description": "Event data for MCP tool approval required",
         "type": "object",
         "properties": {
+          "description": {
+            "description": "ITEM-50 (full-disclosure): the tool's FULL, EXACT advertised description\n (never summarized/truncated — poisoning hides in truncation). Best-effort\n (`None` when the server is unreachable or advertises no description).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dest_host": {
+            "description": "ITEM-50 (full-disclosure): the EXTERNAL destination host the tool would\n send data to (e.g. `api.example.com`), so the human reviews a\n *data-egress* decision and not just a verb. `None` for built-in /\n loopback / stdio servers, which have no meaningful external destination\n (the card treats a `None` here as a local call).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "input": {
             "description": "Tool input parameters"
           },
@@ -39458,6 +40413,50 @@
         "required": [
           "conversation_id",
           "branch_id"
+        ]
+      },
+      "SSEChatStreamSubAgentActivityData": {
+        "description": "Data for the `subAgentActivity` SSE event (ITEM-4 / DEC-65). Emitted live\n during the turn when a `delegate` fan-out spawns its children (all\n running/pending) and again as each child settles (completed/failed),\n carrying the FULL current child list (idempotent last-wins snapshot, like\n `taskListChanged`) so the timeline `SubAgentActivityCard` re-renders in\n place. Delivered via `publish_raw_event` (the raw/ephemeral side-channel,\n not the replay-buffered generation frames). `run_id` is the PARENT agent\n run; the chat FE attaches it to the in-flight assistant message.",
+        "type": "object",
+        "properties": {
+          "children": {
+            "description": "The full current sub-agent list (idempotent snapshot; not a delta).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubAgentActivityChildDto"
+            }
+          },
+          "run_id": {
+            "description": "The parent agent run whose fan-out this is.",
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "run_id",
+          "children"
+        ]
+      },
+      "SSEChatStreamTaskListChangedData": {
+        "description": "Data for the `taskListChanged` SSE event (ITEM-36 / DEC-56). Emitted live\n during the turn each time the agent's `task_*` core tools mutate the durable\n list, carrying the FULL current list (small) so a surface — the chat\n `TaskListChecklist` — re-renders in place without a refetch. Mirrors the\n `mcpToolProgress` live side-channel event (routed via `publish_raw_event`,\n not the replay-buffered generation frames). The `run_id` keys the run-scoped\n surfaces; the chat FE additionally attaches it to the in-flight assistant\n message it is currently streaming.",
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "The full current task list (idempotent snapshot; not a delta).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskListItemDto"
+            }
+          },
+          "run_id": {
+            "description": "The agent run whose task list changed.",
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "run_id",
+          "items"
         ]
       },
       "SSEChatStreamTitleUpdatedData": {
@@ -40827,6 +41826,13 @@
             ],
             "format": "uuid"
           },
+          "completion_condition": {
+            "description": "ITEM-24 / DEC-61/62/63: the goal-seeking \"done when…\" completion condition.\n When set (on a `self_paced` prompt task), each fired turn's result is judged\n by an isolated cheap-model evaluator against this natural-language condition;\n 'done' self-stops the loop, 'not_done' re-arms another turn until\n `goal_seek_max_turns` / the `max_horizon_days` backstop → stop 'incomplete'.\n NULL ⇒ an ordinary (non-goal-seeking) task.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "consecutive_failures": {
             "type": "integer",
             "format": "int32"
@@ -41056,6 +42062,11 @@
             "type": "integer",
             "format": "int32"
           },
+          "max_horizon_days": {
+            "description": "ITEM-21 / DEC-45: the absolute self-paced backstop (days). A self-paced\n task's model-proposed delay is clamped to at most this, and the task\n self-stops `max_horizon_days` after creation. Default 7, range 1..=365.",
+            "type": "integer",
+            "format": "int32"
+          },
           "min_interval_seconds": {
             "type": "integer",
             "format": "int32"
@@ -41074,6 +42085,7 @@
           "min_interval_seconds",
           "max_consecutive_failures",
           "notification_retention_days",
+          "max_horizon_days",
           "updated_at"
         ]
       },
@@ -41209,6 +42221,48 @@
           "group_ids"
         ]
       },
+      "ServerToolApprovalsResponse": {
+        "description": "GET response: the server's advertised tools, each with its effective mode.",
+        "type": "object",
+        "properties": {
+          "server_default_mode": {
+            "description": "Fallback applied to any tool without an explicit override.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              }
+            ]
+          },
+          "server_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tools": {
+            "description": "Advertised tools (∪ any override-keyed tool not in the advertised set).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolApprovalEntry"
+            }
+          },
+          "tools_unreachable": {
+            "description": "True when the live `tools/list` probe failed — `tools` then lists only\n tools that already carry an override (the advertised set is unknown).",
+            "type": "boolean"
+          },
+          "unreachable_reason": {
+            "description": "Human reason when `tools_unreachable`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "server_id",
+          "server_default_mode",
+          "tools_unreachable",
+          "tools"
+        ]
+      },
       "SessionSettings": {
         "description": "Deployment-wide JWT session settings (singleton row). Returned by GET.",
         "type": "object",
@@ -41338,6 +42392,49 @@
         },
         "required": [
           "timeout_secs"
+        ]
+      },
+      "SetToolApprovalRequest": {
+        "description": "PUT body: the override to set, or `null`/omitted to CLEAR it.",
+        "type": "object",
+        "properties": {
+          "mode": {
+            "description": "`null` or omitted clears the override (the tool falls back to the server\n default). Otherwise sets the per-tool override to this mode.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        }
+      },
+      "SetToolApprovalResponse": {
+        "description": "PUT response: the tool's effective mode after the change.",
+        "type": "object",
+        "properties": {
+          "effective_mode": {
+            "$ref": "#/components/schemas/ApprovalMode"
+          },
+          "has_override": {
+            "type": "boolean"
+          },
+          "server_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tool_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "tool_name",
+          "effective_mode",
+          "has_override"
         ]
       },
       "SettingItem": {
@@ -42005,6 +43102,36 @@
           "styles"
         ]
       },
+      "SubAgentActivityChildDto": {
+        "description": "One delegated sub-agent on the wire (ITEM-4 / DEC-65) — the server-side DTO\n mirror of `agent_core::SubAgentChild`. `id` is the child's run id; `label`\n the friendly per-child descriptor (its objective / role). A thin DTO (with a\n `From<agent_core::SubAgentChild>`) rather than putting the agent-core type on\n the wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.\n Fields are snake_case to match the FE `SubAgentChildVM` (`agentActivity.ts`).",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SubAgentActivityChildStatus"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "status"
+        ]
+      },
+      "SubAgentActivityChildStatus": {
+        "description": "The live status of one delegated sub-agent on the wire (Group A / ITEM-4 /\n DEC-65). A thin server-side mirror of `agent_core::SubAgentChildStatus`\n (kept separate so it can `#[derive(schemars::JsonSchema)]` and keep the\n crate boundary clean). Snake-case so the FE `SubAgentChildStatus` union\n (`agentActivity.ts`) consumes it unchanged.",
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
+        ]
+      },
       "SuccessResponse": {
         "type": "object",
         "properties": {
@@ -42539,6 +43666,40 @@
           }
         ]
       },
+      "TaskListItemDto": {
+        "description": "One agent task-list item on the wire (ITEM-36 / DEC-54) — the server-side DTO\n mirror of `agent_core::TaskItem`. `content` is the imperative form\n (\"Run tests\"); `active_form` the present-continuous form (\"Running tests\")\n the FE emphasises while the item is `in_progress`. A thin DTO (with a\n `From<agent_core::TaskItem>`) rather than putting the agent-core type on the\n wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.\n Fields are snake_case to match the FE `TaskItemVM` (`agentActivity.ts`).",
+        "type": "object",
+        "properties": {
+          "active_form": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskListItemStatus"
+          }
+        },
+        "required": [
+          "id",
+          "content",
+          "active_form",
+          "status"
+        ]
+      },
+      "TaskListItemStatus": {
+        "description": "The lifecycle status of one agent task-list item on the wire (ITEM-36 /\n DEC-54). A thin server-side mirror of `agent_core::TaskStatus` — kept\n separate so it can `#[derive(schemars::JsonSchema)]` (agent-core's enum\n deliberately does not depend on schemars) and so the crate boundary stays\n clean. Snake-case on the wire so `in_progress` reaches the FE\n `TaskItemStatus` union (`pending | in_progress | completed`) unchanged.",
+        "type": "string",
+        "enum": [
+          "pending",
+          "in_progress",
+          "completed"
+        ]
+      },
       "TaskStatus": {
         "type": "string",
         "enum": [
@@ -43022,6 +44183,40 @@
           "decision"
         ]
       },
+      "ToolApprovalEntry": {
+        "description": "One advertised tool + its effective admin approval mode.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "description": "Advertised tool description (absent for override-only / unreachable tools).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effective_mode": {
+            "description": "Effective admin mode = per-tool override ?? the server default.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              }
+            ]
+          },
+          "has_override": {
+            "description": "True when an explicit per-tool override is set (vs the server default).",
+            "type": "boolean"
+          },
+          "tool_name": {
+            "description": "Advertised tool name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name",
+          "effective_mode",
+          "has_override"
+        ]
+      },
       "ToolContent": {
         "type": "object",
         "additionalProperties": true
@@ -43257,6 +44452,20 @@
               "null"
             ]
           },
+          "delegate_enabled": {
+            "description": "On-demand `delegate` enable switch (ITEM-2 / DEC-2). Plain bool (no\n bounds), COALESCE-patched like `reviewer_enabled`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fan_out_max_children_per_call": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "fan_out_max_depth": {
             "type": [
               "integer",
@@ -43265,6 +44474,23 @@
             "format": "int32"
           },
           "fan_out_max_threads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "goal_eval_model_id": {
+            "description": "Goal-seeking evaluator model (DEC-61) — tri-state (null ⇒ clear back to\n \"use the run's own model\").",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "goal_seek_max_turns": {
+            "description": "Max goal-seeking turns (DEC-62), 1..=50.",
             "type": [
               "integer",
               "null"
@@ -44644,6 +45870,10 @@
             "type": "integer",
             "format": "int32"
           },
+          "max_horizon_days": {
+            "type": "integer",
+            "format": "int32"
+          },
           "min_interval_seconds": {
             "type": "integer",
             "format": "int32"
@@ -44657,7 +45887,8 @@
           "max_active_tasks_per_user",
           "min_interval_seconds",
           "max_consecutive_failures",
-          "notification_retention_days"
+          "notification_retention_days",
+          "max_horizon_days"
         ]
       },
       "UpdateSessionSettingsRequest": {
@@ -46841,6 +48072,10 @@
             "format": "uuid"
           },
           "inputs_json": true,
+          "job_kind": {
+            "description": "Orthogonal background-run discriminator (raw DB text; parse with\n [`JobKind::from_db_str`]). `'workflow'` for the classic YAML-DAG run.\n Kept as `String` (not the enum) so an unknown value from a newer server\n round-trips without a deserialization failure — same posture as `status`.",
+            "type": "string"
+          },
           "model_id": {
             "type": [
               "string",
@@ -46881,13 +48116,17 @@
             "format": "uuid"
           },
           "workflow_id": {
-            "type": "string",
+            "description": "NULL for a generalized background run (`job_kind != 'workflow'`) — a\n sub-agent turn / sandbox exec has no backing `workflows` bundle\n (ITEM-14 / DEC-22). Always set for a classic `workflow`-kind run.",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           }
         },
         "required": [
           "id",
-          "workflow_id",
+          "job_kind",
           "user_id",
           "run_kind",
           "inputs_json",

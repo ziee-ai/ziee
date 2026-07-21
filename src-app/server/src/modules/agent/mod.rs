@@ -15,6 +15,7 @@ pub mod models;
 pub mod permissions;
 pub mod repository;
 pub mod routes;
+pub mod task_list;
 
 pub use repository::AgentRepository;
 

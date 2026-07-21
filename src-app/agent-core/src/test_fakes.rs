@@ -15,11 +15,13 @@ use ziee_core::AppError;
 use crate::budget::Budget;
 use crate::core::{AgentCore, ModelClient, ModelClientFactory, ProviderModelClientFactory};
 use crate::ports::{
-    ApprovalPolicy, EventSink, HumanGate, ModelResolver, ToolProvider, TranscriptStore,
+    ApprovalPolicy, EventSink, HumanGate, ModelResolver, SchedulePort, TaskListStore, ToolProvider,
+    TranscriptStore,
 };
 use crate::types::{
-    AgentEvent, GateAsk, GateOutcome, GateTicket, ReviewDecision, SandboxMode, SubagentLimits,
-    ToolCall, ToolCallRecord, ToolResult, ToolScope, Usage,
+    AgentEvent, GateAsk, GateOutcome, GateTicket, ReviewDecision, SandboxMode, ScheduleProposal,
+    SubagentLimits, TaskItem, TaskItemCreate, TaskItemPatch, TaskStatus, ToolCall, ToolCallRecord,
+    ToolResult, ToolScope, Usage,
 };
 
 /// Build an assistant message carrying a single `ToolUse` block.
@@ -251,6 +253,143 @@ impl ToolProvider for FakeTools {
 }
 
 // ---------------------------------------------------------------------------
+// Fake TaskListStore (Group G) — an in-memory per-run task list.
+// ---------------------------------------------------------------------------
+
+/// An in-memory [`TaskListStore`] keyed by `run_id` — mirrors the server's
+/// DB-backed impl for the crate's unit tests. Because fan-out gives each child a
+/// fresh `run_id`, one shared `FakeTaskStore` cleanly isolates parent + child
+/// lists (ITEM-37).
+#[derive(Default)]
+pub struct FakeTaskStore {
+    pub lists: Mutex<HashMap<Uuid, Vec<TaskItem>>>,
+}
+
+#[async_trait]
+impl TaskListStore for FakeTaskStore {
+    async fn load(&self, run_id: Uuid) -> Result<Vec<TaskItem>, AppError> {
+        Ok(self
+            .lists
+            .lock()
+            .unwrap()
+            .get(&run_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn create(&self, run_id: Uuid, item: TaskItemCreate) -> Result<TaskItem, AppError> {
+        let created = TaskItem {
+            id: Uuid::new_v4(),
+            content: item.content,
+            active_form: item.active_form,
+            status: item.status.unwrap_or(TaskStatus::Pending),
+            owner: item.owner,
+            deps: item.deps,
+        };
+        self.lists
+            .lock()
+            .unwrap()
+            .entry(run_id)
+            .or_default()
+            .push(created.clone());
+        Ok(created)
+    }
+
+    async fn update(
+        &self,
+        run_id: Uuid,
+        item_id: Uuid,
+        patch: TaskItemPatch,
+    ) -> Result<TaskItem, AppError> {
+        let mut g = self.lists.lock().unwrap();
+        let list = g.get_mut(&run_id).ok_or_else(|| AppError::not_found("task"))?;
+        let it = list
+            .iter_mut()
+            .find(|i| i.id == item_id)
+            .ok_or_else(|| AppError::not_found("task"))?;
+        if let Some(c) = patch.content {
+            it.content = c;
+        }
+        if let Some(a) = patch.active_form {
+            it.active_form = a;
+        }
+        if let Some(s) = patch.status {
+            it.status = s;
+        }
+        if let Some(o) = patch.owner {
+            it.owner = Some(o);
+        }
+        if let Some(d) = patch.deps {
+            it.deps = d;
+        }
+        Ok(it.clone())
+    }
+
+    async fn get(&self, run_id: Uuid, item_id: Uuid) -> Result<Option<TaskItem>, AppError> {
+        Ok(self
+            .lists
+            .lock()
+            .unwrap()
+            .get(&run_id)
+            .and_then(|l| l.iter().find(|i| i.id == item_id).cloned()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fake SteerNotePort (Group F / ITEM-25) — a scripted steering-note queue.
+// ---------------------------------------------------------------------------
+
+/// An in-memory [`SteerNotePort`] that returns a scripted batch of notes on the
+/// FIRST `take_pending` and empty thereafter (idempotent-once, mirroring the
+/// DB-backed `consume_pending_run_notes` stamp-consumed semantics). Records each
+/// `run_id` it was asked for so a test can assert which run was drained.
+pub struct FakeSteer {
+    pub pending: Mutex<VecDeque<Vec<String>>>,
+    pub asked: Mutex<Vec<Uuid>>,
+}
+
+impl FakeSteer {
+    /// Deliver `notes` exactly once (on the first drain), then always empty.
+    pub fn once(notes: Vec<String>) -> Self {
+        let mut q = VecDeque::new();
+        q.push_back(notes);
+        Self {
+            pending: Mutex::new(q),
+            asked: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl crate::ports::SteerNotePort for FakeSteer {
+    async fn take_pending(&self, run_id: Uuid) -> Result<Vec<String>, AppError> {
+        self.asked.lock().unwrap().push(run_id);
+        Ok(self.pending.lock().unwrap().pop_front().unwrap_or_default())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fake SchedulePort — records every `schedule_next` proposal (Group E / DEC-42).
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+pub struct FakeSchedule {
+    pub recorded: Mutex<Vec<(Uuid, ScheduleProposal)>>,
+}
+
+#[async_trait]
+impl SchedulePort for FakeSchedule {
+    async fn propose_next(
+        &self,
+        run_id: Uuid,
+        proposal: ScheduleProposal,
+    ) -> Result<(), AppError> {
+        self.recorded.lock().unwrap().push((run_id, proposal));
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Fake HumanGate
 // ---------------------------------------------------------------------------
 
@@ -348,11 +487,15 @@ pub fn core_with(
         model_factory: Arc::new(ProviderModelClientFactory),
         extensions: vec![],
         reviewer: None,
+        task_store: None,
+        steer: None,
+        schedule: None,
         budget: Budget::new(10, 1_000_000, 1_000_000),
         limits: SubagentLimits::default(),
         sandbox: SandboxMode::WorkspaceWrite { network: false },
         model_name: "test-model".into(),
         resume_executes_pending: true,
+        isolate_children: false,
     };
     Harness {
         core,

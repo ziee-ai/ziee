@@ -577,7 +577,14 @@ async fn workflow_def_for_run(
     pool: &sqlx::PgPool,
     run: &WorkflowRun,
 ) -> Result<WorkflowDef, AppError> {
-    let wf = repository::find_by_id(pool, run.workflow_id)
+    // A generalized background run (`job_kind != 'workflow'`) has a NULL
+    // `workflow_id` and no bundle — there is no workflow.yaml to resolve. In
+    // practice this helper is only reached for classic workflow-kind runs; the
+    // None arm is a defensive not-found (backbone generalization, ITEM-14).
+    let workflow_id = run
+        .workflow_id
+        .ok_or_else(|| AppError::not_found("workflow"))?;
+    let wf = repository::find_by_id(pool, workflow_id)
         .await?
         .ok_or_else(|| AppError::not_found("workflow"))?;
     let path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);

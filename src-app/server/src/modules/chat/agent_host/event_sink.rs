@@ -60,7 +60,9 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::modules::chat::core::types::streaming::{
-    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, Usage,
+    ChatStreamChunk, ContentBlockDelta, SSEChatStreamEvent, SSEChatStreamHistoryReplacedData,
+    SSEChatStreamSubAgentActivityData, SSEChatStreamTaskListChangedData, SubAgentActivityChildDto,
+    TaskListItemDto, Usage,
 };
 use crate::modules::chat::stream::{publish_frame, publish_raw_event, ChatStreamFrame};
 
@@ -168,6 +170,43 @@ impl EventSink for ChatEventSink {
             // (via `Self::fold_usage`), so the sink doesn't accumulate here.
             AgentEvent::Usage(_u) => {}
 
+            // The agent's live task list changed (ITEM-36 / DEC-56). Mirror the
+            // `mcpToolProgress` side-channel: build the `taskListChanged` frame
+            // (full current list, snake_case DTO the FE `TaskListChecklist`
+            // reads) and deliver it via `publish_raw_event` — NOT `self.publish`
+            // — so it rides the same raw/ephemeral channel as tool progress and
+            // is not appended to the per-conversation content replay buffer (it
+            // is not part of the assistant message content; a mid-join catches
+            // up on the next change, and the durable TaskListStore is the
+            // reload-time source of truth).
+            AgentEvent::TaskListChanged { run_id, items } => {
+                let event = SSEChatStreamEvent::TaskListChanged(SSEChatStreamTaskListChangedData {
+                    run_id,
+                    items: items.into_iter().map(TaskListItemDto::from).collect(),
+                });
+                publish_raw_event(self.owner_id, self.conversation_id, event.into());
+            }
+
+            // A `delegate` fan-out's per-child status changed (ITEM-4 / DEC-65).
+            // Same raw/ephemeral side-channel as `TaskListChanged`: build the
+            // `subAgentActivity` frame (full current child list, snake_case DTO
+            // the FE `SubAgentActivityCard` reads) and deliver it via
+            // `publish_raw_event` — NOT `self.publish` — so it is not appended to
+            // the per-conversation content replay buffer (it is not part of the
+            // assistant message content; a mid-join catches up on the next
+            // snapshot). The `run_id` is the PARENT agent run.
+            AgentEvent::SubAgentActivity { run_id, children } => {
+                let event =
+                    SSEChatStreamEvent::SubAgentActivity(SSEChatStreamSubAgentActivityData {
+                        run_id,
+                        children: children
+                            .into_iter()
+                            .map(SubAgentActivityChildDto::from)
+                            .collect(),
+                    });
+                publish_raw_event(self.owner_id, self.conversation_id, event.into());
+            }
+
             // No-op: the terminal `complete` frame is emitted by the HOST
             // (dispatcher) AFTER the extension-event channel is drained, so a
             // late `titleUpdated` / tool event can't land after the terminal (the
@@ -202,11 +241,19 @@ impl EventSink for ChatEventSink {
             // not this sink.
             AgentEvent::Message(_msg) => {}
 
-            // No-op: chat has no user-facing "context compacted" SSE variant (the
-            // summarization/compaction path is silent to the token stream today);
-            // the workflow host surfaces this as a progress log line, chat does
-            // not. Left explicit so the intent is auditable.
-            AgentEvent::HistoryReplaced { .. } => {}
+            // The loop compacted the context (ITEM-61 / DEC-137). Forward it as a
+            // `historyReplaced` marker on the same raw/ephemeral side-channel as
+            // `taskListChanged` so the chat timeline can render a "context
+            // compacted" divider in place. Compaction is outbound-only (the stored
+            // message content is untouched), so this is a display signal only.
+            AgentEvent::HistoryReplaced { summary_upto } => {
+                let event =
+                    SSEChatStreamEvent::HistoryReplaced(SSEChatStreamHistoryReplacedData {
+                        conversation_id: self.conversation_id,
+                        summary_upto,
+                    });
+                publish_raw_event(self.owner_id, self.conversation_id, event.into());
+            }
 
             // No-op: the human-approval prompt is emitted by the HumanGate port
             // (the `McpApprovalRequired` / durable-elicit path), not the sink —

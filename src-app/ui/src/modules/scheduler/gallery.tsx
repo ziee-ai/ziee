@@ -59,7 +59,10 @@ const tasks: ScheduledTask[] = [
     id: 's0000000-0000-0000-0000-000000000003',
     name: 'One-off reminder',
     enabled: false,
-    schedule_kind: 'one_off',
+    // `once` is the valid schedule_kind (the backend CHECK admits only
+    // once|recurring|self_paced) — was seeded as the non-existent `one_off`,
+    // which rendered a broken "Cron:" summary in the gallery.
+    schedule_kind: 'once',
     run_at: '2026-02-01T15:00:00.000Z',
     timezone: 'Europe/London',
     target_kind: 'prompt',
@@ -74,6 +77,58 @@ const tasks: ScheduledTask[] = [
     updated_at: '2026-01-05T00:00:00.000Z',
     user_id: USER,
   },
+  {
+    // Self-paced /loop task, still running (goal-seeking): a "Loop" badge, a
+    // "Stops when: …" completion condition, an in-context conversation link, and
+    // a model-chosen "Next check" instead of a cron next-run.
+    id: 's0000000-0000-0000-0000-000000000004',
+    name: 'Watch for the sequencing run to finish',
+    enabled: true,
+    schedule_kind: 'self_paced',
+    timezone: 'America/New_York',
+    target_kind: 'prompt',
+    prompt: 'Check whether the sequencing run has completed and summarize the QC.',
+    completion_condition:
+      'the sequencing run reports COMPLETE and all QC metrics pass',
+    bound_conversation_id: '11111111-1111-1111-1111-111111111111',
+    notify_mode: 'always',
+    notify_on: 'on_change',
+    consecutive_failures: 0,
+    allowed_unattended_tools: [],
+    inputs_json: {},
+    last_run_at: '2026-01-07T14:00:00.000Z',
+    next_run_at: '2026-01-07T15:00:00.000Z',
+    last_status: 'success',
+    created_at: '2026-01-07T12:00:00.000Z',
+    updated_at: '2026-01-07T14:00:05.000Z',
+    user_id: USER,
+  },
+  {
+    // Self-paced /loop task that self-stopped: `paused_reason: 'completed'`
+    // renders as a green "Completed" badge + "Loop finished", NOT a generic
+    // "Paused/Disabled" (tranche-2 convention, DEC-44 drift).
+    id: 's0000000-0000-0000-0000-000000000005',
+    name: 'Keep polling until the grant portal opens',
+    enabled: false,
+    schedule_kind: 'self_paced',
+    timezone: 'UTC',
+    target_kind: 'prompt',
+    prompt: 'Check whether the NIH grant submission portal is open yet.',
+    completion_condition:
+      'the submission portal is open and accepting applications',
+    bound_conversation_id: '11111111-1111-1111-1111-111111111111',
+    paused_reason: 'completed',
+    notify_mode: 'always',
+    notify_on: 'every_run',
+    consecutive_failures: 0,
+    allowed_unattended_tools: [],
+    inputs_json: {},
+    last_run_at: '2026-01-06T18:00:00.000Z',
+    last_status: 'success',
+    created_at: '2026-01-05T09:00:00.000Z',
+    updated_at: '2026-01-06T18:00:00.000Z',
+    user_id: USER,
+  },
 ]
 
 export const gallery: ModuleGallery = {
@@ -83,6 +138,7 @@ export const gallery: ModuleGallery = {
       max_active_tasks_per_user: 20,
       max_consecutive_failures: 5,
       min_interval_seconds: 300,
+      max_horizon_days: 7,
       notification_retention_days: 30,
       updated_at: '2026-01-01T00:00:00.000Z',
     },

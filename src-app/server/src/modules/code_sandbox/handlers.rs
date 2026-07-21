@@ -842,6 +842,95 @@ async fn build_context(
     })
 }
 
+/// Detached (background-run) entry into the sandbox execute path
+/// (ITEM-11/12/13, Group C). Builds the SAME [`SandboxContext`] the chat MCP
+/// path uses — including the security-critical `assert_owns_conversation`
+/// ownership check, attachment staging, workspace-mode, and `/lit` binds — then
+/// runs the command SYNCHRONOUSLY to completion through the UNCHANGED
+/// `execute_command`. Every hardening guard is preserved verbatim because this
+/// reuses the identical context-build + execute path the chat tool uses:
+/// `--clearenv` (no env leak), `--unshare-user`, seccomp, cgroup, PID-ns,
+/// prlimit resource caps (from `code_sandbox_settings`), and the per-command
+/// wall-clock cap. Returns the same `{stdout, stderr, exit_code, timed_out,
+/// duration_ms, …}` JSON the chat tool returns.
+///
+/// The `background_mcp` sandbox-exec executor runs this INSIDE a
+/// `spawn_background_run` background task, so the originating chat turn is never
+/// blocked (RUN-level detachment). True MID-command streaming detach — keeping
+/// the `tokio::process::Child` alive in a run registry and paging a partial
+/// output ring while the command is still running (ITEM-11/12/30/31) — is the
+/// SDK-coordinated `ziee-sandbox` work (DEC-33/108) and is deliberately NOT done
+/// here (it would require editing the `sdk` submodule).
+pub(crate) async fn execute_command_detached(
+    conversation_id: Uuid,
+    user_id: Uuid,
+    command: &str,
+    flavor: &str,
+) -> Result<serde_json::Value, crate::common::AppError> {
+    // CONCURRENCY (Phase-6 MEDIUM fix): serialize this background run against
+    // FOREGROUND sandbox ops in the SAME conversation on the identical
+    // per-conversation `conv_lock` the foreground execute paths already hold
+    // (single-shot dispatch — `let _guard = lock.lock().await` above; the
+    // streamed call in streaming.rs, held for the whole streamed run).
+    //
+    // WHY a lock is mandatory: without it a background `sandbox_exec` runs bwrap
+    // against the shared per-conversation workspace CONCURRENTLY with a
+    // foreground `execute_command` (or another background run). That corrupts the
+    // workspace: a foreground flavor SWITCH calls
+    // `wipe_install_caches_for_conversation` → `remove_dir_all` on the
+    // workspace's `.local`/`.cache`/`.npm` (ziee-sandbox registry.rs), deleting a
+    // still-running background run's installed deps mid-exec; even same-flavor,
+    // two concurrent bwrap writers race the shared RW mount. Same-owner (NOT a
+    // cross-tenant/isolation breach — the sandbox hardening is intact), but real
+    // corruption.
+    //
+    // WHY the same lock (vs a lighter "background-active" marker): it is the
+    // simplest fully-correct fix and matches the existing idiom exactly — a
+    // background run now behaves like an additional foreground caller, so it also
+    // closes the background-vs-background race (two background runs QUEUE instead
+    // of racing) with zero new global state. Acquired at the TOP (before the
+    // state / `build_context` work) so the whole detached run — including
+    // `build_context`'s workspace staging — is serialized; this is safe w.r.t.
+    // the "ownership-before-lock-insertion" DashMap-growth guard (see the
+    // foreground handler) because the only caller
+    // (`background_mcp::spawn_sandbox_exec`) already verifies ownership before
+    // spawning this run.
+    //
+    // AVAILABILITY TRADE-OFF (accepted): a long background command HOLDS the
+    // conv_lock for its whole duration, so a SUBSEQUENT foreground sandbox tool
+    // call in the SAME conversation WAITS until it finishes rather than
+    // corrupting the workspace. Acceptable because (a) the two ops genuinely
+    // cannot run concurrently without corruption, so serialization is mandatory;
+    // (b) waiting is the same behavior two foreground calls already get; and
+    // (c) the "beside live chat" JTBD is still met — detachment is at the RUN
+    // level: `spawn_sandbox_exec` returns `run_id` immediately and this lock is
+    // taken INSIDE the spawned task, so the originating chat TURN is never
+    // blocked. (The reject/marker alternative was rejected: it would FAIL the
+    // user's foreground command instead of deferring it, needs extra state to
+    // also cover bg-vs-bg, and can't detect the destructive flavor-switch at this
+    // layer — the flavor pin lives in the un-editable `ziee-sandbox` crate.)
+    //
+    // RELEASE ON EVERY EXIT PATH: `_guard` is a tokio `MutexGuard` (RAII),
+    // dropped when this fn's scope ends on success OR error, AND when the future
+    // is DROPPED mid-await by the owner-cancel path (`execute_sandbox_run`'s
+    // `tokio::select!` drops this future on cancel → drops the guard). The
+    // per-command wall-clock timeout is internal to `execute_command` and returns
+    // normally. No manual unlock, no leaked lock.
+    let lock = conv_lock(conversation_id);
+    let _guard = lock.lock().await;
+
+    let state = config::get_state().ok_or_else(|| {
+        crate::common::AppError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "SANDBOX_NOT_INITIALIZED",
+            "code_sandbox is not initialized (module disabled or not yet booted)",
+        )
+    })?;
+    // Reuses the ownership check + staging + workspace-mode inside build_context.
+    let ctx = build_context(&state, conversation_id, user_id).await?;
+    crate::modules::code_sandbox::tools::execute::execute_command(&ctx, command, flavor).await
+}
+
 /// Max size for copying an editable text file into the workspace (above this we
 /// leave it as a read-only bind to avoid copying large files in every turn).
 pub const WORKSPACE_COPYIN_MAX_BYTES: i64 = 5 * 1024 * 1024;
@@ -2137,6 +2226,68 @@ mod tests {
         drop(a_held);
         prune_conversation_lock(a);
         prune_conversation_lock(b);
+    }
+
+    /// Phase-6 concurrency fix: the DETACHED (background-run) execute path must
+    /// serialize against FOREGROUND sandbox ops in the SAME conversation on the
+    /// SAME `conv_lock`, so a background `sandbox_exec` can't run bwrap / a
+    /// flavor-switch cache-wipe concurrently with a foreground `execute_command`
+    /// (or another background run) against the shared per-conversation workspace.
+    ///
+    /// Rootfs-free + state-free: `config::get_state()` is `None` in lib unit
+    /// tests (`init_state` runs only in production `code_sandbox::init()`), so
+    /// `execute_command_detached` returns `SANDBOX_NOT_INITIALIZED` — but ONLY
+    /// AFTER it has acquired `conv_lock`. We prove serialization by holding the
+    /// conversation's lock in the test and asserting the detached call BLOCKS
+    /// (cannot make progress) until we release it, then RELEASES it on exit. A
+    /// full concurrent-bwrap workspace-corruption test needs a mounted rootfs —
+    /// that is Tier 4/6, gated like the other rootfs-needing sandbox tiers.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn execute_command_detached_serializes_on_conv_lock() {
+        use std::time::Duration;
+
+        let conv = Uuid::new_v4();
+        let user = Uuid::new_v4();
+
+        // Foreground holder: take the exact per-conversation lock the foreground
+        // execute paths hold, and keep it held.
+        let lock = conv_lock(conv);
+        let guard = lock.lock().await;
+
+        // Spawn the detached (background-run) path. It must block on
+        // `conv_lock(conv)` at the top of `execute_command_detached`, before it
+        // can reach the `config::get_state()` gate.
+        let handle = tokio::spawn(async move {
+            execute_command_detached(conv, user, "echo hi", "minimal").await
+        });
+
+        // While we hold the lock the detached task cannot make progress.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(
+            !handle.is_finished(),
+            "detached execute must BLOCK on conv_lock while a foreground op holds it"
+        );
+
+        // Release the foreground lock → the detached task acquires it, proceeds
+        // to the (unit-test) not-initialized state gate, and completes.
+        drop(guard);
+        let result = tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("detached task must complete promptly once the lock is free")
+            .expect("detached task must not panic");
+
+        // It got PAST the lock (proving it acquired it) and hit the state gate.
+        assert!(
+            result.is_err(),
+            "no sandbox state in lib unit tests → SANDBOX_NOT_INITIALIZED after the lock"
+        );
+        // Release-on-exit: the guard dropped when the fn returned, so the lock
+        // is free again — no leak on the (error) exit path.
+        assert!(
+            lock.try_lock().is_ok(),
+            "detached path must RELEASE conv_lock on its exit path — no leaked lock"
+        );
+        prune_conversation_lock(conv);
     }
 
     #[test]

@@ -42,7 +42,7 @@ export const ScheduledTasks = defineStore('ScheduledTasks', {
         draft.error = null
       })
       try {
-        const tasks = await ApiClient.ScheduledTask.list()
+        const tasks = await ApiClient.ScheduledTask.list({})
         set(draft => {
           draft.tasks = tasks
           draft.loading = false

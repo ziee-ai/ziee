@@ -79,6 +79,24 @@ pub async fn run_contribute(
     Ok(())
 }
 
+/// Order the extension pipeline by [`AgentExtension::order`] ascending, with a
+/// **STABLE** sort so insertion order is preserved among extensions that share
+/// an `.order()` value (ITEM-56 / DEC-129).
+///
+/// Historically the loop ran extensions in raw `Vec`-insertion order and never
+/// consulted `.order()`, so the tier orders (all `< COMPACTION_ORDER`) and
+/// `COMPACTION_ORDER = 1000` were inert. Sorting here makes them load-bearing:
+/// cheaper context tiers run before the compaction extension. Returns a
+/// cheaply-cloned (`Arc`) ordered copy; the loop calls this ONCE per
+/// [`AgentCore::run`](crate::core::AgentCore::run) and reuses it across every
+/// iteration (contribute / before_model / after_round).
+pub fn sorted_extensions(exts: &[Arc<dyn AgentExtension>]) -> Vec<Arc<dyn AgentExtension>> {
+    let mut ordered = exts.to_vec();
+    // `slice::sort_by_key` is a STABLE sort — equal `.order()` keep insertion order.
+    ordered.sort_by_key(|e| e.order());
+    ordered
+}
+
 /// Run `before_model` across the set; returns `ShortCircuit` if any hook vetoes.
 pub async fn run_before_model(
     exts: &[Arc<dyn AgentExtension>],
@@ -146,6 +164,44 @@ mod tests {
         // Both contributed; a core extension is present in the set.
         assert_eq!(ctx.system.len(), 2);
         assert!(exts.iter().any(|e| e.is_core()));
+    }
+
+    #[test]
+    fn sorted_extensions_orders_ascending_and_stable() {
+        // Inserted OUT of order, with two extensions sharing order 20.
+        let exts: Vec<Arc<dyn AgentExtension>> = vec![
+            Arc::new(AddSystemExt { order: 30, core: false, tag: "c30" }),
+            Arc::new(AddSystemExt { order: 10, core: false, tag: "a10" }),
+            Arc::new(AddSystemExt { order: 20, core: false, tag: "b20_first" }),
+            Arc::new(AddSystemExt { order: 20, core: false, tag: "b20_second" }),
+        ];
+        let ordered = sorted_extensions(&exts);
+        let tags: Vec<&str> = ordered.iter().map(|e| e.name()).collect();
+        // Low `.order()` before high regardless of insertion; equal orders keep
+        // insertion order (stable): b20_first before b20_second.
+        assert_eq!(tags, vec!["a10", "b20_first", "b20_second", "c30"]);
+    }
+
+    #[tokio::test]
+    async fn contribute_runs_in_order_not_insertion_order() {
+        // A high-order extension inserted FIRST must still contribute AFTER a
+        // low-order one inserted later, once sorted.
+        let exts: Vec<Arc<dyn AgentExtension>> = vec![
+            Arc::new(AddSystemExt { order: 1000, core: true, tag: "compaction" }),
+            Arc::new(AddSystemExt { order: 5, core: false, tag: "early" }),
+        ];
+        let ordered = sorted_extensions(&exts);
+        let mut ctx = TurnContext::default();
+        run_contribute(&ordered, &mut ctx).await.unwrap();
+        let seen: Vec<&str> = ctx
+            .system
+            .iter()
+            .filter_map(|b| match b {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(seen, vec!["early", "compaction"]);
     }
 
     #[tokio::test]

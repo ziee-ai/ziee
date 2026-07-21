@@ -58,7 +58,13 @@ pub enum StopReason {
     IterationCap,
     /// Per-run or per-step token cap breached.
     TokenCap,
-    /// Wall-clock deadline.
+    /// Wall-clock deadline. RESERVED / host-enforced: the base loop tracks no
+    /// elapsed time so it never constructs this itself, but it is a load-bearing
+    /// public wire variant — the chat host maps it to the `"timeout"`
+    /// `finish_reason` (`agent_host::event_sink::finish_reason`) and a future
+    /// deadline-enforcing host will emit it. (A `pub` enum variant is not
+    /// dead-code-linted, so no `#[allow]` is needed; it is kept, not removed, to
+    /// preserve the wire contract + the exhaustive host mapping.)
     WallClock,
     /// Cancelled / halted by the host.
     Halted,
@@ -129,6 +135,11 @@ pub enum GateOutcome {
 pub struct SubagentLimits {
     pub max_depth: u8,
     pub max_threads: u8,
+    /// Max children accepted in ONE `delegate` call (DEC-1). `max_threads` bounds
+    /// concurrency; this bounds the COUNT — over-cap truncates with an explicit
+    /// "capped at N" note (never a silent drop). Taken as data (the crate is
+    /// domain-free); the host threads it from `agent_admin_settings`.
+    pub max_children_per_call: u16,
 }
 
 impl Default for SubagentLimits {
@@ -136,6 +147,7 @@ impl Default for SubagentLimits {
         Self {
             max_depth: 1,
             max_threads: 6,
+            max_children_per_call: 8,
         }
     }
 }
@@ -157,6 +169,97 @@ pub struct SubagentSummary {
     pub summary: String,
 }
 
+/// The live status of one delegated sub-agent in a `delegate` fan-out
+/// (Group A / ITEM-4 / DEC-65). Snake-case on the wire so the FE
+/// `SubAgentChildStatus` union (`agentActivity.ts`) consumes it directly.
+/// `pending` = spawned but queued behind the concurrency limit; `running` =
+/// executing; `completed`/`failed` are terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubAgentChildStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+}
+
+/// One delegated sub-agent's activity snapshot entry (Group A / ITEM-4 /
+/// DEC-65). `id` is the child's fresh run id; `label` is the friendly per-child
+/// descriptor (its objective / role, derived from the child's system
+/// instruction). Mirrors the FE `SubAgentChildVM`; a thin server DTO carries it
+/// to the wire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubAgentChild {
+    pub id: String,
+    pub label: String,
+    pub status: SubAgentChildStatus,
+}
+
+// ---------------------------------------------------------------------------
+// Group G — agent self-task-management (Claude-Code `Task`-tools-style)
+// (ITEM-34/35, DEC-49/54). The item shape + status mirror CC's CURRENT Task
+// tools (per-item create + patch-by-id + read-back), NOT legacy `TodoWrite`.
+// ---------------------------------------------------------------------------
+
+/// A task-list item's status (DEC-54). Snake-case on the wire so the model's
+/// `status: "in_progress"` deserializes directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    Pending,
+    InProgress,
+    Completed,
+}
+
+/// One agent task-list item (ITEM-34 / DEC-54). `content` is the imperative
+/// form ("Run tests"); `active_form` the present-continuous form rendered while
+/// the item is `in_progress` ("Running tests") — CC's Anthropic-specific dual
+/// form. `owner`/`deps` mirror CC's current Task tools (carried as data; the
+/// crate does not hard-enforce dependency ordering — the model is guided by the
+/// tool descriptions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskItem {
+    pub id: Uuid,
+    pub content: String,
+    pub active_form: String,
+    pub status: TaskStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deps: Vec<Uuid>,
+}
+
+/// The fields to create a task item (the store assigns the `id`). `status`
+/// defaults to `pending` when the model omits it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskItemCreate {
+    pub content: String,
+    pub active_form: String,
+    #[serde(default)]
+    pub status: Option<TaskStatus>,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub deps: Vec<Uuid>,
+}
+
+/// A partial patch to an existing task item — only the supplied fields change
+/// (per-item patch-by-id, the CC `TaskUpdate` shape). `deps: Some(vec![])`
+/// clears deps; `deps: None` leaves them untouched.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TaskItemPatch {
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub active_form: Option<String>,
+    #[serde(default)]
+    pub status: Option<TaskStatus>,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub deps: Option<Vec<Uuid>>,
+}
+
 /// The set of tool servers a turn may call (RBAC-resolved by the host).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolScope {
@@ -164,6 +267,26 @@ pub struct ToolScope {
     /// Whether the core-injected `delegate` tool is offered (false in children
     /// → enforces `max_depth = 1`).
     pub allow_delegate: bool,
+}
+
+/// A self-paced agent's proposed next-fire signal (Group E / DEC-42), produced
+/// by the model-facing `schedule_next` core tool and recorded through the
+/// [`SchedulePort`](crate::ports::SchedulePort). The host (the scheduler's
+/// self-paced dispatch) reads it AFTER the turn and feeds it to its existing
+/// clamp + write-back (`next_self_paced_fire` → `arm_self_paced`); the crate
+/// itself never clamps or persists.
+///
+/// * `stop == true` ends the self-paced loop (self-complete) — `delay_seconds`
+///   is then irrelevant.
+/// * otherwise `delay_seconds` is the model's requested wait until the next
+///   turn (`None` ⇒ "as soon as allowed"; the host floors it to its
+///   min-interval). `reason` is a short free-text rationale (surfaced by the
+///   host, not part of the clamp).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScheduleProposal {
+    pub delay_seconds: Option<u64>,
+    pub reason: Option<String>,
+    pub stop: bool,
 }
 
 /// How a turn is seeded — a new message, or a resume of a persisted transcript.
@@ -200,6 +323,23 @@ pub enum AgentEvent {
     Usage(Usage),
     ToolNotification { server: String, note: String },
     HistoryReplaced { summary_upto: usize },
+    /// The agent's task list changed (Group G / ITEM-36) — emitted by the
+    /// `task_*` core tools after a create/update mutates the durable store,
+    /// carrying the full current list (small) so a surface renders without a
+    /// refetch. A later server/FE tranche maps this to an SSE frame +
+    /// content-block (mirroring `mcpToolProgress`); the workflow host maps it to
+    /// a per-run progress track. Hosts that don't surface it ignore it.
+    TaskListChanged { run_id: Uuid, items: Vec<TaskItem> },
+    /// A `delegate` fan-out's per-child status changed (Group A / ITEM-4 /
+    /// DEC-65) — emitted by `fan_out_inner` when the children are spawned (all
+    /// `running`/`pending`) and again as each child settles
+    /// (`completed`/`failed`), carrying the FULL current child list (a small,
+    /// idempotent last-wins snapshot, exactly like `TaskListChanged`). `run_id`
+    /// is the PARENT agent run. The chat host maps this to a `subAgentActivity`
+    /// SSE frame (`event_sink.rs`) that drives the timeline
+    /// `SubAgentActivityCard`; the workflow host rolls it up to a progress log
+    /// line; hosts that don't surface it ignore it.
+    SubAgentActivity { run_id: Uuid, children: Vec<SubAgentChild> },
     GateOpened(GateTicket),
     Stopped(StopReason),
 }
@@ -237,6 +377,20 @@ mod tests {
         let l = SubagentLimits::default();
         assert_eq!(l.max_depth, 1);
         assert_eq!(l.max_threads, 6);
+        assert_eq!(l.max_children_per_call, 8);
+    }
+
+    #[test]
+    fn sub_agent_child_status_snake_case_wire() {
+        // The FE `SubAgentChildStatus` union (agentActivity.ts) reads these
+        // snake_case tokens verbatim.
+        assert_eq!(serde_json::to_string(&SubAgentChildStatus::Pending).unwrap(), "\"pending\"");
+        assert_eq!(serde_json::to_string(&SubAgentChildStatus::Running).unwrap(), "\"running\"");
+        assert_eq!(
+            serde_json::to_string(&SubAgentChildStatus::Completed).unwrap(),
+            "\"completed\""
+        );
+        assert_eq!(serde_json::to_string(&SubAgentChildStatus::Failed).unwrap(), "\"failed\"");
     }
 
     #[test]

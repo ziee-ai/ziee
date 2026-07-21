@@ -140,9 +140,13 @@ async fn recurring_prompt_task_reuses_one_bound_conversation() {
         .unwrap();
     let items = wait_notifications(&server, &user.token, 2).await;
     // Both firings appended to the SAME conversation (bound), not two fresh ones.
+    // Post R2-payload adoption the kind-specific ids ride the `payload` JSONB
+    // column (the domain-agnostic SDK notification row dropped its top-level
+    // `conversation_id`), so the id is read at `payload.conversation_id` — the
+    // same key `dispatch::finalize_success` writes and the FE renderer reads.
     let convs: Vec<&str> = items
         .iter()
-        .filter_map(|n| n["conversation_id"].as_str())
+        .filter_map(|n| n["payload"]["conversation_id"].as_str())
         .collect();
     assert_eq!(convs.len(), 2, "both firings link a conversation");
     assert_eq!(convs[0], convs[1], "both firings reuse ONE bound conversation");

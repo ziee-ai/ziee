@@ -31,9 +31,9 @@ use agent_core::{
     AgentCore, AgentEvent, AgentTurnRequest, ApprovalMode, ApprovalPolicy, Budget, CancelToken,
     CompactionExtension, Compactor, Decision, EventSink, GateAsk, GateOutcome, GateTicket,
     HumanGate, IdempotencyKey, ModelClient, ModelClientFactory, ModelResolver,
-    ModelRiskClassifier, ProviderModelClient, ProviderModelClientFactory, Reviewer, Risk,
-    RiskClassifier, SandboxMode, StopReason, SubagentLimits, ToolCall, ToolProvider, ToolResult,
-    ToolScope, TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
+    ModelRiskClassifier, ProviderModelClient, ProviderModelClientFactory, Reviewer, Risk, RiskAssessment,
+    RiskClassifier, SandboxMode, SteerNotePort, StopReason, SubagentLimits, ToolCall, ToolProvider,
+    ToolResult, ToolScope, TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
 };
 use ai_providers::{ChatMessage, ContentBlock, Provider, Role, Tool};
 use async_trait::async_trait;
@@ -60,11 +60,8 @@ use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{ParsedAs, RunContext, StepKindTag, StepResult};
 use crate::modules::workflow::validate::{OutputFormat, StepConfig, StepDef};
+use crate::modules::agent::models::AgentAdminSettings;
 
-/// Window-relative soft limit (tokens) above which the core compaction extension
-/// fires. Deliberately high so v1 agent steps rarely summarize (the per-step
-/// token cap is the real ceiling); the machinery is wired regardless (ITEM-6).
-const AGENT_COMPACTION_SOFT_LIMIT_TOKENS: usize = 100_000;
 
 // ============================================================
 // Approved-for-session allow-rules (ITEM-13 / DEC-2)
@@ -149,8 +146,8 @@ struct ForcedRiskClassifier {
 
 #[async_trait]
 impl RiskClassifier for ForcedRiskClassifier {
-    async fn classify(&self, _call: &ToolCall, _policy: &str) -> Result<Risk, AppError> {
-        Ok(self.risk)
+    async fn classify(&self, _call: &ToolCall, _policy: &str) -> Result<RiskAssessment, AppError> {
+        Ok(RiskAssessment::band(self.risk))
     }
 }
 
@@ -171,9 +168,9 @@ fn forced_risk_classifier() -> Option<Arc<dyn RiskClassifier>> {
 
 #[async_trait]
 impl RiskClassifier for RecordingRiskClassifier {
-    async fn classify(&self, call: &ToolCall, policy: &str) -> Result<Risk, AppError> {
-        let risk = self.inner.classify(call, policy).await?;
-        let label = match risk {
+    async fn classify(&self, call: &ToolCall, policy: &str) -> Result<RiskAssessment, AppError> {
+        let assessment = self.inner.classify(call, policy).await?;
+        let label = match assessment.band {
             Risk::Low => "low",
             Risk::High => "high",
             Risk::Critical => "critical",
@@ -181,7 +178,7 @@ impl RiskClassifier for RecordingRiskClassifier {
         if let Ok(mut g) = self.map.lock() {
             g.insert(call.id.clone(), label.to_string());
         }
-        Ok(risk)
+        Ok(assessment)
     }
 }
 
@@ -366,6 +363,22 @@ struct WorkflowEventSink {
 }
 
 impl WorkflowEventSink {
+    /// Emit a plain progress LOG line on the static `agent` track (agent-orchestration
+    /// goal-eval / schedule progress). Distinct from `push_activity`'s structured,
+    /// per-seq `agent-<n>` AgentActivity tracks — both coexist on the step.
+    fn push_line(&self, line: String) {
+        self.emit.emit(SSEWorkflowRunEvent::StepProgress(SSEStepProgressData {
+            run_id: self.run_id,
+            step_id: self.step_id.clone(),
+            tracks: vec![ProgressTrack {
+                id: "agent".to_string(),
+                label: Some("Agent".to_string()),
+                done: false,
+                kind: ProgressKind::Log { line },
+            }],
+        }));
+    }
+
     /// Emit + durably persist one activity entry.
     fn push_activity(
         &self,
@@ -492,6 +505,61 @@ impl EventSink for WorkflowEventSink {
                     None,
                     AgentActivityStatus::Ok,
                 );
+            }
+            // The agent's task list changed (ITEM-36 / DEC-56). The workflow run
+            // has no dedicated checklist surface (the inline `TaskListChecklist`
+            // is the CHAT host's job), so — per DEC-56's "per-run progress track"
+            // — we roll the full list up to ONE compact log line on the existing
+            // "agent" track (mirroring the `HistoryReplaced` line above) rather
+            // than streaming a rich frame. The line shows done/total plus the
+            // active item's present-continuous `active_form`.
+            AgentEvent::TaskListChanged { items, .. } => {
+                let total = items.len();
+                let completed = items
+                    .iter()
+                    .filter(|t| t.status == agent_core::TaskStatus::Completed)
+                    .count();
+                match items
+                    .iter()
+                    .find(|t| t.status == agent_core::TaskStatus::InProgress)
+                {
+                    Some(active) => self.push_line(format!(
+                        "tasks: {completed}/{total} — {}",
+                        active.active_form
+                    )),
+                    None => self.push_line(format!("tasks: {completed}/{total}")),
+                }
+            }
+            // A `delegate` fan-out's per-child status changed (ITEM-4 / DEC-65).
+            // Like TaskListChanged, the workflow run has no dedicated sub-agent
+            // card surface (that's the CHAT host's `SubAgentActivityCard`), so —
+            // per DEC-65's "per-run progress track" — roll the full child list up
+            // to ONE compact log line on the existing "agent" track rather than
+            // streaming a rich frame. The line shows settled/total plus any
+            // failures.
+            AgentEvent::SubAgentActivity { children, .. } => {
+                let total = children.len();
+                let settled = children
+                    .iter()
+                    .filter(|c| {
+                        matches!(
+                            c.status,
+                            agent_core::SubAgentChildStatus::Completed
+                                | agent_core::SubAgentChildStatus::Failed
+                        )
+                    })
+                    .count();
+                let failed = children
+                    .iter()
+                    .filter(|c| c.status == agent_core::SubAgentChildStatus::Failed)
+                    .count();
+                if failed > 0 {
+                    self.push_line(format!(
+                        "sub-agents: {settled}/{total} settled ({failed} failed)"
+                    ));
+                } else {
+                    self.push_line(format!("sub-agents: {settled}/{total} settled"));
+                }
             }
             // ContentDelta is the chat host's live token stream; the workflow
             // host surfaces only the finalized `Message`, so it's ignored here.
@@ -741,6 +809,258 @@ fn approval_mode_from_str(s: &str) -> ApprovalMode {
     }
 }
 
+// ============================================================
+// Shared detached-agent-core builder (ITEM-7/18..23)
+// ============================================================
+
+/// The host-DIVERGENT ports + run identity + budget a detached agent run needs;
+/// the shared ports are assembled from these by [`build_detached_agent_core`].
+///
+/// "Detached" = a non-interactive agent run on a `workflow_runs`-backed row. The
+/// caller supplies only what genuinely differs between the two hosts — the
+/// `sink` (workflow: SSE `StepProgress`; background: quiet), the `gate`
+/// (workflow: durable `elicit` park → `Suspended`; background/unattended:
+/// deny-and-continue, never `Suspended` — DEC-117), the resolved `model_client`,
+/// and the run's identity + [`Budget`]. Everything else is built identically.
+pub struct DetachedAgentCoreArgs {
+    pub pool: PgPool,
+    pub user_id: Uuid,
+    pub conversation_id: Option<Uuid>,
+    pub run_id: Uuid,
+    pub model_id: Uuid,
+    pub model_name: String,
+    /// The run's primary model client (workflow: the step's provider; background:
+    /// the conversation's model, resolved under the owner's RBAC).
+    pub model_client: Arc<dyn ModelClient>,
+    /// Cancel handle threaded into each MCP call's `tokio::select`.
+    pub cancel: Arc<registry::RunHandle>,
+    /// Host-divergent event sink.
+    pub sink: Arc<dyn EventSink>,
+    /// Host-divergent human gate.
+    pub gate: Arc<dyn HumanGate>,
+    /// Shared reviewer→journal classification channel (`call.id` → band label).
+    /// The tool provider + reviewer read/write it; a host gate that persists the
+    /// class into a durable record (the workflow `elicit` gate) shares this SAME
+    /// map. An unattended gate ignores it (it never executes a reviewed call).
+    pub classifications: Arc<Mutex<HashMap<String, String>>>,
+    /// The deployment agent policy (already read by the caller — it also feeds the
+    /// caller's `budget`). `None` → sane defaults.
+    pub settings: Option<AgentAdminSettings>,
+    /// The token/step budget (workflow: per-STEP cap; background: per-RUN cap).
+    pub budget: Budget,
+    /// Out-of-band steering-note channel (Group F / ITEM-25 / DEC-79). ONLY the
+    /// background sub-agent driver (`background_mcp::execute_subagent_run`) passes
+    /// `Some(RunNoteSteerPort{..})` — that's the run the `background/runs/{id}/notes`
+    /// REST targets; the workflow `kind: agent` step passes `None` (it isn't a
+    /// steer target). `None` ⇒ the loop's steer-read is skipped entirely.
+    pub steer: Option<Arc<dyn SteerNotePort>>,
+}
+
+/// ITEM-25 / DEC-79 — the loop-read side of the durable steering-note queue.
+/// Backs [`agent_core::SteerNotePort`] with
+/// [`repository::consume_pending_run_notes`], so a detached background run drains
+/// its pending notes at each iteration boundary (atomically stamped consumed) and
+/// injects each as a `[steering]` user message. Wired ONLY for the background-run
+/// path; the workflow `kind: agent` step leaves [`DetachedAgentCoreArgs::steer`]
+/// `None`.
+pub struct RunNoteSteerPort {
+    pub pool: PgPool,
+}
+
+#[async_trait]
+impl SteerNotePort for RunNoteSteerPort {
+    async fn take_pending(&self, run_id: Uuid) -> Result<Vec<String>, AppError> {
+        let notes = repository::consume_pending_run_notes(&self.pool, run_id).await?;
+        Ok(notes.into_iter().map(|n| n.note).collect())
+    }
+}
+
+/// Assemble an [`AgentCore`] for a DETACHED (non-interactive) run on a
+/// `workflow_runs`-backed row — the ONE place both the workflow `kind: agent`
+/// step ([`AgentDispatcher`]) and the background sub-agent driver
+/// (`background_mcp::execute_subagent_run`) build their core, so the six ports +
+/// reviewer + compaction + task-list wiring live together and can never drift
+/// apart between the two hosts.
+///
+/// The caller supplies the two host-divergent ports (`sink`, `gate`) + the
+/// resolved `model_client` + the run identity/budget (see
+/// [`DetachedAgentCoreArgs`]); the transcript, tool provider, approval policy,
+/// reviewer, model resolver, compaction extension, and task store are all built
+/// here from the pool + admin settings — identically for both hosts.
+pub async fn build_detached_agent_core(args: DetachedAgentCoreArgs) -> AgentCore {
+    let DetachedAgentCoreArgs {
+        pool,
+        user_id,
+        conversation_id,
+        run_id,
+        model_id,
+        model_name,
+        model_client,
+        cancel,
+        sink,
+        gate,
+        classifications,
+        settings,
+        budget,
+        steer,
+    } = args;
+
+    let transcript: Arc<dyn TranscriptStore> =
+        Arc::new(WorkflowTranscriptStore { pool: pool.clone() });
+
+    // Admin policy (DEC-6) — approval mode, sandbox, fan-out limits. Fall back to
+    // sane defaults if the row can't be read.
+    let approval_mode = settings
+        .as_ref()
+        .map(|s| approval_mode_from_str(&s.unattended_approval_policy))
+        .unwrap_or(ApprovalMode::OnRequest);
+    let sandbox = settings
+        .as_ref()
+        .map(|s| sandbox_mode_from_str(&s.default_sandbox_mode))
+        .unwrap_or(SandboxMode::WorkspaceWrite { network: true });
+    let limits = settings
+        .as_ref()
+        .map(|s| SubagentLimits {
+            max_depth: s.fan_out_max_depth.clamp(1, 255) as u8,
+            max_threads: s.fan_out_max_threads.clamp(1, 255) as u8,
+            // ITEM-3 admin side (DEC-1): the per-`delegate`-call child cap.
+            max_children_per_call: s.fan_out_max_children_per_call.clamp(1, 64) as u16,
+        })
+        .unwrap_or_default();
+
+    // ITEM-13: allow-rule scope key — the conversation (or run, standalone).
+    let approval_scope = conversation_id.unwrap_or(run_id);
+
+    // ITEM-12 (DEC-3): build the reviewer when the admin enabled it. Its
+    // classifier runs on `reviewer_model_id` (nullable → the run's model,
+    // resolved under the user's RBAC via `WorkflowModelResolver`), seeded with
+    // the admin `reviewer_policy`. Fail-closed is the crate's default.
+    let reviewer: Option<Reviewer> = match settings.as_ref() {
+        Some(s) if s.reviewer_enabled => {
+            let policy = s.reviewer_policy.clone().unwrap_or_default();
+            let (rev_client, rev_model_name): (Arc<dyn ModelClient>, String) =
+                match s.reviewer_model_id {
+                    Some(mid) => match WorkflowModelResolver.resolve(mid, user_id).await {
+                        Ok(provider) => {
+                            let name = crate::core::Repos
+                                .llm_model
+                                .get_by_id(mid)
+                                .await
+                                .ok()
+                                .flatten()
+                                .map(|m| m.name)
+                                .unwrap_or_else(|| model_name.clone());
+                            (ProviderModelClientFactory.for_provider(provider), name)
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "agent reviewer: model {mid} resolve failed ({e}); \
+                                 using the run's model"
+                            );
+                            (model_client.clone(), model_name.clone())
+                        }
+                    },
+                    None => (model_client.clone(), model_name.clone()),
+                };
+            // Debug-only seam: a forced classifier makes reviewer escalation
+            // deterministic in tests; otherwise the real model classifier.
+            let inner: Arc<dyn RiskClassifier> = forced_risk_classifier()
+                .unwrap_or_else(|| Arc::new(ModelRiskClassifier::new(rev_client, rev_model_name)));
+            let recording = RecordingRiskClassifier {
+                inner,
+                map: classifications.clone(),
+            };
+            // ITEM-38 / DEC-83: thread the admin-configured per-band → decision
+            // overrides (`reviewer_risk_thresholds` jsonb) into the reviewer via
+            // the single `reviewer_thresholds` site (the fix for the T1 dead-config
+            // drift — the setting is live, not inert).
+            Some(Reviewer::new_with_thresholds(
+                Arc::new(recording),
+                policy,
+                reviewer_thresholds(s),
+            ))
+        }
+        _ => None,
+    };
+
+    // ITEM-61 (server half, DEC-121/122): resolve the run's per-model context
+    // window so the compaction trigger is window-relative rather than the
+    // conservative 128k fallback. `None` (model gone / no context_length) →
+    // the preset's fallback window is used unchanged.
+    let mut compaction_config = agent_core::CompactionConfig::agent();
+    if let Some(ctx_len) = crate::core::Repos
+        .llm_model
+        .get_by_id(model_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|m| m.capabilities.context_length)
+    {
+        compaction_config.context_window = Some(ctx_len as usize);
+    }
+
+    AgentCore {
+        transcript: transcript.clone(),
+        sink: sink.clone(),
+        tools: Arc::new(McpToolProvider {
+            user_id,
+            conversation_id,
+            cancel,
+            classifications,
+        }),
+        gate,
+        // ITEM-13: consult per-conversation `ApprovedForSession` rules first, else
+        // fall back to the admin approval matrix.
+        policy: Arc::new(ConversationApprovalPolicy {
+            inner: TrustedAutoApprovePolicy::new(approval_mode),
+            scope: approval_scope,
+        }),
+        models: Arc::new(WorkflowModelResolver),
+        model: model_client.clone(),
+        model_factory: Arc::new(ProviderModelClientFactory),
+        extensions: vec![Arc::new(CompactionExtension::new(
+            Compactor::new(model_client, model_name.clone(), compaction_config),
+            transcript.clone(),
+            sink,
+            run_id,
+        ))],
+        // ITEM-12: the reviewer resolves a `Review` outcome; with `None` a
+        // `Review` escalates straight to the human gate (safe default).
+        reviewer,
+        budget,
+        limits,
+        sandbox,
+        model_name,
+        resume_executes_pending: true,
+        // The workflow host's transcript is not keyed to a chat message with a
+        // run_id guard, so fan-out children keep the legacy `self.clone()` shape.
+        isolate_children: false,
+        // Group G (DEC-49/50): the durable per-run task list, keyed by `run_id`.
+        task_store: Some(Arc::new(
+            crate::modules::agent::task_list::PgTaskListStore::new(pool),
+        )),
+        // Group F / ITEM-25 / DEC-79: the steer channel (only the background path
+        // supplies `Some`; the workflow `kind: agent` step passes `None`).
+        steer,
+        // Group E / ITEM-21 / DEC-42: a workflow / background run does not drive a
+        // self-paced scheduled cadence, so it never offers `schedule_next`.
+        schedule: None,
+    }
+}
+
+/// Turn the singleton admin settings into the reviewer's per-band → decision
+/// ladder (ITEM-38 / DEC-83/84). The SINGLE site that reads
+/// `agent_admin_settings.reviewer_risk_thresholds` (the jsonb tranche-13
+/// surfaces in the admin UI) and hands it to the crate — so the admin knob is
+/// LIVE rather than inert. An empty `{}` / JSON-null / non-object value yields no
+/// overrides ⇒ the built-in ladder (`map_risk`) is used unchanged (preserving
+/// current behavior when the admin never set the knob). Both detached hosts
+/// build their reviewer through this fn, so a regression back to the crate
+/// default is caught by `tests::admin_thresholds_change_reviewer_decision`.
+pub(crate) fn reviewer_thresholds(s: &AgentAdminSettings) -> agent_core::RiskThresholds {
+    agent_core::RiskThresholds::from_json(&s.reviewer_risk_thresholds)
+}
+
 #[async_trait]
 impl StepDispatcher for AgentDispatcher {
     async fn dispatch(
@@ -800,24 +1120,19 @@ impl StepDispatcher for AgentDispatcher {
             None => Vec::new(),
         };
 
-        // Admin policy (DEC-6) — approval mode, token caps, sandbox, fan-out
-        // limits. Fall back to sane defaults if the row can't be read.
+        // Admin policy (DEC-6) — read once; feeds the per-step budget below and
+        // (moved into `build_detached_agent_core`) the approval mode / sandbox /
+        // fan-out limits / reviewer. Fall back to sane defaults if unreadable.
         let settings = crate::core::Repos.agent.get_admin_settings().await.ok();
-        let approval_mode = settings
-            .as_ref()
-            .map(|s| approval_mode_from_str(&s.unattended_approval_policy))
-            .unwrap_or(ApprovalMode::OnRequest);
-        let sandbox = settings
-            .as_ref()
-            .map(|s| sandbox_mode_from_str(&s.default_sandbox_mode))
-            .unwrap_or(SandboxMode::WorkspaceWrite { network: true });
-        let limits = settings
-            .as_ref()
-            .map(|s| SubagentLimits {
-                max_depth: s.fan_out_max_depth.clamp(1, 255) as u8,
-                max_threads: s.fan_out_max_threads.clamp(1, 255) as u8,
-            })
-            .unwrap_or_default();
+
+        // ITEM-2 / DEC-2: on-demand delegation is a TOP-LEVEL-host privilege,
+        // gated by the admin `delegate_enabled` bool (default false). A workflow
+        // `kind: agent` step is a top-level host, so it may offer `delegate` when
+        // the admin has turned it on. Captured here because `settings` is moved
+        // into `build_detached_agent_core` below. Children stay false (the
+        // crate's `fanout.rs` caps `max_depth = 1`). Shared derivation so this
+        // host and the chat host agree.
+        let allow_delegate = AgentAdminSettings::top_level_allow_delegate(settings.as_ref());
 
         // The agent is ONE workflow step, so its whole-run token budget is bounded
         // by the per-STEP cap: it self-stops with `TokenCap` before it can breach
@@ -830,10 +1145,20 @@ impl StepDispatcher for AgentDispatcher {
         );
         let budget = Budget::new(max_steps, per_step_cap, per_step_cap);
 
-        // Shared ports.
+        // Host-divergent ports (workflow flavor): a live SSE `StepProgress` sink +
+        // the durable `elicit` gate that parks the run `waiting`. The rest of the
+        // core is assembled by the shared `build_detached_agent_core` builder.
         let pool = crate::core::Repos.pool().clone();
-        let transcript: Arc<dyn TranscriptStore> =
-            Arc::new(WorkflowTranscriptStore { pool: pool.clone() });
+        let model_client: Arc<dyn ModelClient> =
+            Arc::new(ProviderModelClient::new(self.provider.clone()));
+        // ITEM-13: allow-rule scope key — the conversation (or run, standalone).
+        // Kept here too for the resume block below (session-approval + reseed).
+        let approval_scope = ctx.conversation_id.unwrap_or(ctx.run_id);
+        // ITEM-12: shared call.id → classification map (reviewer → journal row);
+        // the durable gate reads it to persist the class into the elicit record.
+        let classifications: Arc<Mutex<HashMap<String, String>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
         let sink: Arc<dyn EventSink> = Arc::new(WorkflowEventSink {
             emit: emit.clone(),
             run_id: ctx.run_id,
@@ -841,105 +1166,32 @@ impl StepDispatcher for AgentDispatcher {
             pool: pool.clone(),
             seq: AtomicU64::new(0),
         });
-        let model_client: Arc<dyn ModelClient> =
-            Arc::new(ProviderModelClient::new(self.provider.clone()));
+        let gate: Arc<dyn HumanGate> = Arc::new(WorkflowHumanGate {
+            pool: pool.clone(),
+            emit: emit.clone(),
+            step_id: step.id.clone(),
+            classifications: classifications.clone(),
+        });
 
-        // ITEM-13: allow-rule scope key — the conversation (or run, standalone).
-        let approval_scope = ctx.conversation_id.unwrap_or(ctx.run_id);
-        // ITEM-12: shared call.id → classification map (reviewer → journal row).
-        let classifications: Arc<Mutex<HashMap<String, String>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-
-        // ITEM-12 (DEC-3): build the reviewer when the admin enabled it. Its
-        // classifier runs on `reviewer_model_id` (nullable → the run's model,
-        // resolved under the user's RBAC via `WorkflowModelResolver`), seeded with
-        // the admin `reviewer_policy`. Fail-closed is the crate's default.
-        let reviewer: Option<Reviewer> = match settings.as_ref() {
-            Some(s) if s.reviewer_enabled => {
-                let policy = s.reviewer_policy.clone().unwrap_or_default();
-                let (rev_client, rev_model_name): (Arc<dyn ModelClient>, String) =
-                    match s.reviewer_model_id {
-                        Some(mid) => match WorkflowModelResolver.resolve(mid, ctx.user_id).await {
-                            Ok(provider) => {
-                                let name = crate::core::Repos
-                                    .llm_model
-                                    .get_by_id(mid)
-                                    .await
-                                    .ok()
-                                    .flatten()
-                                    .map(|m| m.name)
-                                    .unwrap_or_else(|| ctx.model_name.clone());
-                                (
-                                    ProviderModelClientFactory.for_provider(provider),
-                                    name,
-                                )
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "agent reviewer: model {mid} resolve failed ({e}); \
-                                     using the run's model"
-                                );
-                                (model_client.clone(), ctx.model_name.clone())
-                            }
-                        },
-                        None => (model_client.clone(), ctx.model_name.clone()),
-                    };
-                // Debug-only seam: a forced classifier makes reviewer escalation
-                // deterministic in tests; otherwise the real model classifier.
-                let inner: Arc<dyn RiskClassifier> = forced_risk_classifier()
-                    .unwrap_or_else(|| Arc::new(ModelRiskClassifier::new(rev_client, rev_model_name)));
-                let recording = RecordingRiskClassifier {
-                    inner,
-                    map: classifications.clone(),
-                };
-                Some(Reviewer::new(Arc::new(recording), policy))
-            }
-            _ => None,
-        };
-
-        let core = AgentCore {
-            transcript: transcript.clone(),
-            sink: sink.clone(),
-            tools: Arc::new(McpToolProvider {
-                user_id: ctx.user_id,
-                conversation_id: ctx.conversation_id,
-                cancel: cancel.clone(),
-                classifications: classifications.clone(),
-            }),
-            gate: Arc::new(WorkflowHumanGate {
-                pool: pool.clone(),
-                emit: emit.clone(),
-                step_id: step.id.clone(),
-                classifications: classifications.clone(),
-            }),
-            // ITEM-13: consult per-conversation `ApprovedForSession` rules first,
-            // else fall back to the admin approval matrix.
-            policy: Arc::new(ConversationApprovalPolicy {
-                inner: TrustedAutoApprovePolicy::new(approval_mode),
-                scope: approval_scope,
-            }),
-            models: Arc::new(WorkflowModelResolver),
-            model: model_client.clone(),
-            model_factory: Arc::new(ProviderModelClientFactory),
-            extensions: vec![Arc::new(CompactionExtension::new(
-                Compactor::new(
-                    model_client.clone(),
-                    ctx.model_name.clone(),
-                    AGENT_COMPACTION_SOFT_LIMIT_TOKENS,
-                ),
-                transcript.clone(),
-                sink.clone(),
-                ctx.run_id,
-            ))],
-            // ITEM-12: the reviewer resolves a `Review` outcome; with `None` a
-            // `Review` escalates straight to the human gate (safe default).
-            reviewer,
-            budget,
-            limits,
-            sandbox,
+        let core = build_detached_agent_core(DetachedAgentCoreArgs {
+            pool: pool.clone(),
+            user_id: ctx.user_id,
+            conversation_id: ctx.conversation_id,
+            run_id: ctx.run_id,
+            model_id: ctx.model_id,
             model_name: ctx.model_name.clone(),
-            resume_executes_pending: true,
-        };
+            model_client,
+            cancel: cancel.clone(),
+            sink,
+            gate,
+            classifications: classifications.clone(),
+            settings,
+            budget,
+            // ITEM-25 / DEC-79: a workflow `kind: agent` step is not a
+            // `background/runs/{id}/notes` steer target → no steer channel.
+            steer: None,
+        })
+        .await;
 
         // ITEM-16: resume-replay. A non-empty persisted transcript means this is a
         // crash / gate resume — seed `Resume` (do NOT re-append the user prompt),
@@ -1018,7 +1270,7 @@ impl StepDispatcher for AgentDispatcher {
             system: system_blocks,
             tool_scope: ToolScope {
                 servers,
-                allow_delegate: false,
+                allow_delegate,
             },
             start_iteration: 1,
             inputs: serde_json::Value::Null,
@@ -1305,6 +1557,75 @@ mod tests {
                 assert!(detail.chars().all(|c| c == '€'), "detail still valid UTF-8");
             }
             other => panic!("expected AgentActivity kind, got {other:?}"),
+        }
+    }
+
+    // (agent-orchestration) reviewer_risk_thresholds must reach the reviewer
+    // both detached hosts build — the T1 dead-config guard.
+    use agent_core::{apply_authorization, Authorization};
+
+    /// A settings row with a caller-chosen `reviewer_risk_thresholds`; every
+    /// other field is a plausible default (irrelevant to the ladder under test).
+    fn settings_with(reviewer_risk_thresholds: serde_json::Value) -> AgentAdminSettings {
+        AgentAdminSettings {
+            default_sandbox_mode: "workspace-write".into(),
+            unattended_approval_policy: "on_request".into(),
+            reviewer_enabled: true,
+            reviewer_model_id: None,
+            reviewer_policy: None,
+            reviewer_risk_thresholds,
+            per_run_token_cap: 1_000_000,
+            per_step_token_cap: 500_000,
+            default_max_steps: 20,
+            fan_out_max_threads: 4,
+            fan_out_max_depth: 1,
+            fan_out_max_children_per_call: 8,
+            goal_eval_model_id: None,
+            goal_seek_max_turns: 10,
+            delegate_enabled: false,
+            updated_at: Utc::now(),
+        }
+    }
+
+    /// The SAME `{High, authorization=Medium}` call resolves to a DIFFERENT
+    /// reviewer decision depending solely on the admin ladder read off the
+    /// settings row — the proof the knob is live. `apply_authorization ∘ resolve`
+    /// is exactly what `Reviewer::decide` computes.
+    #[test]
+    fn admin_thresholds_change_reviewer_decision() {
+        // Default ladder ({}): a well-authorized High is promoted to Auto.
+        let base = reviewer_thresholds(&settings_with(serde_json::json!({})));
+        assert_eq!(
+            apply_authorization(Risk::High, Authorization::Medium, base.resolve(Risk::High)),
+            Decision::Auto,
+            "default ladder: well-authorized High → Auto",
+        );
+        // Admin override {"high":"deny"}: the identical call is now Denied.
+        let overridden =
+            reviewer_thresholds(&settings_with(serde_json::json!({ "high": "deny" })));
+        assert_eq!(
+            apply_authorization(Risk::High, Authorization::Medium, overridden.resolve(Risk::High)),
+            Decision::Deny,
+            "admin `high:deny` override must flip the decision (setting is not inert)",
+        );
+    }
+
+    /// JSON-null / empty `{}` / non-object thresholds fall back to the built-in
+    /// ladder unchanged — the column default is `'{}'::jsonb`, so this is the
+    /// zero-config path.
+    #[test]
+    fn null_or_empty_thresholds_fall_back_to_ladder() {
+        for v in [
+            serde_json::Value::Null,
+            serde_json::json!({}),
+            serde_json::json!("not-an-object"),
+        ] {
+            let t = reviewer_thresholds(&settings_with(v.clone()));
+            assert!(t.is_empty(), "value {v} must yield the empty (default) ladder");
+            // The built-in ladder (map_risk) unchanged.
+            assert_eq!(t.resolve(Risk::Low), Decision::Auto);
+            assert_eq!(t.resolve(Risk::High), Decision::Prompt);
+            assert_eq!(t.resolve(Risk::Critical), Decision::Deny);
         }
     }
 }

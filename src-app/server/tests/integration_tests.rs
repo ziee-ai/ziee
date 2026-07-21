@@ -5,6 +5,7 @@ mod agent;
 mod agentic_chat;
 mod assistant;
 mod auth;
+mod background_mcp;
 mod bio_mcp;
 mod chat;
 mod citations;

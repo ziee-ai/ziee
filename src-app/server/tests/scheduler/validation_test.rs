@@ -54,6 +54,7 @@ async fn set_cap(server: &TestServer, admin_token: &str, cap: i64) {
             "min_interval_seconds": 300,
             "max_consecutive_failures": 5,
             "notification_retention_days": 30,
+            "max_horizon_days": 7,
         }))
         .send()
         .await

@@ -1,8 +1,8 @@
 {
   "generatedBy": "scripts/gen-overlay-registry.mjs",
   "counts": {
-    "total": 37,
-    "hosts": 36,
+    "total": 38,
+    "hosts": 37,
     "triggers": 1,
     "wiredOpen": 31
   },
@@ -61,6 +61,19 @@
           "primitive": "Drawer",
           "mode": "controlled"
         },
+        {
+          "primitive": "Drawer",
+          "mode": "controlled"
+        }
+      ]
+    },
+    {
+      "surface": "modules/chat/extensions/schedule/components/ScheduleLoopDialog",
+      "class": "host",
+      "primitives": [
+        "Drawer"
+      ],
+      "occurrences": [
         {
           "primitive": "Drawer",
           "mode": "controlled"

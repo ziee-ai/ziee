@@ -1446,7 +1446,8 @@ mod tests {
         let now = Utc::now();
         WorkflowRun {
             id: Uuid::new_v4(),
-            workflow_id: Uuid::new_v4(),
+            workflow_id: Some(Uuid::new_v4()),
+            job_kind: "workflow".into(),
             conversation_id: None,
             user_id: Uuid::new_v4(),
             model_id: None,

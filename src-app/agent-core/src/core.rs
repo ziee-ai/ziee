@@ -26,9 +26,13 @@ use futures_util::StreamExt;
 use ziee_core::AppError;
 
 use crate::budget::Budget;
-use crate::extension::{run_before_model, run_contribute, AgentExtension, Flow, TurnContext};
+use crate::core_tools::CoreTool;
+use crate::extension::{
+    run_before_model, run_contribute, sorted_extensions, AgentExtension, Flow, TurnContext,
+};
 use crate::ports::{
-    ApprovalPolicy, EventSink, HumanGate, ModelResolver, ToolProvider, TranscriptStore,
+    ApprovalPolicy, EventSink, HumanGate, ModelResolver, SteerNotePort, TaskListStore,
+    ToolProvider, TranscriptStore,
 };
 use crate::reviewer::Reviewer;
 use crate::types::{
@@ -258,6 +262,27 @@ pub struct AgentCore {
     pub extensions: Vec<Arc<dyn AgentExtension>>,
     /// Optional reviewer resolving a `Decision::Review` (ITEM-12).
     pub reviewer: Option<Reviewer>,
+    /// Durable per-run agent task list (Group G / ITEM-35 / DEC-50). `None`
+    /// disables the `task_*` core tools + the re-injection extension — a
+    /// construction site that doesn't wire a store passes `None`, so this field
+    /// is additive for existing hosts. The server owns the DB-backed impl.
+    pub task_store: Option<Arc<dyn TaskListStore>>,
+    /// Optional out-of-band steering-note channel (Group F / ITEM-25 / DEC-79).
+    /// When `Some`, the loop drains this run's pending steering notes at each
+    /// iteration boundary and appends each as a `[steering]` user message so it
+    /// reaches the model on the next call. `None` (interactive chat + the
+    /// workflow `kind: agent` step + every fan-out child) ⇒ ZERO behavior change:
+    /// only the detached background-run path wires an impl (backed by the durable
+    /// note queue). Additive for existing hosts.
+    pub steer: Option<Arc<dyn SteerNotePort>>,
+    /// Optional self-paced next-fire channel (Group E / ITEM-21 / DEC-42). When
+    /// `Some`, the model-facing `schedule_next` core tool is offered and its
+    /// proposal is recorded here for the host to read after the turn. `None`
+    /// (interactive chat, workflow steps, fan-out children, and any run the
+    /// scheduler did NOT mark unattended) ⇒ the tool is not offered and there is
+    /// ZERO behavior change: only the scheduler's unattended prompt-task path
+    /// wires an impl. Additive for existing hosts.
+    pub schedule: Option<Arc<dyn crate::ports::SchedulePort>>,
     pub budget: Budget,
     pub limits: crate::types::SubagentLimits,
     pub sandbox: SandboxMode,
@@ -271,6 +296,23 @@ pub struct AgentCore {
     /// runs the MCP extension's `before_llm_call`, which itself executes the
     /// approved tools on resume — running both double-executes the tool.
     pub resume_executes_pending: bool,
+    /// Should `fan_out` run each delegated child in FULL ISOLATION from this
+    /// (parent) turn's message-bound state? A host whose `transcript` / persisting
+    /// `extensions` / `sink` are keyed to the parent's run/message (the CHAT host:
+    /// `ChatTranscript` guards `run_id == assistant_message_id`, and its
+    /// `RegistryBridge`/`CompactionExtension` persist onto the parent's chat
+    /// message) MUST set this `true` — otherwise a child, which runs with its OWN
+    /// fresh `run_id`, inherits that state via `self.clone()` and corrupts/panics
+    /// on the parent's message (debug: the transcript `debug_assert` fires;
+    /// release: the child silently writes its output onto the parent's message).
+    /// When `true`, each child gets a fresh ephemeral in-memory transcript, a
+    /// no-op sink (the parent still emits the activity card via its own `sink`),
+    /// no inherited extensions, and none of the run-keyed core-tool ports — which
+    /// matches the crate's summary-only fan-out contract. Hosts whose transcript
+    /// is NOT run-bound (the in-memory fakes, the workflow host) leave this
+    /// `false` ⇒ byte-identical legacy `self.clone()` children (zero behavior
+    /// change). Additive for existing hosts.
+    pub isolate_children: bool,
 }
 
 /// What to do with one tool call after the approval gate has decided.
@@ -299,6 +341,13 @@ impl AgentCore {
         let mut budget = self.budget.clone();
         let mut iteration = req.start_iteration.max(1);
 
+        // Order the extension pipeline by `.order()` (STABLE) ONCE per run and
+        // reuse it across every iteration's contribute / before_model /
+        // after_round phases (ITEM-56 / DEC-129). `.order()` was previously inert
+        // — the loop ran raw insertion order — so `COMPACTION_ORDER` and the
+        // context tier orders only become load-bearing here.
+        let extensions = sorted_extensions(&self.extensions);
+
         // Seed a fresh user message into the transcript (a Resume reads what's
         // already persisted).
         if let TurnSeed::NewMessage(msg) = &req.seed {
@@ -316,6 +365,22 @@ impl AgentCore {
                 break;
             }
 
+            // Steering notes (Group F / ITEM-25 / DEC-79): at the iteration
+            // boundary — AFTER the cancel/budget checks, BEFORE `run_contribute`
+            // / `self.transcript.load` — drain any out-of-band notes queued for
+            // this run and append each as a `[steering]` user message. Appending
+            // BEFORE the `load` below is what lands it in `history` so it reaches
+            // the model on THIS call. `None` (interactive + non-detached hosts)
+            // ⇒ this whole block is skipped, so the loop is byte-identical
+            // without a steer channel.
+            if let Some(steer) = &self.steer {
+                for note in steer.take_pending(req.run_id).await? {
+                    self.transcript
+                        .append(req.run_id, ChatMessage::user(format!("[steering] {note}")))
+                        .await?;
+                }
+            }
+
             // Rebuild the per-turn context via the extension `contribute` phase.
             let mut tctx = TurnContext {
                 system: req.system.clone(),
@@ -323,10 +388,18 @@ impl AgentCore {
                 inputs: req.inputs.clone(),
                 ..Default::default()
             };
-            run_contribute(&self.extensions, &mut tctx).await?;
+            run_contribute(&extensions, &mut tctx).await?;
 
             let history = self.transcript.load(req.run_id).await?;
-            let tools = self.tools.list(&tctx.tool_scope).await?;
+            // The MCP/built-in tools for this turn, plus any core-injected meta-tools
+            // (e.g. `delegate` when `allow_delegate`) — the model sees them as one
+            // flat list; core tools are intercepted in-loop below (ITEM-1).
+            let mut tools = self.tools.list(&tctx.tool_scope).await?;
+            tools.extend(crate::core_tools::core_tool_defs(
+                &tctx.tool_scope,
+                self.task_store.is_some(),
+                self.schedule.is_some(),
+            ));
             let mut chat_req = ChatRequest {
                 model: self.model_name.clone(),
                 messages: assemble_messages(&tctx.system, &history),
@@ -336,7 +409,7 @@ impl AgentCore {
 
             // `before_model` hooks (compaction runs here at a late order; the chat
             // registry bridge flips approval rows on a resume). A veto stops the turn.
-            if run_before_model(&self.extensions, &mut chat_req).await? == Flow::ShortCircuit {
+            if run_before_model(&extensions, &mut chat_req).await? == Flow::ShortCircuit {
                 self.push_emit(&mut events, AgentEvent::Stopped(StopReason::NoToolCall))
                     .await;
                 break;
@@ -402,6 +475,9 @@ impl AgentCore {
             };
             let from_model = resume_msg.is_none();
 
+            // Tokens THIS step's model call reported (0 on a resume-executed
+            // message — no call happened), used for the per-step cap check below.
+            let mut last_step_tokens: u64 = 0;
             let assistant_msg = match resume_msg {
                 Some(msg) => msg,
                 None => {
@@ -420,6 +496,7 @@ impl AgentCore {
                         }
                     };
                     budget.add_tokens(usage.total_tokens);
+                    last_step_tokens = usage.total_tokens;
                     self.transcript
                         .append(req.run_id, assistant_msg.clone())
                         .await?;
@@ -435,7 +512,7 @@ impl AgentCore {
             // after-hooks on the turn that produced it. A short-circuit ends the turn.
             let mut short_circuit = false;
             if from_model {
-                for ext in &self.extensions {
+                for ext in &extensions {
                     if ext.after_round(&assistant_msg).await? == Flow::ShortCircuit {
                         short_circuit = true;
                         break;
@@ -462,6 +539,12 @@ impl AgentCore {
                 Some(StopReason::Halted)
             } else if budget.run_tokens() > budget.per_run_token_cap {
                 Some(StopReason::TokenCap)
+            } else if budget.step_over_cap(last_step_tokens) {
+                // Per-step failsafe (ITEM-5): a single model call that blew past
+                // `per_step_token_cap` stops the loop rather than issuing another
+                // (likely just-as-large) round — mirrors the workflow runner's
+                // `PER_STEP_TOKEN_CAP` at the agent-loop layer.
+                Some(StopReason::TokenCap)
             } else if iteration >= budget.max_steps {
                 Some(StopReason::IterationCap)
             } else {
@@ -485,6 +568,43 @@ impl AgentCore {
             let mut executed = 0usize;
             let mut terminal_count = 0usize;
             for (ordinal, call) in tool_calls.iter().enumerate() {
+                // Core meta-tool interception (the reusable seam — ITEM-1, and
+                // later Group G's `task_*` tools). These are NOT MCP tools, so they
+                // are handled in-process BEFORE the approval gate and BEFORE
+                // `ToolProvider::call`, then appended to the transcript like any
+                // executed tool (no orphan `tool_use`). See `crate::core_tools`.
+                if let Some(core_tool) = CoreTool::from_name(&call.name) {
+                    let result = self
+                        .handle_core_tool(
+                            core_tool,
+                            call,
+                            &tctx.tool_scope,
+                            req.run_id,
+                            req.user_id,
+                            &cancel,
+                        )
+                        .await;
+                    executed += 1;
+                    if result.terminal {
+                        terminal_count += 1;
+                    }
+                    let idem = format!("{}:{}:{}", req.run_id, iteration, ordinal);
+                    self.transcript
+                        .journal_tool_call(
+                            req.run_id,
+                            ToolCallRecord {
+                                key: idem,
+                                call: call.clone(),
+                                result: result.clone(),
+                            },
+                        )
+                        .await?;
+                    let msg = tool_result_message(call, &result);
+                    self.transcript.append(req.run_id, msg.clone()).await?;
+                    self.push_emit(&mut events, AgentEvent::Message(msg)).await;
+                    continue;
+                }
+
                 let server_key = call
                     .server
                     .clone()
@@ -494,7 +614,17 @@ impl AgentCore {
                 let mut decision = self.policy.decide(call, trusted, &self.sandbox).await;
                 if decision == Decision::Review {
                     decision = match &self.reviewer {
-                        Some(rev) => rev.review(call).await,
+                        // DEC-104 (ITEM-47) — external veto-only. The reviewer may
+                        // only DOWNGRADE a non-trusted call; it can never GRANT
+                        // `Auto`. This closes the live hole where an untrusted
+                        // external call under `OnRequest` → `Review` → reviewer
+                        // `Risk::Low` → `Auto` reached Auto with NO human allowlist
+                        // entry. (An allowlisted external call is already `Auto`
+                        // from the ApprovalPolicy BEFORE `Review`, so it never
+                        // reaches the reviewer — the reviewer only ever sees
+                        // non-allowlisted external calls. Trusted/built-in calls are
+                        // `Auto` from the policy too and likewise skip `Review`.)
+                        Some(rev) => clamp_reviewer_decision(trusted, rev.review(call).await),
                         // No reviewer wired → escalate to a human (safe default).
                         None => Decision::Prompt,
                     };
@@ -599,6 +729,20 @@ impl AgentCore {
     }
 }
 
+/// DEC-104 (ITEM-47) — external veto-only clamp. For a NON-trusted server the
+/// reviewer's output may only tighten toward ask/deny; a reviewer `Auto` is
+/// clamped up to `Prompt` (a human must still confirm, since a non-trusted call
+/// has no host allowlist entry — those are `Auto` from the policy BEFORE the
+/// reviewer runs). A trusted/built-in call (which normally doesn't reach the
+/// reviewer at all) keeps whatever the reviewer decided.
+fn clamp_reviewer_decision(trusted: bool, reviewed: Decision) -> Decision {
+    if !trusted && reviewed == Decision::Auto {
+        Decision::Prompt
+    } else {
+        reviewed
+    }
+}
+
 /// Assemble the wire messages: the contributed system blocks as one `System`
 /// message (when non-empty), then the loaded history verbatim.
 fn assemble_messages(system: &[ContentBlock], history: &[ChatMessage]) -> Vec<ChatMessage> {
@@ -645,7 +789,7 @@ fn extract_tool_calls(msg: &ChatMessage) -> Vec<ToolCall> {
         .collect()
 }
 
-fn error_tool_result(message: impl Into<String>) -> ToolResult {
+pub(crate) fn error_tool_result(message: impl Into<String>) -> ToolResult {
     ToolResult {
         content: vec![ContentBlock::Text {
             text: message.into(),
@@ -748,11 +892,15 @@ mod tests {
             model_factory: Arc::new(ProviderModelClientFactory),
             extensions: vec![],
             reviewer: None,
+            task_store: None,
+            steer: None,
+            schedule: None,
             budget: Budget::new(2, 1_000_000, 1_000_000),
             limits: Default::default(),
             sandbox: SandboxMode::WorkspaceWrite { network: false },
             model_name: "test".into(),
             resume_executes_pending: true,
+            isolate_children: false,
         };
         core.run(new_req(), CancelToken::new()).await.unwrap();
         let deltas = sink
@@ -776,6 +924,83 @@ mod tests {
         assert_eq!(last_stop(&events), StopReason::NoToolCall);
         // No tool was executed.
         assert!(harness.transcript.journal.lock().unwrap().is_empty());
+    }
+
+    /// Group F / ITEM-25 / DEC-79: a `Some(SteerNotePort)` drains this run's
+    /// pending notes at the iteration boundary and appends each as a `[steering]`
+    /// user message into the transcript (so it loads into `history` and reaches
+    /// the model next call); a `None` port appends nothing (the interactive path
+    /// is byte-identical). Mirrors the crate's other loop tests + fake ports.
+    #[tokio::test]
+    async fn steer_notes_appended_as_user_messages() {
+        use crate::test_fakes::FakeSteer;
+
+        fn steering_msgs(list: &[ChatMessage]) -> Vec<String> {
+            list.iter()
+                .filter(|m| m.role == Role::User)
+                .flat_map(|m| m.content.iter())
+                .filter_map(|b| match b {
+                    ContentBlock::Text { text } if text.starts_with("[steering] ") => {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // --- Some(steer): the queued note becomes ONE `[steering]` user msg. ---
+        let steer = Arc::new(FakeSteer::once(vec!["do X".into()]));
+        let harness = core_with(
+            Arc::new(ScriptedModel::final_text("ok")),
+            true,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
+        let mut core = harness.core;
+        core.steer = Some(steer.clone());
+        let req = new_req();
+        let run_id = req.run_id;
+        core.run(req, CancelToken::new()).await.unwrap();
+
+        // The port was drained for THIS run's id.
+        assert_eq!(steer.asked.lock().unwrap().as_slice(), &[run_id]);
+        let with_steer = steering_msgs(
+            &harness
+                .transcript
+                .msgs
+                .lock()
+                .unwrap()
+                .get(&run_id)
+                .cloned()
+                .unwrap_or_default(),
+        );
+        assert_eq!(with_steer, vec!["[steering] do X".to_string()]);
+
+        // --- None (default): nothing appended (interactive path unchanged). ---
+        let harness2 = core_with(
+            Arc::new(ScriptedModel::final_text("ok")),
+            true,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
+        assert!(harness2.core.steer.is_none());
+        let req2 = new_req();
+        let run_id2 = req2.run_id;
+        harness2.core.run(req2, CancelToken::new()).await.unwrap();
+        let without_steer = steering_msgs(
+            &harness2
+                .transcript
+                .msgs
+                .lock()
+                .unwrap()
+                .get(&run_id2)
+                .cloned()
+                .unwrap_or_default(),
+        );
+        assert!(
+            without_steer.is_empty(),
+            "a None steer port must append no steering messages"
+        );
     }
 
     #[tokio::test]
@@ -819,6 +1044,79 @@ mod tests {
                 m.content.iter().any(|b| {
                     matches!(b, ContentBlock::ToolResult { is_error: Some(true), .. })
                 })
+            });
+        assert!(has_error_result);
+    }
+
+    /// ITEM-5 (the budget finding): a single model call whose reported usage
+    /// blows past `per_step_token_cap` stops the loop with `TokenCap`, WITHOUT
+    /// running that round's tools — even though the per-RUN cap is untouched. This
+    /// proves `Budget::step_over_cap` / `per_step_token_cap` is now wired in (it
+    /// was previously inert).
+    #[tokio::test]
+    async fn per_step_token_cap_stops_the_loop() {
+        use crate::test_fakes::{FakeGate, FakeResolver, FakeSink, FakeTools, FakeTranscript};
+
+        // A model that always wants a tool AND reports a large per-call usage.
+        struct BigStepModel;
+        #[async_trait]
+        impl ModelClient for BigStepModel {
+            async fn call(&self, _req: ChatRequest) -> Result<(ChatMessage, Usage), AppError> {
+                Ok((
+                    assistant_tool("t1", "search", serde_json::json!({})),
+                    Usage {
+                        input_tokens: 0,
+                        output_tokens: 500,
+                        total_tokens: 500,
+                    },
+                ))
+            }
+        }
+
+        let transcript = Arc::new(FakeTranscript::default());
+        let tools = Arc::new(FakeTools::new(true));
+        let core = AgentCore {
+            transcript: transcript.clone(),
+            sink: Arc::new(FakeSink::default()),
+            tools: tools.clone(),
+            gate: Arc::new(FakeGate {
+                behavior: GateBehavior::Approve,
+            }),
+            policy: Arc::new(TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest)),
+            models: Arc::new(FakeResolver::default()),
+            model: Arc::new(BigStepModel),
+            model_factory: Arc::new(ProviderModelClientFactory),
+            extensions: vec![],
+            reviewer: None,
+            task_store: None,
+            steer: None,
+            schedule: None,
+            // per_run cap huge (untouched by 500) but per_step cap = 100 (< 500).
+            budget: Budget::new(10, 1_000_000, 100),
+            limits: Default::default(),
+            sandbox: SandboxMode::WorkspaceWrite { network: false },
+            model_name: "test".into(),
+            resume_executes_pending: true,
+            isolate_children: false,
+        };
+        let events = core.run(new_req(), CancelToken::new()).await.unwrap();
+
+        // Stopped by the per-step cap (not iteration cap, not per-run cap).
+        assert_eq!(last_stop(&events), StopReason::TokenCap);
+        // The over-cap round's tool was never executed / journaled…
+        assert!(tools.calls.lock().unwrap().is_empty());
+        assert!(transcript.journal.lock().unwrap().is_empty());
+        // …but its `tool_use` got a synthesized is_error result (no orphan).
+        let has_error_result = transcript
+            .msgs
+            .lock()
+            .unwrap()
+            .values()
+            .flatten()
+            .any(|m| {
+                m.content
+                    .iter()
+                    .any(|b| matches!(b, ContentBlock::ToolResult { is_error: Some(true), .. }))
             });
         assert!(has_error_result);
     }
@@ -883,5 +1181,72 @@ mod tests {
         assert_eq!(last_stop(&events), StopReason::Halted);
         // The model was never called.
         assert_eq!(*harness.model.calls.lock().unwrap(), 0);
+    }
+
+    // -------- TEST-176/177: DEC-104 external veto-only clamp --------
+    #[test]
+    fn clamp_reviewer_decision_external_veto_only() {
+        // TEST-176: a non-trusted (external) reviewer `Auto` is clamped to `Prompt`
+        // (the reviewer can only ever downgrade a non-trusted call).
+        assert_eq!(clamp_reviewer_decision(false, Decision::Auto), Decision::Prompt);
+        // Downgrades / denials on a non-trusted call pass through unchanged.
+        assert_eq!(clamp_reviewer_decision(false, Decision::Prompt), Decision::Prompt);
+        assert_eq!(clamp_reviewer_decision(false, Decision::Deny), Decision::Deny);
+        // TEST-177: a trusted/built-in reviewer `Auto` stays `Auto`.
+        assert_eq!(clamp_reviewer_decision(true, Decision::Auto), Decision::Auto);
+        assert_eq!(clamp_reviewer_decision(true, Decision::Deny), Decision::Deny);
+    }
+
+    #[tokio::test]
+    async fn external_low_reviewer_routes_to_human_not_auto() {
+        // End-to-end through the loop: an external (non-trusted) call under
+        // `OnRequest` → `Review` → the reviewer classifies Low + high-authz
+        // (which would resolve to `Auto`) → the veto clamp forces the human gate
+        // instead of auto-executing (closes the DEC-104 hole).
+        use crate::reviewer::{Authorization, Reviewer, Risk, RiskAssessment, RiskClassifier};
+
+        struct FixedAssessment(RiskAssessment);
+        #[async_trait]
+        impl RiskClassifier for FixedAssessment {
+            async fn classify(
+                &self,
+                _c: &ToolCall,
+                _p: &str,
+            ) -> Result<RiskAssessment, AppError> {
+                Ok(self.0.clone())
+            }
+        }
+
+        let model = Arc::new(ScriptedModel::always_tool("t", "mutate"));
+        let mut harness = core_with(
+            model,
+            false, // non-trusted / external server
+            GateBehavior::Suspend,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
+        // A reviewer that would grant Auto (Low band, well-authorized).
+        harness.core.reviewer = Some(Reviewer::new(
+            Arc::new(FixedAssessment(RiskAssessment::new(
+                Risk::Low,
+                Authorization::High,
+            ))),
+            "policy",
+        ));
+        let events = harness
+            .core
+            .run(new_req(), CancelToken::new())
+            .await
+            .unwrap();
+
+        // The reviewer said Auto, but for an external call the clamp forces Prompt
+        // → the human gate opened and the tool never auto-executed.
+        assert!(
+            events.iter().any(|e| matches!(e, AgentEvent::GateOpened(_))),
+            "external reviewer-Auto must route to the human gate, not auto-execute"
+        );
+        assert!(
+            harness.tools.calls.lock().unwrap().is_empty(),
+            "the external call must NOT auto-execute on a reviewer Auto"
+        );
     }
 }

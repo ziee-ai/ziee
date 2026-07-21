@@ -607,6 +607,10 @@ const mcpExtension: ChatExtension = createExtension({
         message_id: get().streamingMessage?.id,
         status: 'pending_approval',
         input: data.input,
+        // ITEM-50 (full-disclosure): carry the data-egress destination host + the
+        // tool's full exact description so the approval card can render them.
+        dest_host: data.dest_host,
+        description: data.description,
       })
 
       // Inject tool_use content block into streaming message so McpToolUseRenderer can mount

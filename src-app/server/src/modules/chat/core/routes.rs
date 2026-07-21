@@ -32,6 +32,11 @@ pub fn chat_router() -> ApiRouter {
             "/conversations/{id}",
             delete_with(delete_conversation, delete_conversation_docs),
         )
+        // ITEM-61 / DEC-137 — manual context compaction (`/compact`).
+        .api_route(
+            "/conversations/{id}/compact",
+            post_with(compact_conversation, compact_conversation_docs),
+        )
         // Message operations
         .api_route(
             "/conversations/{id}/messages",

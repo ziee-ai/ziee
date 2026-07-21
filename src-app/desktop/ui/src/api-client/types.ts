@@ -27,8 +27,35 @@ export type AgentActivityStatus = 'running' | 'ok' | 'error'
 export interface AgentAdminSettings {
   default_max_steps: number
   default_sandbox_mode: string
+  /**
+   * On-demand `delegate` enable switch (ITEM-2 / DEC-2). Default false. When
+   *  true, the TOP-LEVEL hosts (workflow `kind: agent` step + the agent-core
+   *  chat path behind `ZIEE_CHAT_AGENT_CORE`) set `ToolScope.allow_delegate`,
+   *  so agent-core offers the core `delegate` tool. Children / fan-out stay
+   *  false (`fanout.rs` caps `max_depth = 1`); a plain bool like
+   *  `reviewer_enabled` (no bounds).
+   */
+  delegate_enabled: boolean
+  /**
+   * Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates
+   *  with an explicit "capped at N" note. Threaded into the crate's
+   *  `SubagentLimits.max_children_per_call`.
+   */
+  fan_out_max_children_per_call: number
   fan_out_max_depth: number
   fan_out_max_threads: number
+  /**
+   * Goal-seeking evaluator model (ITEM-24 / DEC-61). NULL ⇒ fall back to the
+   *  goal-seeking run's OWN model (mirrors `reviewer_model_id`). Resolved under
+   *  the run owner's RBAC at evaluation time.
+   */
+  goal_eval_model_id?: string
+  /**
+   * Max turns a goal-seeking loop may fire before stopping 'incomplete'
+   *  (ITEM-24 / DEC-62). Default 10, range 1..=50; the `max_horizon_days`
+   *  backstop is the other ceiling.
+   */
+  goal_seek_max_turns: number
   per_run_token_cap: number
   per_step_token_cap: number
   reviewer_enabled: boolean
@@ -324,6 +351,101 @@ export interface BackendStatusResponse {
   version: string
 }
 
+/** Cancel-run acknowledgement. */
+export interface BackgroundRunCancelAck {
+  run_id: string
+  /**
+   * `"cancelled"` when the run was flipped; `"already_terminal"` on the benign
+   *  race where the run reached terminal between the ownership check and the CAS.
+   */
+  status: string
+}
+
+/**
+ * Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /
+ *  sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`
+ *  result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and
+ *  adds the collected result, so the FE can render a completed run's output without a
+ *  second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.
+ *  The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still
+ *  excluded — a background run has none, and a classic `workflow`-kind run is served
+ *  by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).
+ */
+export interface BackgroundRunDetail {
+  conversation_id?: string
+  created_at: string
+  /** Terminal error text for a failed run (else `None`). */
+  error_message?: string
+  /**
+   * The full result body of a completed run (`None` until a result exists).
+   *  This is the field the compact [`BackgroundRunSummary`] deliberately omits.
+   */
+  final_output_json?: unknown
+  /** True when a `final_output_json` is present (a result was collected). */
+  has_result: boolean
+  id: string
+  /**
+   * Background-run discriminator (`subagent` / `sandbox_exec`); never
+   *  `workflow` (the detail 404s on those).
+   */
+  job_kind: string
+  /**
+   * Short human label derived from the run's spec (the sub-agent `task`),
+   *  capped at 200 chars; `None` when the spec carried no task text.
+   */
+  label?: string
+  model_id?: string
+  status: string
+  total_tokens: number
+  /** Last transition time — the effective "finished_at" for a terminal run. */
+  updated_at: string
+}
+
+/**
+ * Paginated response for `GET /api/background/runs` (mirrors
+ *  `McpToolCallListResponse`).
+ */
+export interface BackgroundRunListResponse {
+  page: number
+  per_page: number
+  runs: BackgroundRunSummary[]
+  total: number
+  total_pages: number
+}
+
+/**
+ * Compact BACKGROUND-run summary (ITEM-8) — one detached sub-agent /
+ *  sandbox-exec run (`job_kind <> 'workflow'`) projected WITHOUT the heavy JSONB
+ *  blobs the full `WorkflowRun` carries (step outputs / logs / artifacts /
+ *  `final_output_json`). The full result is read separately via `collect_result`;
+ *  this row only tells the FE's "your background tasks" list what/when/state +
+ *  whether a result is ready. Backs `GET /api/background/runs`.
+ */
+export interface BackgroundRunSummary {
+  conversation_id?: string
+  created_at: string
+  /** Terminal error text for a failed run (else `None`). */
+  error_message?: string
+  /** True when a `final_output_json` is present (a result can be collected). */
+  has_result: boolean
+  id: string
+  /**
+   * Background-run discriminator (`subagent` / `sandbox_exec`); never
+   *  `workflow` (the list filters those out).
+   */
+  job_kind: string
+  /**
+   * Short human label derived from the run's spec (the sub-agent `task`),
+   *  capped at 200 chars; `None` when the spec carried no task text.
+   */
+  label?: string
+  model_id?: string
+  status: string
+  total_tokens: number
+  /** Last transition time — the effective "finished_at" for a terminal run. */
+  updated_at: string
+}
+
 /** The per-item batch report returned by import / verify. */
 export interface BatchReport {
   results: CitationItemResult[]
@@ -596,6 +718,16 @@ export interface CodeSandboxResourceLimits {
   vm_idle_evict_secs: number
   /** Per-VM concurrent `execute_command` cap (macOS + WSL2). */
   vm_max_concurrent_execs: number
+}
+
+/** Request body for `POST /conversations/{id}/compact` (ITEM-61 / DEC-137). */
+export interface CompactConversationRequest {
+  /**
+   * Optional focus hint steering what the compaction should preserve. Advisory
+   *  today (the rolling summary is regenerated from the full active-branch
+   *  history); reserved for a future focus-aware summarizer.
+   */
+  focus?: string
 }
 
 /** A non-secret config field a provider needs — drives the generic admin UI. */
@@ -1119,6 +1251,19 @@ export interface CreateProjectRequest {
   name?: string
 }
 
+/**
+ * Enqueue-a-steering-note request body
+ *  (`POST /api/background/runs/{run_id}/notes`). The note is capped + trimmed by
+ *  the handler before it reaches the durable queue.
+ */
+export interface CreateRunNote {
+  /**
+   * The steering note the running agent should pick up on its next turn
+   *  (non-empty; capped at 4000 characters by the handler).
+   */
+  note: string
+}
+
 /** Create-task request body. */
 export interface CreateScheduledTask {
   /**
@@ -1127,6 +1272,20 @@ export interface CreateScheduledTask {
    */
   allowed_unattended_tools?: AllowedTool[]
   assistant_id?: string
+  /**
+   * ITEM-22 / DEC-46: bind a prompt-kind task to an EXISTING conversation (the
+   *  "schedule/loop THIS chat" affordance) so its firings append to that chat
+   *  instead of a fresh per-task conversation. Ownership is verified at create
+   *  time (a foreign id → 404); `None` keeps the create-a-conversation default.
+   */
+  bound_conversation_id?: string
+  /**
+   * ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+   *  A non-blank value makes this a goal-seeking task and (validated in the
+   *  handler) requires `schedule_kind = 'self_paced'` + `target_kind = 'prompt'`.
+   *  `None`/blank ⇒ an ordinary task.
+   */
+  completion_condition?: string
   cron_expr?: string
   inputs_json?: unknown
   model_id: string
@@ -2809,6 +2968,20 @@ export interface ListAuditLogQuery {
   limit?: number
 }
 
+/** Query params for `GET /api/background/runs`. */
+export interface ListBackgroundRunsQuery {
+  /** Filter to a single background job kind (`subagent` / `sandbox_exec`). */
+  kind?: string
+  page?: number
+  /** Page size; clamped to `1..=500` server-side (default 50). */
+  per_page?: number
+  /**
+   * Filter to a single run status (`pending` / `running` / `waiting` /
+   *  `resumable` / `completed` / `failed` / `cancelled`).
+   */
+  status?: string
+}
+
 /** `?project_id=` filter for listing. */
 export interface ListCitationsQuery {
   project_id?: string
@@ -2893,6 +3066,16 @@ export interface ListSystemServersQuery {
   per_page?: number
   search?: string
   status?: string
+}
+
+/**
+ * Query params for `GET /api/scheduled-tasks` (ITEM-23/DEC-47). An optional
+ *  `conversation_id` filters to the tasks BOUND to that conversation (the in-chat
+ *  "attached loops/schedules" list); omitting it returns all of the user's tasks
+ *  (back-compat).
+ */
+export interface ListTasksParams {
+  conversation_id?: string
 }
 
 /** Query params for the tool-call history list. */
@@ -4965,6 +5148,25 @@ export interface RunActionAck {
 }
 
 /**
+ * One durable STEERING NOTE queued against a running background run (ITEM-25 /
+ *  Group F). A user posts a note to a RUNNING background run (a detached
+ *  `JobKind::SubAgent` turn); the detached agent-core loop consumes pending notes
+ *  at its next iteration boundary and appends them to the transcript so the model
+ *  reads them on the next turn. `consumed_at` is NULL while pending, stamped when
+ *  the loop consumes it. Rows live in `background_run_notes`, FK'd to the run
+ *  (ON DELETE CASCADE) — deleting the run deletes its notes.
+ */
+export interface RunNote {
+  /** NULL while pending; set to the consume time once the loop reads it. */
+  consumed_at?: string
+  created_at: string
+  id: string
+  /** The steering text the running agent should pick up next turn. */
+  note: string
+  run_id: string
+}
+
+/**
  * A page of run history (ITEM-41) — the paged envelope the runs panel consumes.
  *  Mirrors `mcp/tool_calls`' page shape.
  */
@@ -5097,6 +5299,9 @@ export type SSEChatStreamEvent = {
   content: ChatStreamChunk
   complete: SSEChatStreamCompleteData
   error: SSEChatStreamErrorData
+  taskListChanged: SSEChatStreamTaskListChangedData
+  subAgentActivity: SSEChatStreamSubAgentActivityData
+  historyReplaced: SSEChatStreamHistoryReplacedData
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
@@ -5107,8 +5312,42 @@ export type SSEChatStreamEvent = {
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
+/**
+ * Data for the `historyReplaced` SSE event (ITEM-61 / DEC-137). Emitted when the
+ *  conversation's context is COMPACTED — either the agent loop's automatic
+ *  compaction (`AgentEvent::HistoryReplaced`, forwarded by `event_sink.rs`) or the
+ *  manual `POST /conversations/{id}/compact` affordance — so the chat timeline
+ *  renders a "context compacted" marker in place. Compaction is OUTBOUND-ONLY (the
+ *  stored `message_contents` are never rewritten/deleted; only the rolling
+ *  `conversation_summaries` row is upserted), so this is a display signal, not a
+ *  data mutation. Routed via `publish_raw_event` (the raw side-channel).
+ */
+export interface SSEChatStreamHistoryReplacedData {
+  /** The conversation whose context was compacted. */
+  conversation_id: string
+  /**
+   * How many leading transcript messages were folded into the rolling summary
+   *  (0 when the manual endpoint summarized without a loop-relative index).
+   */
+  summary_upto: number
+}
+
 /** Event data for MCP tool approval required */
 export interface SSEChatStreamMcpApprovalRequiredData {
+  /**
+   * ITEM-50 (full-disclosure): the tool's FULL, EXACT advertised description
+   *  (never summarized/truncated — poisoning hides in truncation). Best-effort
+   *  (`None` when the server is unreachable or advertises no description).
+   */
+  description?: string
+  /**
+   * ITEM-50 (full-disclosure): the EXTERNAL destination host the tool would
+   *  send data to (e.g. `api.example.com`), so the human reviews a
+   *  *data-egress* decision and not just a verb. `None` for built-in /
+   *  loopback / stdio servers, which have no meaningful external destination
+   *  (the card treats a `None` here as a local call).
+   */
+  dest_host?: string
   /** Tool input parameters */
   input: unknown
   /** MCP server requesting tool execution (display name) */
@@ -5217,6 +5456,40 @@ export interface SSEChatStreamStartedData {
   conversation_id: string
   /** User message ID (None if resuming with tool approvals or regenerating) */
   user_message_id?: string
+}
+
+/**
+ * Data for the `subAgentActivity` SSE event (ITEM-4 / DEC-65). Emitted live
+ *  during the turn when a `delegate` fan-out spawns its children (all
+ *  running/pending) and again as each child settles (completed/failed),
+ *  carrying the FULL current child list (idempotent last-wins snapshot, like
+ *  `taskListChanged`) so the timeline `SubAgentActivityCard` re-renders in
+ *  place. Delivered via `publish_raw_event` (the raw/ephemeral side-channel,
+ *  not the replay-buffered generation frames). `run_id` is the PARENT agent
+ *  run; the chat FE attaches it to the in-flight assistant message.
+ */
+export interface SSEChatStreamSubAgentActivityData {
+  /** The full current sub-agent list (idempotent snapshot; not a delta). */
+  children: SubAgentActivityChildDto[]
+  /** The parent agent run whose fan-out this is. */
+  run_id: string
+}
+
+/**
+ * Data for the `taskListChanged` SSE event (ITEM-36 / DEC-56). Emitted live
+ *  during the turn each time the agent's `task_*` core tools mutate the durable
+ *  list, carrying the FULL current list (small) so a surface — the chat
+ *  `TaskListChecklist` — re-renders in place without a refetch. Mirrors the
+ *  `mcpToolProgress` live side-channel event (routed via `publish_raw_event`,
+ *  not the replay-buffered generation frames). The `run_id` keys the run-scoped
+ *  surfaces; the chat FE additionally attaches it to the in-flight assistant
+ *  message it is currently streaming.
+ */
+export interface SSEChatStreamTaskListChangedData {
+  /** The full current task list (idempotent snapshot; not a delta). */
+  items: TaskListItemDto[]
+  /** The agent run whose task list changed. */
+  run_id: string
 }
 
 /** Data for the TitleUpdated SSE event */
@@ -5583,6 +5856,15 @@ export interface ScheduledTask {
   allowed_unattended_tools: unknown
   assistant_id?: string
   bound_conversation_id?: string
+  /**
+   * ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+   *  When set (on a `self_paced` prompt task), each fired turn's result is judged
+   *  by an isolated cheap-model evaluator against this natural-language condition;
+   *  'done' self-stops the loop, 'not_done' re-arms another turn until
+   *  `goal_seek_max_turns` / the `max_horizon_days` backstop → stop 'incomplete'.
+   *  NULL ⇒ an ordinary (non-goal-seeking) task.
+   */
+  completion_condition?: string
   consecutive_failures: number
   created_at: string
   cron_expr?: string
@@ -5648,6 +5930,12 @@ export interface ScheduledTaskRun {
 export interface SchedulerAdminSettings {
   max_active_tasks_per_user: number
   max_consecutive_failures: number
+  /**
+   * ITEM-21 / DEC-45: the absolute self-paced backstop (days). A self-paced
+   *  task's model-proposed delay is clamped to at most this, and the task
+   *  self-stops `max_horizon_days` after creation. Default 7, range 1..=365.
+   */
+  max_horizon_days: number
   min_interval_seconds: number
   notification_retention_days: number
   updated_at: string
@@ -5726,6 +6014,22 @@ export interface ServerGroupsRequest {
   group_ids: string[]
 }
 
+/** GET response: the server's advertised tools, each with its effective mode. */
+export interface ServerToolApprovalsResponse {
+  /** Fallback applied to any tool without an explicit override. */
+  server_default_mode: ApprovalMode
+  server_id: string
+  /** Advertised tools (∪ any override-keyed tool not in the advertised set). */
+  tools: ToolApprovalEntry[]
+  /**
+   * True when the live `tools/list` probe failed — `tools` then lists only
+   *  tools that already carry an override (the advertised set is unknown).
+   */
+  tools_unreachable: boolean
+  /** Human reason when `tools_unreachable`. */
+  unreachable_reason?: string
+}
+
 /** Deployment-wide JWT session settings (singleton row). Returned by GET. */
 export interface SessionSettings {
   /** Access-token TTL in hours (1..=8760). */
@@ -5788,6 +6092,23 @@ export interface SetTimeoutRequest {
    *  match the `timeout_secs` used across the rest of the timeout surface.
    */
   timeout_secs: number
+}
+
+/** PUT body: the override to set, or `null`/omitted to CLEAR it. */
+export interface SetToolApprovalRequest {
+  /**
+   * `null` or omitted clears the override (the tool falls back to the server
+   *  default). Otherwise sets the per-tool override to this mode.
+   */
+  mode?: ApprovalMode
+}
+
+/** PUT response: the tool's effective mode after the change. */
+export interface SetToolApprovalResponse {
+  effective_mode: ApprovalMode
+  has_override: boolean
+  server_id: string
+  tool_name: string
 }
 
 export interface SettingItem {
@@ -5989,6 +6310,29 @@ export interface StylesResponse {
   styles: string[]
 }
 
+/**
+ * One delegated sub-agent on the wire (ITEM-4 / DEC-65) — the server-side DTO
+ *  mirror of `agent_core::SubAgentChild`. `id` is the child's run id; `label`
+ *  the friendly per-child descriptor (its objective / role). A thin DTO (with a
+ *  `From<agent_core::SubAgentChild>`) rather than putting the agent-core type on
+ *  the wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.
+ *  Fields are snake_case to match the FE `SubAgentChildVM` (`agentActivity.ts`).
+ */
+export interface SubAgentActivityChildDto {
+  id: string
+  label: string
+  status: SubAgentActivityChildStatus
+}
+
+/**
+ * The live status of one delegated sub-agent on the wire (Group A / ITEM-4 /
+ *  DEC-65). A thin server-side mirror of `agent_core::SubAgentChildStatus`
+ *  (kept separate so it can `#[derive(schemars::JsonSchema)]` and keep the
+ *  crate boundary clean). Snake-case so the FE `SubAgentChildStatus` union
+ *  (`agentActivity.ts`) consumes it unchanged.
+ */
+export type SubAgentActivityChildStatus = 'pending' | 'running' | 'completed' | 'failed'
+
 export interface SuccessResponse {
   message: string
   success: boolean
@@ -6102,6 +6446,32 @@ export type SyncSseEvent = {
 } | {
   sync: SyncEvent
 }
+
+/**
+ * One agent task-list item on the wire (ITEM-36 / DEC-54) — the server-side DTO
+ *  mirror of `agent_core::TaskItem`. `content` is the imperative form
+ *  ("Run tests"); `active_form` the present-continuous form ("Running tests")
+ *  the FE emphasises while the item is `in_progress`. A thin DTO (with a
+ *  `From<agent_core::TaskItem>`) rather than putting the agent-core type on the
+ *  wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.
+ *  Fields are snake_case to match the FE `TaskItemVM` (`agentActivity.ts`).
+ */
+export interface TaskListItemDto {
+  active_form: string
+  content: string
+  id: string
+  status: TaskListItemStatus
+}
+
+/**
+ * The lifecycle status of one agent task-list item on the wire (ITEM-36 /
+ *  DEC-54). A thin server-side mirror of `agent_core::TaskStatus` — kept
+ *  separate so it can `#[derive(schemars::JsonSchema)]` (agent-core's enum
+ *  deliberately does not depend on schemars) and so the crate boundary stays
+ *  clean. Snake-case on the wire so `in_progress` reaches the FE
+ *  `TaskItemStatus` union (`pending | in_progress | completed`) unchanged.
+ */
+export type TaskListItemStatus = 'pending' | 'in_progress' | 'completed'
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
 
@@ -6274,6 +6644,18 @@ export interface ToolApprovalDecision {
   tool_use_id: string
 }
 
+/** One advertised tool + its effective admin approval mode. */
+export interface ToolApprovalEntry {
+  /** Advertised tool description (absent for override-only / unreachable tools). */
+  description?: string
+  /** Effective admin mode = per-tool override ?? the server default. */
+  effective_mode: ApprovalMode
+  /** True when an explicit per-tool override is set (vs the server default). */
+  has_override: boolean
+  /** Advertised tool name. */
+  tool_name: string
+}
+
 export type ToolContent = any
 
 /** Identifies a specific tool on a specific server */
@@ -6358,8 +6740,21 @@ export interface UnreadCount {
 export interface UpdateAgentAdminSettingsRequest {
   default_max_steps?: number
   default_sandbox_mode?: string
+  /**
+   * On-demand `delegate` enable switch (ITEM-2 / DEC-2). Plain bool (no
+   *  bounds), COALESCE-patched like `reviewer_enabled`.
+   */
+  delegate_enabled?: boolean
+  fan_out_max_children_per_call?: number
   fan_out_max_depth?: number
   fan_out_max_threads?: number
+  /**
+   * Goal-seeking evaluator model (DEC-61) — tri-state (null ⇒ clear back to
+   *  "use the run's own model").
+   */
+  goal_eval_model_id?: string
+  /** Max goal-seeking turns (DEC-62), 1..=50. */
+  goal_seek_max_turns?: number
   per_run_token_cap?: number
   per_step_token_cap?: number
   reviewer_enabled?: boolean
@@ -6762,6 +7157,7 @@ export interface UpdateScheduledTask {
 export interface UpdateSchedulerAdminSettings {
   max_active_tasks_per_user: number
   max_consecutive_failures: number
+  max_horizon_days: number
   min_interval_seconds: number
   notification_retention_days: number
 }
@@ -7507,6 +7903,13 @@ export interface WorkflowRun {
   final_output_json?: unknown
   id: string
   inputs_json: unknown
+  /**
+   * Orthogonal background-run discriminator (raw DB text; parse with
+   *  [`JobKind::from_db_str`]). `'workflow'` for the classic YAML-DAG run.
+   *  Kept as `String` (not the enum) so an unknown value from a newer server
+   *  round-trips without a deserialization failure — same posture as `status`.
+   */
+  job_kind: string
   model_id?: string
   pending_elicitation_json?: unknown
   run_kind: string
@@ -7525,7 +7928,12 @@ export interface WorkflowRun {
   total_tokens: number
   updated_at: string
   user_id: string
-  workflow_id: string
+  /**
+   * NULL for a generalized background run (`job_kind != 'workflow'`) — a
+   *  sub-agent turn / sandbox exec has no backing `workflows` bundle
+   *  (ITEM-14 / DEC-22). Always set for a classic `workflow`-kind run.
+   */
+  workflow_id?: string
 }
 
 export interface WorkflowRunListResponse {
@@ -7624,6 +8032,7 @@ export enum Permissions {
   AssistantsTemplateRead = 'assistant_templates::read',
   AuthProvidersManage = 'auth_providers::manage',
   AuthProvidersRead = 'auth_providers::read',
+  BackgroundUse = 'background::use',
   BranchesCreate = 'branches::create',
   BranchesSwitch = 'branches::switch',
   CitationsManage = 'citations::manage',
@@ -7772,6 +8181,7 @@ export const PermissionDescriptions: Record<string, string> = {
   AssistantsTemplateRead: 'Read system-wide template assistants',
   AuthProvidersManage: 'Create, update, delete, enable/disable, and test auth providers.',
   AuthProvidersRead: 'List configured auth providers and view their (masked) config.',
+  BackgroundUse: 'Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.',
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
   CitationsManage: 'Create, import, verify, remove, and organize citations + CSL styles.',
@@ -7950,6 +8360,11 @@ export const ApiEndpoints = {
   'AuthProviders.test': 'POST /api/admin/auth-providers/{id}/test',
   'AuthProviders.testConfig': 'POST /api/admin/auth-providers/test-config',
   'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
+  'Background.cancelRun': 'POST /api/background/runs/{run_id}/cancel',
+  'Background.getRun': 'GET /api/background/runs/{run_id}',
+  'Background.listRunNotes': 'GET /api/background/runs/{run_id}/notes',
+  'Background.listRuns': 'GET /api/background/runs',
+  'Background.postRunNote': 'POST /api/background/runs/{run_id}/notes',
   'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
@@ -7975,6 +8390,7 @@ export const ApiEndpoints = {
   'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
   'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
   'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
+  'Conversation.compact': 'POST /api/conversations/{id}/compact',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
@@ -8175,6 +8591,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpServerToolApprovals.get': 'GET /api/mcp/servers/{id}/tool-approvals',
+  'McpServerToolApprovals.set': 'PUT /api/mcp/servers/{id}/tool-approvals/{tool}',
   'McpToolCall.get': 'GET /api/mcp/tool-calls/{id}',
   'McpToolCall.list': 'GET /api/mcp/tool-calls',
   'McpUserPolicy.get': 'GET /api/mcp/user-policy',
@@ -8413,6 +8831,11 @@ export type ApiEndpointParameters = {
   'AuthProviders.test': { id: string }
   'AuthProviders.testConfig': CreateAuthProviderRequest
   'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
+  'Background.cancelRun': { run_id: string }
+  'Background.getRun': { run_id: string }
+  'Background.listRunNotes': { run_id: string }
+  'Background.listRuns': { kind?: string; page?: number; per_page?: number; status?: string }
+  'Background.postRunNote': { run_id: string } & CreateRunNote
   'Branch.activate': { id: string; branch_id: string }
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
@@ -8438,6 +8861,7 @@ export type ApiEndpointParameters = {
   'CodeSandbox.setRootfsPin': SetPinRequest
   'CodeSandbox.subscribeRootfsInstallProgress': void
   'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
+  'Conversation.compact': { id: string } & CompactConversationRequest
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
@@ -8638,6 +9062,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpServerToolApprovals.get': { id: string }
+  'McpServerToolApprovals.set': { id: string; tool: string } & SetToolApprovalRequest
   'McpToolCall.get': { id: string }
   'McpToolCall.list': { conversation_id?: string; is_built_in?: boolean; page?: number; per_page?: number; server_id?: string }
   'McpUserPolicy.get': void
@@ -8715,7 +9141,7 @@ export type ApiEndpointParameters = {
   'ScheduledTask.create': CreateScheduledTask
   'ScheduledTask.delete': { id: string }
   'ScheduledTask.get': { id: string }
-  'ScheduledTask.list': void
+  'ScheduledTask.list': { conversation_id?: string }
   'ScheduledTask.listRuns': { id: string } & PaginationQuery
   'ScheduledTask.runNow': { id: string }
   'ScheduledTask.testFire': TestFireRequest
@@ -8876,6 +9302,11 @@ export type ApiEndpointResponses = {
   'AuthProviders.test': TestProviderResponse
   'AuthProviders.testConfig': TestProviderResponse
   'AuthProviders.update': AuthProviderResponse
+  'Background.cancelRun': BackgroundRunCancelAck
+  'Background.getRun': BackgroundRunDetail
+  'Background.listRunNotes': RunNote[]
+  'Background.listRuns': BackgroundRunListResponse
+  'Background.postRunNote': RunNote
   'Branch.activate': void
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
@@ -8901,6 +9332,7 @@ export type ApiEndpointResponses = {
   'CodeSandbox.setRootfsPin': SetPinResponse
   'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent
   'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
+  'Conversation.compact': unknown
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation
@@ -9101,6 +9533,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpServerToolApprovals.get': ServerToolApprovalsResponse
+  'McpServerToolApprovals.set': SetToolApprovalResponse
   'McpToolCall.get': McpToolCall
   'McpToolCall.list': McpToolCallListResponse
   'McpUserPolicy.get': McpUserPolicy

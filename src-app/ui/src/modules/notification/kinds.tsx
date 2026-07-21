@@ -39,6 +39,10 @@ const schedulerRenderer = { render: schedulerContent }
 // NOTIFICATION_KINDS)]` declarations). Imported for effect by `module.tsx`.
 registerNotificationKind('scheduled_task_result', schedulerRenderer)
 registerNotificationKind('scheduled_task_failed', schedulerRenderer)
+// A background sub-agent group finishing (`background_mcp`, payload
+// `{workflow_run_id, conversation_id}`) renders as the same title/body/timestamp
+// block; whole-row click opens the `conversation_id` where the result landed.
+registerNotificationKind('background_run_result', schedulerRenderer)
 
 /**
  * Shell helper: render a notification's inbox content by dispatching on its

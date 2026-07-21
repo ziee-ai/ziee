@@ -44,10 +44,6 @@ use crate::modules::chat::agent_host::transcript::ChatTranscriptStore;
 use crate::modules::chat::core::extension::{ExtensionRegistry, StreamContext};
 use crate::utils::cancellation::CancellationToken;
 
-/// Window-relative soft limit above which the core compaction extension fires.
-/// High so a normal chat turn never summarizes (chat's own summarization extension
-/// owns real compaction); the machinery is wired for parity with the workflow host.
-const CHAT_COMPACTION_SOFT_LIMIT_TOKENS: usize = 200_000;
 
 /// Failsafe iteration cap (chat's `SAFETY_MAX_ITERATIONS`); real per-turn limits
 /// come from MCP settings / the approval gate.
@@ -83,6 +79,11 @@ pub struct ChatAgentTurn {
     /// Ordered context-injection extensions (assistant system prompt, params, tool
     /// attach, memory, …). Empty in the minimal loop-verification path.
     pub extensions: Vec<Arc<dyn agent_core::AgentExtension>>,
+    /// Group E / ITEM-21 / DEC-42: this is an UNATTENDED (scheduled) run, so wire
+    /// the self-paced `schedule_next` core tool. Interactive chat is never
+    /// unattended → the tool isn't offered there. The scheduler drains any
+    /// recorded proposal after the turn; only its `self_paced` tasks consult it.
+    pub unattended: bool,
 }
 
 impl ChatAgentTurn {
@@ -152,13 +153,29 @@ impl ChatAgentTurn {
 
         let model_client = Arc::new(ProviderModelClient::new(self.provider.clone()));
 
+        // ITEM-61 (server half, DEC-121/122): resolve the run's per-model context
+        // window so the compaction trigger is window-relative rather than the
+        // conservative 128k fallback. `None` (model gone / no context_length) →
+        // the chat preset's fallback window is used unchanged.
+        let mut compaction_config = agent_core::CompactionConfig::chat();
+        if let Some(ctx_len) = crate::core::Repos
+            .llm_model
+            .get_by_id(self.model_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|m| m.capabilities.context_length)
+        {
+            compaction_config.context_window = Some(ctx_len as usize);
+        }
+
         let mut extensions = self.extensions.clone();
         // Core compaction extension (parity with the workflow host).
         extensions.push(Arc::new(CompactionExtension::new(
             Compactor::new(
                 model_client.clone(),
                 self.model_name.clone(),
-                CHAT_COMPACTION_SOFT_LIMIT_TOKENS,
+                compaction_config,
             ),
             transcript.clone(),
             sink.clone(),
@@ -196,6 +213,28 @@ impl ChatAgentTurn {
             sandbox: SandboxMode::ReadOnly { network: true },
             model_name: self.model_name.clone(),
             resume_executes_pending: false,
+            // Delegate child isolation: the chat host's transcript + extensions are
+            // bound to THIS turn's `assistant_message_id`, so a fan-out child (fresh
+            // run_id) must run isolated/ephemeral — never inheriting this turn's
+            // message-bound state. (`fanout.rs` swaps in a fresh transcript/sink and
+            // drops the inherited extensions when this is set.)
+            isolate_children: true,
+            // Group G (DEC-49/50): the durable per-run task list, keyed by
+            // `run_id` (chat's `assistant_message_id`).
+            task_store: Some(Arc::new(
+                crate::modules::agent::task_list::PgTaskListStore::new(self.pool.clone()),
+            )),
+            // ITEM-25 / DEC-79: interactive chat is not a background steer target
+            // → no steer channel (the loop's steer-read is skipped).
+            steer: None,
+            // Group E / ITEM-21 / DEC-42: offer the self-paced `schedule_next`
+            // tool ONLY on an unattended (scheduled) run; the recorded proposal is
+            // drained by the scheduler's self-paced dispatch after the turn.
+            // Interactive chat (`unattended == false`) ⇒ `None` (tool not offered),
+            // so this is byte-identical to before for normal chat.
+            schedule: self
+                .unattended
+                .then(crate::modules::scheduler::proposal::schedule_port),
         };
 
         let req = AgentTurnRequest {
@@ -394,7 +433,22 @@ pub async fn start_generation_agent_core(
         })
     };
 
+    // ITEM-2 / DEC-2: on-demand delegation is gated by the admin `delegate_enabled`
+    // bool (default false). This surface (`start_generation_agent_core`) is reached
+    // ONLY on the agent-core chat path — `streaming.rs` routes here exclusively
+    // under `ZIEE_CHAT_AGENT_CORE=1`, and this path is `reviewer: None` by design —
+    // so enabling `delegate` here never touches the legacy chat loop. Children /
+    // fan-out stay false (the crate's `fanout.rs` caps `max_depth = 1`). Shared
+    // derivation so the chat host and the workflow host agree.
+    let allow_delegate = crate::modules::agent::models::AgentAdminSettings::top_level_allow_delegate(
+        crate::core::Repos.agent.get_admin_settings().await.ok().as_ref(),
+    );
+
     tokio::spawn(async move {
+        // Group E / ITEM-21 / DEC-42: capture the run's unattended flag before
+        // `request` is moved into the RegistryBridge — it gates the self-paced
+        // `schedule_next` tool (only a scheduled/unattended run offers it).
+        let is_unattended = request.unattended;
         // The single `RegistryBridge` runs EVERY chat extension's `before_llm_call`
         // (system prompts + memory + MCP tool gathering + approval processing) inside
         // the loop, reusing their tested logic. Built only when a registry is present.
@@ -434,14 +488,17 @@ pub async fn start_generation_agent_core(
             model_name,
             model_id,
             provider_id,
-            // The MCP bridge sets request.tools directly (its gathering), so an empty
-            // ToolScope is fine — ChatToolProvider still EXECUTES the chosen tool by
-            // its namespaced name. Tool-list gathering stays with the MCP extension.
-            tool_scope: ToolScope::default(),
+            // The MCP bridge sets request.tools directly (its gathering), so the
+            // ToolScope carries no `servers` — ChatToolProvider still EXECUTES the
+            // chosen tool by its namespaced name (tool-list gathering stays with the
+            // MCP extension). The core `delegate` tool is the exception: it is
+            // agent-core-injected, gated purely by `allow_delegate` (ITEM-2 / DEC-2).
+            tool_scope: ToolScope { allow_delegate, ..Default::default() },
             inputs: serde_json::Value::Null,
             cancel_token: cancel_token.clone(),
             sse_tx: Some(ext_tx.clone()),
             extensions,
+            unattended: is_unattended,
         };
         // Drop our local sender so the drain task's channel closes when the turn
         // (holding the remaining clones) finishes.

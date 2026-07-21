@@ -84,6 +84,97 @@ pub(crate) struct McpCallScope {
     pub run_id: Uuid,
 }
 
+// ============================================================
+// ITEM-50: full-disclosure approval prompt (data-egress review)
+// ============================================================
+//
+// An external-tool approval is a DATA-EGRESS decision: the human must be able to
+// see the CONCRETE destination host their data would be sent to and the tool's
+// FULL, EXACT advertised description (poisoning hides in a truncated/summarized
+// description). These two helpers surface both from the ALREADY-resolved server
+// row (no new SSRF/host policy — just the display host) + a best-effort live
+// `tools/list`. Both agent hosts (chat `ChatHumanGate` + the legacy `mcp.rs`
+// approval-classification path) call them at the point they build the
+// `McpApprovalRequired` SSE frame.
+
+/// Resolve the external destination HOST to name on a data-egress approval card.
+/// Pure + unit-testable.
+///
+/// Returns just the HOST (never the full URL — no path/query/credentials leak).
+/// `None` for a built-in / loopback / stdio server: those have no meaningful
+/// EXTERNAL destination (built-ins are in-process loopback; stdio is a local
+/// subprocess). For an `is_system` server the public `url` is redacted in list
+/// views, but this operates on the INTERNAL row (from `get_any_server`), so the
+/// real host is resolved SERVER-SIDE without depending on the redacted view.
+pub(crate) fn resolve_dest_host(
+    server: &crate::modules::mcp::models::McpServer,
+) -> Option<String> {
+    use crate::modules::mcp::models::TransportType;
+    // Built-in servers are in-process loopback — no external egress destination.
+    if server.is_built_in {
+        return None;
+    }
+    match server.transport_type {
+        TransportType::Http | TransportType::Sse => {
+            let raw = server.url.as_deref()?;
+            let host = url::Url::parse(raw).ok()?.host_str()?.to_string();
+            if is_local_egress_host(&host) {
+                // Loopback / local — a user-registered server pointed at
+                // localhost is not a meaningful EXTERNAL destination.
+                return None;
+            }
+            Some(host)
+        }
+        // stdio: a local subprocess, no network destination.
+        TransportType::Stdio => None,
+    }
+}
+
+/// Loopback / local hostnames that are not a meaningful EXTERNAL egress target.
+fn is_local_egress_host(host: &str) -> bool {
+    matches!(
+        host,
+        "localhost" | "127.0.0.1" | "::1" | "[::1]" | "0.0.0.0"
+    ) || host.ends_with(".localhost")
+}
+
+/// Best-effort resolve the tool's EXACT advertised description for an approval
+/// card. Uses the process-wide session manager to `tools/list` the (pooled)
+/// server session and returns the matching tool's description verbatim (NEVER
+/// truncated/summarized). Any failure (no manager installed, unreachable server,
+/// tool absent) yields `None` so it NEVER blocks the approval SSE frame — the
+/// card simply falls back to a generic line.
+pub(crate) async fn resolve_tool_description(
+    server_id: Option<Uuid>,
+    user_id: Uuid,
+    tool_name: &str,
+) -> Option<String> {
+    use crate::modules::mcp::tool_calls::models::McpToolCallSource;
+    let server_id = server_id?;
+    let manager = crate::modules::mcp::client::manager::global()?;
+    let session = manager
+        .get_or_create_with_context(
+            server_id,
+            user_id,
+            None,
+            None,
+            None,
+            None,
+            McpToolCallSource::Rest,
+        )
+        .await
+        .ok()?;
+    let tools = {
+        let mut session = session.write().await;
+        session.list_tools().await.ok()?
+    };
+    tools
+        .into_iter()
+        .find(|t| t.name == tool_name)
+        .and_then(|t| t.description)
+        .filter(|d| !d.is_empty())
+}
+
 /// Outcome of the shared MCP call path (DEC-17).
 pub(crate) enum McpToolCallError {
     /// The run's cancel handle fired mid-call.

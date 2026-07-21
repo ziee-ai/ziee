@@ -27,6 +27,8 @@ mod mcp_loop_settings_test;
 mod mcp_sampling_test;
 mod mcp_streaming_workflow_test;
 mod resource_link_test;
+// Admin per-(server, tool) approval-mode defaults (ITEM-54 / DEC-112)
+mod tool_approvals_test;
 // ============================================================================
 // Runtime Tests
 // ============================================================================
