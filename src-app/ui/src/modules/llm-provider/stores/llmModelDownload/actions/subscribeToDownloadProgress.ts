@@ -1,5 +1,5 @@
 import { ApiClient } from '@/api-client'
-import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
+import { useLlmProviderStore } from '@/modules/llm-provider/stores/llmProvider'
 import { useLlmModelDownloadStore } from '@/modules/llm-provider/stores/llmModelDownload'
 import type {
   DownloadInstance,

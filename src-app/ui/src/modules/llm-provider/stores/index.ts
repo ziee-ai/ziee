@@ -1,5 +1,6 @@
 // Main provider store
-export * from './LlmProvider.store'
+export { useLlmProviderStore } from './llmProvider'
+export type { LlmProviderWithModels } from './llmProvider/types'
 
 // Drawer stores
 export * from './LlmModelDrawers.store'

@@ -5,7 +5,7 @@ import type {
 } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { defineStore } from '@ziee/framework/store-kit'
-import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
+import { useLlmProviderStore } from '@/modules/llm-provider/stores/llmProvider'
 
 /** Upload progress for a single file */
 export interface FileUploadProgress {

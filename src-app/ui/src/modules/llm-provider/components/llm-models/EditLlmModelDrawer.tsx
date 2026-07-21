@@ -31,7 +31,9 @@ export function EditLlmModelDrawer() {
 
   const { open, modelId } = Stores.EditLlmModelDrawer
   const currentModel = modelId
-    ? Stores.LlmProvider.findLlmModelById(modelId)
+    ? Stores.LlmProvider.providers
+        .flatMap(p => p.llm_models || [])
+        .find(m => m.id === modelId)
     : null
 
   // Find provider that owns this model

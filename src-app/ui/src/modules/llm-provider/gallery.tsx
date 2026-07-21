@@ -124,13 +124,13 @@ export const gallery: ModuleGallery = {
         'ProviderHeader',
       ),
       setup: async () => {
-        const { LlmProviderStoreDef } = await import(
-          '@/modules/llm-provider/stores/LlmProvider.store'
+        const { useLlmProviderStore } = await import(
+          '@/modules/llm-provider/stores/llmProvider'
         )
         // Keep the provider seeded so ProviderHeader's find(id) resolves through the
         // recipe's click (holdForever: the lazy chunk may mount after a fixed hold).
         holdForever(() =>
-          LlmProviderStoreDef.store.setState({
+          useLlmProviderStore.setState({
             providers: llmProvidersList.providers,
             loading: false,
             isInitialized: true,
@@ -184,16 +184,16 @@ export const gallery: ModuleGallery = {
         'LlmModelsSection',
       ),
       setup: async () => {
-        const { LlmProviderStoreDef } = await import(
-          '@/modules/llm-provider/stores/LlmProvider.store'
+        const { useLlmProviderStore } = await import(
+          '@/modules/llm-provider/stores/llmProvider'
         )
         const pid =
           firstEnabledRemoteProviderId ?? llmProvidersList.providers[0]?.id ?? 'p1'
         await whenTrue(
-          () => LlmProviderStoreDef.store.getState().providers.length > 0,
+          () => useLlmProviderStore.getState().providers.length > 0,
         )
         await holdPatch(() =>
-          LlmProviderStoreDef.store.setState({
+          useLlmProviderStore.setState({
             llmModelsLoading: { [pid]: true },
           } as any),
         )
@@ -319,13 +319,13 @@ export const gallery: ModuleGallery = {
         'LocalProviderSettings',
       ),
       setup: async () => {
-        const { LlmProviderStoreDef } = await import(
-          '@/modules/llm-provider/stores/LlmProvider.store'
+        const { useLlmProviderStore } = await import(
+          '@/modules/llm-provider/stores/llmProvider'
         )
         // holdForever (not holdPatch): this lazy component can mount after a fixed
         // hold window ends under the full pass, so assert on a permanent interval.
         holdForever(() =>
-          LlmProviderStoreDef.store.setState({
+          useLlmProviderStore.setState({
             loading: true,
             isInitialized: false,
             providers: [],
