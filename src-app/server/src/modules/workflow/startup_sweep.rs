@@ -11,6 +11,21 @@ use sqlx::PgPool;
 use crate::common::AppError;
 use crate::modules::workflow::repository;
 
+/// True when `path`'s mtime is more than 30 days in the past (or its metadata
+/// can't be read). Used to bound the leak of a genuinely-orphaned staging dir
+/// whose run row is gone, WITHOUT reclaiming another live server's active run
+/// when the workspace root is shared (integration harness). Mirrors the
+/// code_sandbox per-conversation workspace reaper's 30-day policy.
+fn dir_older_than_30d(path: &std::path::Path) -> bool {
+    const THIRTY_DAYS: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 60 * 60);
+    match std::fs::metadata(path).and_then(|m| m.modified()) {
+        Ok(mtime) => mtime.elapsed().map(|age| age > THIRTY_DAYS).unwrap_or(false),
+        // Can't stat / mtime in the future (clock skew) → treat as NOT ancient
+        // so we never delete a dir we're unsure about.
+        Err(_) => false,
+    }
+}
+
 pub async fn sweep_at_boot(
     pool: &PgPool,
     cutoff: time::OffsetDateTime,
@@ -63,8 +78,18 @@ pub async fn sweep_at_boot(
                     r.status.as_str(),
                     "pending" | "running" | "waiting" | "resumable"
                 ),
-                Ok(None) => false,
-                Err(_) => false,
+                // A dir whose run_id is NOT in THIS server's DB is NOT ours to
+                // reclaim at boot. In production the workspace root has a single
+                // owner, so this only ever means a genuinely-orphaned leak (the
+                // run row was deleted) — but when the root is SHARED by more than
+                // one live server (the integration harness spawns a server per
+                // test, all under one /tmp/ziee-workflows), it is another server's
+                // ACTIVE run, and `remove_dir_all` would clobber it mid-run. Keep
+                // it unless it is genuinely ancient (30-day guard, mirroring the
+                // code_sandbox workspace reaper) so a true leak still gets GC'd.
+                Ok(None) => !dir_older_than_30d(&run_entry.path()),
+                // DB hiccup: never delete on uncertainty.
+                Err(_) => true,
             };
             if !keep_dir {
                 let _ = std::fs::remove_dir_all(run_entry.path());
