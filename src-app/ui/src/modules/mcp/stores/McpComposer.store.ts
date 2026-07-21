@@ -1128,7 +1128,7 @@ export const McpComposer = defineStore('McpComposer', {
     openConfigModalForProject: (
       projectId: string,
       settings:
-        | import('@/modules/mcp/project-extension/stores/ProjectMcpSettings.store').ProjectMcpSettings
+        | import('@/modules/mcp/project-extension/stores/projectMcpSettings').ProjectMcpSettings
         | null,
     ) => {
       const key = projectConfigKey(projectId)

@@ -155,7 +155,7 @@ export const gallery: ModuleGallery = {
           '@/modules/projects/stores/projectDetail'
         )
         const { ProjectMcpSettingsStore } = await import(
-          '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
+          '@/modules/mcp/project-extension/stores/projectMcpSettings'
         )
         await holdPatch(() => {
           ProjectDetailDef.store.setState({ project: galleryProject } as any)
@@ -186,7 +186,7 @@ export const gallery: ModuleGallery = {
           '@/modules/projects/stores/projectDetail'
         )
         const { ProjectMcpSettingsStore } = await import(
-          '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
+          '@/modules/mcp/project-extension/stores/projectMcpSettings'
         )
         await holdPatch(() => {
           ProjectDetailDef.store.setState({ project: galleryProject } as any)
