@@ -3,7 +3,7 @@ import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Bot } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
-import { newChatAssistantKey } from '@/modules/assistant/stores/AssistantPicker.store'
+import { newChatAssistantKey } from '@/modules/assistant/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 
 /**

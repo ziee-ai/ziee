@@ -155,7 +155,7 @@ const projectExtension: ChatExtension = createExtension({
       // hasn't picked one, keyed by THIS conversation so it's pane-scoped
       // (ITEM-5). One-shot — won't override an explicit user choice.
       const picker = Stores.AssistantPicker
-      if (!picker.getAssistantId(conversation.id)) {
+      if (!(await picker.getAssistantId(conversation.id))) {
         picker.selectAssistant(conversation.id, project.default_assistant_id)
       }
     }

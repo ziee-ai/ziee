@@ -11,7 +11,7 @@ import { AssistantStatusChip } from '@/modules/assistant/chat-extension/componen
  * Assistant Extension (frontend chat-extension shim).
  *
  * Bridges the chat composer to the assistant module. The picker state
- * lives in modules/assistant/stores/AssistantPicker.store.ts
+ * lives in modules/assistant/stores/assistantPicker/
  * (registered as Stores.AssistantPicker), NOT under
  * Stores.Chat. This extension is a thin UI shim that:
  *   - Renders the toolbar picker + status chip components.
@@ -33,9 +33,7 @@ const assistantExtension: ChatExtension = createExtension({
 
   initialize: async (ctx) => {
     const { Stores } = await import('@ziee/framework/stores')
-    const { newChatAssistantKey } = await import(
-      '@/modules/assistant/stores/AssistantPicker.store'
-    )
+    const { newChatAssistantKey } = await import('@/modules/assistant/stores')
 
     // Per-conversation keying makes the old "reset on conversation change"
     // subscription unnecessary — a conversation with no map entry simply has no
@@ -60,7 +58,7 @@ const assistantExtension: ChatExtension = createExtension({
 
         if (editingMessage) {
           // Save the assistant the user had selected before initiating the edit.
-          preEditAssistantId = picker.getAssistantId(key)
+          preEditAssistantId = await picker.getAssistantId(key)
 
           // Per-message assistant attribution moved off the Message row into the
           // assistant bridge's own message_assistant table (backend migration
@@ -104,11 +102,9 @@ const assistantExtension: ChatExtension = createExtension({
 
   composeRequestFields: async (ctx): Promise<ExtensionRequestFields> => {
     // The SENDING pane's assistant (ctx.conversationId; null = new chat). (ITEM-5)
-    const { newChatAssistantKey } = await import(
-      '@/modules/assistant/stores/AssistantPicker.store'
-    )
+    const { newChatAssistantKey } = await import('@/modules/assistant/stores')
     const key = ctx.conversationId ?? newChatAssistantKey(ctx.paneId)
-    const selectedAssistantId = Stores.AssistantPicker.getAssistantId(key)
+    const selectedAssistantId = await Stores.AssistantPicker.getAssistantId(key)
 
     if (selectedAssistantId) {
       return {
