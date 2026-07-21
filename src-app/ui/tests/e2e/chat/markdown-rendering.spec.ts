@@ -33,9 +33,12 @@ import {
  * `text_delta` events into the existing text content block, which
  * TextContent.tsx renders via Streamdown — same code path as production.
  *
- * Per project directive ([[no-katex-remark-rehype]]) math is NOT
- * supported; one negative test pins that decision so a stray katex
- * import doesn't slip in.
+ * Math IS supported: `streamdownPlugins.ts` wires `@streamdown/math`
+ * (remark-math + rehype-katex) and `index.css` imports the KaTeX
+ * stylesheet. The former `[[no-katex-remark-rehype]]` directive is
+ * retired — it outlived the code it described. Because remark-math only
+ * understands `$` delimiters, `preprocessMarkdown` normalizes LaTeX's
+ * own `\[ … \]` / `\( … \)` into `$$…$$` / `$…$` first (issue #177).
  */
 
 const assistantTextMessage = (id: string, text: string): MockMessageWithContent => ({
@@ -153,8 +156,9 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
       // (see [[streamdown-v2-unbundled-plugins]]).
     // Streamdown 2 unbundled mermaid into the `@streamdown/mermaid`
     // plugin package, which this project intentionally does NOT install
-    // (per [[no-katex-remark-rehype]] — keep dep surface small, no
-    // markdown plugin packages). The mermaid fence therefore renders as
+    // (mermaid is owned by the custom `renderers` entry in
+    // `streamdownPlugins.ts` instead — see its docblock). The mermaid
+    // fence therefore renders as
     // a normal code block (`data-language="mermaid"`) with an EMPTY
     // body — no SVG. Pin this behavior so a future "let's add mermaid
     // back" PR has to update this test (and the plan) deliberately.
@@ -224,19 +228,79 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
   },
   )
 
-  test('does NOT render math with KaTeX styling', async ({ page, testInfra }) => {
-    // Per [[no-katex-remark-rehype]] — math is intentionally not
-    // wired. This test pins that decision so a future stray katex
-    // import doesn't slip in unnoticed.
+  // TEST-9 — the inverse of the former `does NOT render math` test. Math IS
+  // wired (`streamdownPlugins.ts` passes `createMathPlugin`, `index.css` imports
+  // the KaTeX stylesheet), so this pins that it stays wired.
+  test('renders $$…$$ math with KaTeX styling', async ({ page, testInfra }) => {
     await seedAssistantWithText(
       page,
       testInfra.baseURL,
       'Math here: $$x^2 + y^2 = z^2$$',
     )
     const bubble = assistantBubble(page)
-    // Wait for the message text to render before asserting the absence.
     await expect(bubble).toContainText('Math here')
-    // No .katex class anywhere — would be present if rehype-katex were active.
+    await expect(bubble.locator('.katex').first()).toBeVisible({ timeout: 10000 })
+    expect(
+      await bubble.evaluate(el => el.querySelectorAll('.katex').length),
+    ).toBeGreaterThan(0)
+  })
+
+  // TEST-7 — the literal reproduction of issue #177: the model wrote its display
+  // equations with LaTeX's own `\[ … \]`, markdown ate the `\[` as a character
+  // escape, and the equation surfaced as raw LaTeX. These are the exact strings
+  // from the issue screenshot.
+  test('renders \\[ … \\] display math and \\( … \\) inline math (issue #177)', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedAssistantWithText(
+      page,
+      testInfra.baseURL,
+      'Steady state:\n\n' +
+        '\\[ \\frac{d^2C(x)}{dx^2} - \\frac{k}{D}C(x) = 0 \\]\n\n' +
+        'with solution\n\n' +
+        '\\[ C(x) = C_0 \\, e^{-x/\\lambda}, \\quad \\lambda = \\sqrt{D/k} \\]\n\n' +
+        'where \\( x^2 \\) is the squared depth.',
+    )
+    const bubble = assistantBubble(page)
+    await expect(bubble).toContainText('Steady state')
+
+    // Both display equations render as KaTeX display blocks...
+    await expect(bubble.locator('.katex-display').first()).toBeVisible({
+      timeout: 10000,
+    })
+    expect(
+      await bubble.evaluate(el => el.querySelectorAll('.katex-display').length),
+    ).toBe(2)
+    // ...and the inline one renders too (3 .katex total: 2 display + 1 inline).
+    expect(
+      await bubble.evaluate(el => el.querySelectorAll('.katex').length),
+    ).toBe(3)
+
+    // The raw LaTeX must be GONE — this is the actual user-visible bug.
+    await expect(bubble).not.toContainText('\\frac{d^2C(x)}{dx^2}')
+    await expect(bubble).not.toContainText('\\sqrt{D/k}')
+  })
+
+  // TEST-8 — the main correctness risk: a `\[` inside code must stay literal.
+  test('leaves \\[ … \\] inside a code block literal', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedAssistantWithText(
+      page,
+      testInfra.baseURL,
+      'Escaping in LaTeX source:\n\n```tex\n\\[ x^2 \\]\n```\n\nand inline `\\( y \\)` too.',
+    )
+    const bubble = assistantBubble(page)
+    await expect(bubble).toContainText('Escaping in LaTeX source')
+    const codeBlock = bubble.locator('[data-streamdown="code-block"]')
+    await expect(codeBlock).toBeVisible({ timeout: 15000 })
+
+    // The delimiters survive verbatim inside the fence and the inline span...
+    await expect(codeBlock).toContainText('\\[ x^2 \\]')
+    await expect(bubble.locator('code', { hasText: '\\( y \\)' }).first()).toBeVisible()
+    // ...and nothing in the bubble was turned into math.
     expect(await bubble.evaluate(el => el.querySelectorAll('.katex').length)).toBe(0)
   })
 

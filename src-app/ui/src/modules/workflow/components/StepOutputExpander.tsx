@@ -4,6 +4,7 @@ import { Streamdown } from '@/modules/chat/core/utils/LazyStreamdown'
 import { ApiClient } from '@/api-client'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { STREAMDOWN_PLUGINS } from '@/components/common/streamdownPlugins'
+import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 
 interface StepOutputExpanderProps {
   runId: string
@@ -90,7 +91,7 @@ export function StepOutputExpander({
       <div className="overflow-auto max-h-80 text-sm">
         <StreamdownErrorBoundary fallbackText={content}>
           <Streamdown shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']} plugins={STREAMDOWN_PLUGINS}>
-            {content}
+            {preprocessMarkdown(content)}
           </Streamdown>
         </StreamdownErrorBoundary>
       </div>

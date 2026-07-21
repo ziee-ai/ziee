@@ -19,6 +19,7 @@ import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { STREAMDOWN_PLUGINS } from '@/components/common/streamdownPlugins'
+import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 import { SkillScopeBadge } from './SkillScopeBadge'
 
 /** Build a readable markdown summary from the skill's persisted
@@ -223,7 +224,7 @@ export function SkillDetailDrawer() {
         <div className="overflow-auto">
           <StreamdownErrorBoundary fallbackText={markdown}>
             <Streamdown shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']} plugins={STREAMDOWN_PLUGINS}>
-              {markdown}
+              {preprocessMarkdown(markdown)}
             </Streamdown>
           </StreamdownErrorBoundary>
         </div>
@@ -248,7 +249,7 @@ export function SkillDetailDrawer() {
             <Title level={5}>Skill content (SKILL.md)</Title>
             <StreamdownErrorBoundary fallbackText={body}>
               <Streamdown shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']} plugins={STREAMDOWN_PLUGINS}>
-                {body}
+                {preprocessMarkdown(body)}
               </Streamdown>
             </StreamdownErrorBoundary>
           </div>
