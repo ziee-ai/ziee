@@ -6,7 +6,7 @@ import { useUserGroupDrawerStore } from '@/modules/user/components/group/editUse
 import { useGroupMembersDrawerStore } from '@/modules/user/components/group/groupMembersDrawer'
 import { useAssignGroupDrawerStore } from '@/modules/user/components/user/assignGroupDrawer'
 import { useCreateUserDrawerStore } from '@/modules/user/components/user/createUserDrawer'
-import { useEditUserDrawerStore } from '@/modules/user/components/user/EditUserDrawer.store'
+import { useEditUserDrawerStore } from '@/modules/user/components/user/editUserDrawer'
 import { useResetPasswordDrawerStore } from '@/modules/user/components/user/ResetPasswordDrawer.store'
 import { useUserGroupsDrawerStore } from '@/modules/user/components/user/UserGroupsDrawer.store'
 import { useUserGroupsStore } from '@/modules/user/stores'
