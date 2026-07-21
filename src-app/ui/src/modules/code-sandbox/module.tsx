@@ -6,7 +6,7 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
 import { useSandboxRootfsVersionsStore } from './stores/SandboxRootfsVersions.store'
-import { useSandboxFlavorsStore } from './stores/SandboxFlavors.store'
+import { useSandboxFlavorsStore } from './stores/sandboxFlavors'
 import './types' // CRITICAL: enable store type declaration merging
 
 const SandboxSettingsPage = lazyWithPreload(() =>
