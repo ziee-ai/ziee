@@ -1,5 +1,5 @@
 import { createModule } from '@ziee/framework'
-import { useConfigClientStore } from '@/modules/config-client/ConfigClient.store'
+import { useConfigClientStore } from '@/modules/config-client/configClient'
 
 export default createModule({
   metadata: {

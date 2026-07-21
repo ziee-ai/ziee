@@ -1,11 +1,9 @@
 import { createJSONStorage } from 'zustand/middleware'
-import {
-  type AccentPreset,
-  ACCENT_PRESETS,
-  DEFAULT_ACCENT,
-} from '@/components/ThemeProvider/accentPresets'
-import { defineStore } from '@ziee/framework/store-kit'
-import type { StoreProxy } from '@ziee/framework/stores'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
+import { configClientState, type ConfigClientState, type ThemePreference } from './state'
+import type { AccentPreset } from '@/components/ThemeProvider/accentPresets'
+import { ACCENT_PRESETS, DEFAULT_ACCENT } from '@/components/ThemeProvider/accentPresets'
+import type { Actions } from './actions.gen'
 
 // Guarded persistence storage. Accessing `localStorage` throws in locked-down
 // contexts (private-mode quota, disabled storage, sandboxed iframe). Probe once
@@ -31,13 +29,11 @@ const safeStorage = createJSONStorage(() => {
   }
 })
 
-export type ThemePreference = 'light' | 'dark' | 'system'
-
 // Guard against a stale persisted accent id that no longer exists in code.
 const normalizeAccent = (a: AccentPreset): AccentPreset =>
   a in ACCENT_PRESETS ? a : DEFAULT_ACCENT
 
-export const ConfigClient = defineStore('ConfigClient', {
+const ConfigClientDef = defineStore<ConfigClientState, Actions>('ConfigClient', {
   persist: {
     name: 'config-client-storage',
     storage: safeStorage,
@@ -57,26 +53,17 @@ export const ConfigClient = defineStore('ConfigClient', {
       }
     },
   },
-  state: {
-    themePreference: 'system' as ThemePreference,
-    /** User-selected brand accent (Settings → Appearance). Drives --primary/--ring. */
-    accentPreset: DEFAULT_ACCENT as AccentPreset,
-  },
-  actions: (set, get) => ({
-    setThemePreference: (preference: ThemePreference) => {
-      set({ themePreference: preference })
-    },
-    getThemePreference: (): ThemePreference => get().themePreference,
-    setAccentPreset: (preset: AccentPreset) => {
-      set({ accentPreset: normalizeAccent(preset) })
-    },
-  }),
+  state: configClientState,
+  actions: import.meta.glob('./actions/*.ts'),
 })
 
-export const useConfigClientStore = ConfigClient.store
+export const ConfigClient = registerLazyStore(ConfigClientDef)
+export const useConfigClientStore = ConfigClientDef.store
+
+export type { ThemePreference } from './state'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
-    ConfigClient: StoreProxy<ReturnType<typeof ConfigClient.store.getState>>
+    ConfigClient: import('@ziee/framework/stores').StoreProxy<ReturnType<typeof ConfigClientDef.store.getState>>
   }
 }
