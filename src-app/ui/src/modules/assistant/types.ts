@@ -4,7 +4,7 @@ import type {
   useTemplateAssistantsStore,
   useAssistantPickerStore,
 } from '@/modules/assistant/stores'
-import type { useAssistantDrawerStore } from '@/modules/assistant/components/AssistantDrawer.store'
+import type { useAssistantDrawerStore } from '@/modules/assistant/components/assistantDrawer'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {

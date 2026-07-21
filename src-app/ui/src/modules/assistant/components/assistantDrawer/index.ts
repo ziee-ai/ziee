@@ -1,30 +1,10 @@
-import type { Assistant } from '@/api-client/types'
-import { defineStore } from '@ziee/framework/store-kit'
+import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
+import { assistantDrawerState, type AssistantDrawerState } from './state'
+import type { Actions } from './actions.gen'
 
-export const AssistantDrawer = defineStore('AssistantDrawer', {
-  state: {
-    open: false,
-    loading: false,
-    editingAssistant: null as Assistant | null,
-    isTemplate: false,
-    isCloning: false,
-  },
-  actions: set => ({
-    openAssistantDrawer: (
-      assistant?: Assistant | null,
-      isTemplate = false,
-      isCloning = false,
-    ) => set({ open: true, editingAssistant: assistant || null, isTemplate, isCloning }),
-    closeAssistantDrawer: () =>
-      set({
-        open: false,
-        loading: false,
-        editingAssistant: null,
-        isTemplate: false,
-        isCloning: false,
-      }),
-    setAssistantDrawerLoading: (loading: boolean) => set({ loading }),
-  }),
+const AssistantDrawerDef = defineStore<AssistantDrawerState, Actions>('AssistantDrawer', {
+  state: assistantDrawerState,
+  actions: import.meta.glob('./actions/*.ts'),
   init: ({ on, get, set, actions }) => {
     on('assistant.updated', event => {
       const s = get()
@@ -53,4 +33,5 @@ export const AssistantDrawer = defineStore('AssistantDrawer', {
   },
 })
 
-export const useAssistantDrawerStore = AssistantDrawer.store
+export const AssistantDrawer = registerLazyStore(AssistantDrawerDef)
+export const useAssistantDrawerStore = AssistantDrawerDef.store
