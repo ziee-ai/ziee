@@ -18,7 +18,7 @@ import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout
 import { Permissions } from '@/api-client/permissions'
 
 import { useProjectHostMountsStore } from './project-extension/stores/ProjectHostMounts.store'
-import { useConversationHostMountsStore } from './conversation-extension/stores/ConversationHostMounts.store'
+import { useConversationHostMountsStore } from './conversation-extension/stores/conversationHostMounts'
 import { useHostMountPolicyStore } from './stores/HostMountPolicy.store'
 import { ConversationMountsControl } from './conversation-extension/components/ConversationMountsControl'
 // Side-effect import: registers the project advanced-settings panel at boot.
