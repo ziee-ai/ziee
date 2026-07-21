@@ -50,6 +50,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Model Context Protocol (MCP) server management',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   routes: [
     {

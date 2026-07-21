@@ -12,6 +12,8 @@ export default createModule({
     version: '1.0.0',
     description: 'General user settings',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   routes: [
     {

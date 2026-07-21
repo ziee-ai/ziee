@@ -26,6 +26,8 @@ export default createModule({
     version: '1.0.0',
     description: 'User and user group management',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.UsersRead),
   dependencies: ['router'],
   routes: [
     {

@@ -31,6 +31,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Hub catalog coordination module',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
   dependencies: ['router'],
   stores: [
     { name: 'HubCatalog', store: useHubCatalogStore },

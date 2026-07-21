@@ -24,6 +24,8 @@ export default createModule({
     description:
       'AI Assistants module for managing user and template assistants',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   routes: [
     {

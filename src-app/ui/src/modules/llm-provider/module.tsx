@@ -45,6 +45,8 @@ export default createModule({
     version: '1.0.0',
     description: 'LLM provider management',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.LlmProvidersRead),
   dependencies: ['router'],
   routes: [
     {

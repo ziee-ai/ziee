@@ -32,6 +32,8 @@ export default createModule({
     description:
       'Knowledge bases: named, reusable collections the agent retrieves from (RAG at scale).',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   stores: [
   ],

@@ -32,6 +32,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Live literature search & screening (admin settings + screening panel)',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   routes: [
     {

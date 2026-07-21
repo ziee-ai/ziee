@@ -18,6 +18,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Self-service account profile: view, edit, change password.',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   routes: [
     {

@@ -7,6 +7,8 @@ export default createModule({
     version: '1.0.0',
     description: 'User profile widget in sidebar footer',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   slots: {
     sidebarFooter: [
       {

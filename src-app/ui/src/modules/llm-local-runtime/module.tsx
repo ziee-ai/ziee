@@ -37,6 +37,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Local LLM runtime version management',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.LocalRuntimeRead),
   routes: [
     {
       path: '/settings/llm-runtime',

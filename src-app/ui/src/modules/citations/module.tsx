@@ -21,6 +21,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Citation management + verification: a verified CSL-JSON library.',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   routes: [
     {

@@ -39,6 +39,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Declarative multi-step LLM workflows',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   stores: [
     // BOOT-EAGER (always-mounted overlay) — must stay registered.

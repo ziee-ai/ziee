@@ -25,6 +25,8 @@ export default createModule({
     version: '1.0.0',
     description: 'LLM model repository management',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.LlmRepositoriesRead),
   dependencies: ['router'],
   routes: [
     {

@@ -22,6 +22,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Admin: configure third-party auth providers (Google, Microsoft, Apple, generic OIDC)',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.AuthProvidersRead),
   dependencies: ['router', 'auth'],
   routes: [
     {

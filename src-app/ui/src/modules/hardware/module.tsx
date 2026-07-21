@@ -18,6 +18,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Hardware monitoring and information',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HardwareRead),
   routes: [
     {
       path: '/settings/hardware',

@@ -18,6 +18,8 @@ export default createModule({
     description:
       'Conversation summarization: rolling per-branch context compaction.',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.SummarizationSettingsRead),
   dependencies: ['router'],
   routes: [
     {

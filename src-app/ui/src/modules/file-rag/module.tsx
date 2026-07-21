@@ -15,6 +15,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Document RAG: semantic + full-text search over project/conversation files.',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.FileRagAdminRead),
   dependencies: ['router'],
   routes: [
     {

@@ -17,6 +17,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Hub catalog for AI assistants',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: [],
   stores: [
     {

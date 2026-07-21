@@ -37,6 +37,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Agent Skills — installable knowledge bundles',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   stores: [
     // BOOT-EAGER (always-mounted overlay) — must stay registered.

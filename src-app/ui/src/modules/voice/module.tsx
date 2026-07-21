@@ -20,6 +20,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Voice dictation: whisper runtime + model + settings admin',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.VoiceAdminRead),
   dependencies: ['router'],
   routes: [
     {

@@ -29,6 +29,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Code sandbox rootfs environment management + resource limits',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.CodeSandboxEnvironmentsRead),
   dependencies: ['router'],
   routes: [
     {

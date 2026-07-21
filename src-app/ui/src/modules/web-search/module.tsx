@@ -25,6 +25,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Web search + page fetch admin settings (provider chain + keys)',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   routes: [
     {

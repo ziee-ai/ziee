@@ -23,6 +23,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Hub tab listing every tracked install visible to the caller',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: [],
   slots: {
     hubTabs: [

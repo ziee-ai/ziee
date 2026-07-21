@@ -44,6 +44,8 @@ export default createModule({
     version: '1.0.0',
     description: 'File storage, upload, preview and viewer registry',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   routes: [
     {

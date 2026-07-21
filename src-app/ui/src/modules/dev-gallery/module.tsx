@@ -18,6 +18,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Dev-only component gallery (visual-testing canvas)',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.path.startsWith('/dev'),
   // The `import('@/dev/gallery/GalleryPage')` reference lives INSIDE the
   // `import.meta.env.DEV` branch so that in a prod build the whole array literal
   // is dead code — Rollup drops the reference and never emits a GalleryPage chunk

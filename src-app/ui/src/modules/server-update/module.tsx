@@ -15,6 +15,8 @@ export default createModule({
     version: '1.0.0',
     description: 'Server version + update notification (admin).',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.ServerUpdateRead),
   routes: [
     {
       path: '/settings/about',

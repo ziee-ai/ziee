@@ -38,6 +38,8 @@ export default createModule({
     description:
       'Chat Projects: group conversations under shared instructions, knowledge files, and defaults.',
   },
+  // smart-loading gate (build-lifted into the manifest)
+  shouldLoad: (ctx) => ctx.isAuthenticated,
   dependencies: ['router'],
   stores: [
   ],
