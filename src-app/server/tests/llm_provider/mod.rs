@@ -724,8 +724,14 @@ async fn test_create_provider_invalid_base_url() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
+/// A remote provider may be created ENABLED without an admin-supplied API key:
+/// the multi-tenant onboarding flow provisions exactly this so each user pastes
+/// their OWN key on the AI-Providers step (per-user keys are resolved at request
+/// time via `resolve_api_key_for_user`). The old spurious 400 was deliberately
+/// removed (see `handlers::admin::create_provider`) — creating such a provider
+/// must SUCCEED (201); it simply doesn't serve a user until that user has a key.
 #[tokio::test]
-async fn test_create_enabled_remote_provider_requires_api_key() {
+async fn test_create_enabled_remote_provider_without_key_succeeds_for_per_user_onboarding() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -738,7 +744,7 @@ async fn test_create_enabled_remote_provider_requires_api_key() {
         "name": "Enabled Without Key",
         "provider_type": "openai",
         "enabled": true
-        // No api_key provided
+        // No api_key provided — valid for per-user onboarding.
     });
 
     let response = reqwest::Client::new()
@@ -749,7 +755,9 @@ async fn test_create_enabled_remote_provider_requires_api_key() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["enabled"], true);
 }
 
 #[tokio::test]

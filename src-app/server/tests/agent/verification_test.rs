@@ -124,14 +124,19 @@ async fn agent_core_fabricated_citation_is_not_found_not_invented() {
         "the model must call a citations tool on the agent-core path (no mcpToolStart)"
     );
 
-    // DETERMINISTIC anchor: the fabricated DOI is NOT invented — it lands `not_found`
-    // in the persisted transcript (the resolver 404s, so verify_citations classifies
-    // not_found). A fabricated hit would have shown `verified`/a real title instead.
+    // DETERMINISTIC anchor: the fabricated DOI is NOT invented — verify_citations
+    // classifies it not-found (the resolver 404s). The tool's persisted result
+    // summary is `"N item(s): 0 verified, 0 mismatch, 1 not found, 0 unverified."`
+    // (handlers::summarize) — so exactly one not-found item lands in the transcript.
+    // (The machine `verification_status:"not_found"` lives in the tool result's
+    // structured_content, which the history view deliberately omits — the model
+    // reaches it via get_tool_result — so we anchor on the human summary instead.)
+    // A fabricated HIT would have shown `verified`/a real title instead.
     let history = crate::chat::helpers::get_conversation_history(&server, &user.token, conv_id).await;
     let dump = history.to_string();
     assert!(
-        dump.contains("not_found"),
-        "the fabricated DOI must surface not_found (never invented) in the transcript; got: {dump}"
+        dump.contains("1 not found"),
+        "the fabricated DOI must surface as not-found (never invented) in the transcript; got: {dump}"
     );
 
     // And it was NOT persisted as a real library entry (nothing to invent).

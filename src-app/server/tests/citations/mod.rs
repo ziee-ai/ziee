@@ -908,9 +908,11 @@ async fn test_mcp_add_and_remove_with_project_id() {
     .unwrap();
     assert!(add["error"].is_null(), "add_citations with project_id: {add}");
 
-    // The project's reference list contains it.
+    // The project's reference list contains it. The list-by-project endpoint is
+    // `GET /citations?project_id=…` (rest::list_citations) — the
+    // `/projects/{id}/citations` sub-resource is POST-attach / DELETE-detach only.
     let proj_list: Value = client
-        .get(server.api_url(&format!("/projects/{pid}/citations")))
+        .get(server.api_url(&format!("/citations?project_id={pid}")))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -942,7 +944,7 @@ async fn test_mcp_add_and_remove_with_project_id() {
 
     // Detached from the project...
     let after: Value = client
-        .get(server.api_url(&format!("/projects/{pid}/citations")))
+        .get(server.api_url(&format!("/citations?project_id={pid}")))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
