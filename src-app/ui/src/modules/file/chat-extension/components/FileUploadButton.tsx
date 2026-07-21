@@ -2,7 +2,7 @@ import { Paperclip } from 'lucide-react'
 import { Button, Tooltip, Upload, message } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
-import { composerPaneKey } from '@/modules/file/stores/File.store'
+import { composerPaneKey } from '@/modules/file/stores/file'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import {

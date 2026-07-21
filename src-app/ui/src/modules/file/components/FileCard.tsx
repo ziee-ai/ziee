@@ -10,7 +10,7 @@ import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type File as FileEntity } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
-import type { FileUploadProgress } from '@/modules/file/stores/File.store'
+import type { FileUploadProgress } from '@/modules/file/stores/file'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
 
 function formatFileSize(bytes: number): string {

@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useFileStore } from './stores/File.store'
+import type { useFileStore } from './stores/file'
 import { useFilePreviewDrawerStore } from './stores/filePreviewDrawer'
 import type { useFileVersionsStore } from './stores/fileVersions'
 import type { usePdfHighlightStore } from './stores/pdfHighlight'

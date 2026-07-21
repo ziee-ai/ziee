@@ -21,7 +21,7 @@ import {
 } from '@/dev/gallery/support'
 import { chatCassette } from '@/dev/gallery/fixtures/chat'
 import { useChatStore } from '@/modules/chat/core/stores/chat'
-import { useFileStore } from '@/modules/file/stores/File.store'
+import { useFileStore } from '@/modules/file/stores/file'
 import { useMcpComposerStore } from '@/modules/mcp/stores/McpComposer.store'
 import { useModelPickerStore } from '@/modules/user-llm-providers/modelPicker'
 import {

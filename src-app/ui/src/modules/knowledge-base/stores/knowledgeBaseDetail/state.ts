@@ -8,7 +8,7 @@ import type {
 } from '@/api-client/types'
 
 // Re-export so consumers of this module get the type without importing File.store.
-export type FileUploadProgress = import('@/modules/file/stores/File.store').FileUploadProgress
+export type FileUploadProgress = import('@/modules/file/stores/file').FileUploadProgress
 
 /** Default documents-per-page. Numbered pagination (discrete pages via
  *  `ListPagination`, like the users/memories settings pages) — NOT infinite

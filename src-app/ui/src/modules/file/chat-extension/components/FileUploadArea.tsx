@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { message } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
-import { composerPaneKey } from '@/modules/file/stores/File.store'
+import { composerPaneKey } from '@/modules/file/stores/file'
 import {
   MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE,
   MAX_FILE_UPLOAD_LABEL,

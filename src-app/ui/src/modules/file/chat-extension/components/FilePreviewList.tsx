@@ -2,8 +2,8 @@ import { Alert, ScrollArea } from '@ziee/kit'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { Stores } from '@ziee/framework/stores'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
-import { composerPaneKey } from '@/modules/file/stores/File.store'
-import type { FileUploadProgress } from '@/modules/file/stores/File.store'
+import { composerPaneKey } from '@/modules/file/stores/file'
+import type { FileUploadProgress } from '@/modules/file/stores/file'
 import type { File as FileEntity } from '@/api-client/types'
 
 /**

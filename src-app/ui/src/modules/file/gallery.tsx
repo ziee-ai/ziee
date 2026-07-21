@@ -68,11 +68,11 @@ const CHROME_FILE_ID = 'f2000000-0000-0000-0000-0000000000ff'
 
 /** Seed one binary-content entry into the File store and hold it. */
 const seedBinary = async (id: string, buf: ArrayBuffer) => {
-  const { File: FileStoreDef } = await import('@/modules/file/stores/File.store')
+  const { store: FileStoreDef } = await import('@/modules/file/stores/file')
   await holdPatch(() => {
-    const b = new Map(FileStoreDef.store.getState().fileBinaryContents)
+    const b = new Map(FileStoreDef.getState().fileBinaryContents)
     b.set(id, buf)
-    FileStoreDef.store.setState({ fileBinaryContents: b } as any)
+    FileStoreDef.setState({ fileBinaryContents: b } as any)
   })
 }
 
@@ -177,20 +177,20 @@ export const gallery: ModuleGallery = {
         { file: mkFile() },
       ),
       setup: async () => {
-        const { File: FileStoreDef } = await import(
-          '@/modules/file/stores/File.store'
+        const { store: FileStoreDef } = await import(
+          '@/modules/file/stores/file'
         )
         // Park the id in the loading set (and out of the content map) so
         // getFileBinaryContent neither returns content nor schedules a load —
         // the viewer holds at the `!fileBinaryContent || loading` spinner.
         await holdPatch(() => {
           const loading = new Set(
-            FileStoreDef.store.getState().fileBinaryLoadingSet,
+            FileStoreDef.getState().fileBinaryLoadingSet,
           )
           loading.add(XLSX_FILE_ID)
-          const b = new Map(FileStoreDef.store.getState().fileBinaryContents)
+          const b = new Map(FileStoreDef.getState().fileBinaryContents)
           b.delete(XLSX_FILE_ID)
-          FileStoreDef.store.setState({
+          FileStoreDef.setState({
             fileBinaryLoadingSet: loading,
             fileBinaryContents: b,
           } as any)
@@ -253,13 +253,13 @@ export const gallery: ModuleGallery = {
       setup: async () => {
         // Ensure this file has NO fileViewModes entry so the `?? 'compiled'`
         // fallback executes rather than a seeded value.
-        const { File: FileStoreDef } = await import(
-          '@/modules/file/stores/File.store'
+        const { store: FileStoreDef } = await import(
+          '@/modules/file/stores/file'
         )
         await holdPatch(() => {
-          const m = new Map(FileStoreDef.store.getState().fileViewModes)
+          const m = new Map(FileStoreDef.getState().fileViewModes)
           m.delete(CHROME_FILE_ID)
-          FileStoreDef.store.setState({ fileViewModes: m } as any)
+          FileStoreDef.setState({ fileViewModes: m } as any)
         })
       },
     },

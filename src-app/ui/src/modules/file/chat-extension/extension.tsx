@@ -14,7 +14,7 @@ import { ImageContent } from '@/modules/file/chat-extension/components/ImageCont
 // going through Stores.File would fire the Stores-proxy's internal
 // useEffect+useStore on property access, corrupting the outer hook
 // count (see ProjectFiles.store.ts's earlier bug).
-import { composerPaneKey, useFileStore } from '@/modules/file/stores/File.store'
+import { composerPaneKey, useFileStore } from '@/modules/file/stores/file'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment, MessageContentDataImage } from '@/api-client/types'
 
