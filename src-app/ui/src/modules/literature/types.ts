@@ -1,6 +1,6 @@
 import type { StoreProxy } from '@ziee/framework/stores'
 import type { useLitSearchAdminStore } from './stores/litSearchAdmin'
-import type { useLitSearchUserKeysStore } from './stores/LitSearchUserKeys.store'
+import type { useLitSearchUserKeysStore } from './stores/litSearchUserKeys'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
