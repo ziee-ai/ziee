@@ -9,7 +9,7 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useScheduledTasksStore } from './stores/scheduledTasks/index'
 import { useSchedulerAdminStore } from './stores/schedulerAdmin'
-import { useSchedulerDrawerStore } from './stores/SchedulerDrawer.store'
+import { useSchedulerDrawerStore } from './stores/schedulerDrawer'
 import '@/modules/scheduler/types' // register Stores.* (declaration merge)
 import '@/modules/settings/types/SettingsSlots'
 
