@@ -19,7 +19,7 @@ import { Permissions } from '@/api-client/permissions'
 
 import { useProjectHostMountsStore } from './project-extension/stores/projectHostMounts'
 import { useConversationHostMountsStore } from './conversation-extension/stores/conversationHostMounts'
-import { useHostMountPolicyStore } from './stores/HostMountPolicy.store'
+import { useHostMountPolicyStore } from './stores/hostMountPolicy'
 import { ConversationMountsControl } from './conversation-extension/components/ConversationMountsControl'
 // Side-effect import: registers the project advanced-settings panel at boot.
 import './project-extension/extension'
