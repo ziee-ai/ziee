@@ -66,7 +66,7 @@ vi.mock('@ziee/framework/events', () => ({
   },
 }))
 
-import { useVoiceModelStore } from './VoiceModel.store'
+import { useVoiceModelStore } from './voiceModel'
 
 const store = () => useVoiceModelStore.getState()
 
