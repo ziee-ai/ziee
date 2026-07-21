@@ -5,7 +5,7 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useCoreMemoryBlocksStore } from './stores/coreMemoryBlocks'
 import { useMemoriesStore } from './stores/memories'
-import { useMemoryAdminStore } from './stores/MemoryAdmin.store'
+import { useMemoryAdminStore } from './stores/memoryAdmin'
 import { useMemorySettingsStore } from './stores/MemorySettings.store'
 import './types'
 
