@@ -3,7 +3,7 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
 import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
-import { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
+import { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/llmProviderDrawer'
 import { useProviderGroupAssignmentCardStore } from '@/modules/llm-provider/components/providerGroupAssignmentCard'
 import { DownloadIndicatorWidget } from '@/modules/llm-provider/components/widgets/DownloadIndicatorWidget'
 import {

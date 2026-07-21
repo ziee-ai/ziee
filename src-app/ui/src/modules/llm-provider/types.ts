@@ -10,7 +10,7 @@ import type {
   useUploadStore,
 } from '@/modules/llm-provider/stores'
 import type { useProviderGroupAssignmentCardStore } from '@/modules/llm-provider/components/providerGroupAssignmentCard'
-import type { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
+import type { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/llmProviderDrawer'
 import type { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
 
 declare module '@ziee/framework/stores' {
