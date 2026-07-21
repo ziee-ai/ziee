@@ -10,13 +10,14 @@ use crate::common::test_helpers::create_user_with_permissions;
 /// than loaded dynamically so a bumped seed forces test review.
 const SEED_VERSION: &str = "2.0.0";
 
-// The seed mirrors ziee-ai/hub's published `dist/` — 7 models +
-// 5 assistants + 6 mcp-servers + 1 skill + 10 workflows = 29 entries.
-// (ziee's 10 capability skills are now built-in, embedded in the binary,
-// NOT hub-distributed; the hub ships one generic example skill,
+// The seed mirrors ziee-ai/hub's published `dist/` — 8 models +
+// 5 assistants + 6 mcp-servers + 1 skill + 10 workflows = 30 entries.
+// (The 8th model is bge-reranker-v2-m3-gguf, added with the hub `rerank`
+// capability. ziee's 10 capability skills are now built-in, embedded in the
+// binary, NOT hub-distributed; the hub ships one generic example skill,
 // io.github.ziee/effective-prompting.)
 // Bump when the seed snapshot is refreshed.
-const SEED_ITEM_COUNT: usize = 29;
+const SEED_ITEM_COUNT: usize = 30;
 
 // =====================================================================
 // /hub/version + /hub/index — anyone with read can call
@@ -44,7 +45,7 @@ async fn version_endpoint_returns_seed_catalog_metadata() {
         "server_version should be set: {body}"
     );
     let counts = &body["counts"];
-    assert_eq!(counts["models"], 7);
+    assert_eq!(counts["models"], 8); // +bge-reranker-v2-m3-gguf (hub reranker capability)
     assert_eq!(counts["assistants"], 5);
     assert_eq!(counts["mcp_servers"], 6);
     // ziee's 10 capability skills are now built-in (not hub); the hub ships
