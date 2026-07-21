@@ -22,9 +22,9 @@ export const gallery: ModuleGallery = {
         'HardwareMonitor',
       ),
       setup: async () => {
-        const { Hardware } = await import('@/modules/hardware/Hardware.store')
+        const { HardwareDef } = await import('@/modules/hardware/hardware')
         await holdPatch(() =>
-          Hardware.store.setState({
+          HardwareDef.store.setState({
             currentUsage: {
               cpu: { usage_percentage: 12 },
               memory: {
@@ -56,9 +56,9 @@ export const gallery: ModuleGallery = {
         'HardwareMonitor',
       ),
       setup: async () => {
-        const { Hardware } = await import('@/modules/hardware/Hardware.store')
+        const { HardwareDef } = await import('@/modules/hardware/hardware')
         await holdPatch(() =>
-          Hardware.store.setState({
+          HardwareDef.store.setState({
             hardwareInfo: {
               cpu: {
                 architecture: 'x86_64',
@@ -138,12 +138,12 @@ export const gallery: ModuleGallery = {
         'HardwareMonitor',
       ),
       setup: async () => {
-        const { Hardware } = await import('@/modules/hardware/Hardware.store')
+        const { HardwareDef } = await import('@/modules/hardware/hardware')
         // holdPatch re-asserts the failure so the store's init loadHardwareInfo()
         // (which succeeds against the loaded cassette) can't clobber it back to a
         // healthy state.
         await holdPatch(() =>
-          Hardware.store.setState({
+          HardwareDef.store.setState({
             hardwareInfo: null,
             hardwareInitialized: false,
             hardwareLoading: false,

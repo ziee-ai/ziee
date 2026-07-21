@@ -1,7 +1,7 @@
 import { createModule } from '@ziee/framework'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import { useHardwareStore } from '@/modules/hardware/Hardware.store'
+import { useHardwareStore } from '@/modules/hardware/hardware'
 import '@/modules/hardware/types'
 import { BlankLayout } from '@/modules/layouts/blank' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
