@@ -10,11 +10,11 @@ import {
   message,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -33,7 +33,7 @@ export function ExtractionSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, availableModels, saving, loadingModels, error } =
-    Stores.MemoryAdmin
+    MemoryAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { default_extraction_model_id: null },
@@ -63,13 +63,13 @@ export function ExtractionSection() {
       <SettingsSectionStatus
         title="Extraction"
         error={error}
-        onRetry={() => Stores.MemoryAdmin.load()}
+        onRetry={() => MemoryAdmin.load()}
       />
     )
 
   const handleSubmit = async (values: FormValues) => {
     try {
-      await Stores.MemoryAdmin.update({
+      await MemoryAdmin.update({
         default_extraction_model_id: values.default_extraction_model_id ?? null,
       })
       message.success('Extraction settings saved.')

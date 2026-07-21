@@ -21,8 +21,8 @@ import {
   Spin,
 } from '@ziee/kit'
 import { Trash2, Plus, Pencil } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import type { CoreMemoryBlock } from '@/api-client/types'
+import { CoreMemoryBlocks } from '@/modules/memory/stores/coreMemoryBlocks'
 
 /**
  * Letta-style core-memory block editor for an assistant. Renders below
@@ -38,14 +38,14 @@ export function CoreMemoryBlocksEditor({
 }: {
   assistantId: string
 }) {
-  const { blocksByAssistant, loadingByAssistant } = Stores.CoreMemoryBlocks
+  const { blocksByAssistant, loadingByAssistant } = CoreMemoryBlocks
   const blocks = blocksByAssistant[assistantId] ?? []
   const loading = loadingByAssistant[assistantId] ?? false
   const [editing, setEditing] = useState<CoreMemoryBlock | null>(null)
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    if (assistantId) Stores.CoreMemoryBlocks.load(assistantId)
+    if (assistantId) CoreMemoryBlocks.load(assistantId)
   }, [assistantId])
 
   return (
@@ -113,7 +113,7 @@ export function CoreMemoryBlocksEditor({
                     okButtonProps={{ danger: true }}
                     onConfirm={async () => {
                       try {
-                        await Stores.CoreMemoryBlocks.remove(
+                        await CoreMemoryBlocks.remove(
                           assistantId,
                           b.block_label,
                         )
@@ -195,7 +195,7 @@ function BlockFormModal({
   const handleSubmit = async (values: BlockFormValues) => {
     setSaving(true)
     try {
-      await Stores.CoreMemoryBlocks.upsert({
+      await CoreMemoryBlocks.upsert({
         assistant_id: assistantId,
         block_label: values.block_label,
         content: values.content,

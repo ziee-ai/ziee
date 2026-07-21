@@ -15,10 +15,11 @@ import {
   message,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { MemorySettings } from '@/modules/memory/stores/memorySettings'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 
 const READ_PERM = Permissions.MemoryRead
@@ -85,8 +86,8 @@ type FormValues = z.infer<typeof schema>
 export function PreferencesSection() {
   const canRead = usePermission(READ_PERM)
   const canWrite = usePermission(WRITE_PERM)
-  const { settings, loading, saving, error } = Stores.MemorySettings
-  const { settings: adminSettings } = Stores.MemoryAdmin
+  const { settings, loading, saving, error } = MemorySettings
+  const { settings: adminSettings } = MemoryAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -119,7 +120,7 @@ export function PreferencesSection() {
           resource="memory preferences"
           description="Something went wrong while loading your memory preferences."
           details={error}
-          onRetry={() => Stores.MemorySettings.load()}
+          onRetry={() => MemorySettings.load()}
           data-testid="memory-prefs-error"
         />
       </Card>
@@ -138,7 +139,7 @@ export function PreferencesSection() {
 
   const handleSubmit = async (values: FormValues) => {
     try {
-      await Stores.MemorySettings.update({
+      await MemorySettings.update({
         extraction_enabled: values.extraction_enabled,
         retrieval_enabled: values.retrieval_enabled,
         max_memories: values.max_memories,

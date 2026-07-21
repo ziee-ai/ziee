@@ -14,11 +14,11 @@ import {
   message,
   useForm,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -76,7 +76,7 @@ export function FullTextSearchSection() {
     error,
     ftsRebuildStatus,
     triggeringFtsRebuild,
-  } = Stores.MemoryAdmin
+  } = MemoryAdmin
   const form = useForm<FormValues>()
   const [pendingDictionary, setPendingDictionary] =
     useState<PendingDictionarySwap | null>(null)
@@ -133,7 +133,7 @@ export function FullTextSearchSection() {
       <SettingsSectionStatus
         title="Full-text search"
         error={error}
-        onRetry={() => Stores.MemoryAdmin.load()}
+        onRetry={() => MemoryAdmin.load()}
       />
     )
 
@@ -143,7 +143,7 @@ export function FullTextSearchSection() {
 
   const persistRetrievalKnobs = async (values: FormValues) => {
     try {
-      await Stores.MemoryAdmin.update({
+      await MemoryAdmin.update({
         fts_enabled: values.fts_enabled,
         fts_rrf_k: values.fts_rrf_k,
         fts_candidate_multiplier: values.fts_candidate_multiplier,
@@ -191,14 +191,14 @@ export function FullTextSearchSection() {
         values.fts_candidate_multiplier === settings.fts_candidate_multiplier &&
         values.fts_min_rank === settings.fts_min_rank
       if (!dictionaryDiffersOnly) {
-        await Stores.MemoryAdmin.update({
+        await MemoryAdmin.update({
           fts_enabled: values.fts_enabled,
           fts_rrf_k: values.fts_rrf_k,
           fts_candidate_multiplier: values.fts_candidate_multiplier,
           fts_min_rank: values.fts_min_rank,
         })
       }
-      await Stores.MemoryAdmin.triggerFtsRebuild(newDictionary)
+      await MemoryAdmin.triggerFtsRebuild(newDictionary)
       // Re-seed from the saved values and clear touched state so future
       // settings refetches (sync-driven reload after rebuild completes,
       // another admin's change) can update the form again. Without this,
@@ -214,7 +214,7 @@ export function FullTextSearchSection() {
       )
       // Kick the status endpoint once so RebuildStatusSection picks
       // up the in_progress flip without waiting a poll cycle.
-      void Stores.MemoryAdmin.loadFtsRebuildStatus()
+      void MemoryAdmin.loadFtsRebuildStatus()
     } catch (error) {
       message.error(
         error instanceof Error

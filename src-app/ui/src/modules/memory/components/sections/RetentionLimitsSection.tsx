@@ -10,11 +10,11 @@ import {
   message,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -32,7 +32,7 @@ type FormValues = z.infer<typeof schema>
 export function RetentionLimitsSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving, error } = Stores.MemoryAdmin
+  const { settings, saving, error } = MemoryAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -66,13 +66,13 @@ export function RetentionLimitsSection() {
       <SettingsSectionStatus
         title="Retention & extraction limits"
         error={error}
-        onRetry={() => Stores.MemoryAdmin.load()}
+        onRetry={() => MemoryAdmin.load()}
       />
     )
 
   const handleSubmit = async (values: FormValues) => {
     try {
-      await Stores.MemoryAdmin.update({
+      await MemoryAdmin.update({
         soft_delete_grace_days: values.soft_delete_grace_days,
         daily_extraction_quota: values.daily_extraction_quota,
       })

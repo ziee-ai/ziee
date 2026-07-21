@@ -38,11 +38,11 @@ import {
   Download,
   Pencil,
 } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import type { UserMemory } from '@/api-client/types'
+import { Memories } from '@/modules/memory/stores/memories'
 
 const READ_PERM = Permissions.MemoryRead
 const WRITE_PERM = Permissions.MemoryWrite
@@ -72,7 +72,7 @@ export function MyMemoriesSection() {
     total: totalMemories = 0,
     currentPage: storePage,
     pageSize: storePageSize,
-  } = Stores.Memories
+  } = Memories
   const [editing, setEditing] = useState<UserMemory | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -132,7 +132,7 @@ export function MyMemoriesSection() {
               okButtonProps={{ danger: true }}
               onConfirm={async () => {
                 try {
-                  const n = await Stores.Memories.removeAll()
+                  const n = await Memories.removeAll()
                   message.success(`Deleted ${n} memories`)
                 } catch (error) {
                   message.error(
@@ -158,7 +158,7 @@ export function MyMemoriesSection() {
           data-standalone-control
           placeholder="Search content"
           allowClear
-          onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
+          onChange={(e) => Memories.setSearchQuery(e.target.value)}
           className="min-w-[200px] flex-1"
           data-testid="memory-search-input"
         />
@@ -167,7 +167,7 @@ export function MyMemoriesSection() {
           placeholder="Kind"
           aria-label="Filter by kind"
           value={kindFilter ?? undefined}
-          onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
+          onChange={(v) => Memories.setKindFilter(v ?? null)}
           className="flex-[0_1_160px] min-w-[120px]"
           data-testid="memory-kind-filter"
           options={[
@@ -183,7 +183,7 @@ export function MyMemoriesSection() {
           placeholder="Source"
           aria-label="Filter by source"
           value={sourceFilter ?? undefined}
-          onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
+          onChange={(v) => Memories.setSourceFilter(v ?? null)}
           allowClear
           clearLabel="Clear source filter"
           className="flex-[0_1_160px] min-w-[120px]"
@@ -201,7 +201,7 @@ export function MyMemoriesSection() {
           resource="memories"
           description="Something went wrong while loading your memories."
           details={error}
-          onRetry={() => Stores.Memories.load()}
+          onRetry={() => Memories.load()}
           data-testid="memory-error"
         />
       ) : loading && filtered.length === 0 ? (
@@ -241,7 +241,7 @@ export function MyMemoriesSection() {
                             okButtonProps={{ danger: true }}
                             onConfirm={async () => {
                               try {
-                                await Stores.Memories.remove(row.id)
+                                await Memories.remove(row.id)
                                 message.success('Memory deleted')
                               } catch (error) {
                                 message.error(
@@ -331,8 +331,8 @@ export function MyMemoriesSection() {
           current={storePage}
           total={totalMemories}
           pageSize={storePageSize}
-          onChange={(page) => Stores.Memories.load(page, storePageSize)}
-          onPageSizeChange={(size) => Stores.Memories.load(1, size)}
+          onChange={(page) => Memories.load(page, storePageSize)}
+          onPageSizeChange={(size) => Memories.load(1, size)}
           itemNoun="memories"
           aria-label="Memory pagination"
         />
@@ -425,7 +425,7 @@ function CreateMemoryDrawer({
     resolver: zodResolver(memoryFormSchema),
     defaultValues: { importance: 50, kind: 'fact' },
   })
-  const { saving } = Stores.Memories
+  const { saving } = Memories
 
   const handleSubmit = async (values: {
     content: string
@@ -433,7 +433,7 @@ function CreateMemoryDrawer({
     kind: string
   }) => {
     try {
-      await Stores.Memories.create(
+      await Memories.create(
         values.content,
         values.importance,
         values.kind,
@@ -513,7 +513,7 @@ function EditMemoryDrawer({
     importance: number
     kind: string
   }>({ resolver: zodResolver(memoryFormSchema) })
-  const { saving } = Stores.Memories
+  const { saving } = Memories
 
   useEffect(() => {
     if (row) {
@@ -532,7 +532,7 @@ function EditMemoryDrawer({
   }) => {
     if (!row) return
     try {
-      await Stores.Memories.update(row.id, values)
+      await Memories.update(row.id, values)
       onClose()
       message.success('Memory updated')
     } catch (error) {

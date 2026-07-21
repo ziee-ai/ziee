@@ -1,5 +1,4 @@
 import { Alert, Spinner } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { RebuildStatusSection } from '../components/sections/RebuildStatusSection'
 import { MemorySection } from '../components/sections/MemorySection'
@@ -7,6 +6,7 @@ import { FullTextSearchSection } from '../components/sections/FullTextSearchSect
 import { SemanticSearchSection } from '../components/sections/SemanticSearchSection'
 import { ExtractionSection } from '../components/sections/ExtractionSection'
 import { RetentionLimitsSection } from '../components/sections/RetentionLimitsSection'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 /**
  * Deployment-wide memory admin settings. One settings-layout page
@@ -27,7 +27,7 @@ import { RetentionLimitsSection } from '../components/sections/RetentionLimitsSe
  * the page is short by default.
  */
 export function MemoryAdminPage() {
-  const { settings, loading, error } = Stores.MemoryAdmin
+  const { settings, loading, error } = MemoryAdmin
   return (
     <SettingsPageContainer
       title="Memory (admin)"

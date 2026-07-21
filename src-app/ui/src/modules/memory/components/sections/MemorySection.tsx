@@ -12,10 +12,10 @@ import {
   message,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -34,7 +34,7 @@ type FormValues = z.infer<typeof schema>
 export function MemorySection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving, error } = Stores.MemoryAdmin
+  const { settings, saving, error } = MemoryAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { enabled: false, default_top_k: 10 },
@@ -69,7 +69,7 @@ export function MemorySection() {
           title="Failed to load memory settings"
           description={error}
         >
-          <Button data-testid="memory-section-retry-btn" size="default" onClick={() => Stores.MemoryAdmin.load()}>
+          <Button data-testid="memory-section-retry-btn" size="default" onClick={() => MemoryAdmin.load()}>
             Retry
           </Button>
         </Alert>
@@ -80,7 +80,7 @@ export function MemorySection() {
 
   const handleSubmit = async (values: FormValues) => {
     try {
-      await Stores.MemoryAdmin.update({
+      await MemoryAdmin.update({
         enabled: values.enabled,
         default_top_k: values.default_top_k,
       })

@@ -17,11 +17,11 @@ import {
 } from '@ziee/kit'
 import { z } from 'zod'
 import { RotateCw } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 const READ_PERM = Permissions.MemoryAdminRead
 const MANAGE_PERM = Permissions.MemoryAdminManage
@@ -50,7 +50,7 @@ export function SemanticSearchSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, embeddingModels, saving, loadingModels, error } =
-    Stores.MemoryAdmin
+    MemoryAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -88,7 +88,7 @@ export function SemanticSearchSection() {
       <SettingsSectionStatus
         title="Semantic search"
         error={error}
-        onRetry={() => Stores.MemoryAdmin.load()}
+        onRetry={() => MemoryAdmin.load()}
       />
     )
 
@@ -98,7 +98,7 @@ export function SemanticSearchSection() {
 
   const persist = async (values: FormValues, modelChanged: boolean) => {
     try {
-      await Stores.MemoryAdmin.update({
+      await MemoryAdmin.update({
         semantic_enabled: values.semantic_enabled,
         embedding_model_id: values.embedding_model_id ?? null,
         cosine_threshold: values.cosine_threshold,
@@ -107,7 +107,7 @@ export function SemanticSearchSection() {
         message.success(
           'Semantic search saved. Embedding model changed — re-embed running in background.',
         )
-        Stores.MemoryAdmin.loadRebuildStatus()
+        MemoryAdmin.loadRebuildStatus()
       } else {
         message.success('Semantic search saved.')
       }
@@ -136,11 +136,11 @@ export function SemanticSearchSection() {
     if (!settings.embedding_model_id) return
     setReembedConfirmOpen(false)
     try {
-      await Stores.MemoryAdmin.triggerReembed()
+      await MemoryAdmin.triggerReembed()
       message.info(
         'Re-embed job dispatched in background. Retrieval temporarily reduced until complete.',
       )
-      Stores.MemoryAdmin.loadRebuildStatus()
+      MemoryAdmin.loadRebuildStatus()
     } catch (error) {
       message.error(
         error instanceof Error

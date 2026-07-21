@@ -3,10 +3,6 @@ import { Brain } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useCoreMemoryBlocksStore } from './stores/coreMemoryBlocks'
-import { useMemoriesStore } from './stores/memories'
-import { useMemoryAdminStore } from './stores/memoryAdmin'
-import { useMemorySettingsStore } from './stores/memorySettings'
 import './types'
 
 // The user page renders sections for each memory mechanism. A user
@@ -50,10 +46,6 @@ export default createModule({
     },
   ],
   stores: [
-    { name: 'Memories', store: useMemoriesStore },
-    { name: 'MemorySettings', store: useMemorySettingsStore },
-    { name: 'MemoryAdmin', store: useMemoryAdminStore },
-    { name: 'CoreMemoryBlocks', store: useCoreMemoryBlocksStore },
   ],
   slots: {
     settingsUserPages: [

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Card, Flex, Progress, Spin } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 /**
  * Renders rebuild progress cards. Self-hides unless an embedding
@@ -11,14 +11,14 @@ import { Stores } from '@ziee/framework/stores'
  * gated on `MemoryAdminRead` — no per-section read check needed.
  */
 export function RebuildStatusSection() {
-  const { rebuildStatus, ftsRebuildStatus, settings } = Stores.MemoryAdmin
+  const { rebuildStatus, ftsRebuildStatus, settings } = MemoryAdmin
   const rebuildTotalRef = useRef<number>(0)
 
   // Poll embedding rebuild while in flight.
   useEffect(() => {
     if (!rebuildStatus?.in_progress) return
     const id = setInterval(() => {
-      Stores.MemoryAdmin.loadRebuildStatus()
+      MemoryAdmin.loadRebuildStatus()
     }, 2000)
     return () => clearInterval(id)
   }, [rebuildStatus?.in_progress])
@@ -27,7 +27,7 @@ export function RebuildStatusSection() {
   useEffect(() => {
     if (!ftsRebuildStatus?.in_progress) return
     const id = setInterval(() => {
-      Stores.MemoryAdmin.loadFtsRebuildStatus()
+      MemoryAdmin.loadFtsRebuildStatus()
     }, 2000)
     return () => clearInterval(id)
   }, [ftsRebuildStatus?.in_progress])

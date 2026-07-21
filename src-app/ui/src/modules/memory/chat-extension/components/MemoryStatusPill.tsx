@@ -6,6 +6,7 @@ import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
+import { MemoryAdmin } from '@/modules/memory/stores/memoryAdmin'
 
 type Mode = 'inherit' | 'on' | 'off'
 
@@ -32,7 +33,7 @@ export function MemoryStatusPill() {
   // after a guard triggers "Rendered more hooks than during the
   // previous render."
   const conversation = Stores.Chat.conversation
-  const adminSettings = Stores.MemoryAdmin.settings
+  const adminSettings = MemoryAdmin.settings
   const [mode, setMode] = useState<Mode>('inherit')
   const [loading, setLoading] = useState(false)
 
