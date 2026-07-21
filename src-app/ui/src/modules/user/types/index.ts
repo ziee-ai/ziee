@@ -9,7 +9,7 @@ import type { useCreateUserDrawerStore } from '@/modules/user/components/user/Cr
 import type { useEditUserDrawerStore } from '@/modules/user/components/user/EditUserDrawer.store'
 import type { useResetPasswordDrawerStore } from '@/modules/user/components/user/ResetPasswordDrawer.store'
 import type { useUserGroupsDrawerStore } from '@/modules/user/components/user/UserGroupsDrawer.store'
-import type { useAssignGroupDrawerStore } from '@/modules/user/components/user/AssignGroupDrawer.store'
+import type { useAssignGroupDrawerStore } from '@/modules/user/components/user/assignGroupDrawer'
 
 // Augment the RegisteredStores interface to add Users and UserGroups stores
 declare module '@ziee/framework/stores' {
