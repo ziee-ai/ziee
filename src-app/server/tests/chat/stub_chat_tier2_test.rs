@@ -2,7 +2,7 @@
 //! through the REAL chat consumer path (build → extensions → `OpenAIProvider` →
 //! stream finalize → DB) with no API keys.
 //!
-//! Uses `common::stub_chat::StubChat`: an in-process OpenAI-compatible server
+//! Uses `common::oai_capture_stub::StubChat`: an in-process OpenAI-compatible server
 //! that records the exact request body the server's provider layer produced and
 //! replies with a scripted response. A `custom` provider points the chat path at
 //! it. (`custom` maps to the `OpenAIProvider` + the `"openai"` registry key, so a

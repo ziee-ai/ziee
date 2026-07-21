@@ -51,6 +51,16 @@ pub struct ConversationResponse {
     #[serde(flatten)]
     pub conversation: Conversation,
     pub message_count: i64,
+    /// First user message text on the conversation's ACTIVE branch, truncated to
+    /// [`CONVERSATION_PREVIEW_MAX_CHARS`]. `None` when the conversation has no
+    /// user text yet (e.g. an attachment-only first message).
+    ///
+    /// Exists so the client can label a conversation that has NO title. Title
+    /// generation deliberately leaves `title` NULL rather than persisting the
+    /// user's raw message, so a deployment whose title provider is misconfigured
+    /// would otherwise render every row as an identical "Untitled Conversation".
+    /// This is a DISPLAY fallback only — it is never written back to `title`.
+    pub first_message_preview: Option<String>,
 }
 
 /// Paginated list of conversations. `total` is the full server-side count

@@ -375,6 +375,40 @@ impl ChatExtension for TitleGenerationExtension {
         _final_message: &Message,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<ExtensionAction, AppError> {
+        self.title_if_needed(context, tx).await?;
+        Ok(ExtensionAction::Complete)
+    }
+
+    /// The turn ended without an LLM call — most commonly a `manual_approve`
+    /// resume whose approved `audience:["user"]` tool result IS the answer.
+    /// `after_llm_call` never fires there, so without this the conversation
+    /// stays untitled until the user's NEXT message.
+    async fn after_llm_skipped(
+        &self,
+        context: &StreamContext,
+        tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+    ) -> Result<(), AppError> {
+        self.title_if_needed(context, tx).await
+    }
+}
+
+impl TitleGenerationExtension {
+    /// Generate and persist a title when the conversation still needs one.
+    ///
+    /// The single body behind BOTH `after_llm_call` and `after_llm_skipped`, so
+    /// the two entry points cannot drift apart. Self-gating (`has_title` /
+    /// `should_generate_title`) makes it safe to call at the end of ANY turn:
+    /// a titled conversation, a turn that produced no answer, and an
+    /// attachment-only first message all return without work.
+    ///
+    /// Reads everything it needs from `context` + the database, which is why it
+    /// works identically on the LLM-skipped paths where no `Message` is
+    /// available to pass in.
+    async fn title_if_needed(
+        &self,
+        context: &StreamContext,
+        tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+    ) -> Result<(), AppError> {
         // Check if conversation needs a title
         let conversation = Repos
             .chat
@@ -388,7 +422,7 @@ impl ChatExtension for TitleGenerationExtension {
         // this hook runs on every assistant turn for the life of the
         // conversation. A titled conversation must never pay for it.
         if has_title(conversation.title.as_deref()) {
-            return Ok(ExtensionAction::Complete);
+            return Ok(());
         }
 
         let history = Repos
@@ -398,12 +432,12 @@ impl ChatExtension for TitleGenerationExtension {
             .await?;
 
         if !should_generate_title(&history, conversation.title.as_deref()) {
-            return Ok(ExtensionAction::Complete);
+            return Ok(());
         }
 
         let Some(user_content) = first_user_text(&history) else {
             // No text to summarize (e.g. an attachment-only first message).
-            return Ok(ExtensionAction::Complete);
+            return Ok(());
         };
 
         // A title is a nice-to-have: never fail the chat turn over it, and never
@@ -417,7 +451,7 @@ impl ChatExtension for TitleGenerationExtension {
                     "Title generation failed; leaving the title unset to retry on a later turn: {}",
                     e
                 );
-                return Ok(ExtensionAction::Complete);
+                return Ok(());
             }
         };
 
@@ -435,7 +469,7 @@ impl ChatExtension for TitleGenerationExtension {
         // Send title event
         self.send_title_event(&title, tx);
 
-        Ok(ExtensionAction::Complete)
+        Ok(())
     }
 }
 
