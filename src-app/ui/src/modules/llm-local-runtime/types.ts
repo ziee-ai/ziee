@@ -58,7 +58,7 @@ export type RuntimeEngine = 'llamacpp' | 'mistralrs'
 // Store type declarations
 import type { StoreProxy } from '@ziee/framework/stores'
 import type { useRuntimeVersionStore } from './stores/runtimeVersion'
-import type { useRuntimeUpdateStore } from './stores/RuntimeUpdate.store'
+import type { useRuntimeUpdateStore } from './stores/runtimeUpdate'
 import type { useRuntimeDownloadDrawerStore } from './stores/runtimeDownloadDrawer'
 import type { useRuntimeDeleteConfirmStore } from './stores/runtimeDeleteConfirm'
 import type { useRuntimeConfigStore } from './stores/runtimeConfig'

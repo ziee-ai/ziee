@@ -1,5 +1,5 @@
 export { useRuntimeVersionStore } from './runtimeVersion'
-export { useRuntimeUpdateStore } from './RuntimeUpdate.store'
+export { useRuntimeUpdateStore } from './runtimeUpdate'
 export { useRuntimeDownloadDrawerStore } from './runtimeDownloadDrawer'
 export { useRuntimeDeleteConfirmStore } from './runtimeDeleteConfirm'
 export { useRuntimeConfigStore } from './runtimeConfig'

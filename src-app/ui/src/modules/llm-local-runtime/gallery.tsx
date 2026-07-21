@@ -56,8 +56,8 @@ export const gallery: ModuleGallery = {
         { engine: 'llamacpp' },
       ),
       setup: async () => {
-        const { RuntimeUpdate } = await import(
-          '@/modules/llm-local-runtime/stores/RuntimeUpdate.store'
+        const { RuntimeUpdateRaw } = await import(
+          '@/modules/llm-local-runtime/stores/runtimeUpdate'
         )
         const { RuntimeConfigRaw } = await import(
           '@/modules/llm-local-runtime/stores/runtimeConfig'
@@ -72,7 +72,7 @@ export const gallery: ModuleGallery = {
             },
             loadingGpu: false,
           } as any)
-          RuntimeUpdate.store.setState({
+          RuntimeUpdateRaw.setState({
             checking: new Map(),
             updateChecks: new Map([
               [
@@ -105,8 +105,8 @@ export const gallery: ModuleGallery = {
         { engine: 'llamacpp' },
       ),
       setup: async () => {
-        const { RuntimeUpdate } = await import(
-          '@/modules/llm-local-runtime/stores/RuntimeUpdate.store'
+        const { RuntimeUpdateRaw } = await import(
+          '@/modules/llm-local-runtime/stores/runtimeUpdate'
         )
         const { RuntimeConfigRaw } = await import(
           '@/modules/llm-local-runtime/stores/runtimeConfig'
@@ -124,7 +124,7 @@ export const gallery: ModuleGallery = {
             },
             loadingGpu: false,
           } as any)
-          RuntimeUpdate.store.setState({
+          RuntimeUpdateRaw.setState({
             checking: new Map(),
             updateChecks: new Map([
               [
