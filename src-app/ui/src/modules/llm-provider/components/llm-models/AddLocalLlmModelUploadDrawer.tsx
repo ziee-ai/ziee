@@ -21,6 +21,7 @@ import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { formatBytes } from '@/utils/downloadUtils'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
+import { LlmModelUpload } from '@/modules/llm-provider/stores/llmModelUpload'
 
 /**
  * File with metadata for display
@@ -44,7 +45,7 @@ export function AddLocalLlmModelUploadDrawer() {
   })
 
   const { uploading, uploadProgress, overallUploadProgress } =
-    Stores.LlmModelUpload
+    LlmModelUpload
   const { open, providerId } = Stores.AddLocalLlmModelUploadDrawer
   const canCreate = usePermission(Permissions.LlmModelsCreate)
 
@@ -216,7 +217,7 @@ export function AddLocalLlmModelUploadDrawer() {
   const onValid = async (values: Record<string, unknown>) => {
     try {
       setLoading(true)
-      Stores.LlmModelUpload.clearUploadError()
+      LlmModelUpload.clearUploadError()
 
       // Display name is required (there is no zod resolver on this form, so the
       // FormField `required` marker alone doesn't enforce it).
@@ -271,7 +272,7 @@ export function AddLocalLlmModelUploadDrawer() {
       }
 
       // Upload and auto-commit the files as a model in a single request
-      await Stores.LlmModelUpload.uploadLocalModel(
+      await LlmModelUpload.uploadLocalModel(
         providerId!,
         modelId,
         values.display_name as string,
@@ -310,7 +311,7 @@ export function AddLocalLlmModelUploadDrawer() {
    * Handle upload cancellation
    */
   const handleCancelUpload = () => {
-    Stores.LlmModelUpload.cancelUpload()
+    LlmModelUpload.cancelUpload()
   }
 
   /**

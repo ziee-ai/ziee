@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Dialog, Button, message, Text, Combobox } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
+import { Projects } from '@/modules/projects/stores/projects'
 
 interface AddToProjectModalProps {
   open: boolean
@@ -11,8 +11,8 @@ interface AddToProjectModalProps {
 
 /**
  * Project-picker modal. Reads the projects list from
- * `Stores.Projects` (loaded on mount if not already); user picks a
- * project; on confirm, calls `Stores.Projects.attachConversation`.
+ * `Projects` (loaded on mount if not already); user picks a
+ * project; on confirm, calls `Projects.attachConversation`.
  */
 export function AddToProjectModal({
   open,
@@ -20,14 +20,14 @@ export function AddToProjectModal({
   onClose,
   onAttached,
 }: AddToProjectModalProps) {
-  const { projects, isInitialized, loading } = Stores.Projects
+  const { projects, isInitialized, loading } = Projects
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open && !isInitialized && !loading) {
-      void Stores.Projects.loadProjects()
+      void Projects.loadProjects()
     }
   }, [open, isInitialized, loading])
 
@@ -53,7 +53,7 @@ export function AddToProjectModal({
     if (!selectedId || !conversationId) return
     setSubmitting(true)
     try {
-      await Stores.Projects.attachConversation(selectedId, conversationId)
+      await Projects.attachConversation(selectedId, conversationId)
       message.success('Added to project')
       onAttached?.(selectedId)
       onClose()

@@ -60,7 +60,7 @@ export const gallery: ModuleGallery = {
     {
       slug: 'seeded-memory-audit-loaded',
       title: 'Memory audit log — loaded',
-      note: 'Stores.MemoryAudit.entries → sortable/filterable grid rows',
+      note: 'MemoryAudit.entries → sortable/filterable grid rows',
       path: '/',
       initialPath: '/',
       component: lazyNamed(

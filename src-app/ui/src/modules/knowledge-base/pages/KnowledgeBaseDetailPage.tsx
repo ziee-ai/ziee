@@ -16,7 +16,6 @@ import {
   Text,
   Title,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -24,6 +23,7 @@ import { DivScrollY } from '@/components/common/DivScrollY'
 import { KnowledgeBaseDocumentsPanel } from '@/modules/knowledge-base/components/KnowledgeBaseDocumentsPanel'
 import { KnowledgeBaseSearchPanel } from '@/modules/knowledge-base/components/KnowledgeBaseSearchPanel'
 import { KnowledgeBaseFormDrawer } from '@/modules/knowledge-base/components/KnowledgeBaseFormDrawer'
+import { KnowledgeBaseDetail } from '@/modules/knowledge-base/stores/knowledgeBaseDetail'
 
 /** Human label for the deployment retrieval mode line. */
 const RETRIEVAL_LABEL: Record<string, string> = {
@@ -35,12 +35,12 @@ const RETRIEVAL_LABEL: Record<string, string> = {
 export function KnowledgeBaseDetailPage() {
   const { kbId } = useParams<{ kbId: string }>()
   const navigate = useNavigate()
-  const { kb, loading, retrievalInfo, usage } = Stores.KnowledgeBaseDetail
+  const { kb, loading, retrievalInfo, usage } = KnowledgeBaseDetail
   const [editOpen, setEditOpen] = useState(false)
 
   useEffect(() => {
-    if (kbId) void Stores.KnowledgeBaseDetail.load(kbId)
-    return () => void Stores.KnowledgeBaseDetail.reset()
+    if (kbId) void KnowledgeBaseDetail.load(kbId)
+    return () => void KnowledgeBaseDetail.reset()
   }, [kbId])
 
   if (loading && !kb) {

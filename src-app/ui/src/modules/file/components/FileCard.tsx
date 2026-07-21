@@ -12,6 +12,7 @@ import { type File as FileEntity } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import type { FileUploadProgress } from '@/modules/file/stores/file'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
+import { FilePreviewDrawer } from '@/modules/file/stores/filePreviewDrawer'
 
 function formatFileSize(bytes: number): string {
   // A missing / malformed size (undefined, null, NaN) must never render as
@@ -118,7 +119,7 @@ export function FileCard({
     if (onClick) { onClick(); return }
     // Default: open the global file-preview drawer. Chat surfaces override
     // `onClick` to open the side-by-side right-panel instead.
-    Stores.FilePreviewDrawer.openPreview(file)
+    FilePreviewDrawer.openPreview(file)
   }
 
   // ── Row upload-progress ────────────────────────────────────────────────────

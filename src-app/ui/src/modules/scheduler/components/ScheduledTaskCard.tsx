@@ -27,7 +27,6 @@ import {
   Title,
   Tooltip,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { cn } from '@/lib/utils'
 
 import {
@@ -39,6 +38,8 @@ import {
 } from './runTimeline'
 import { humanizeCron } from './scheduleCron'
 import { skippedToolsNote } from './skippedToolsNote'
+import { SchedulerDrawer } from '@/modules/scheduler/stores/schedulerDrawer'
+import { ScheduledTasks } from '@/modules/scheduler/stores/scheduledTasks'
 
 /** Store mutations don't surface their own errors (no error state), so the UI
  *  layer toasts a rejected action rather than swallowing it. */
@@ -93,7 +94,7 @@ function runActionItems(
     label: a.forkLabel,
     onClick: async () => {
       try {
-        const conversationId = await Stores.ScheduledTasks.continueRun(run.id)
+        const conversationId = await ScheduledTasks.continueRun(run.id)
         if (conversationId) navigate(`/conversations/${conversationId}`)
       } catch (e) {
         notifyError(e, 'Failed to open the conversation')
@@ -228,7 +229,7 @@ function SeriesChooser({
   const navigate = useNavigate()
   const start = async (limit: number) => {
     try {
-      const conversationId = await Stores.ScheduledTasks.continueSeries(
+      const conversationId = await ScheduledTasks.continueSeries(
         task.id,
         limit,
       )
@@ -270,8 +271,8 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
   const [expanded, setExpanded] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const runs = Stores.ScheduledTasks.runsByTask[task.id]
-  const meta = Stores.ScheduledTasks.runsMetaByTask[task.id]
+  const runs = ScheduledTasks.runsByTask[task.id]
+  const meta = ScheduledTasks.runsMetaByTask[task.id]
   const total = meta?.total ?? runs?.length ?? 0
   const page = meta?.page ?? 1
   const perPage = meta?.perPage ?? RUNS_PAGE_SIZE
@@ -280,7 +281,7 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
   const toggleRuns = () => {
     const next = !expanded
     setExpanded(next)
-    if (next && !runs) void Stores.ScheduledTasks.loadRuns(task.id, 1)
+    if (next && !runs) void ScheduledTasks.loadRuns(task.id, 1)
   }
 
   return (
@@ -308,7 +309,7 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
             checked={task.enabled}
             onCheckedChange={async v => {
               try {
-                await Stores.ScheduledTasks.setEnabled(task.id, v)
+                await ScheduledTasks.setEnabled(task.id, v)
               } catch (e) {
                 notifyError(e, 'Failed to update the task')
               }
@@ -355,7 +356,7 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
                 aria-label="Run now"
                 onClick={async () => {
                   try {
-                    await Stores.ScheduledTasks.runNow(task.id)
+                    await ScheduledTasks.runNow(task.id)
                     message.info(
                       'Running now — result will land in your notifications',
                     )
@@ -372,7 +373,7 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
                 size="icon"
                 icon={<Pencil />}
                 aria-label="Edit"
-                onClick={() => Stores.SchedulerDrawer.openEdit(task)}
+                onClick={() => SchedulerDrawer.openEdit(task)}
               />
             </Tooltip>
             <Tooltip content="Delete">
@@ -398,7 +399,7 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
               onConfirm={async () => {
                 setDeleting(true)
                 try {
-                  await Stores.ScheduledTasks.deleteTask(task.id)
+                  await ScheduledTasks.deleteTask(task.id)
                   // success → the card unmounts (task removed from the list).
                 } catch (e) {
                   notifyError(e, 'Failed to delete the task')
@@ -469,10 +470,10 @@ export function ScheduledTaskCard({ task }: { task: ScheduledTask }) {
                   pageSize={perPage}
                   itemNoun="run"
                   onChange={p =>
-                    void Stores.ScheduledTasks.loadRuns(task.id, p, perPage)
+                    void ScheduledTasks.loadRuns(task.id, p, perPage)
                   }
                   onPageSizeChange={size =>
-                    void Stores.ScheduledTasks.loadRuns(task.id, 1, size)
+                    void ScheduledTasks.loadRuns(task.id, 1, size)
                   }
                 />
               )}

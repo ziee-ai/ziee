@@ -1,22 +1,23 @@
 import { User } from 'lucide-react'
 import { useEffect } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { List, Tag } from '@ziee/kit'
+import { GroupMembersDrawer as GroupMembersDrawerStore } from '@/modules/user/components/group/groupMembersDrawer'
+import { UserGroups } from '@/modules/user/stores/userGroups'
 
 export function GroupMembersDrawer() {
-  const { isOpen: open, selectedGroup: group } = Stores.GroupMembersDrawer
-  const { currentGroupMembers, loadingGroupMembers } = Stores.UserGroups
+  const { isOpen: open, selectedGroup: group } = GroupMembersDrawerStore
+  const { currentGroupMembers, loadingGroupMembers } = UserGroups
 
   // Load group members when group changes
   useEffect(() => {
     if (group && open) {
-      Stores.UserGroups.loadUserGroupMembers(group.id)
+      UserGroups.loadUserGroupMembers(group.id)
     }
   }, [group, open])
 
   const handleClose = () => {
-    Stores.GroupMembersDrawer.closeGroupMembersDrawer()
+    GroupMembersDrawerStore.closeGroupMembersDrawer()
   }
 
   return (

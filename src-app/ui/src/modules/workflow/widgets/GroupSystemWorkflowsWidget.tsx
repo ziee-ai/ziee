@@ -3,9 +3,10 @@ import { Workflow as WorkflowIcon } from 'lucide-react'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import type { Workflow } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { GroupEntityAssignmentWidget } from '@/components/common/group-entity-assignment/GroupEntityAssignmentWidget'
+import { GroupSystemWorkflowsAssignment } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
+import { GroupSystemWorkflowsWidget as GroupSystemWorkflowsWidgetStore } from '@/modules/workflow/widgets/groupSystemWorkflowsWidget'
 
 const workflowLabel = (w: Workflow) => w.display_name ?? w.name
 
@@ -14,14 +15,14 @@ const workflowLabel = (w: Workflow) => w.display_name ?? w.name
  * of the shared GroupEntityAssignmentWidget to the workflow widget store.
  */
 export function GroupSystemWorkflowsWidget({ group }: GroupWidgetProps) {
-  const data = Stores.GroupSystemWorkflowsWidget.groupWorkflows.get(group.id)
+  const data = GroupSystemWorkflowsWidgetStore.groupWorkflows.get(group.id)
   const canManage = usePermission(Permissions.WorkflowsAssignToGroups)
 
   // The group-system-workflows read endpoint requires workflows::assign_to_groups
   // (same as canManage). Gate the eager load so a groups::read-only admin
   // without it doesn't 403 on mount.
   useEffect(() => {
-    if (canManage) Stores.GroupSystemWorkflowsWidget.loadWorkflowsForGroup(group.id)
+    if (canManage) GroupSystemWorkflowsWidgetStore.loadWorkflowsForGroup(group.id)
   }, [group.id, canManage])
 
   return (
@@ -40,7 +41,7 @@ export function GroupSystemWorkflowsWidget({ group }: GroupWidgetProps) {
             }
           : undefined
       }
-      onEdit={g => Stores.GroupSystemWorkflowsAssignment.openDrawer(g)}
+      onEdit={g => GroupSystemWorkflowsAssignment.openDrawer(g)}
       entityLabel={workflowLabel}
       entityActive={w => w.enabled}
     />

@@ -2,7 +2,8 @@ import { Inbox } from 'lucide-react'
 import { Alert, Button, Dialog, Space, Text, Upload, message } from '@ziee/kit'
 import { useState } from 'react'
 import type { ValidateSkillResponse } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
+import { SystemSkill } from '@/modules/skill/stores/systemSkill'
+import { Skill as SkillStore } from '@/modules/skill/stores/skill'
 
 interface ImportSkillDialogProps {
   open: boolean
@@ -52,7 +53,7 @@ export function ImportSkillDialog({
     setValidating(true)
     try {
       const text = await file.text()
-      const result = await Stores.Skill.validateSkill(text)
+      const result = await SkillStore.validateSkill(text)
       setValidation(result)
     } catch {
       message.error('Validation request failed')
@@ -72,9 +73,9 @@ export function ImportSkillDialog({
       form.append('bundle', file)
       if (system) form.append('scope', 'system')
       if (system) {
-        await Stores.SystemSkill.importSystemSkill(form)
+        await SystemSkill.importSystemSkill(form)
       } else {
-        await Stores.Skill.importSkill(form)
+        await SkillStore.importSkill(form)
       }
       message.success('Skill imported')
       reset()

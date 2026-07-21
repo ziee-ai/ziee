@@ -5,9 +5,9 @@ import { message } from '@ziee/kit'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-import { Stores } from '@ziee/framework/stores'
 import { CitationCard } from '../components/CitationCard'
 import { ImportCitationsModal } from '../components/ImportCitationsModal'
+import { Citations as CitationsStore } from '@/modules/citations/stores/citations'
 
 const EXPORT_FORMATS: { key: string; label: string; ext: string; mime: string }[] = [
   { key: 'text', label: 'Formatted (CSL style)', ext: 'txt', mime: 'text/plain' },
@@ -27,14 +27,14 @@ function download(content: string, filename: string, mime: string) {
 }
 
 export function CitationsSettingsPage() {
-  const { entries, loading, importing, verifying, error } = Stores.Citations
+  const { entries, loading, importing, verifying, error } = CitationsStore
   // Import / Delete require `citations::manage`; Verify-all + Export are `use`.
   const canManage = usePermission(Permissions.CitationsManage)
   const [importOpen, setImportOpen] = useState(false)
 
   const handleVerifyAll = async () => {
     try {
-      const report = await Stores.Citations.verifyAll()
+      const report = await CitationsStore.verifyAll()
       const verified = report.results.filter(
         r => r.verification_status === 'verified',
       ).length
@@ -47,7 +47,7 @@ export function CitationsSettingsPage() {
 
   const handleExport = async (format: string) => {
     try {
-      const out = await Stores.Citations.exportLibrary(format)
+      const out = await CitationsStore.exportLibrary(format)
       const fmt = EXPORT_FORMATS.find(f => f.key === format)
       download(out, `citations.${fmt?.ext ?? 'txt'}`, fmt?.mime ?? 'text/plain')
     } catch (e) {
@@ -101,7 +101,7 @@ export function CitationsSettingsPage() {
               resource="citations"
               description="Your bibliography couldn't be loaded. Check your connection and try again."
               details={error}
-              onRetry={() => void Stores.Citations.load()}
+              onRetry={() => void CitationsStore.load()}
               data-testid="cite-settings-error"
             />
           ) : (

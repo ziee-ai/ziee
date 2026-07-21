@@ -5,6 +5,7 @@ import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
 import { emitMcpServerGroupsChanged } from '@/modules/mcp/events'
+import { SystemMcpServer as SystemMcpServerStore } from '@/modules/mcp/stores/systemMcpServer'
 
 interface McpServerGroupsAssignmentCardProps {
   serverId: string
@@ -42,7 +43,7 @@ export function McpServerGroupsAssignmentCard({
             return res.groups.map(g => ({ id: g.id, name: g.name, description: g.description, is_default: g.is_default }))
           },
           save: async ids => {
-            await Stores.SystemMcpServer.assignServerToGroups(serverId, ids)
+            await SystemMcpServerStore.assignServerToGroups(serverId, ids)
             await emitMcpServerGroupsChanged(serverId, ids)
           },
         }}

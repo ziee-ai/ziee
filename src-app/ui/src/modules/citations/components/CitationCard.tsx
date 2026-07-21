@@ -1,8 +1,8 @@
 import { Trash2 } from 'lucide-react'
 import { Button, Card, Confirm, Space, Text, Paragraph, message } from '@ziee/kit'
 import type { BibliographyEntry } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { VerificationBadge } from './VerificationBadge'
+import { Citations } from '@/modules/citations/stores/citations'
 
 /** Pull a compact author list out of the entry's CSL-JSON. */
 function authorLine(csl: unknown): string {
@@ -34,7 +34,7 @@ export function CitationCard({
 }) {
   const handleDelete = async () => {
     try {
-      await Stores.Citations.remove(entry.id)
+      await Citations.remove(entry.id)
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Delete failed')
     }

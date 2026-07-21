@@ -1,7 +1,6 @@
 import { CheckCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { Workflow } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { NEW_CHAT_MODEL_KEY } from '@/modules/user-llm-providers/modelPicker'
 import {
   message,
@@ -20,6 +19,8 @@ import {
 } from '@ziee/kit'
 import { z } from 'zod'
 import { parseWorkflowIr } from './workflowIr'
+import { ModelPicker } from '@/modules/user-llm-providers/modelPicker'
+import { Workflow as WorkflowStore } from '@/modules/workflow/stores/workflow'
 
 interface WorkflowRunDialogProps {
   workflow: Workflow
@@ -77,7 +78,7 @@ export function WorkflowRunDialog({
   const [captureLogs, setCaptureLogs] = useState(false)
 
   const { providers, selectedByConversation, loading: modelsLoading } =
-    Stores.ModelPicker
+    ModelPicker
   // The general "current" default model (the new-chat selection) — the workflow
   // run dialog isn't pane-scoped, so it just needs a sensible default (ITEM-5).
   const selectedModelId = selectedByConversation[NEW_CHAT_MODEL_KEY]
@@ -130,7 +131,7 @@ export function WorkflowRunDialog({
 
     setSubmitting(true)
     try {
-      const res = await Stores.Workflow.run(
+      const res = await WorkflowStore.run(
         workflow.id,
         inputValues,
         conversationId,

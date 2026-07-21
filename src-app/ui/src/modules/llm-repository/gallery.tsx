@@ -6,7 +6,7 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
+import { LlmRepositoryDrawer as LlmRepositoryDrawerStore } from '@/modules/llm-repository/stores/llmRepositoryDrawer'
 
 export const gallery: ModuleGallery = {
   overlays: [
@@ -18,7 +18,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/llm-repository/components/LlmRepositoryDrawer'),
         'LlmRepositoryDrawer',
       ),
-      open: () => Stores.LlmRepositoryDrawer.openDrawer(),
+      open: () => LlmRepositoryDrawerStore.openDrawer(),
     },
   ],
 }

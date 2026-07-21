@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
-import { Stores } from '@ziee/framework/stores'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { ChatPaneProvider } from '@/modules/chat/core/pane/ChatPaneContext'
 import { ConversationPane } from '@/modules/chat/pages/ConversationPage'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
+import { SplitView as SplitViewStore } from '@/modules/chat/core/stores/splitView'
 
 /**
  * In-window split chat (ITEM-8). Renders the `SplitView` store's ordered panes
@@ -28,8 +29,8 @@ export function SplitChatView() {
   // flag. We READ the flag back to relax this shell so the pane content can extend
   // the document.
   useNativeScroll(md)
-  const nativeScroll = Stores.AppLayout.nativeScroll
-  const { panes, focusedPaneId, dividerWidths } = Stores.SplitView
+  const nativeScroll = AppLayout.nativeScroll
+  const { panes, focusedPaneId, dividerWidths } = SplitViewStore
   // At/below `md` (≤768px) there isn't room to tile columns → single-visible-pane
   // mode (ITEM-30 / FB-26): ONE pane shows full-width; the others stay MOUNTED but
   // `hidden` so a background pane keeps streaming. There is NO tab strip and NO
@@ -98,7 +99,7 @@ export function SplitChatView() {
                 ? undefined
                 : { flex: dividerWidths[i] ? `0 0 ${dividerWidths[i]}px` : '1 1 0%' }
             }
-            onPointerDownCapture={() => Stores.SplitView.focusPane(p.paneId)}
+            onPointerDownCapture={() => SplitViewStore.focusPane(p.paneId)}
           >
             <ChatPaneProvider paneId={p.paneId} conversationId={p.conversationId}>
               <ConversationPane />
@@ -126,7 +127,7 @@ function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
   // divider even after a pane reorder changed this divider's leftPaneIndex.
   const idxRef = useRef(leftPaneIndex)
   idxRef.current = leftPaneIndex
-  const width = Stores.SplitView.dividerWidths[leftPaneIndex]
+  const width = SplitViewStore.dividerWidths[leftPaneIndex]
 
   // Stable (created-once) window handlers so add/removeEventListener always
   // match AND unmount cleanup can remove them — fixes the listener leak when the
@@ -156,7 +157,7 @@ function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
       const d = drag.current
       // Commit the final width once — React then reconciles the pane's inline
       // style to the same clamped value (no visual jump).
-      if (d) Stores.SplitView.setDividerWidth(idxRef.current, d.last)
+      if (d) SplitViewStore.setDividerWidth(idxRef.current, d.last)
       drag.current = null
       window.removeEventListener('pointermove', handlers.current.move)
       window.removeEventListener('pointerup', handlers.current.up)
@@ -192,10 +193,10 @@ function SplitDivider({ leftPaneIndex }: { leftPaneIndex: number }) {
     const STEP = 24
     if (e.key === 'ArrowLeft') {
       e.preventDefault()
-      Stores.SplitView.setDividerWidth(leftPaneIndex, currentLeftWidth() - STEP)
+      SplitViewStore.setDividerWidth(leftPaneIndex, currentLeftWidth() - STEP)
     } else if (e.key === 'ArrowRight') {
       e.preventDefault()
-      Stores.SplitView.setDividerWidth(leftPaneIndex, currentLeftWidth() + STEP)
+      SplitViewStore.setDividerWidth(leftPaneIndex, currentLeftWidth() + STEP)
     }
   }
 

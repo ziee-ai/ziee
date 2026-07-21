@@ -19,6 +19,9 @@ import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { SkillScopeBadge } from './SkillScopeBadge'
+import { SystemSkill } from '@/modules/skill/stores/systemSkill'
+import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
+import { Skill as SkillStore } from '@/modules/skill/stores/skill'
 
 /** Build a readable markdown summary from the skill's persisted
  *  metadata. This renders the parsed FRONTMATTER only (`description`,
@@ -41,7 +44,7 @@ function buildSkillMarkdown(skill: Skill): string {
 }
 
 export function SkillDetailDrawer() {
-  const { isOpen, skill, conversationId } = Stores.SkillDrawer
+  const { isOpen, skill, conversationId } = SkillDrawer
   // No dedicated `skills::manage` permission is generated; a user can
   // manage their OWN user-scope skills (any installer can), while
   // system skills require `skills::manage_system`.
@@ -114,7 +117,7 @@ export function SkillDetailDrawer() {
       <Drawer
         open={isOpen}
         data-testid="skill-detail-sheet"
-        onClose={() => Stores.SkillDrawer.close()}
+        onClose={() => SkillDrawer.close()}
         title="Skill details"
       />
     )
@@ -146,12 +149,12 @@ export function SkillDetailDrawer() {
   const handleDelete = async () => {
     try {
       if (skill.scope === 'system') {
-        await Stores.SystemSkill.deleteSystemSkill(skill.id)
+        await SystemSkill.deleteSystemSkill(skill.id)
       } else {
-        await Stores.Skill.deleteSkill(skill.id)
+        await SkillStore.deleteSkill(skill.id)
       }
       message.success('Skill deleted')
-      Stores.SkillDrawer.close()
+      SkillDrawer.close()
     } catch {
       message.error('Failed to delete skill')
     }
@@ -161,7 +164,7 @@ export function SkillDetailDrawer() {
     <Drawer
       open={isOpen}
       data-testid="skill-detail-sheet-loaded"
-      onClose={() => Stores.SkillDrawer.close()}
+      onClose={() => SkillDrawer.close()}
       title={
         <Space>
           <Title level={5} className="!m-0">

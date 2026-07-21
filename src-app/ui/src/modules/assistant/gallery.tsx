@@ -6,7 +6,7 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
+import { AssistantDrawer } from '@/modules/assistant/components/assistantDrawer'
 
 export const gallery: ModuleGallery = {
   overlays: [
@@ -18,7 +18,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/assistant/components/AssistantFormDrawer'),
         'AssistantFormDrawer',
       ),
-      open: () => Stores.AssistantDrawer.openAssistantDrawer(),
+      open: () => AssistantDrawer.openAssistantDrawer(),
     },
   ],
 }

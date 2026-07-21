@@ -41,7 +41,7 @@ export const gallery: ModuleGallery = {
     {
       slug: 'seeded-sandbox-limits-error',
       title: 'Code Sandbox limits — save error',
-      note: 'limits loaded, then Stores.SandboxResourceLimits.error → inline error alert',
+      note: 'limits loaded, then SandboxResourceLimits.error → inline error alert',
       path: '/',
       initialPath: '/',
       component: lazyNamed(

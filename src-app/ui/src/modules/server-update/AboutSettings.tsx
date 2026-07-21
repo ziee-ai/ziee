@@ -4,7 +4,6 @@
  */
 
 import { RotateCw } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import {
   Alert,
@@ -18,6 +17,7 @@ import {
   Link,
   Tooltip,
 } from '@ziee/kit'
+import { ServerUpdate } from '@/modules/server-update/stores/serverUpdate'
 
 const UPGRADE_COMMAND =
   'curl -fsSL https://github.com/ziee-ai/ziee/releases/latest/download/install.sh | sh'
@@ -33,7 +33,7 @@ export default function AboutSettings() {
     checkedAt,
     loading,
     error,
-  } = Stores.ServerUpdate
+  } = ServerUpdate
 
   // Show the loading state until the first status load resolves — not
   // only while `loading` is explicitly true. The store sets `loading`
@@ -151,7 +151,7 @@ export default function AboutSettings() {
             className="mt-2"
             icon={<RotateCw />}
             loading={loading}
-            onClick={() => Stores.ServerUpdate.loadStatus()}
+            onClick={() => ServerUpdate.loadStatus()}
           >
             Reload status
           </Button>

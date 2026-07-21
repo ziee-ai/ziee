@@ -16,9 +16,9 @@ import {
   message,
   useForm,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { WebSearchUserKeys } from '@/modules/web-search/stores/webSearchUserKeys'
 
 /**
  * User-facing page: the caller's OWN web-search provider keys. Mirrors the
@@ -28,7 +28,7 @@ import { SettingsFormActions } from '@/modules/settings/components/SettingsFormA
  * on `web_search::use`.
  */
 export function WebSearchUserKeysPage() {
-  const { providers, loading, error, savingProvider } = Stores.WebSearchUserKeys
+  const { providers, loading, error, savingProvider } = WebSearchUserKeys
 
   const buildDefaults = () => {
     const out: Record<string, string> = {}
@@ -55,7 +55,7 @@ export function WebSearchUserKeysPage() {
       for (const p of providers) {
         const key = (values[p.provider] ?? '').trim()
         if (key.length === 0) continue
-        await Stores.WebSearchUserKeys.saveKey(p.provider, key)
+        await WebSearchUserKeys.saveKey(p.provider, key)
         saved += 1
       }
       if (saved > 0) {
@@ -71,7 +71,7 @@ export function WebSearchUserKeysPage() {
 
   const clearKey = async (provider: string, displayName: string) => {
     try {
-      await Stores.WebSearchUserKeys.clearKey(provider)
+      await WebSearchUserKeys.clearKey(provider)
       message.success(`Your ${displayName} key was removed`)
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to remove key')
@@ -108,7 +108,7 @@ export function WebSearchUserKeysPage() {
               resource="your web search keys"
               description="Your provider keys couldn't be loaded. Check your connection and try again."
               details={error}
-              onRetry={() => void Stores.WebSearchUserKeys.load()}
+              onRetry={() => void WebSearchUserKeys.load()}
               data-testid="websearch-user-keys-error"
             />
           ) : (

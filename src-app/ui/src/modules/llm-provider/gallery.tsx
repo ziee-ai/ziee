@@ -20,6 +20,8 @@ import {
   llmProvidersCassette,
   llmProvidersList,
 } from '@/dev/gallery/fixtures/llm-providers'
+import { GroupLlmProvidersAssignment } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
+import { LlmProviderDrawer as LlmProviderDrawerStore } from '@/modules/llm-provider/components/llmProviderDrawer'
 
 const provider = llmProvidersList.providers[0]
 const group = llmGroupsList.groups[0]
@@ -40,7 +42,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/llm-provider/components/LlmProviderDrawer'),
         'LlmProviderDrawer',
       ),
-      open: () => Stores.LlmProviderDrawer.openLlmProviderDrawer(provider),
+      open: () => LlmProviderDrawerStore.openLlmProviderDrawer(provider),
     },
     {
       slug: 'overlay-group-llm-providers-assignment',
@@ -50,7 +52,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer'),
         'GroupLlmProvidersAssignmentDrawer',
       ),
-      open: () => Stores.GroupLlmProvidersAssignment.openDrawer(group),
+      open: () => GroupLlmProvidersAssignment.openDrawer(group),
     },
     {
       slug: 'overlay-edit-llm-model-drawer',

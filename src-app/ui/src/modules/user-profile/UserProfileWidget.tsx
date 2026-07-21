@@ -4,6 +4,7 @@ import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { useNavigate } from 'react-router-dom'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 
 function SidebarItem({
   icon,
@@ -72,7 +73,7 @@ function SidebarItem({
 
 export function UserProfileWidget() {
   const { user, isInitializing, isLoading } = Stores.Auth
-  const { isSidebarCollapsed } = Stores.AppLayout
+  const { isSidebarCollapsed } = AppLayout
   const canViewProfile = usePermission(Permissions.ProfileRead)
   const navigate = useNavigate()
 

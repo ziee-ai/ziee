@@ -11,10 +11,10 @@ import {
   ErrorState,
   message,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
+import { RuntimeConfig } from '@/modules/llm-local-runtime/stores/runtimeConfig'
 
 const schema = z.object({
   idle_unload_secs: z.number().min(0).max(86400),
@@ -32,7 +32,7 @@ type Schema = z.infer<typeof schema>
  */
 export function RuntimeConfigCard() {
   const { settings, loadingSettings, savingSettings, error } =
-    Stores.RuntimeConfig
+    RuntimeConfig
   const canManage = usePermission(Permissions.RuntimeSettingsManage)
   const form = useForm<Schema>({
     resolver: zodResolver(schema),
@@ -55,7 +55,7 @@ export function RuntimeConfigCard() {
 
   const handleSave = async (values: Schema) => {
     try {
-      await Stores.RuntimeConfig.saveSettings(values)
+      await RuntimeConfig.saveSettings(values)
       message.success('Runtime settings saved')
     } catch (e) {
       // Save is user-initiated → a toast is the right feedback here.
@@ -83,7 +83,7 @@ export function RuntimeConfigCard() {
           resource="runtime configuration"
           description="The runtime configuration couldn't be loaded."
           details={error}
-          onRetry={() => Stores.RuntimeConfig.loadSettings()}
+          onRetry={() => RuntimeConfig.loadSettings()}
           data-testid="llmrt-runtime-config-error"
         />
       </Card>

@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { Button, Spin, Text } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import {
   DrawerOpenerProvider,
   ProjectExtensionSlot,
 } from '@/modules/projects/core/extensions'
+import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
 
 export function ProjectKnowledgeSection() {
   const [open, setOpen] = useState(false)
   const openDrawer = () => setOpen(true)
-  const loading = Stores.ProjectDetail.loading
-  const project = Stores.ProjectDetail.project
+  const loading = ProjectDetail.loading
+  const project = ProjectDetail.project
 
   // Don't render anything when no project is loaded and nothing is loading
   // (defense-in-depth — the parent page typically gates on this already).

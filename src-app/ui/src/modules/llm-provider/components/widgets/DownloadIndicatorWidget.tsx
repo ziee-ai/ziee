@@ -9,6 +9,7 @@ import type {
   DownloadFromRepositoryRequest,
   FileFormat,
 } from '@/api-client/types'
+import { LlmModelDownload } from '@/modules/llm-provider/stores/llmModelDownload'
 
 /**
  * Rebuild a `DownloadFromRepositoryRequest` from a failed
@@ -66,7 +67,7 @@ function buildRetryRequest(
 }
 
 export function DownloadIndicatorWidget() {
-  const { downloads } = Stores.LlmModelDownload
+  const { downloads } = LlmModelDownload
   // Same gating used by the hub model card. Sharing this means the
   // Retry button surfaces the same Repository Disabled / Auth Required
   // / Cannot Connect modals the user would see clicking Retry from the
@@ -150,7 +151,7 @@ export function DownloadIndicatorWidget() {
         // popover briefly shows two rows but that's a UX nit, not a
         // data-loss bug — the new download supersedes visually.
         try {
-          await Stores.LlmModelDownload.deleteLlmModelDownload(d.id)
+          await LlmModelDownload.deleteLlmModelDownload(d.id)
         } catch {
           // ignore — the new download visually supersedes anyway
         }
@@ -174,9 +175,9 @@ export function DownloadIndicatorWidget() {
       return
     }
     try {
-      await Stores.LlmModelDownload.downloadLlmModelFromRepository(req)
+      await LlmModelDownload.downloadLlmModelFromRepository(req)
       try {
-        await Stores.LlmModelDownload.deleteLlmModelDownload(d.id)
+        await LlmModelDownload.deleteLlmModelDownload(d.id)
       } catch {
         // ignore — new download visually supersedes
       }
@@ -190,7 +191,7 @@ export function DownloadIndicatorWidget() {
 
   const handleClear = async (d: DownloadInstance) => {
     try {
-      await Stores.LlmModelDownload.deleteLlmModelDownload(d.id)
+      await LlmModelDownload.deleteLlmModelDownload(d.id)
     } catch (error) {
       message.error(
         error instanceof Error ? error.message : 'Failed to clear download',

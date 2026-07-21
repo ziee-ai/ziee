@@ -1,7 +1,8 @@
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import { claimSubscription, percentOf } from '../../downloadProgress.helpers'
 import type { VoiceModelDownloadProgressSet } from '../state'
+import { VoiceModelUpdate } from '@/modules/voice/stores/voiceModelUpdate'
+import { VoiceModel } from '@/modules/voice/stores/voiceModel'
 
 /** Per-key abort controllers so we can tear down stale SSE subscriptions. */
 const sseAborts = new Map<string, AbortController>()
@@ -68,10 +69,10 @@ export default (
               return { activeByKey: next }
             })
             // Refresh the installed-models library + the catalog (installed flags).
-            Stores.VoiceModel.loadInstalled().catch(() => {
+            VoiceModel.loadInstalled().catch(() => {
               /* non-fatal */
             })
-            Stores.VoiceModelUpdate.checkForUpdates().catch(() => {
+            VoiceModelUpdate.checkForUpdates().catch(() => {
               /* non-fatal */
             })
             window.setTimeout(() => {

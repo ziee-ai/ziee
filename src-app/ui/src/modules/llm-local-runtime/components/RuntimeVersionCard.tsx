@@ -11,10 +11,10 @@ import {
 } from '@ziee/kit'
 import { Trash2, Star } from 'lucide-react'
 
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type RuntimeVersionResponse } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { RuntimeVersion } from '@/modules/llm-local-runtime/stores/runtimeVersion'
 
 interface Props {
   version: RuntimeVersionResponse
@@ -36,7 +36,7 @@ interface Props {
  *    `UsersSettings`'s Email / Last Login / Created strip.
  */
 export function RuntimeVersionCard({ version }: Props) {
-  const { settingDefault, deleting } = Stores.RuntimeVersion
+  const { settingDefault, deleting } = RuntimeVersion
 
   const isSettingDefault = settingDefault.get(version.id) || false
   const isDeleting = deleting.get(version.id) || false
@@ -52,7 +52,7 @@ export function RuntimeVersionCard({ version }: Props) {
 
   const handleSetDefault = async () => {
     try {
-      await Stores.RuntimeVersion.setDefaultVersion(version.id)
+      await RuntimeVersion.setDefaultVersion(version.id)
     } catch {
       // Error already handled in store
     }
@@ -60,7 +60,7 @@ export function RuntimeVersionCard({ version }: Props) {
 
   const handleDelete = async () => {
     try {
-      await Stores.RuntimeVersion.deleteVersion(version.id, removeBinary)
+      await RuntimeVersion.deleteVersion(version.id, removeBinary)
       setAckDefault(false)
     } catch (error) {
       // Surface the in-use guard (409) reason, e.g. which models/providers

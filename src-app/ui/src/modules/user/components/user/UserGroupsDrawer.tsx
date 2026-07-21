@@ -1,7 +1,6 @@
 import { Plus, Users } from 'lucide-react'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { useEffect, useState } from 'react'
@@ -13,10 +12,13 @@ import {
   Empty,
   List,
 } from '@ziee/kit'
+import { AssignGroupDrawer } from '@/modules/user/components/user/assignGroupDrawer'
+import { UserGroupsDrawer as UserGroupsDrawerStore } from '@/modules/user/components/user/userGroupsDrawer'
+import { UserGroups } from '@/modules/user/stores/userGroups'
 
 export function UserGroupsDrawer() {
-  const { isOpen, user } = Stores.UserGroupsDrawer
-  const { groups } = Stores.UserGroups
+  const { isOpen, user } = UserGroupsDrawerStore
+  const { groups } = UserGroups
   const [userGroupIds, setUserGroupIds] = useState<Set<string>>(new Set())
   const [loadingUserGroups, setLoadingUserGroups] = useState(false)
   const canAssign = usePermission(Permissions.GroupsAssignUsers)
@@ -31,7 +33,7 @@ export function UserGroupsDrawer() {
         // Load members for each group to determine user's memberships
         const membershipPromises = groups.map(async group => {
           try {
-            await Stores.UserGroups.loadUserGroupMembers(group.id)
+            await UserGroups.loadUserGroupMembers(group.id)
             return { groupId: group.id, isMember: false } // Will update based on members
           } catch {
             return { groupId: group.id, isMember: false }
@@ -43,8 +45,8 @@ export function UserGroupsDrawer() {
         // Check which groups the user belongs to by examining currentGroupMembers
         const userGroups = new Set<string>()
         for (const group of groups) {
-          await Stores.UserGroups.loadUserGroupMembers(group.id)
-          const members = Stores.UserGroups.$.currentGroupMembers
+          await UserGroups.loadUserGroupMembers(group.id)
+          const members = UserGroups.$.currentGroupMembers
           if (members.some(m => m.id === user.id)) {
             userGroups.add(group.id)
           }
@@ -65,7 +67,7 @@ export function UserGroupsDrawer() {
     if (!user) return
 
     try {
-      await Stores.UserGroups.removeUserFromUserGroup(user.id, groupId)
+      await UserGroups.removeUserFromUserGroup(user.id, groupId)
       message.success('User removed from group successfully')
 
       // Update user groups list
@@ -84,7 +86,7 @@ export function UserGroupsDrawer() {
     if (!user) return
 
     try {
-      await Stores.UserGroups.assignUserToUserGroup(user.id, groupId)
+      await UserGroups.assignUserToUserGroup(user.id, groupId)
       message.success('User assigned to group')
       setUserGroupIds(prev => new Set([...prev, groupId]))
     } catch (error) {
@@ -97,7 +99,7 @@ export function UserGroupsDrawer() {
       title={`Groups for ${user?.username}`}
       placement="right"
       onClose={() => {
-        Stores.UserGroupsDrawer.closeUserGroupsDrawer()
+        UserGroupsDrawerStore.closeUserGroupsDrawer()
         setUserGroupIds(new Set())
       }}
       open={isOpen}
@@ -109,9 +111,9 @@ export function UserGroupsDrawer() {
               variant="default"
               icon={<Plus aria-hidden="true" />}
               onClick={() => {
-                Stores.UserGroupsDrawer.closeUserGroupsDrawer()
+                UserGroupsDrawerStore.closeUserGroupsDrawer()
                 if (user) {
-                  Stores.AssignGroupDrawer.openAssignGroupDrawer(user)
+                  AssignGroupDrawer.openAssignGroupDrawer(user)
                 }
               }}
               data-testid="user-groups-drawer-assign-button"

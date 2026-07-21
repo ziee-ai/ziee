@@ -1,12 +1,13 @@
 import { RotateCw } from 'lucide-react'
 import { Fragment, useEffect } from 'react'
 import { Button, Card, Separator, Empty, ErrorState, Flex, Spin, Tag, Text, message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import type { RuntimeEngine } from '../types'
 import { RuntimeVersionCard } from './RuntimeVersionCard'
 import { VersionModelsBlock } from './VersionModelsBlock'
+import { RuntimeModelUsage } from '@/modules/llm-local-runtime/stores/runtimeModelUsage'
+import { RuntimeVersion } from '@/modules/llm-local-runtime/stores/runtimeVersion'
 
 /**
  * Per-engine "Installed versions" card.
@@ -27,26 +28,26 @@ import { VersionModelsBlock } from './VersionModelsBlock'
  * version isn't installed (was the unresolved-warning section in
  * the old standalone card).
  *
- * Loads both `Stores.RuntimeVersion.versions` (for the version
- * rows) and `Stores.RuntimeModelUsage.usage` (for the per-version
+ * Loads both `RuntimeVersion.versions` (for the version
+ * rows) and `RuntimeModelUsage.usage` (for the per-version
  * model lists + the unresolved set).
  */
 export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
-  const { versions, loading: loadingVersions, error: versionsError } = Stores.RuntimeVersion
-  const { usage, loading: loadingUsage } = Stores.RuntimeModelUsage
+  const { versions, loading: loadingVersions, error: versionsError } = RuntimeVersion
+  const { usage, loading: loadingUsage } = RuntimeModelUsage
   const canManage = usePermission(Permissions.LocalRuntimeManage)
   const canViewLogs = usePermission(Permissions.LocalRuntimeLogs)
   const refreshing = loadingVersions || (loadingUsage.get(engine) ?? false)
 
   const handleRefresh = () => {
-    // Reload BOTH stores — the version list (Stores.RuntimeVersion)
-    // and the per-version models (Stores.RuntimeModelUsage).
+    // Reload BOTH stores — the version list (RuntimeVersion)
+    // and the per-version models (RuntimeModelUsage).
     // Fire-and-forget; the loading spinners on the button + spinner
     // for empty state cover the user-visible state.
-    Stores.RuntimeVersion.loadVersions().catch(() =>
+    RuntimeVersion.loadVersions().catch(() =>
       message.error('Failed to refresh runtime versions'),
     )
-    Stores.RuntimeModelUsage.loadUsage(engine).catch(() =>
+    RuntimeModelUsage.loadUsage(engine).catch(() =>
       message.error('Failed to refresh version usage'),
     )
   }
@@ -71,13 +72,13 @@ export function InstalledVersionsCard({ engine }: { engine: RuntimeEngine }) {
 
   useEffect(() => {
     if (versions.length === 0 && !loadingVersions) {
-      Stores.RuntimeVersion.loadVersions().catch(() => {})
+      RuntimeVersion.loadVersions().catch(() => {})
     }
     // Models-by-version is a separate fetch — it returns "models
-    // for installed versions" which is data Stores.RuntimeVersion
+    // for installed versions" which is data RuntimeVersion
     // doesn't carry. Loaded every mount so a swap/start/stop in
     // another tab is reflected the next time the card paints.
-    Stores.RuntimeModelUsage.loadUsage(engine).catch(() => {})
+    RuntimeModelUsage.loadUsage(engine).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine])
 

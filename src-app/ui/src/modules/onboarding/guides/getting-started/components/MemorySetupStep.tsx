@@ -14,9 +14,10 @@ import {
 } from '@ziee/kit'
 import { Lightbulb, Info, ArrowLeft, RotateCw, Plus } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
+import { Onboarding } from '@/modules/onboarding/stores/onboarding'
+import { MemorySetupStep as MemorySetupStepStore } from '@/modules/onboarding/guides/getting-started/components/memorySetupStep'
 
 /**
  * MemorySetupStep — Plan §8 two-screen flow.
@@ -39,7 +40,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
     loading,
     saving,
     error,
-  } = Stores.MemorySetupStep
+  } = MemorySetupStepStore
 
   const [screen, setScreen] = useState<'enable' | 'pick'>('enable')
 
@@ -47,17 +48,17 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
   const canManageMemory = usePermission(Permissions.MemoryAdminManage)
 
   useEffect(() => {
-    Stores.Onboarding.setReady(true)
+    Onboarding.setReady(true)
 
     // Save on Next: returns void; saveSettings updates the store's
     // error state which is surfaced via the in-component Alert.
     registerBeforeNext(async () => {
       if (!canManageMemory) return
-      await Stores.MemorySetupStep.saveSettings()
+      await MemorySetupStepStore.saveSettings()
     })
 
     if (canManageMemory) {
-      Stores.MemorySetupStep.loadEmbeddingCapableModels()
+      MemorySetupStepStore.loadEmbeddingCapableModels()
     }
   }, [canManageMemory])
 
@@ -104,7 +105,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
         error={error}
         saving={saving}
         onBack={() => {
-          Stores.MemorySetupStep.setEnableMemory(false)
+          MemorySetupStepStore.setEnableMemory(false)
           setScreen('enable')
         }}
       />
@@ -147,7 +148,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
             data-testid="onboarding-memory-enable-switch"
             checked={enableMemory}
             tooltip="Enable memory"
-            onChange={(checked) => Stores.MemorySetupStep.setEnableMemory(checked)}
+            onChange={(checked) => MemorySetupStepStore.setEnableMemory(checked)}
           />
         </div>
       </div>
@@ -249,7 +250,7 @@ function PickModelScreen({
                   onClick={async () => {
                     setRefreshing(true)
                     try {
-                      await Stores.MemorySetupStep.loadEmbeddingCapableModels()
+                      await MemorySetupStepStore.loadEmbeddingCapableModels()
                     } finally {
                       setRefreshing(false)
                     }
@@ -268,7 +269,7 @@ function PickModelScreen({
           className="w-full mb-4"
           placeholder="Select an embedding model"
           value={embeddingModelId ?? undefined}
-          onChange={(v) => Stores.MemorySetupStep.setEmbeddingModelId(v ?? null)}
+          onChange={(v) => MemorySetupStepStore.setEmbeddingModelId(v ?? null)}
           options={availableModels.map((m) => ({
             value: m.id,
             label: m.display_name || m.name,

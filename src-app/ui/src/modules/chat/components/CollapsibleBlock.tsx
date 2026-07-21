@@ -3,13 +3,13 @@ import { Button } from '@ziee/kit'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { COLLAPSE_MAX_HEIGHT_PX } from '@/modules/chat/components/collapsible'
-import { Stores } from '@ziee/framework/stores'
 import {
   useMessageViewStateStore,
   type MessageViewFullState,
 } from '@/modules/chat/core/stores/messageViewState'
 import { DEFAULT_MESSAGE_COLLAPSED } from '@/modules/chat/core/stores/messageViewState.helpers'
 import { useInPlaceAnchor } from '@/modules/chat/core/utils/useInPlaceAnchor'
+import { MessageViewState as MessageViewStateStore } from '@/modules/chat/core/stores/messageViewState'
 
 interface CollapsibleBlockProps {
   children: ReactNode
@@ -65,7 +65,7 @@ export function CollapsibleBlock({
   const anchorBeforeChange = useInPlaceAnchor(rootRef)
   const setCollapsed = (next: boolean) => {
     anchorBeforeChange()
-    if (messageId) Stores.MessageViewState.setMessageCollapsed(messageId, next)
+    if (messageId) MessageViewStateStore.setMessageCollapsed(messageId, next)
     else setLocalCollapsed(next)
   }
 

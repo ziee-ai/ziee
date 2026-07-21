@@ -2,10 +2,11 @@ import { z } from 'zod'
 import { Button, Form, FormField, Input, PasswordInput, Select, Switch, Text, message, useForm, zodResolver } from '@ziee/kit'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type CreateLlmProviderRequest, type UpdateLlmProviderRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { LlmProviderDrawer as LlmProviderDrawerStore } from '@/modules/llm-provider/components/llmProviderDrawer'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 
 const PROVIDER_TYPES = [
   { label: 'Local', value: 'local' },
@@ -33,7 +34,7 @@ type ProviderValues = z.infer<typeof providerSchema>
 export function LlmProviderDrawer() {
   const [loading, setLoading] = useState(false)
 
-  const { isOpen: open, editingProvider: provider } = Stores.LlmProviderDrawer
+  const { isOpen: open, editingProvider: provider } = LlmProviderDrawerStore
   const canCreate = usePermission(Permissions.LlmProvidersCreate)
   const canEdit = usePermission(Permissions.LlmProvidersEdit)
   const canSave = provider ? canEdit : canCreate
@@ -74,7 +75,7 @@ export function LlmProviderDrawer() {
 
   const handleClose = () => {
     form.reset()
-    Stores.LlmProviderDrawer.closeLlmProviderDrawer()
+    LlmProviderDrawerStore.closeLlmProviderDrawer()
   }
 
   const handleSubmit = async (values: ProviderValues) => {
@@ -89,7 +90,7 @@ export function LlmProviderDrawer() {
           base_url: values.base_url,
           enabled: values.enabled ?? true,
         }
-        await Stores.LlmProvider.updateLlmProvider(provider.id, updateData)
+        await LlmProvider.updateLlmProvider(provider.id, updateData)
         message.success('Provider updated successfully')
       } else {
         // Add new provider
@@ -100,7 +101,7 @@ export function LlmProviderDrawer() {
           base_url: values.base_url,
           enabled: values.enabled ?? true,
         }
-        await Stores.LlmProvider.createLlmProvider(createData)
+        await LlmProvider.createLlmProvider(createData)
         message.success('Provider added successfully')
       }
 

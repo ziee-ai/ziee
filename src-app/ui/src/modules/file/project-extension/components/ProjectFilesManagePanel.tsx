@@ -22,11 +22,12 @@ import {
   Tooltip,
   Upload,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { MAX_FILE_UPLOAD_BYTES as MAX_FILE_SIZE } from '@/modules/file/constants'
+import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
+import { ProjectFiles as ProjectFilesStore } from '@/modules/file/project-extension/stores/projectFiles'
 
 /**
  * Server-enforced cap (`PROJECT_MAX_FILES`). Mirrored here so the UI
@@ -43,13 +44,13 @@ function formatFileSize(bytes: number): string {
 }
 
 export function ProjectFilesManagePanel() {
-  const project = Stores.ProjectDetail.project
+  const project = ProjectDetail.project
   const {
     files,
     filesLoading,
     uploadingFiles,
     selectedFileIds,
-  } = Stores.ProjectFiles
+  } = ProjectFilesStore
   const canEdit = usePermission(Permissions.ProjectsEdit)
   const canUpload = canEdit && usePermission(Permissions.FilesUpload)
 
@@ -65,7 +66,7 @@ export function ProjectFilesManagePanel() {
   const handleDelete = async (fileId: string, filename: string) => {
     if (!projectId) return
     try {
-      await Stores.ProjectFiles.deleteFile(projectId, fileId)
+      await ProjectFilesStore.deleteFile(projectId, fileId)
       message.success(`Deleted ${filename}`)
     } catch (err) {
       message.error(
@@ -86,7 +87,7 @@ export function ProjectFilesManagePanel() {
     })
     if (confirmed) {
       try {
-        await Stores.ProjectFiles.batchDelete(projectId)
+        await ProjectFilesStore.batchDelete(projectId)
         message.success(`Deleted ${n} file${n === 1 ? '' : 's'}`)
       } catch (err) {
         message.error(
@@ -117,7 +118,7 @@ export function ProjectFilesManagePanel() {
       accepted.push(file)
     }
     if (accepted.length === 0) return
-    void Stores.ProjectFiles.uploadAndAttachFiles(projectId, accepted)
+    void ProjectFilesStore.uploadAndAttachFiles(projectId, accepted)
   }
   const dispatchRef = useRef(dispatchFiles)
   dispatchRef.current = dispatchFiles
@@ -233,7 +234,7 @@ export function ProjectFilesManagePanel() {
         {selectedFileIds.size} selected
       </Text>
       <div className="flex items-center gap-2">
-        <Button size="default" variant="outline" onClick={() => Stores.ProjectFiles.deselectAll()} data-testid="file-project-clear-selection-btn">
+        <Button size="default" variant="outline" onClick={() => ProjectFilesStore.deselectAll()} data-testid="file-project-clear-selection-btn">
           Clear
         </Button>
         <Button
@@ -261,7 +262,7 @@ export function ProjectFilesManagePanel() {
               status: progress.status === 'pending' ? 'pending' : progress.status,
             }}
             variant="row"
-            onRemove={() => Stores.ProjectFiles.dismissUploadingFile(progress.id)}
+            onRemove={() => ProjectFilesStore.dismissUploadingFile(progress.id)}
           />
         ))}
       </div>
@@ -300,7 +301,7 @@ export function ProjectFilesManagePanel() {
               canRemove={false}
               selectable={canEdit}
               selected={isSelected}
-              onSelectChange={() => Stores.ProjectFiles.toggleSelection(file.id)}
+              onSelectChange={() => ProjectFilesStore.toggleSelection(file.id)}
               subtitle={
                 <>
                   {formatFileSize(file.file_size)} · {file.mime_type ?? 'unknown'}

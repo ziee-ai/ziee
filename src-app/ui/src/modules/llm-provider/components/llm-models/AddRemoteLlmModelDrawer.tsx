@@ -22,6 +22,7 @@ import { Permissions } from '@/api-client/permissions'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { BASIC_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
 import { mapDiscoveredModelToForm } from '@/modules/llm-provider/components/llm-models/discoveredModelForm'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 
 // The picker sources its options from `GET /discover-models` (catalog + live
 // /v1/models). display_name + description reuse BASIC_MODEL_FIELDS (minus the
@@ -62,9 +63,9 @@ export function AddRemoteLlmModelDrawer() {
   // UNCONDITIONALLY (each access calls a store hook — a ternary around them would
   // change the hook count when providerId toggles null<->value on open/close and
   // crash with "rendered more/fewer hooks"), then index by providerId plainly.
-  const discoveredMap = Stores.LlmProvider.discoveredModels
-  const discoverLoadingMap = Stores.LlmProvider.discoverLoading
-  const discoverNotesMap = Stores.LlmProvider.discoverNotes
+  const discoveredMap = LlmProvider.discoveredModels
+  const discoverLoadingMap = LlmProvider.discoverLoading
+  const discoverNotesMap = LlmProvider.discoverNotes
   const discovered = providerId ? discoveredMap[providerId] : undefined
   const discovering = providerId ? Boolean(discoverLoadingMap[providerId]) : false
   const notes = providerId ? discoverNotesMap[providerId] : undefined
@@ -72,7 +73,7 @@ export function AddRemoteLlmModelDrawer() {
   // Fetch the provider's available models when the drawer opens.
   useEffect(() => {
     if (open && providerId) {
-      Stores.LlmProvider.discoverModels(providerId)
+      LlmProvider.discoverModels(providerId)
     }
   }, [open, providerId])
 
@@ -113,10 +114,10 @@ export function AddRemoteLlmModelDrawer() {
 
     try {
       setLoading(true)
-      Stores.LlmProvider.clearLlmProviderStoreError()
+      LlmProvider.clearLlmProviderStoreError()
 
       const ctx = values.context_length
-      await Stores.LlmProvider.createLlmModel(providerId, {
+      await LlmProvider.createLlmModel(providerId, {
         name,
         display_name: (values.display_name as string) || name,
         description: values.description as string,

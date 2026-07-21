@@ -16,7 +16,6 @@ import {
 import type { DropdownItem } from '@ziee/kit'
 import { MessageSquare, Trash2, MoreVertical, Columns2 } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { useOpenConversationInWorkspace } from '@/modules/chat/core/pane/useOpenConversation'
@@ -26,6 +25,7 @@ import {
   chatExtensionRegistry,
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
+import { ChatHistory } from '@/modules/chat/stores/chatHistory'
 
 // INITIAL height estimate for one recent-chat row: the Menu row button is
 // `px-3 py-1.5 text-sm` (~32px) + a 2px inter-row gap ≈ 34px. This is only the
@@ -40,7 +40,7 @@ const RECENT_ITEM_TESTID_PREFIX = 'chat-recent-conversations-menu-item-'
 
 /**
  * Sidebar list of the user's recent conversations, backed by
- * `Stores.ChatHistory.recentConversations`. INFINITE-SCROLL + VIRTUALIZED: the
+ * `ChatHistory.recentConversations`. INFINITE-SCROLL + VIRTUALIZED: the
  * first page loads on mount and the next page auto-loads as the last virtual row
  * nears the end (a nav-feed idiom); only the visible window is ever in the DOM,
  * so a user with thousands of chats scrolls in O(viewport). Row styling is shared
@@ -67,11 +67,11 @@ export function RecentConversationsWidget() {
     recentHasMore,
     recentLoadingMore,
     recentError,
-  } = Stores.ChatHistory
+  } = ChatHistory
 
   useEffect(() => {
     if (!recentInitialized) {
-      Stores.ChatHistory.loadRecentConversations()
+      ChatHistory.loadRecentConversations()
     }
   }, [recentInitialized])
 
@@ -107,7 +107,7 @@ export function RecentConversationsWidget() {
       !recentLoadingMore &&
       !recentError
     ) {
-      void Stores.ChatHistory.loadMoreRecent()
+      void ChatHistory.loadMoreRecent()
     }
   }, [lastIndex, recentConversations.length, recentHasMore, recentLoadingMore, recentError])
 
@@ -115,8 +115,8 @@ export function RecentConversationsWidget() {
   // affordance — NOT scroll-to-clear — because a loaded page that fits the
   // viewport can't be scrolled, which would otherwise strand paging silently.
   const retryLoadMore = () => {
-    Stores.ChatHistory.clearRecentError()
-    void Stores.ChatHistory.loadMoreRecent()
+    ChatHistory.clearRecentError()
+    void ChatHistory.loadMoreRecent()
   }
 
   // The currently-open conversation (for the `aria-current` selected row).
@@ -153,7 +153,7 @@ export function RecentConversationsWidget() {
             resource="recent chats"
             description="Your recent chats couldn't be loaded."
             details={recentError}
-            onRetry={() => Stores.ChatHistory.loadRecentConversations(1)}
+            onRetry={() => ChatHistory.loadRecentConversations(1)}
           />
         </div>
       </div>
@@ -383,7 +383,7 @@ function ConversationRowActions({
     if (ok) {
       setDeleting(true)
       try {
-        await Stores.ChatHistory.deleteConversation(conversation.id)
+        await ChatHistory.deleteConversation(conversation.id)
       } finally {
         setDeleting(false)
       }

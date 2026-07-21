@@ -8,8 +8,8 @@
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyNamed, lazyProps } from '@/dev/gallery/support'
 import type { File as FileEntity } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { deepProjectFiles } from '@/dev/gallery/fixtures/project-deep'
+import { FilePreviewDrawer as FilePreviewDrawerStore } from '@/modules/file/stores/filePreviewDrawer'
 
 // ── Overlay fixture (from overlays.tsx) ───────────────────────────────────────
 const fileFixture = deepProjectFiles[0]
@@ -108,7 +108,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/file/components/FilePreviewDrawer'),
         'FilePreviewDrawer',
       ),
-      open: () => Stores.FilePreviewDrawer.openPreview(fileFixture as any),
+      open: () => FilePreviewDrawerStore.openPreview(fileFixture as any),
     },
   ],
   seeded: [

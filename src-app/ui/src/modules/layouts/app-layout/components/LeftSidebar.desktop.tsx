@@ -29,8 +29,8 @@
 
 import { LeftSidebar as CoreLeftSidebar } from '@ziee/ui-core/modules/layouts/app-layout/components/LeftSidebar'
 import { useWindowMinSize } from '@ziee/ui-core/modules/layouts/app-layout/hooks/useWindowMinSize'
-import { Stores } from '@ziee/framework/stores'
 import { isMacOS, isTauriView } from '@ziee/desktop/core/platform'
+import { AppLayout as AppLayoutStore } from '@/modules/layouts/app-layout/appLayout'
 
 /**
  * Module-load constant. The platform checks are static for the
@@ -106,7 +106,7 @@ if (GLASS_ACTIVE && typeof document !== 'undefined') {
 
 export function LeftSidebar() {
   const windowMinSize = useWindowMinSize()
-  const { isSidebarCollapsed } = Stores.AppLayout
+  const { isSidebarCollapsed } = AppLayoutStore
 
   // Glass treatment fires on macOS Tauri at EVERY viewport — even
   // when the user resizes the window into the `xs` mobile-overlay

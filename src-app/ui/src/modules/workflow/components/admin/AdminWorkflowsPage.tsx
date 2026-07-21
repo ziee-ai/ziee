@@ -10,6 +10,8 @@ import { ImportWorkflowDialog } from '@/modules/workflow/components/ImportWorkfl
 import { WorkflowDetailDrawer } from '@/modules/workflow/components/WorkflowDetailDrawer'
 import { WorkflowScopeBadge } from '@/modules/workflow/components/WorkflowScopeBadge'
 import { AdminWorkflowGroupAssignment } from './AdminWorkflowGroupAssignment'
+import { SystemWorkflow } from '@/modules/workflow/stores/systemWorkflow'
+import { WorkflowDrawer } from '@/modules/workflow/stores/workflowDrawer'
 
 /**
  * `/settings/workflows-admin` — lists system-scope workflows. Admins
@@ -17,7 +19,7 @@ import { AdminWorkflowGroupAssignment } from './AdminWorkflowGroupAssignment'
  * import.
  */
 export function AdminWorkflowsPage() {
-  const { systemWorkflows, loading, error } = Stores.SystemWorkflow
+  const { systemWorkflows, loading, error } = SystemWorkflow
   const { multiUserMode } = Stores.AppMode
   const [importOpen, setImportOpen] = useState(false)
 
@@ -65,7 +67,7 @@ export function AdminWorkflowsPage() {
               <div className="overflow-hidden">
                 <div
                   className="p-3 cursor-pointer"
-                  onClick={() => Stores.WorkflowDrawer.open(workflow)}
+                  onClick={() => WorkflowDrawer.open(workflow)}
                 >
                   <div className="flex flex-col gap-2">
                     <Space size={8}>
@@ -95,7 +97,7 @@ export function AdminWorkflowsPage() {
             resource="system workflows"
             description="Something went wrong while loading system workflows."
             details={error}
-            onRetry={() => Stores.SystemWorkflow.loadSystemWorkflows()}
+            onRetry={() => SystemWorkflow.loadSystemWorkflows()}
             data-testid="wf-admin-error"
           />
         ) : (

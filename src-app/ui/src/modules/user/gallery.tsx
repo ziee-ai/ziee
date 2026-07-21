@@ -5,9 +5,15 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
 import { adminUser } from '@/dev/gallery/fixtures/auth'
 import { llmGroupsList } from '@/dev/gallery/fixtures/llm-providers'
+import { EditUserDrawer as EditUserDrawerStore } from '@/modules/user/components/user/editUserDrawer'
+import { ResetPasswordDrawer as ResetPasswordDrawerStore } from '@/modules/user/components/user/resetPasswordDrawer'
+import { AssignGroupDrawer as AssignGroupDrawerStore } from '@/modules/user/components/user/assignGroupDrawer'
+import { UserGroupsDrawer as UserGroupsDrawerStore } from '@/modules/user/components/user/userGroupsDrawer'
+import { CreateUserDrawer as CreateUserDrawerStore } from '@/modules/user/components/user/createUserDrawer'
+import { GroupMembersDrawer as GroupMembersDrawerStore } from '@/modules/user/components/group/groupMembersDrawer'
+import { EditUserGroupDrawer as EditUserGroupDrawerStore } from '@/modules/user/components/group/editUserGroupDrawer'
 
 const group = llmGroupsList.groups[0]
 
@@ -21,7 +27,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/user/components/user/CreateUserDrawer'),
         'CreateUserDrawer',
       ),
-      open: () => Stores.CreateUserDrawer.openCreateUserDrawer(),
+      open: () => CreateUserDrawerStore.openCreateUserDrawer(),
       interactions: [
         {
           name: 'focus-input',
@@ -48,7 +54,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/user/components/user/EditUserDrawer'),
         'EditUserDrawer',
       ),
-      open: () => Stores.EditUserDrawer.openEditUserDrawer(adminUser),
+      open: () => EditUserDrawerStore.openEditUserDrawer(adminUser),
     },
     {
       slug: 'overlay-reset-password-drawer',
@@ -58,7 +64,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/user/components/user/ResetPasswordDrawer'),
         'ResetPasswordDrawer',
       ),
-      open: () => Stores.ResetPasswordDrawer.openResetPasswordDrawer(adminUser),
+      open: () => ResetPasswordDrawerStore.openResetPasswordDrawer(adminUser),
     },
     {
       slug: 'overlay-edit-user-group-drawer',
@@ -68,7 +74,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/user/components/group/EditUserGroupDrawer'),
         'EditUserGroupDrawer',
       ),
-      open: () => Stores.EditUserGroupDrawer.openUserGroupDrawer(group),
+      open: () => EditUserGroupDrawerStore.openUserGroupDrawer(group),
     },
     {
       slug: 'overlay-assign-group-drawer',
@@ -78,7 +84,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/user/components/user/AssignGroupDrawer'),
         'AssignGroupDrawer',
       ),
-      open: () => Stores.AssignGroupDrawer.openAssignGroupDrawer(adminUser),
+      open: () => AssignGroupDrawerStore.openAssignGroupDrawer(adminUser),
       interactions: [
         {
           name: 'submit-empty',
@@ -98,7 +104,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/user/components/user/UserGroupsDrawer'),
         'UserGroupsDrawer',
       ),
-      open: () => Stores.UserGroupsDrawer.openUserGroupsDrawer(adminUser),
+      open: () => UserGroupsDrawerStore.openUserGroupsDrawer(adminUser),
     },
     {
       slug: 'overlay-group-members-drawer',
@@ -108,7 +114,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/user/components/group/GroupMembersDrawer'),
         'GroupMembersDrawer',
       ),
-      open: () => Stores.GroupMembersDrawer.openGroupMembersDrawer(group),
+      open: () => GroupMembersDrawerStore.openGroupMembersDrawer(group),
     },
   ],
 }

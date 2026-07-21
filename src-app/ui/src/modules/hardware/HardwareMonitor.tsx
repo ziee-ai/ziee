@@ -1,9 +1,9 @@
 import { Button, Card, ErrorState, Progress, Spin, Tag, Text, message } from '@ziee/kit'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
+import { Hardware as HardwareStore } from '@/modules/hardware/hardware'
 
 export function HardwareMonitor() {
   // Hardware store state
@@ -14,16 +14,16 @@ export function HardwareMonitor() {
     currentUsage,
     usageLoading,
     sseConnected,
-  } = Stores.Hardware
+  } = HardwareStore
 
   // Initialize hardware monitoring on component mount
   useEffect(() => {
     // Load hardware info first, then start monitoring
-    Stores.Hardware.subscribeToHardwareUsage().catch(console.error)
+    HardwareStore.subscribeToHardwareUsage().catch(console.error)
 
     // Cleanup on component unmount
     return () => {
-      Stores.Hardware.disconnectHardwareUsage()
+      HardwareStore.disconnectHardwareUsage()
     }
   }, [])
 
@@ -33,7 +33,7 @@ export function HardwareMonitor() {
 
   const handleManualConnect = async () => {
     try {
-      await Stores.Hardware.subscribeToHardwareUsage()
+      await HardwareStore.subscribeToHardwareUsage()
       message.success('Connecting to hardware monitoring...')
     } catch (_error) {
       message.error('Failed to connect to hardware monitoring')
@@ -136,7 +136,7 @@ export function HardwareMonitor() {
           resource="hardware monitor"
           description="Your hardware information couldn't be loaded. Check your connection and try again."
           details={hardwareError}
-          onRetry={() => void Stores.Hardware.loadHardwareInfo()}
+          onRetry={() => void HardwareStore.loadHardwareInfo()}
           data-testid="hardware-monitor-error"
         />
       </div>

@@ -9,6 +9,8 @@ import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/M
 import { McpUserPolicyCard } from '@/modules/mcp/components/system/McpUserPolicyCard'
 import { Button, Card, ErrorState, Flex, Text, Input, Select, Tabs } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
+import { SystemMcpServer } from '@/modules/mcp/stores/systemMcpServer'
+import { McpServerDrawer as McpServerDrawerStore } from '@/modules/mcp/stores/mcpServerDrawer'
 
 export function SystemMcpServersPage() {
   const {
@@ -20,9 +22,9 @@ export function SystemMcpServersPage() {
     systemServersPageSize,
     searchTerm,
     statusFilter,
-  } = Stores.SystemMcpServer
-  const setSearchTerm = Stores.SystemMcpServer.setSearchTerm
-  const setStatusFilter = Stores.SystemMcpServer.setStatusFilter
+  } = SystemMcpServer
+  const setSearchTerm = SystemMcpServer.setSearchTerm
+  const setStatusFilter = SystemMcpServer.setStatusFilter
   // Hoisted out of the .map() below: each Stores.X.<prop> read calls
   // useEffect + useStore under the hood (proxy in core/stores.ts).
   // Inside .map() the hook count becomes a function of
@@ -40,11 +42,11 @@ export function SystemMcpServersPage() {
     // Reset to page 1 when the user changes page size — matches
     // UsersSettings / UserGroupsSettings behavior.
     const nextPage = size && size !== systemServersPageSize ? 1 : page
-    Stores.SystemMcpServer.loadSystemServers(nextPage, nextSize)
+    SystemMcpServer.loadSystemServers(nextPage, nextSize)
   }
 
   const handleCreateServer = () => {
-    Stores.McpServerDrawer.openMcpServerDrawer(undefined, 'create-system')
+    McpServerDrawerStore.openMcpServerDrawer(undefined, 'create-system')
   }
 
   // Server-side filtering — `systemServers` already reflects
@@ -177,7 +179,7 @@ export function SystemMcpServersPage() {
             description="Something went wrong while loading system MCP servers."
             details={systemServersError}
             onRetry={() =>
-              Stores.SystemMcpServer.loadSystemServers(
+              SystemMcpServer.loadSystemServers(
                 systemServersPage,
                 systemServersPageSize,
               )

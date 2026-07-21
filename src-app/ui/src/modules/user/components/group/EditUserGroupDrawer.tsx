@@ -2,11 +2,12 @@ import { z } from 'zod'
 import { Button, Form, FormField, Input, Switch, Textarea, message, useForm, zodResolver } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type UpdateGroupRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
+import { EditUserGroupDrawer as EditUserGroupDrawerStore } from '@/modules/user/components/group/editUserGroupDrawer'
+import { UserGroups } from '@/modules/user/stores/userGroups'
 
 const editUserGroupSchema = z.object({
   name: z
@@ -23,7 +24,7 @@ type EditUserGroupValues = z.infer<typeof editUserGroupSchema>
 export function EditUserGroupDrawer() {
   const [loading, setLoading] = useState(false)
 
-  const { isOpen: open, editingGroup: group } = Stores.EditUserGroupDrawer
+  const { isOpen: open, editingGroup: group } = EditUserGroupDrawerStore
   const canEdit = usePermission(Permissions.GroupsEdit)
 
   const form = useForm<EditUserGroupValues>({
@@ -50,7 +51,7 @@ export function EditUserGroupDrawer() {
 
   const handleClose = () => {
     form.reset()
-    Stores.EditUserGroupDrawer.closeUserGroupDrawer()
+    EditUserGroupDrawerStore.closeUserGroupDrawer()
   }
 
   const handleSubmit = async (values: EditUserGroupValues) => {
@@ -66,7 +67,7 @@ export function EditUserGroupDrawer() {
         is_active: values.is_active,
       }
 
-      await Stores.UserGroups.updateUserGroup(group.id, updateData)
+      await UserGroups.updateUserGroup(group.id, updateData)
       message.success('User group updated successfully')
       handleClose()
     } catch (error) {

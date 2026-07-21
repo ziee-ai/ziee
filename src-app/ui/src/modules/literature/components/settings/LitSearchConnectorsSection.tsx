@@ -18,8 +18,8 @@ import {
 } from '@ziee/kit'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { LitSearchAdmin } from '@/modules/literature/stores/litSearchAdmin'
 
 /**
  * Per-connector configuration, rendered GENERICALLY from the `GET /connectors`
@@ -28,7 +28,7 @@ import { SettingsFormActions } from '@/modules/settings/components/SettingsFormA
  * enable toggles, config fields and API keys.
  */
 export function LitSearchConnectorsSection() {
-  const { connectors, loading, settings } = Stores.LitSearchAdmin
+  const { connectors, loading, settings } = LitSearchAdmin
   const canManage = usePermission(Permissions.LitSearchAdminManage)
   const [saving, setSaving] = useState(false)
 
@@ -63,7 +63,7 @@ export function LitSearchConnectorsSection() {
     setSaving(true)
     try {
       const enabled = connectors.filter((c) => values[c.key]?.enabled).map((c) => c.key)
-      await Stores.LitSearchAdmin.updateSettings({ enabled_connectors: enabled })
+      await LitSearchAdmin.updateSettings({ enabled_connectors: enabled })
       for (const c of connectors) {
         if (c.config_fields.length === 0 && !c.key_field) continue
         const v = values[c.key] ?? {}
@@ -72,7 +72,7 @@ export function LitSearchConnectorsSection() {
         const body: { api_key?: string; config?: Record<string, string> } = { config }
         const apiKey = String(v.api_key ?? '').trim()
         if (c.key_field && apiKey) body.api_key = apiKey
-        await Stores.LitSearchAdmin.updateConnector(c.key, body)
+        await LitSearchAdmin.updateConnector(c.key, body)
       }
       message.success('Sources saved')
       form.reset(buildDefaults())
@@ -85,7 +85,7 @@ export function LitSearchConnectorsSection() {
 
   const clearKey = async (key: string, name: string) => {
     try {
-      await Stores.LitSearchAdmin.updateConnector(key, { api_key: '' })
+      await LitSearchAdmin.updateConnector(key, { api_key: '' })
       message.success(`${name} key cleared`)
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to clear key')

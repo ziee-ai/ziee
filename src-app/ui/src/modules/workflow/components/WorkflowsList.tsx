@@ -3,11 +3,12 @@ import { Button, Card, Empty, ErrorState, Flex, Text } from '@ziee/kit'
 import { useState } from 'react'
 import { Permissions } from '@/api-client/permissions'
 import { Can } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { ImportWorkflowDialog } from './ImportWorkflowDialog'
 import { WorkflowDetailDrawer } from './WorkflowDetailDrawer'
 import { WorkflowScopeBadge } from './WorkflowScopeBadge'
+import { Workflow as WorkflowStore } from '@/modules/workflow/stores/workflow'
+import { WorkflowDrawer } from '@/modules/workflow/stores/workflowDrawer'
 
 /**
  * `/workflows` page — lists the user's own + accessible system
@@ -15,7 +16,7 @@ import { WorkflowScopeBadge } from './WorkflowScopeBadge'
  * drawer (steps + run / dry-run / test).
  */
 export function WorkflowsList() {
-  const { workflows, loading, error } = Stores.Workflow
+  const { workflows, loading, error } = WorkflowStore
   const [importOpen, setImportOpen] = useState(false)
 
   return (
@@ -46,7 +47,7 @@ export function WorkflowsList() {
               data-testid={`wf-list-card-${workflow.id}`}
               hoverable
               size="sm"
-              onClick={() => Stores.WorkflowDrawer.open(workflow)}
+              onClick={() => WorkflowDrawer.open(workflow)}
               data-workflow-id={workflow.id}
               title={
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -73,7 +74,7 @@ export function WorkflowsList() {
             resource="workflows"
             description="Something went wrong while loading your workflows."
             details={error}
-            onRetry={() => Stores.Workflow.loadWorkflows()}
+            onRetry={() => WorkflowStore.loadWorkflows()}
             data-testid="wf-list-error"
           />
         ) : (

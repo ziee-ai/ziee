@@ -18,6 +18,7 @@ import {
   shouldRunInterim,
 } from '../../voiceLogic'
 import type { VoiceStoreGet, VoiceStoreSet } from '../state'
+import { SplitView } from '@/modules/chat/core/stores/splitView'
 
 /**
  * The voice-dictation state machine — the entire former `Voice.store.ts` action
@@ -128,7 +129,7 @@ function focusComposer(paneId: string | null): void {
   requestAnimationFrame(() => {
     let scope: ParentNode = document
     if (paneId) {
-      const idx = Stores.SplitView.$.panes.findIndex(p => p.paneId === paneId)
+      const idx = SplitView.$.panes.findIndex(p => p.paneId === paneId)
       if (idx >= 0) {
         const paneEl = document.querySelector<HTMLElement>(
           `[${TESTID_ATTR}="chat-pane-${idx}"]`,

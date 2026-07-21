@@ -13,9 +13,11 @@ import {
 } from '@ziee/kit'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@/modules/assistant/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
+import { TemplateAssistants } from '@/modules/assistant/stores/templateAssistants'
+import { UserAssistants } from '@/modules/assistant/stores/userAssistants'
+import { AssistantDrawer } from '@/modules/assistant/components/assistantDrawer'
 
 // Template assistants vs user assistants gate on different permission
 // namespaces. `isTemplate` selects which set applies at render time.
@@ -83,7 +85,7 @@ export function AssistantFormDrawer() {
 
   // Use drawer store
   const { open, loading, editingAssistant, isTemplate, isCloning } =
-    Stores.AssistantDrawer
+    AssistantDrawer
 
   const perms = isTemplate ? TEMPLATE_PERMS : USER_PERMS
   const canCreate = usePermission(perms.create)
@@ -123,7 +125,7 @@ export function AssistantFormDrawer() {
 
   const doClose = () => {
     form.reset()
-    Stores.AssistantDrawer.closeAssistantDrawer()
+    AssistantDrawer.closeAssistantDrawer()
   }
 
   const handleClose = () => {
@@ -183,18 +185,18 @@ export function AssistantFormDrawer() {
       enabled: values.enabled,
     }
 
-    Stores.AssistantDrawer.setAssistantDrawerLoading(true)
+    AssistantDrawer.setAssistantDrawerLoading(true)
     try {
       // If cloning or creating new, always create (not update)
       if (editingAssistant && !isCloning) {
         // Update existing assistant
         if (isTemplate) {
-          await Stores.TemplateAssistants.updateTemplateAssistant(
+          await TemplateAssistants.updateTemplateAssistant(
             editingAssistant.id,
             payload,
           )
         } else {
-          await Stores.UserAssistants.updateUserAssistant(
+          await UserAssistants.updateUserAssistant(
             editingAssistant.id,
             payload,
           )
@@ -203,18 +205,18 @@ export function AssistantFormDrawer() {
       } else {
         // Create new assistant (including when cloning from template)
         if (isTemplate) {
-          await Stores.TemplateAssistants.createTemplateAssistant(payload)
+          await TemplateAssistants.createTemplateAssistant(payload)
         } else {
-          await Stores.UserAssistants.createUserAssistant(payload)
+          await UserAssistants.createUserAssistant(payload)
         }
         message.success('Assistant created successfully')
       }
-      Stores.AssistantDrawer.closeAssistantDrawer()
+      AssistantDrawer.closeAssistantDrawer()
     } catch (error) {
       console.error('Failed to save assistant:', error)
       // Error already shown via store error state
     } finally {
-      Stores.AssistantDrawer.setAssistantDrawerLoading(false)
+      AssistantDrawer.setAssistantDrawerLoading(false)
     }
   }
 

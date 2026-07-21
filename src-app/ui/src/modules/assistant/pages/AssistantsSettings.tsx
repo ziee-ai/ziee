@@ -15,13 +15,14 @@ import {
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
 import { useEffect } from 'react'
-import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { type Assistant } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
+import { TemplateAssistants } from '@/modules/assistant/stores/templateAssistants'
+import { AssistantDrawer } from '@/modules/assistant/components/assistantDrawer'
 
 export function AssistantsSettings() {
   // Store state
@@ -32,7 +33,7 @@ export function AssistantsSettings() {
     pageSize: storePageSize,
     loading,
     error,
-  } = Stores.TemplateAssistants
+  } = TemplateAssistants
 
   const canEdit = usePermission(Permissions.AssistantsTemplateEdit)
   const canDelete = usePermission(Permissions.AssistantsTemplateDelete)
@@ -43,13 +44,13 @@ export function AssistantsSettings() {
   useEffect(() => {
     if (error && assistants.length > 0) {
       message.error(error)
-      Stores.TemplateAssistants.clearTemplateAssistantsStoreError()
+      TemplateAssistants.clearTemplateAssistantsStoreError()
     }
   }, [error, assistants.length])
 
   const handleDelete = async (assistant: Assistant) => {
     try {
-      await Stores.TemplateAssistants.deleteTemplateAssistant(assistant.id)
+      await TemplateAssistants.deleteTemplateAssistant(assistant.id)
       message.success('Assistant deleted successfully')
     } catch (error) {
       console.error('Failed to delete assistant:', error)
@@ -58,11 +59,11 @@ export function AssistantsSettings() {
   }
 
   const handleEdit = (assistant: Assistant) => {
-    Stores.AssistantDrawer.openAssistantDrawer(assistant, true)
+    AssistantDrawer.openAssistantDrawer(assistant, true)
   }
 
   const handleCreate = () => {
-    Stores.AssistantDrawer.openAssistantDrawer(null, true)
+    AssistantDrawer.openAssistantDrawer(null, true)
   }
 
   const getAssistantActions = (assistant: Assistant) => {
@@ -107,7 +108,7 @@ export function AssistantsSettings() {
     const newPageSize = size || storePageSize
     const newPage = size && size !== storePageSize ? 1 : page // Reset to page 1 if page size changes
 
-    Stores.TemplateAssistants.loadTemplateAssistants(newPage, newPageSize)
+    TemplateAssistants.loadTemplateAssistants(newPage, newPageSize)
   }
 
   return (
@@ -141,7 +142,7 @@ export function AssistantsSettings() {
               resource="assistant templates"
               description="The template assistants couldn't be loaded."
               details={error}
-              onRetry={() => Stores.TemplateAssistants.loadTemplateAssistants(storePage, storePageSize)}
+              onRetry={() => TemplateAssistants.loadTemplateAssistants(storePage, storePageSize)}
               data-testid="template-assistants-error"
             />
           ) : assistants.length === 0 ? (
@@ -151,7 +152,7 @@ export function AssistantsSettings() {
                 description="The template assistants couldn't be loaded. Check your connection and try again."
                 details={error}
                 onRetry={() =>
-                  Stores.TemplateAssistants.loadTemplateAssistants(
+                  TemplateAssistants.loadTemplateAssistants(
                     storePage,
                     storePageSize,
                   )

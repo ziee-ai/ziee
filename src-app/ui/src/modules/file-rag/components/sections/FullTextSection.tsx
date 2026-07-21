@@ -11,11 +11,11 @@ import {
   zodResolver,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
+import { FileRagAdmin } from '@/modules/file-rag/stores/fileRagAdmin'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -42,7 +42,7 @@ const schema = z.object({
 export function FullTextSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving, error } = Stores.FileRagAdmin
+  const { settings, saving, error } = FileRagAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -81,13 +81,13 @@ export function FullTextSection() {
       <SettingsSectionStatus
         title="Full-text search"
         error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
+        onRetry={() => FileRagAdmin.load()}
       />
     )
 
   const handleSubmit = async (values: FormValues) => {
     try {
-      await Stores.FileRagAdmin.update({
+      await FileRagAdmin.update({
         fts_enabled: values.fts_enabled,
         fts_rrf_k: values.fts_rrf_k,
         fts_candidate_multiplier: values.fts_candidate_multiplier,

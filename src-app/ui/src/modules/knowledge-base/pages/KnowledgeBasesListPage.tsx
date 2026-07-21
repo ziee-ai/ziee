@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Library, Plus } from 'lucide-react'
 import { Button, Empty, ErrorState, Spin, Text, Title, message } from '@ziee/kit'
 import { Can } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { type KnowledgeBase } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -10,11 +9,13 @@ import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScr
 import { cn } from '@/lib/utils'
 import { KnowledgeBaseCard } from '@/modules/knowledge-base/components/KnowledgeBaseCard'
 import { KnowledgeBaseFormDrawer } from '@/modules/knowledge-base/components/KnowledgeBaseFormDrawer'
+import { KnowledgeBases } from '@/modules/knowledge-base/stores/knowledgeBases'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 
 export function KnowledgeBasesListPage() {
   useNativeScroll(true)
-  const { nativeScroll } = Stores.AppLayout
-  const { items, loading, error } = Stores.KnowledgeBases
+  const { nativeScroll } = AppLayout
+  const { items, loading, error } = KnowledgeBases
   const kbs = Array.from(items.values())
   // Client-side "Load More" paging (the store loads the full set): reveal a
   // page at a time, mirroring ProjectsListPage + the chat conversation list.
@@ -38,7 +39,7 @@ export function KnowledgeBasesListPage() {
   const handleDelete = async (kb: KnowledgeBase) => {
     setDeletingId(kb.id)
     try {
-      await Stores.KnowledgeBases.remove(kb.id)
+      await KnowledgeBases.remove(kb.id)
     } catch {
       /* surfaced via store error */
     } finally {
@@ -115,7 +116,7 @@ export function KnowledgeBasesListPage() {
               resource="knowledge bases"
               description="Your knowledge bases couldn't be loaded. Check your connection and try again."
               details={error}
-              onRetry={() => void Stores.KnowledgeBases.load(true)}
+              onRetry={() => void KnowledgeBases.load(true)}
               data-testid="kb-list-error"
             />
           </div>

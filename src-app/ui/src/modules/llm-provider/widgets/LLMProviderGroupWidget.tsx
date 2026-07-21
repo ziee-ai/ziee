@@ -4,8 +4,8 @@ import { Button, Card, Flex, Space, Tag, Text, Spin } from '@ziee/kit'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { LlmProviderGroupWidgetStore } from './llmProviderGroupWidget'
+import { GroupLlmProvidersAssignment } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
 
 /**
  * Widget that displays LLM Providers assigned to a group.
@@ -28,7 +28,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   }, [group.id, s])
 
   const handleEdit = () => {
-    Stores.GroupLlmProvidersAssignment.openDrawer(group)
+    GroupLlmProvidersAssignment.openDrawer(group)
   }
 
   return (

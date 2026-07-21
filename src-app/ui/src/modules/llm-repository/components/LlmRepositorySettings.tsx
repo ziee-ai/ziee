@@ -15,12 +15,13 @@ import {
   Separator,
   Confirm,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Can, usePermission } from '@/core/permissions'
 import { type LlmRepository } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
+import { LlmRepositoryDrawer } from '@/modules/llm-repository/stores/llmRepositoryDrawer'
+import { LlmRepository as LlmRepositoryStore } from '@/modules/llm-repository/stores/llmRepository'
 
 export function LlmRepositorySettings() {
   // Stores
@@ -31,7 +32,7 @@ export function LlmRepositorySettings() {
     total: totalRepositories,
     currentPage: storePage,
     pageSize: storePageSize,
-  } = Stores.LlmRepository
+  } = LlmRepositoryStore
 
   const canEdit = usePermission(Permissions.LlmRepositoriesEdit)
   const canDelete = usePermission(Permissions.LlmRepositoriesDelete)
@@ -41,12 +42,12 @@ export function LlmRepositorySettings() {
     // Reset to page 1 when the user changes page size — matches
     // UsersSettings / UserGroupsSettings behavior.
     const nextPage = size && size !== storePageSize ? 1 : page
-    Stores.LlmRepository.loadLlmRepositories(nextPage, nextSize)
+    LlmRepositoryStore.loadLlmRepositories(nextPage, nextSize)
   }
 
   const testRepositoryConnection = async (repository: LlmRepository) => {
     // Check if repository has credentials configured
-    if (!Stores.LlmRepository.llmRepositoryHasCredentials(repository)) {
+    if (!LlmRepositoryStore.llmRepositoryHasCredentials(repository)) {
       message.warning(
         'Please configure authentication credentials for this repository first',
       )
@@ -65,7 +66,7 @@ export function LlmRepositorySettings() {
       //     drawer probe + list-page probe can't race.
       // The stateless `testLlmRepositoryConnection` is reserved for
       // the Add-Repository drawer path where the row doesn't exist yet.
-      const result = await Stores.LlmRepository.testLlmRepositoryById(
+      const result = await LlmRepositoryStore.testLlmRepositoryById(
         repository.id,
         {},
       )
@@ -87,11 +88,11 @@ export function LlmRepositorySettings() {
 
   // Repository management functions
   const handleAddRepository = () => {
-    Stores.LlmRepositoryDrawer.openDrawer()
+    LlmRepositoryDrawer.openDrawer()
   }
 
   const handleEditRepository = (repository: LlmRepository) => {
-    Stores.LlmRepositoryDrawer.openDrawer(repository)
+    LlmRepositoryDrawer.openDrawer(repository)
   }
 
   const handleDeleteRepository = async (repositoryId: string) => {
@@ -103,7 +104,7 @@ export function LlmRepositorySettings() {
     }
 
     try {
-      await Stores.LlmRepository.deleteLlmRepository(repositoryId)
+      await LlmRepositoryStore.deleteLlmRepository(repositoryId)
       message.success('Repository removed successfully')
     } catch (error: any) {
       console.error('Failed to delete repository:', error)
@@ -116,7 +117,7 @@ export function LlmRepositorySettings() {
     enabled: boolean,
   ) => {
     try {
-      await Stores.LlmRepository.updateLlmRepository(repositoryId, { enabled })
+      await LlmRepositoryStore.updateLlmRepository(repositoryId, { enabled })
       message.success(
         `Repository ${enabled ? 'enabled' : 'disabled'} successfully`,
       )
@@ -232,7 +233,7 @@ export function LlmRepositorySettings() {
                 description="Something went wrong while loading your LLM repositories."
                 details={error}
                 onRetry={() =>
-                  Stores.LlmRepository.loadLlmRepositories(storePage, storePageSize)
+                  LlmRepositoryStore.loadLlmRepositories(storePage, storePageSize)
                 }
                 data-testid="llmrepo-error"
               />

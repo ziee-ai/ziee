@@ -1,8 +1,9 @@
 import type { StoreSet } from '@ziee/framework/store-kit'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import type { RuntimeDownloadProgressState } from './state'
 import type { RuntimeEngine } from '@/modules/llm-local-runtime/types'
+import { RuntimeUpdate as RuntimeUpdateStore } from '@/modules/llm-local-runtime/stores/runtimeUpdate'
+import { RuntimeVersion as RuntimeVersionStore } from '@/modules/llm-local-runtime/stores/runtimeVersion'
 
 /**
  * Per-key abort controllers so we can tear down stale SSE subscriptions.
@@ -78,9 +79,9 @@ export default function subscribeToKeyFactory(
             })
             // The new version row needs to land in RuntimeVersion + get re-diffed
             // by RuntimeUpdate.
-            Stores.RuntimeVersion.loadVersions().catch(() => {})
+            RuntimeVersionStore.loadVersions().catch(() => {})
             const engine = key.split('@')[0] as RuntimeEngine
-            Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {})
+            RuntimeUpdateStore.checkForUpdates(engine).catch(() => {})
             // Auto-dismiss after a short delay so the card fades out.
             window.setTimeout(() => {
               dismissKey(key)

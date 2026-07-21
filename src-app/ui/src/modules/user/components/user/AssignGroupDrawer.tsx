@@ -1,9 +1,10 @@
 import { Button, Checkbox, Flex, Form, FormField, useForm, zodResolver, message } from '@ziee/kit'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
+import { AssignGroupDrawer as AssignGroupDrawerStore } from '@/modules/user/components/user/assignGroupDrawer'
+import { UserGroups } from '@/modules/user/stores/userGroups'
 
 const assignGroupSchema = z.object({
   group_ids: z.array(z.string()).min(1, 'Please select at least one group'),
@@ -49,8 +50,8 @@ function GroupCheckboxes({
 }
 
 export function AssignGroupDrawer() {
-  const { isOpen, user } = Stores.AssignGroupDrawer
-  const { groups } = Stores.UserGroups
+  const { isOpen, user } = AssignGroupDrawerStore
+  const { groups } = UserGroups
   const assignGroupForm = useForm<AssignGroupValues>({
     resolver: zodResolver(assignGroupSchema),
     defaultValues: { group_ids: [] },
@@ -68,7 +69,7 @@ export function AssignGroupDrawer() {
     const errors: string[] = []
     for (const groupId of groupIds) {
       try {
-        await Stores.UserGroups.assignUserToUserGroup(user.id, groupId)
+        await UserGroups.assignUserToUserGroup(user.id, groupId)
         successCount++
       } catch (error) {
         const name = groups.find(g => g.id === groupId)?.name ?? groupId
@@ -84,7 +85,7 @@ export function AssignGroupDrawer() {
     errors.forEach(err => message.error(err))
 
     if (errors.length === 0) {
-      Stores.AssignGroupDrawer.closeAssignGroupDrawer()
+      AssignGroupDrawerStore.closeAssignGroupDrawer()
       assignGroupForm.reset()
     }
   }
@@ -95,7 +96,7 @@ export function AssignGroupDrawer() {
       size={600}
       open={isOpen}
       onClose={() => {
-        Stores.AssignGroupDrawer.closeAssignGroupDrawer()
+        AssignGroupDrawerStore.closeAssignGroupDrawer()
         assignGroupForm.reset()
       }}
       footer={
@@ -103,7 +104,7 @@ export function AssignGroupDrawer() {
           <Button
             variant="outline"
             onClick={() => {
-              Stores.AssignGroupDrawer.closeAssignGroupDrawer()
+              AssignGroupDrawerStore.closeAssignGroupDrawer()
               assignGroupForm.reset()
             }}
             data-testid="user-assign-group-cancel-button"

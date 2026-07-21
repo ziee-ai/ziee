@@ -18,10 +18,11 @@ import {
 import { z } from 'zod'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type CreateLlmRepositoryRequest, type UpdateLlmRepositoryRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { LlmRepositoryDrawer as LlmRepositoryDrawerStore } from '@/modules/llm-repository/stores/llmRepositoryDrawer'
+import { LlmRepository as LlmRepositoryStore } from '@/modules/llm-repository/stores/llmRepository'
 
 const schema = z.object({
   name: z.string().min(1, 'Please enter a repository name'),
@@ -61,8 +62,8 @@ export function LlmRepositoryDrawer() {
   // Loading state for the in-place enable transition (edit mode).
   const [togglingEnable, setTogglingEnable] = useState(false)
 
-  const { creating, updating, testing } = Stores.LlmRepository
-  const { open, editingRepository: repository } = Stores.LlmRepositoryDrawer
+  const { creating, updating, testing } = LlmRepositoryStore
+  const { open, editingRepository: repository } = LlmRepositoryDrawerStore
   const canCreate = usePermission(Permissions.LlmRepositoriesCreate)
   const canEdit = usePermission(Permissions.LlmRepositoriesEdit)
   // Effective gate on the form: editing requires edit; creating requires create.
@@ -192,11 +193,11 @@ export function LlmRepositoryDrawer() {
       }
 
       const result = isEdit && repository
-        ? await Stores.LlmRepository.testLlmRepositoryById(
+        ? await LlmRepositoryStore.testLlmRepositoryById(
             repository.id,
             overrides,
           )
-        : await Stores.LlmRepository.testLlmRepositoryConnection(overrides)
+        : await LlmRepositoryStore.testLlmRepositoryConnection(overrides)
 
       if (result.success) {
         message.success(
@@ -216,7 +217,7 @@ export function LlmRepositoryDrawer() {
 
   const handleClose = () => {
     form.reset()
-    Stores.LlmRepositoryDrawer.closeDrawer()
+    LlmRepositoryDrawerStore.closeDrawer()
   }
 
   /**
@@ -267,7 +268,7 @@ export function LlmRepositoryDrawer() {
     }
 
     if (repository) {
-      return Stores.LlmRepository.updateLlmRepository(
+      return LlmRepositoryStore.updateLlmRepository(
         repository.id,
         repositoryData,
       )
@@ -285,7 +286,7 @@ export function LlmRepositoryDrawer() {
         },
         enabled: enabledOverride ?? (values.enabled ?? true),
       }
-      const wrapped = await Stores.LlmRepository.createLlmRepository(createData)
+      const wrapped = await LlmRepositoryStore.createLlmRepository(createData)
       // Surface the create-flow probe outcome to the user. The wrapper
       // is flattened: LlmRepository fields are at top level (so
       // `wrapped` IS the canonical row with the auto-downgraded
@@ -365,7 +366,7 @@ export function LlmRepositoryDrawer() {
 
       setTogglingEnable(true)
       try {
-        const result = await Stores.LlmRepository.testLlmRepositoryConnection({
+        const result = await LlmRepositoryStore.testLlmRepositoryConnection({
           name: values.name,
           url: values.url,
           auth_type: values.auth_type,
@@ -405,7 +406,7 @@ export function LlmRepositoryDrawer() {
     try {
       if (v === false) {
         // OFF path — minimal PUT; no probe runs server-side.
-        await Stores.LlmRepository.updateLlmRepository(repository.id, {
+        await LlmRepositoryStore.updateLlmRepository(repository.id, {
           enabled: false,
         })
         setEnabledValue(false)

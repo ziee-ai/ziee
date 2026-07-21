@@ -7,7 +7,8 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyBound, lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
+import { ModelDetailsDrawer as ModelDetailsDrawerStore } from '@/modules/hub/modules/llm-models/components/modelDetailsDrawer'
+import { McpServerDetailsDrawer as McpServerDetailsDrawerStore } from '@/modules/hub/modules/mcp/components/mcpServerDetailsDrawer'
 
 const noop = () => {}
 
@@ -77,7 +78,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'),
         'ModelDetailsDrawer',
       ),
-      open: () => Stores.ModelDetailsDrawer.open(hubModelFixture as any),
+      open: () => ModelDetailsDrawerStore.open(hubModelFixture as any),
     },
     {
       slug: 'overlay-hub-mcp-details-drawer',
@@ -87,7 +88,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/hub/modules/mcp/components/McpServerDetailsDrawer'),
         'McpServerDetailsDrawer',
       ),
-      open: () => Stores.McpServerDetailsDrawer.open(hubMcpFixture as any),
+      open: () => McpServerDetailsDrawerStore.open(hubMcpFixture as any),
     },
     {
       slug: 'overlay-hub-skill-details-drawer',

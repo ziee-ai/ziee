@@ -13,6 +13,7 @@ import type {
   SidebarToolItem,
   SidebarActionItem,
 } from '@/modules/layouts/app-layout/types'
+import { AppLayout as AppLayoutStore } from '@/modules/layouts/app-layout/appLayout'
 
 /**
  * Split a group's active state into the EXACT current page vs. a broader
@@ -65,7 +66,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
   const location = useLocation()
   const windowMinSize = useWindowMinSize()
   const { slots } = Stores.ModuleSystem
-  const { isSidebarCollapsed } = Stores.AppLayout
+  const { isSidebarCollapsed } = AppLayoutStore
   const { user, permissions } = Stores.Auth
 
   const isAllowed = (item: { permission?: SidebarNavItem['permission'] }) =>
@@ -150,7 +151,7 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
   // tap on the new page. Collapse first (closing the Sheet cleanly) before we
   // navigate. No-op on desktop where the sidebar is persistent.
   const navTo = (path: string) => {
-    if (windowMinSize.xs) Stores.AppLayout.setSidebarCollapsed(true)
+    if (windowMinSize.xs) AppLayoutStore.setSidebarCollapsed(true)
     navigate(path)
   }
 

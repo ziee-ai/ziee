@@ -14,8 +14,8 @@ import { registerPane, unregisterPane } from '@/modules/chat/core/stores/chatBri
 import { PaneApiContext } from '@/modules/chat/core/pane/paneApiContext'
 import { PaneExtensionRuntime } from '@/modules/chat/core/extensions/PaneExtensionRuntime'
 import type { ChatExtStoreApi } from '@/modules/chat/core/extensions/types'
-import { Stores } from '@ziee/framework/stores'
 import { message } from '@ziee/kit'
+import { SplitView as SplitViewStore } from '@/modules/chat/core/stores/splitView'
 
 /** The store instance a pane subtree resolves via `useChatPane()`. */
 type PaneStore = ReturnType<typeof ChatPaneStore.use>
@@ -106,7 +106,7 @@ export function ChatPaneProvider({
           store.$.conversation?.id !== conversationId
         ) {
           message.warning('That conversation is no longer available.')
-          Stores.SplitView.closePane(paneId)
+          SplitViewStore.closePane(paneId)
         }
       })
     }

@@ -12,6 +12,7 @@ import { createTextStore } from '@/modules/chat/extensions/text/textStore'
 import { clearDraft, getDraft, makeDraftKey } from '@/modules/chat/extensions/text/chatDrafts'
 import { PaneDraftKeys } from '@/modules/chat/extensions/text/paneDraftKeys'
 import type { MessageContent } from '@/api-client/types'
+import { SplitView } from '@/modules/chat/core/stores/splitView'
 
 // The composer draft key captured at send START (before a new-chat conversation
 // is created), so onMessageSent — which runs AFTER creation — clears exactly the
@@ -183,7 +184,7 @@ const textExtension: ChatExtension = createExtension({
     // send on another pane can't clobber it; onMessageSent reads it back by the
     // owning pane's id (which equals this focused id).
     capturedDraftKeys.set(
-      Stores.SplitView.$.focusedPaneId,
+      SplitView.$.focusedPaneId,
       makeDraftKey(Stores.Auth.$.user?.id, Stores.Chat.$.conversation?.id),
     )
 

@@ -20,8 +20,8 @@ import {
   Tooltip,
 } from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { formatBytes } from '@/utils/downloadUtils'
+import { VoiceModel as VoiceModelStore } from '@/modules/voice/stores/voiceModel'
 
 const PAGE_SIZE = 10
 
@@ -30,11 +30,11 @@ const PAGE_SIZE = 10
  * set-active / delete actions. Mirrors the sibling InstalledVersionsCard.
  */
 export function InstalledModelsCard() {
-  const { installed, loadingInstalled, error } = Stores.VoiceModel
+  const { installed, loadingInstalled, error } = VoiceModelStore
   const [page, setPage] = useState(1)
 
   const handleRefresh = () => {
-    Stores.VoiceModel.loadInstalled().catch(() =>
+    VoiceModelStore.loadInstalled().catch(() =>
       message.error('Failed to refresh installed models'),
     )
   }
@@ -102,7 +102,7 @@ export function InstalledModelsCard() {
 }
 
 function InstalledModelRow({ model }: { model: VoiceModel }) {
-  const { activating, deleting } = Stores.VoiceModel
+  const { activating, deleting } = VoiceModelStore
   const canManage = usePermission(Permissions.VoiceAdminManage)
   const isActivating = activating.get(model.id) || false
   const isDeleting = deleting.get(model.id) || false
@@ -110,7 +110,7 @@ function InstalledModelRow({ model }: { model: VoiceModel }) {
 
   const handleActivate = async () => {
     try {
-      await Stores.VoiceModel.activate(model.id)
+      await VoiceModelStore.activate(model.id)
       message.success(`Activated ${model.name}`)
     } catch {
       /* error surfaced in store */
@@ -119,7 +119,7 @@ function InstalledModelRow({ model }: { model: VoiceModel }) {
 
   const handleDelete = async () => {
     try {
-      await Stores.VoiceModel.remove(model.id, ackActive)
+      await VoiceModelStore.remove(model.id, ackActive)
       setAckActive(false)
     } catch (error) {
       message.error(

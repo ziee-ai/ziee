@@ -11,6 +11,8 @@ import {
   Text,
   message,
 } from '@ziee/kit'
+import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
+import { Skill } from '@/modules/skill/stores/skill'
 
 interface ConversationSkillsPanelProps {
   conversationId: string
@@ -24,7 +26,7 @@ interface ConversationSkillsPanelProps {
 export function ConversationSkillsPanel({
   conversationId,
 }: ConversationSkillsPanelProps) {
-  const { skills } = Stores.Skill
+  const { skills } = Skill
   const available = Stores.ConversationSkills.available[conversationId]
   const loading = Stores.ConversationSkills.loading[conversationId]
   const error = Stores.ConversationSkills.error
@@ -34,7 +36,7 @@ export function ConversationSkillsPanel({
     Stores.ConversationSkills.loadAvailable(conversationId)
   }, [conversationId])
 
-  // NOTE: no manual loadSkills() here — reading `Stores.Skill.skills`
+  // NOTE: no manual loadSkills() here — reading `Skill.skills`
   // above self-initializes the install list via the store's
   // `__init__.skills` hook (and `sync:skill` keeps it fresh), so a
   // mount-time fetch would be redundant (REACT_COMPONENT_PATTERNS:
@@ -111,7 +113,7 @@ export function ConversationSkillsPanel({
                   className="h-auto max-w-full p-0 font-medium text-inherit"
                   // Thread conversationId so the detail drawer's "Hide in
                   // this conversation" checkbox is reachable from chat.
-                  onClick={() => Stores.SkillDrawer.open(skill, conversationId)}
+                  onClick={() => SkillDrawer.open(skill, conversationId)}
                 >
                   <span className="truncate">
                     {skill.display_name || skill.name}

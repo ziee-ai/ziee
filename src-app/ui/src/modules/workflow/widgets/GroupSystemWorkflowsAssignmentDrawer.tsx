@@ -3,9 +3,10 @@ import { Tag } from '@ziee/kit'
 import type { Workflow } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { GroupEntityAssignmentDrawer } from '@/components/common/group-entity-assignment/GroupEntityAssignmentDrawer'
+import { GroupSystemWorkflowsAssignment } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
+import { GroupSystemWorkflowsWidget } from '@/modules/workflow/widgets/groupSystemWorkflowsWidget'
 
 const workflowLabel = (w: Workflow) => w.display_name ?? w.name
 
@@ -15,7 +16,7 @@ const workflowLabel = (w: Workflow) => w.display_name ?? w.name
  * group-centric assign endpoints.
  */
 export function GroupSystemWorkflowsAssignmentDrawer() {
-  const { isOpen, selectedGroup } = Stores.GroupSystemWorkflowsAssignment
+  const { isOpen, selectedGroup } = GroupSystemWorkflowsAssignment
   const canManage = usePermission(Permissions.WorkflowsAssignToGroups)
   const [allWorkflows, setAllWorkflows] = useState<Workflow[]>([])
 
@@ -47,9 +48,9 @@ export function GroupSystemWorkflowsAssignmentDrawer() {
         )
       }
       save={(gid, ids) =>
-        Stores.GroupSystemWorkflowsWidget.updateGroupWorkflows(gid, ids)
+        GroupSystemWorkflowsWidget.updateGroupWorkflows(gid, ids)
       }
-      onClose={() => Stores.GroupSystemWorkflowsAssignment.closeDrawer()}
+      onClose={() => GroupSystemWorkflowsAssignment.closeDrawer()}
       entityLabel={workflowLabel}
       emptyText="No system workflows available"
       entityBadges={w =>

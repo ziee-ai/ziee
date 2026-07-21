@@ -1,13 +1,13 @@
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { dialog } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import { focusPopoutWindowIfOpen } from '@/modules/chat/core/popout/focusPopoutWindow'
 import {
   needsOpenChoice,
   type ReconcileIntent,
 } from '@/modules/chat/core/split/reconcile'
+import { SplitView as SplitViewStore } from '@/modules/chat/core/stores/splitView'
 
 /** Parse the conversation id out of a `/chat/<id>` (or `/projects/.../chat/<id>`) path. */
 function conversationIdFromPath(pathname: string): string | null {
@@ -50,7 +50,7 @@ export function useOpenConversationInWorkspace() {
       if (await focusPopoutWindowIfOpen(conversationId)) return
 
       let intent = opts?.intent ?? 'auto'
-      const sv = Stores.SplitView.$
+      const sv = SplitViewStore.$
 
       // FB-8 / ITEM-43: an AMBIGUOUS plain open (a split is open and this
       // conversation isn't already in a pane) asks the user how to place it,
@@ -79,7 +79,7 @@ export function useOpenConversationInWorkspace() {
         })
         if (!choice) return // cancelled / dismissed
         if (choice === 'single') {
-          Stores.SplitView.reset() // collapse to single-pane (URL-driven)
+          SplitViewStore.reset() // collapse to single-pane (URL-driven)
           navigate(opts?.href ?? `/chat/${conversationId}`)
           return
         }
@@ -93,7 +93,7 @@ export function useOpenConversationInWorkspace() {
         focused?.conversationId ??
         conversationIdFromPath(window.location.pathname)
 
-      const outcome = await Stores.SplitView.openConversationInWorkspace(
+      const outcome = await SplitViewStore.openConversationInWorkspace(
         conversationId,
         intent,
         { currentConversationId, projectId: opts?.projectId ?? null },
@@ -110,7 +110,7 @@ export function useOpenConversationInWorkspace() {
           cancelText: 'Cancel',
         })
         if (!replace) return
-        const replaced = await Stores.SplitView.openConversationInWorkspace(
+        const replaced = await SplitViewStore.openConversationInWorkspace(
           conversationId,
           'replaceFocused',
           { currentConversationId, projectId: opts?.projectId ?? null },
@@ -136,11 +136,11 @@ export function useClosePane() {
   const navigate = useNavigate()
   return useCallback(
     (paneId: string) => {
-      Stores.SplitView.closePane(paneId)
-      const sv = Stores.SplitView.$
+      SplitViewStore.closePane(paneId)
+      const sv = SplitViewStore.$
       if (sv.panes.length <= 1) {
         const only = sv.panes[0]
-        Stores.SplitView.reset() // collapse to single-pane (URL-driven)
+        SplitViewStore.reset() // collapse to single-pane (URL-driven)
         navigate(only?.conversationId ? `/chat/${only.conversationId}` : '/chat')
         return
       }

@@ -17,8 +17,8 @@ import {
   FieldTitle,
 } from '@ziee/kit/shadcn/field'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { SchedulerAdmin } from '@/modules/scheduler/stores/schedulerAdmin'
 
 interface Form {
   max_active_tasks_per_user: number
@@ -28,12 +28,12 @@ interface Form {
 }
 
 export function SchedulerAdminPage() {
-  const { settings, loading, saving, error } = Stores.SchedulerAdmin
+  const { settings, loading, saving, error } = SchedulerAdmin
   const canManage = usePermission(Permissions.SchedulerAdminManage)
   const [f, setF] = useState<Form | null>(null)
 
   useEffect(() => {
-    void Stores.SchedulerAdmin.loadSettings()
+    void SchedulerAdmin.loadSettings()
   }, [])
   useEffect(() => {
     if (settings)
@@ -48,7 +48,7 @@ export function SchedulerAdminPage() {
   const save = async () => {
     if (!f) return
     try {
-      await Stores.SchedulerAdmin.updateSettings(f)
+      await SchedulerAdmin.updateSettings(f)
       message.success('Scheduler settings saved')
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to save')

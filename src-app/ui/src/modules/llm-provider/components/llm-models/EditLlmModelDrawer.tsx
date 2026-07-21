@@ -11,6 +11,7 @@ import {
   MODEL_PARAMETERS,
 } from '@/modules/llm-provider/constants/llmModelParameters'
 import type { ModelCapabilities, ModelParameters, UpdateLlmModelRequest } from '@/api-client/types'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 
 /**
  * Edit drawer for both local and remote LLM models
@@ -31,13 +32,13 @@ export function EditLlmModelDrawer() {
 
   const { open, modelId } = Stores.EditLlmModelDrawer
   const currentModel = modelId
-    ? Stores.LlmProvider.providers
+    ? LlmProvider.providers
         .flatMap(p => p.llm_models || [])
         .find(m => m.id === modelId)
     : null
 
   // Find provider that owns this model
-  const currentProvider = Stores.LlmProvider.providers.find(p =>
+  const currentProvider = LlmProvider.providers.find(p =>
     p.llm_models?.some(m => m.id === modelId),
   )
 
@@ -64,7 +65,7 @@ export function EditLlmModelDrawer() {
       setLoading(true)
       // Update via the store (which calls the API + reconciles
       // local provider state).
-      await Stores.LlmProvider.updateLlmModel(currentModel.id, {
+      await LlmProvider.updateLlmModel(currentModel.id, {
         name: values.name as string,
         display_name: values.display_name as string,
         description: values.description as string,

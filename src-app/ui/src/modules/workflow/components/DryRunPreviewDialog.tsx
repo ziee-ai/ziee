@@ -1,7 +1,7 @@
 import { Alert, Dialog, Spin, Statistic, Table, Text } from '@ziee/kit'
 import { useEffect, useState } from 'react'
 import type { DryRunResult, DryRunStep, Workflow } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
+import { Workflow as WorkflowStore } from '@/modules/workflow/stores/workflow'
 
 interface DryRunPreviewDialogProps {
   workflow: Workflow
@@ -29,7 +29,7 @@ export function DryRunPreviewDialog({
     setLoading(true)
     setError(null)
     setResult(null)
-    Stores.Workflow
+    WorkflowStore
       .dryRun(workflow.id, {})
       .then(r => {
         if (!cancelled) setResult(r)

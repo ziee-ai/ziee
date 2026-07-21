@@ -11,7 +11,7 @@ import { citationsCassette } from '@/dev/gallery/fixtures/citations'
 
 const noop = () => {}
 
-/** A project stub — enough for `Stores.ProjectDetail.project` reads (`project.id`). */
+/** A project stub — enough for `ProjectDetail.project` reads (`project.id`). */
 const galleryProject = { id: 'proj-s4', name: 'Gallery Project' }
 
 /** Seed the active project so the project-scoped panels mount past their

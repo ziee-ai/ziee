@@ -4,11 +4,12 @@ import { Button, Card, Empty, ErrorState, Flex, Text } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Permissions } from '@/api-client/permissions'
 import { Can } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { ImportSkillDialog } from './ImportSkillDialog'
 import { SkillDetailDrawer } from './SkillDetailDrawer'
 import { SkillScopeBadge } from './SkillScopeBadge'
+import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
+import { Skill } from '@/modules/skill/stores/skill'
 
 /**
  * `/skills` page — lists the user's own + accessible system skills,
@@ -18,7 +19,7 @@ import { SkillScopeBadge } from './SkillScopeBadge'
  * the read/manage surface.
  */
 export function SkillsList() {
-  const { skills, loading, error } = Stores.Skill
+  const { skills, loading, error } = Skill
   const [importOpen, setImportOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -61,11 +62,11 @@ export function SkillsList() {
               size="sm"
               role="button"
               tabIndex={0}
-              onClick={() => Stores.SkillDrawer.open(skill)}
+              onClick={() => SkillDrawer.open(skill)}
               onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
-                  Stores.SkillDrawer.open(skill)
+                  SkillDrawer.open(skill)
                 }
               }}
               data-skill-id={skill.id}
@@ -111,7 +112,7 @@ export function SkillsList() {
             resource="skills"
             description="Something went wrong while loading your skills."
             details={error}
-            onRetry={() => Stores.Skill.loadSkills()}
+            onRetry={() => Skill.loadSkills()}
             data-testid="skill-list-error"
           />
         ) : (

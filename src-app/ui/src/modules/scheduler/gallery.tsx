@@ -7,8 +7,8 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
 import type { ScheduledTask } from '@/api-client/types'
+import { SchedulerDrawer } from '@/modules/scheduler/stores/schedulerDrawer'
 
 const USER = 'aaaa0000-0000-0000-0000-000000000001'
 
@@ -125,7 +125,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/scheduler/components/ScheduledTaskFormDrawer'),
         'ScheduledTaskFormDrawer',
       ),
-      open: () => Stores.SchedulerDrawer.openCreate(),
+      open: () => SchedulerDrawer.openCreate(),
     },
   ],
 }

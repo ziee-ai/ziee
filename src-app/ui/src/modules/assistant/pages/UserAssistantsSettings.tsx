@@ -16,13 +16,14 @@ import {
 } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@/modules/assistant/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { type Assistant } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistant/components/AssistantFormDrawer'
+import { UserAssistants } from '@/modules/assistant/stores/userAssistants'
+import { AssistantDrawer } from '@/modules/assistant/components/assistantDrawer'
 
 export function UserAssistantsSettings() {
   // Store state
@@ -33,7 +34,7 @@ export function UserAssistantsSettings() {
     pageSize: storePageSize,
     loading,
     error,
-  } = Stores.UserAssistants
+  } = UserAssistants
 
   const canEdit = usePermission(Permissions.AssistantsEdit)
   const canDelete = usePermission(Permissions.AssistantsDelete)
@@ -44,13 +45,13 @@ export function UserAssistantsSettings() {
   useEffect(() => {
     if (error && assistants.length > 0) {
       message.error(error)
-      Stores.UserAssistants.clearUserAssistantsStoreError()
+      UserAssistants.clearUserAssistantsStoreError()
     }
   }, [error, assistants.length])
 
   const handleDelete = async (assistant: Assistant) => {
     try {
-      await Stores.UserAssistants.deleteUserAssistant(assistant.id)
+      await UserAssistants.deleteUserAssistant(assistant.id)
       message.success('Assistant deleted successfully')
     } catch (error) {
       console.error('Failed to delete assistant:', error)
@@ -59,18 +60,18 @@ export function UserAssistantsSettings() {
   }
 
   const handleEdit = (assistant: Assistant) => {
-    Stores.AssistantDrawer.openAssistantDrawer(assistant, false)
+    AssistantDrawer.openAssistantDrawer(assistant, false)
   }
 
   const handleCreate = () => {
-    Stores.AssistantDrawer.openAssistantDrawer(null, false)
+    AssistantDrawer.openAssistantDrawer(null, false)
   }
 
   const handlePageChange = (page: number, size?: number) => {
     const newPageSize = size || storePageSize
     const newPage = size && size !== storePageSize ? 1 : page // reset to page 1 when the page size changes
 
-    Stores.UserAssistants.loadUserAssistants(newPage, newPageSize)
+    UserAssistants.loadUserAssistants(newPage, newPageSize)
   }
 
   const getAssistantActions = (assistant: Assistant) => {
@@ -141,7 +142,7 @@ export function UserAssistantsSettings() {
               description="Something went wrong while loading your assistants."
               details={error}
               onRetry={() =>
-                Stores.UserAssistants.loadUserAssistants(storePage, storePageSize)
+                UserAssistants.loadUserAssistants(storePage, storePageSize)
               }
               data-testid="user-assistants-error"
             />
@@ -152,7 +153,7 @@ export function UserAssistantsSettings() {
               resource="assistants"
               description="Your assistants couldn't be loaded."
               details={error}
-              onRetry={() => Stores.UserAssistants.loadUserAssistants(storePage, storePageSize)}
+              onRetry={() => UserAssistants.loadUserAssistants(storePage, storePageSize)}
               data-testid="user-assistants-error"
             />
           ) : assistants.length === 0 ? (

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, ErrorState, Spin, Text, Title, message } from '@ziee/kit'
 import { Folder, FolderPlus, Plus } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { type Project } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
@@ -10,13 +9,16 @@ import { ProjectFormDrawer } from '@/modules/projects/components/ProjectFormDraw
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 import { cn } from '@/lib/utils'
+import { ProjectDrawer } from '@/modules/projects/stores/projectDrawer'
+import { Projects as ProjectsStore } from '@/modules/projects/stores/projects'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 
 export function ProjectsListPage() {
   // Native document-scroll on mobile (iOS toolbar collapse + content under the
   // notch); desktop keeps the fixed inner-scroll shell.
   useNativeScroll(true)
-  const { nativeScroll } = Stores.AppLayout
-  const { projects: projectsMap, loading, error } = Stores.Projects
+  const { nativeScroll } = AppLayout
+  const { projects: projectsMap, loading, error } = ProjectsStore
   const projects = Array.from(projectsMap.values())
   // Client-side "Load More" paging (the store loads the full set): reveal a
   // page at a time, like the chat history page.
@@ -38,18 +40,18 @@ export function ProjectsListPage() {
   useEffect(() => {
     if (error && projects.length > 0) {
       message.error(error)
-      Stores.Projects.clearProjectsError()
+      ProjectsStore.clearProjectsError()
     }
   }, [error, projects.length])
 
-  const handleCreate = () => Stores.ProjectDrawer.openProjectDrawer(null)
+  const handleCreate = () => ProjectDrawer.openProjectDrawer(null)
   const handleEdit = (project: Project) =>
-    Stores.ProjectDrawer.openProjectDrawer(project)
+    ProjectDrawer.openProjectDrawer(project)
 
   const handleDuplicate = async (project: Project) => {
     setBusy({ id: project.id, action: 'duplicate' })
     try {
-      await Stores.Projects.duplicateProject(project.id)
+      await ProjectsStore.duplicateProject(project.id)
     } catch (_err) {
       // Surfaced via the store `error` -> message.error effect above.
     } finally {
@@ -60,7 +62,7 @@ export function ProjectsListPage() {
   const handleDelete = async (project: Project) => {
     setBusy({ id: project.id, action: 'delete' })
     try {
-      await Stores.Projects.deleteProject(project.id)
+      await ProjectsStore.deleteProject(project.id)
     } catch (_err) {
       // Surfaced via the store `error` -> message.error effect above.
     } finally {
@@ -145,7 +147,7 @@ export function ProjectsListPage() {
               resource="projects"
               description="Your projects couldn't be loaded. Check your connection and try again."
               details={error}
-              onRetry={() => void Stores.Projects.loadProjects(true)}
+              onRetry={() => void ProjectsStore.loadProjects(true)}
               data-testid="project-list-error"
             />
           </div>

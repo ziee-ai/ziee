@@ -12,13 +12,14 @@ import {
 } from '@ziee/kit'
 import { Wrench } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
+import { Onboarding } from '@/modules/onboarding/stores/onboarding'
+import { McpServersStep as McpServersStepStore } from '@/modules/onboarding/guides/getting-started/components/mcpServersStep'
 
 export default function McpServersStep({ registerBeforeNext }: OnboardingStepProps) {
-  const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
-  const { systemServers, hubServers, installedNames, loadingServers, serversError, disabledSystemIds } = Stores.McpServersStep
+  const selectedMcpServerIds = McpServersStepStore.selectedMcpServerIds
+  const { systemServers, hubServers, installedNames, loadingServers, serversError, disabledSystemIds } = McpServersStepStore
 
   // The step renders for every authenticated user, but the controls are
   // admin-only. Non-admins see just the intro paragraph and continue.
@@ -27,12 +28,12 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
   const canSeeAdminControls = canManageSystemMcp || canInstallFromHub
 
   useEffect(() => {
-    Stores.Onboarding.setReady(true)
+    Onboarding.setReady(true)
     if (canSeeAdminControls) {
       // Wire up the before-next handler so hub-server installations AND
       // system-server toggles are persisted when the user clicks Next/Start Chatting.
-      registerBeforeNext(() => Stores.McpServersStep.applyMcpServerChanges())
-      Stores.McpServersStep.loadMcpServers()
+      registerBeforeNext(() => McpServersStepStore.applyMcpServerChanges())
+      McpServersStepStore.loadMcpServers()
     } else {
       registerBeforeNext(null)
     }
@@ -82,7 +83,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                   data-testid={`onboarding-mcp-system-server-switch-${server.id}`}
                   size="sm"
                   checked={!disabledSystemIds.has(server.id)}
-                  onChange={checked => Stores.McpServersStep.toggleSystemServer(server.id, checked)}
+                  onChange={checked => McpServersStepStore.toggleSystemServer(server.id, checked)}
                   className="mt-1"
                 />
                 <div>
@@ -123,7 +124,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                       ? 'opacity-50 cursor-not-allowed'
                       : 'cursor-pointer hover:bg-accent'
                   }`}
-                  onClick={alreadyInstalled ? undefined : () => Stores.McpServersStep.toggleMcpServer(server.name)}
+                  onClick={alreadyInstalled ? undefined : () => McpServersStepStore.toggleMcpServer(server.name)}
                 >
                   {/* stop bubbling so the checkbox's own toggle doesn't double-fire the row onClick */}
                   <span onClick={e => e.stopPropagation()}>
@@ -131,7 +132,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
                       data-testid={`onboarding-mcp-hub-server-checkbox-${server.name}`}
                       checked={isSelected}
                       disabled={alreadyInstalled}
-                      onChange={() => Stores.McpServersStep.toggleMcpServer(server.name)}
+                      onChange={() => McpServersStepStore.toggleMcpServer(server.name)}
                       className="mt-1"
                     />
                   </span>

@@ -2,9 +2,9 @@ import { GitCompare, History, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { Select, Button, Tag, Dialog } from '@ziee/kit'
 import { message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { FileVersionDiff } from '@/modules/file/components/FileVersionDiff'
+import { FileVersions } from '@/modules/file/stores/fileVersions'
 
 interface FileVersionBarProps {
   file: FileEntity
@@ -36,10 +36,10 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
   // version load lands. `getVersions()` reads via getState() + kicks off that
   // load (render-safe) but does NOT subscribe — without touching the reactive
   // map here, the bar would render once (empty) and never update.
-  const versionsByFile = Stores.FileVersions.versionsByFile
+  const versionsByFile = FileVersions.versionsByFile
   // Fire-and-forget background load if not already loaded/loading.
   if (!versionsByFile.has(file.id)) {
-    void Stores.FileVersions.loadVersions(file.id)
+    void FileVersions.loadVersions(file.id)
   }
   const versions = versionsByFile.get(file.id) ?? []
   const [restoring, setRestoring] = useState(false)
@@ -63,7 +63,7 @@ export function FileVersionBar({ file, selectedVersion, onSelectVersion }: FileV
     try {
       // restoreVersion is an action — callable directly from an event handler
       // (actions are hook-free; only state *reads* in a handler need `$`).
-      await Stores.FileVersions.restoreVersion(file.id, current)
+      await FileVersions.restoreVersion(file.id, current)
       onSelectVersion(null)
     } catch (e) {
       message.error(`Failed to restore v${current}`)

@@ -2,8 +2,8 @@ import { useEffect } from 'react'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
+import { SystemWorkflow } from '@/modules/workflow/stores/systemWorkflow'
 
 interface AdminWorkflowGroupAssignmentProps {
   workflowId: string
@@ -16,13 +16,13 @@ interface AdminWorkflowGroupAssignmentProps {
 export function AdminWorkflowGroupAssignment({
   workflowId,
 }: AdminWorkflowGroupAssignmentProps) {
-  const entry = Stores.SystemWorkflow.groups[workflowId]
+  const entry = SystemWorkflow.groups[workflowId]
   const assignedIds = entry?.groupIds ?? []
   const loading = entry?.loading ?? false
   const canAssign = usePermission(Permissions.WorkflowsAssignToGroups)
 
   useEffect(() => {
-    void Stores.SystemWorkflow.loadGroups(workflowId)
+    void SystemWorkflow.loadGroups(workflowId)
   }, [workflowId])
 
   return (
@@ -40,7 +40,7 @@ export function AdminWorkflowGroupAssignment({
             const res = await ApiClient.UserGroup.list({ page: 1, per_page: 100 })
             return res.groups.map(g => ({ id: g.id, name: g.name, description: g.description, is_default: g.is_default }))
           },
-          save: ids => Stores.SystemWorkflow.setGroups(workflowId, ids),
+          save: ids => SystemWorkflow.setGroups(workflowId, ids),
         }}
       />
     </div>

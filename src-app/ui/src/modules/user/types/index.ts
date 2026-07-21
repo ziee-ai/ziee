@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-// Direct type import (erased) — keeps the `Stores.Users` augmentation without
+// Direct type import (erased) — keeps the `UsersStore` augmentation without
 // re-tethering the lazy Users store through the barrel.
 import type { useUsersStore } from '@/modules/user/stores/users'
 import type { useUserGroupsStore } from '@/modules/user/stores'

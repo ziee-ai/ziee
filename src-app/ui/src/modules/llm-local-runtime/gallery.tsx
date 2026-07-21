@@ -7,7 +7,7 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyNamed, lazyProps } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
+import { RuntimeDownloadDrawer as RuntimeDownloadDrawerStore } from '@/modules/llm-local-runtime/stores/runtimeDownloadDrawer'
 
 export const gallery: ModuleGallery = {
   overlays: [
@@ -21,7 +21,7 @@ export const gallery: ModuleGallery = {
         'RuntimeDownloadDrawer',
       ),
       open: () =>
-        Stores.RuntimeDownloadDrawer.openDrawer({
+        RuntimeDownloadDrawerStore.openDrawer({
           id: 'llamacpp',
           name: 'llama.cpp',
           display_name: 'llama.cpp',

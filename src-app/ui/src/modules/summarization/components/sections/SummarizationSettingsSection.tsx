@@ -15,10 +15,10 @@ import {
   message,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { SummarizationAdmin } from '@/modules/summarization/stores/summarizationAdmin'
 
 const READ_PERM = Permissions.SummarizationSettingsRead
 const MANAGE_PERM = Permissions.SummarizationSettingsManage
@@ -56,7 +56,7 @@ export function SummarizationSettingsSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
   const { settings, availableModels, loading, saving, loadingModels, error } =
-    Stores.SummarizationAdmin
+    SummarizationAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -102,7 +102,7 @@ export function SummarizationSettingsSection() {
           resource="summarization settings"
           description="The summarization settings couldn't be loaded. Check your connection and try again."
           details={error}
-          onRetry={() => void Stores.SummarizationAdmin.load()}
+          onRetry={() => void SummarizationAdmin.load()}
           data-testid="summ-settings-error"
         />
       </Card>
@@ -152,7 +152,7 @@ export function SummarizationSettingsSection() {
       return
     }
     try {
-      await Stores.SummarizationAdmin.update({
+      await SummarizationAdmin.update({
         enabled: values.enabled,
         default_summarization_model_id:
           values.default_summarization_model_id ?? null,

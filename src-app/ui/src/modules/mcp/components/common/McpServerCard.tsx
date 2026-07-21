@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { Alert, Button, Card, Confirm, Tag, Text, Tooltip, Switch, Flex } from '@ziee/kit'
 import { Pencil, Trash2, Plug } from 'lucide-react'
 import { message } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type McpServer, type TestMcpConnectionRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { SystemMcpServer } from '@/modules/mcp/stores/systemMcpServer'
+import { McpServer as McpServerStore } from '@/modules/mcp/stores/mcpServer'
+import { McpServerDrawer } from '@/modules/mcp/stores/mcpServerDrawer'
 
 // System and user MCP servers gate on different permission namespaces.
 // `server.is_system` selects which set applies at render time. `test` maps to
@@ -42,18 +44,18 @@ export function McpServerCard({
 
   const handleEdit = () => {
     if (server.is_system) {
-      Stores.McpServerDrawer.openMcpServerDrawer(server, 'edit-system')
+      McpServerDrawer.openMcpServerDrawer(server, 'edit-system')
     } else {
-      Stores.McpServerDrawer.openMcpServerDrawer(server, 'edit')
+      McpServerDrawer.openMcpServerDrawer(server, 'edit')
     }
   }
 
   const handleDelete = async () => {
     try {
       if (server.is_system) {
-        await Stores.SystemMcpServer.deleteSystemServer(server.id)
+        await SystemMcpServer.deleteSystemServer(server.id)
       } else {
-        await Stores.McpServer.deleteMcpServer(server.id)
+        await McpServerStore.deleteMcpServer(server.id)
       }
       message.success('Server deleted successfully')
     } catch (_error) {
@@ -82,8 +84,8 @@ export function McpServerCard({
         id: server.id,
       }
       const result = server.is_system
-        ? await Stores.SystemMcpServer.testSystemServerConnection(payload)
-        : await Stores.McpServer.testMcpServerConnection(payload)
+        ? await SystemMcpServer.testSystemServerConnection(payload)
+        : await McpServerStore.testMcpServerConnection(payload)
       if (result.success) {
         message.success(result.message || 'Connection successful')
       } else {
@@ -96,9 +98,9 @@ export function McpServerCard({
       // to reload the page.
       try {
         if (server.is_system) {
-          await Stores.SystemMcpServer.loadSystemServers()
+          await SystemMcpServer.loadSystemServers()
         } else {
-          await Stores.McpServer.loadMcpServers()
+          await McpServerStore.loadMcpServers()
         }
       } catch (e) {
         console.warn('Failed to refresh after Test Connection:', e)
@@ -114,11 +116,11 @@ export function McpServerCard({
     setEnableLoading(true)
     try {
       if (server.is_system) {
-        await Stores.SystemMcpServer.updateSystemServer(server.id, {
+        await SystemMcpServer.updateSystemServer(server.id, {
           enabled,
         })
       } else {
-        await Stores.McpServer.updateMcpServer(server.id, {
+        await McpServerStore.updateMcpServer(server.id, {
           enabled,
         })
       }

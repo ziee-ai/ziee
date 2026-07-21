@@ -19,8 +19,9 @@ import {
   zodResolver,
 } from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { VoiceConfig } from '@/modules/voice/stores/voiceConfig'
+import { VoiceModel } from '@/modules/voice/stores/voiceModel'
 
 const MIB = 1024 * 1024
 
@@ -68,8 +69,8 @@ type Schema = z.infer<typeof schema>
  */
 export function VoiceConfigCard() {
   const { settings, loadingSettings, savingSettings, error } =
-    Stores.VoiceConfig
-  const { installed } = Stores.VoiceModel
+    VoiceConfig
+  const { installed } = VoiceModel
   const canManage = usePermission(Permissions.VoiceAdminManage)
 
   // The active-model options come from the INSTALLED library (so a downloaded/
@@ -132,7 +133,7 @@ export function VoiceConfigCard() {
 
   const handleSave = async (values: Schema) => {
     try {
-      await Stores.VoiceConfig.saveSettings({
+      await VoiceConfig.saveSettings({
         enabled: values.enabled,
         model: values.model,
         model_source_repo: values.model_source_repo,
@@ -170,7 +171,7 @@ export function VoiceConfigCard() {
           resource="voice configuration"
           description="The voice configuration couldn't be loaded."
           details={error}
-          onRetry={() => Stores.VoiceConfig.loadSettings()}
+          onRetry={() => VoiceConfig.loadSettings()}
           data-testid="voice-config-error"
         />
       </Card>

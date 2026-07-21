@@ -1,10 +1,10 @@
 import { Tooltip, Button } from '@ziee/kit'
 import { PanelLeft, PanelRight } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { cn } from '@/lib/utils'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 
 export function SidebarToggleButton() {
-  const { isSidebarCollapsed, nativeScroll, headerHidden } = Stores.AppLayout
+  const { isSidebarCollapsed, nativeScroll, headerHidden } = AppLayout
 
   // Single compact size at every breakpoint. The previous
   // responsive flip (44px on xs viewports for WCAG 2.5.5 touch
@@ -59,7 +59,7 @@ export function SidebarToggleButton() {
         <Button
           variant="ghost"
           data-testid="layout-sidebar-toggle-button"
-          onClick={() => Stores.AppLayout.toggleSidebar()}
+          onClick={() => AppLayout.toggleSidebar()}
           // No background in any state — the ghost variant otherwise paints
           // hover:bg-muted AND a persistent aria-expanded:bg-muted (the toggle
           // sets aria-expanded when the sidebar is open). Keep it a bare icon.

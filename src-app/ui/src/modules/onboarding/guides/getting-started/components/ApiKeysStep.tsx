@@ -13,15 +13,16 @@ import {
 } from '@ziee/kit'
 import { Plug, CircleCheck } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@ziee/framework/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
+import { Onboarding } from '@/modules/onboarding/stores/onboarding'
+import { ApiKeysStep as ApiKeysStepStore } from '@/modules/onboarding/guides/getting-started/components/apiKeysStep'
 
 export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps) {
-  const enteredApiKeys = Stores.ApiKeysStep.enteredApiKeys
-  const providers = Stores.ApiKeysStep.providers
-  const userKeys = Stores.ApiKeysStep.userKeys
-  const loading = Stores.ApiKeysStep.loadingProviders
-  const error = Stores.ApiKeysStep.providersError
+  const enteredApiKeys = ApiKeysStepStore.enteredApiKeys
+  const providers = ApiKeysStepStore.providers
+  const userKeys = ApiKeysStepStore.userKeys
+  const loading = ApiKeysStepStore.loadingProviders
+  const error = ApiKeysStepStore.providersError
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -33,7 +34,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
   }, [providers, selectedId])
 
   useEffect(() => {
-    Stores.Onboarding.setReady(true)
+    Onboarding.setReady(true)
     registerBeforeNext(async () => {
       const { enteredApiKeys, saveKey } = useApiKeysStepStore.getState()
       const keysToSave = Object.entries(enteredApiKeys).filter(([, v]) => v.trim())
@@ -66,7 +67,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
           resource="AI providers"
           description="The available AI providers couldn't be loaded."
           details={error}
-          onRetry={() => Stores.ApiKeysStep.loadProviders()}
+          onRetry={() => ApiKeysStepStore.loadProviders()}
           data-testid="onboarding-apikeys-error-alert"
         />
       </div>
@@ -129,7 +130,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
             resource="AI providers"
             description="Couldn't refresh the provider list."
             details={error}
-            onRetry={() => Stores.ApiKeysStep.loadProviders()}
+            onRetry={() => ApiKeysStepStore.loadProviders()}
             data-testid="onboarding-apikeys-refresh-error-alert"
           />
         </div>
@@ -189,7 +190,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
                 hideLabel="Hide API key"
                 value={enteredApiKeys[currentProvider.id] || ''}
                 onChange={e =>
-                  Stores.ApiKeysStep.setApiKey(currentProvider.id, e.target.value)
+                  ApiKeysStepStore.setApiKey(currentProvider.id, e.target.value)
                 }
                 placeholder={
                   hasUserKey

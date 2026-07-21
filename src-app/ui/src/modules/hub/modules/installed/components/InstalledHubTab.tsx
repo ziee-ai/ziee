@@ -19,6 +19,8 @@ import { ApiClient } from '@/api-client'
 import { emitMcpServerDeleted } from '@/modules/mcp/events/emitters'
 import { emitAssistantDeleted } from '@/modules/assistant/events/emitters'
 import type { HubInstalledRow } from '@/api-client/types'
+import { Skill } from '@/modules/skill/stores/skill'
+import { Workflow } from '@/modules/workflow/stores/workflow'
 
 // Three section cards, data-driven so the row-render loop stays
 // flat. Icons match the per-category icon used elsewhere in the
@@ -130,9 +132,9 @@ export function InstalledHubTab() {
         // Only USER-scope skills reach here — system skills disable the
         // Re-install button (they need group choices; see the button gate).
         // The backend re-install path replaces the prior install for this hub_id.
-        await Stores.Skill.installFromHub(row.hub_id)
+        await Skill.installFromHub(row.hub_id)
       } else if (row.hub_category === 'workflow') {
-        await Stores.Workflow.installFromHub(row.hub_id)
+        await Workflow.installFromHub(row.hub_id)
       } else {
         // Unhandled category — surface an error instead of a false success.
         throw new Error(`Re-install not supported for ${row.hub_category}`)

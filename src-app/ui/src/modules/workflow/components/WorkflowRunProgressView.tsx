@@ -12,11 +12,11 @@ import {
 import { useEffect, useState } from 'react'
 import { ApiClient } from '@/api-client'
 import type { ProgressTrack } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { StepArtifacts } from './StepArtifacts'
 import { StepLogExpander } from './StepLogExpander'
 import { StepOutputExpander } from './StepOutputExpander'
 import { WorkflowElicitForm } from './WorkflowElicitForm'
+import { WorkflowRun } from '@/modules/workflow/stores/workflowRun'
 
 interface WorkflowRunProgressViewProps {
   runId: string
@@ -90,15 +90,15 @@ function TrackWidget({ track }: { track: ProgressTrack }) {
 export function WorkflowRunProgressView({
   runId,
 }: WorkflowRunProgressViewProps) {
-  const run = Stores.WorkflowRun.runs[runId]
-  const cancelling = Stores.WorkflowRun.cancelling[runId] ?? false
-  const submittingElicit = Stores.WorkflowRun.submittingElicit[runId] ?? false
+  const run = WorkflowRun.runs[runId]
+  const cancelling = WorkflowRun.cancelling[runId] ?? false
+  const submittingElicit = WorkflowRun.submittingElicit[runId] ?? false
   const [removingTimeout, setRemovingTimeout] = useState(false)
 
   useEffect(() => {
-    Stores.WorkflowRun.subscribe(runId)
+    WorkflowRun.subscribe(runId)
     return () => {
-      Stores.WorkflowRun.unsubscribe(runId)
+      WorkflowRun.unsubscribe(runId)
     }
   }, [runId])
 
@@ -141,7 +141,7 @@ export function WorkflowRunProgressView({
             size="default"
             icon={<Ban />}
             loading={cancelling}
-            onClick={() => void Stores.WorkflowRun.cancel(runId)}
+            onClick={() => void WorkflowRun.cancel(runId)}
           >
             Cancel
           </Button>
@@ -182,7 +182,7 @@ export function WorkflowRunProgressView({
           elicitation={run.pendingElicitation}
           submitting={submittingElicit}
           onSubmit={response =>
-            void Stores.WorkflowRun.submitElicitation(
+            void WorkflowRun.submitElicitation(
               runId,
               run.pendingElicitation!.elicitation_id,
               response,

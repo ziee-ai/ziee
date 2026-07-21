@@ -20,6 +20,7 @@ import { ApiClient } from '@/api-client'
 import { usePermission } from '@/core/permissions'
 import { type LlmModel } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 
 export function LlmModelsSection() {
   const { providerId } = useParams<{ providerId?: string }>()
@@ -29,13 +30,13 @@ export function LlmModelsSection() {
   >({})
 
   // Store data
-  const { llmModelsLoading } = Stores.LlmProvider
+  const { llmModelsLoading } = LlmProvider
   const canEditModels = usePermission(Permissions.LlmModelsEdit)
   const canDeleteModels = usePermission(Permissions.LlmModelsDelete)
   const canCreateModels = usePermission(Permissions.LlmModelsCreate)
 
   // Get current provider and its models
-  const currentProvider = Stores.LlmProvider.providers.find(
+  const currentProvider = LlmProvider.providers.find(
     p => p.id === providerId,
   )
   const llmModels = currentProvider?.llm_models || []
@@ -46,9 +47,9 @@ export function LlmModelsSection() {
 
     try {
       if (enabled) {
-        await Stores.LlmProvider.enableLlmModel(modelId)
+        await LlmProvider.enableLlmModel(modelId)
       } else {
-        await Stores.LlmProvider.disableLlmModel(modelId)
+        await LlmProvider.disableLlmModel(modelId)
       }
 
       // Check if this was the last enabled model being disabled
@@ -60,7 +61,7 @@ export function LlmModelsSection() {
         // If no models remain enabled and provider is currently enabled, disable the provider
         if (remainingEnabledModels.length === 0 && currentProvider.enabled) {
           try {
-            await Stores.LlmProvider.updateLlmProvider(currentProvider.id, {
+            await LlmProvider.updateLlmProvider(currentProvider.id, {
               enabled: false,
             })
             const modelName =
@@ -103,7 +104,7 @@ export function LlmModelsSection() {
     if (!currentProvider) return
 
     try {
-      await Stores.LlmProvider.deleteLlmModel(modelId)
+      await LlmProvider.deleteLlmModel(modelId)
       message.success('Model deleted')
     } catch (error) {
       console.error('Failed to delete model:', error)
@@ -124,7 +125,7 @@ export function LlmModelsSection() {
         await ApiClient.LocalRuntime.stopModel({ model_id: modelId }, undefined)
         message.success('Model stopped')
       }
-      await Stores.LlmProvider.loadModelsForProvider(currentProvider.id)
+      await LlmProvider.loadModelsForProvider(currentProvider.id)
     } catch (error) {
       console.error('Failed to start/stop model:', error)
       message.error(
@@ -162,7 +163,7 @@ export function LlmModelsSection() {
   const handleRefreshModels = async () => {
     if (!currentProvider) return
     try {
-      const models = await Stores.LlmProvider.refreshProviderModels(currentProvider.id)
+      const models = await LlmProvider.refreshProviderModels(currentProvider.id)
       const deprecated = models.filter(m => m.is_deprecated).length
       message.success(
         deprecated > 0
@@ -319,7 +320,7 @@ export function LlmModelsSection() {
     // Refresh mutates is_deprecated → gate on edit (matches the backend's
     // llm_models::edit on POST /refresh-models), not create.
     if (!canEditModels) return null
-    const refreshing = Boolean(Stores.LlmProvider.refreshingModels[currentProvider.id])
+    const refreshing = Boolean(LlmProvider.refreshingModels[currentProvider.id])
     return (
       <Tooltip content="Refresh models from provider">
         <span className="inline-flex">

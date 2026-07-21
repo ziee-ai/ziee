@@ -14,7 +14,7 @@ export interface OnboardingStep {
   component: React.ComponentType<OnboardingStepProps>
   /**
    * If true (default), Next starts enabled — user can advance without doing anything.
-   * If false, Next starts disabled until the step calls Stores.Onboarding.setReady(true).
+   * If false, Next starts disabled until the step calls OnboardingStore.setReady(true).
    */
   skippable?: boolean
 }

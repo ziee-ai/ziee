@@ -4,13 +4,14 @@ import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type DownloadInstance } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { LlmModelDownload } from '@/modules/llm-provider/stores/llmModelDownload'
 
 interface DownloadsSectionProps {
   providerId: string
 }
 
 export function DownloadsSection({ providerId }: DownloadsSectionProps) {
-  const { downloads } = Stores.LlmModelDownload
+  const { downloads } = LlmModelDownload
   const canCancel = usePermission(Permissions.LlmModelsDownloadsCancel)
   const canDelete = usePermission(Permissions.LlmModelsDownloadsDelete)
 
@@ -25,7 +26,7 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
 
   const handleCancelDownload = async (downloadId: string) => {
     try {
-      await Stores.LlmModelDownload.cancelLlmModelDownload(downloadId)
+      await LlmModelDownload.cancelLlmModelDownload(downloadId)
     } catch (error) {
       console.error('Failed to cancel download:', error)
     }
@@ -33,7 +34,7 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
 
   const handleCloseDownload = async (downloadId: string) => {
     try {
-      await Stores.LlmModelDownload.deleteLlmModelDownload(downloadId)
+      await LlmModelDownload.deleteLlmModelDownload(downloadId)
     } catch (error) {
       console.error('Failed to delete download:', error)
     }

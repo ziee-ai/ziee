@@ -18,6 +18,9 @@ import { usePermission } from '@/core/permissions'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
 import { type FileFormat, type EngineType, type RepositoryFileListResponse } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { LlmModelDownload } from '@/modules/llm-provider/stores/llmModelDownload'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
+import { LlmRepository as LlmRepositoryStore } from '@/modules/llm-repository/stores/llmRepository'
 
 const formatForShape = (shape: string): FileFormat | undefined => {
   if (shape === 'gguf') return 'gguf'
@@ -62,17 +65,17 @@ export function AddLocalLlmModelDownloadDrawer() {
 
   const { open: addMode, providerId } = Stores.AddLocalLlmModelDownloadDrawer
   const { open: viewMode, downloadId } = Stores.ViewDownloadDrawer
-  const { downloads } = Stores.LlmModelDownload
+  const { downloads } = LlmModelDownload
   // Read repositories from the canonical LlmRepository store (whose
   // __init__ hits /api/llm-repositories once and caches; filter here
   // because the drawer only offers enabled repos as download targets).
   // Previously inlined an ApiClient.LlmRepository.list call into a
   // useState — bypassed the store cache and missed any subsequent
   // create/update/delete events.
-  const repositories = Stores.LlmRepository.repositories.filter(
+  const repositories = LlmRepositoryStore.repositories.filter(
     r => r.enabled,
   )
-  const loadingRepositories = Stores.LlmRepository.loading
+  const loadingRepositories = LlmRepositoryStore.loading
   const canCreate = usePermission(Permissions.LlmModelsCreate)
   const canCancelDownload = usePermission(Permissions.LlmModelsDownloadsCancel)
 
@@ -137,7 +140,7 @@ export function AddLocalLlmModelDownloadDrawer() {
     }
     try {
       setDetecting(true)
-      const res = await Stores.LlmModelDownload.listRepositoryFiles(
+      const res = await LlmModelDownload.listRepositoryFiles(
         repositoryId,
         path,
         branch,
@@ -214,7 +217,7 @@ export function AddLocalLlmModelDownloadDrawer() {
   const onValid = async (values: Record<string, unknown>) => {
     try {
       setLoading(true)
-      Stores.LlmProvider.clearLlmProviderStoreError()
+      LlmProvider.clearLlmProviderStoreError()
 
       // Auto-generate model ID from display name
       const modelId = generateModelId((values.display_name as string) || 'model')
@@ -269,7 +272,7 @@ export function AddLocalLlmModelDownloadDrawer() {
 
       // Call the repository download API through store
       try {
-        await Stores.LlmModelDownload.downloadLlmModelFromRepository(
+        await LlmModelDownload.downloadLlmModelFromRepository(
           {
             provider_id: providerId!,
             repository_id: values.repository_id as string,
@@ -371,7 +374,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                     data-testid="llm-download-drawer-cancel-download-btn"
                     onClick={async () => {
                       try {
-                        await Stores.LlmModelDownload.cancelLlmModelDownload(
+                        await LlmModelDownload.cancelLlmModelDownload(
                           viewDownload.id,
                         )
                         message.success('Download cancelled successfully')

@@ -16,7 +16,7 @@ import { type UpdateLitSearchSettingsRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
-import { Stores } from '@ziee/framework/stores'
+import { LitSearchAdmin } from '@/modules/literature/stores/litSearchAdmin'
 
 interface CapsForm {
   max_results: number
@@ -31,7 +31,7 @@ interface CapsForm {
  * thin.
  */
 export function LitSearchGlobalSection() {
-  const { settings, loading, savingSettings } = Stores.LitSearchAdmin
+  const { settings, loading, savingSettings } = LitSearchAdmin
   const canManage = usePermission(Permissions.LitSearchAdminManage)
   const form = useForm<CapsForm>()
   const togglesForm = useForm<{ enabled: boolean; completeness: boolean }>()
@@ -68,7 +68,7 @@ export function LitSearchGlobalSection() {
 
   const save = async (patch: UpdateLitSearchSettingsRequest, label = 'Saved') => {
     try {
-      await Stores.LitSearchAdmin.updateSettings(patch)
+      await LitSearchAdmin.updateSettings(patch)
       message.success(label)
     } catch (e: any) {
       message.error(e?.message ?? 'Update failed')

@@ -50,6 +50,9 @@ import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { SplitChatView } from '@/modules/chat/components/SplitChatView'
 import { PaneManagerDrawer } from '@/modules/chat/components/PaneManagerDrawer'
+import { McpComposer as McpComposerStore } from '@/modules/mcp/stores/mcpComposer'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
+import { SplitView as SplitViewStore } from '@/modules/chat/core/stores/splitView'
 
 /**
  * Chat route element for `/chat/:conversationId`.
@@ -62,7 +65,7 @@ import { PaneManagerDrawer } from '@/modules/chat/components/PaneManagerDrawer'
  */
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
-  const { panes, focusedPaneId } = Stores.SplitView
+  const { panes, focusedPaneId } = SplitViewStore
   const navigate = useNavigate()
   // The FOCUSED pane's conversation (reactive) — what the URL must mirror while a
   // split is open.
@@ -78,11 +81,11 @@ export default function ConversationPage() {
   // already set the focused pane) does not re-trigger a second reconcile.
   useEffect(() => {
     if (!conversationId) return
-    const sv = Stores.SplitView.$
+    const sv = SplitViewStore.$
     if (sv.panes.length < 2) return // single-pane: the URL drives ConversationPane
     const focused = sv.panes.find((p) => p.paneId === sv.focusedPaneId)
     if (focused?.conversationId === conversationId) return // already shown → no-op
-    Stores.SplitView.openConversationInWorkspace(conversationId, 'auto')
+    SplitViewStore.openConversationInWorkspace(conversationId, 'auto')
   }, [conversationId])
 
   // Workspace → URL (FB-19). The MISSING second direction: opening a pane via the
@@ -175,7 +178,7 @@ export function ConversationPane() {
   // reactive-proxy hook it triggers isn't conditional (Rules of Hooks; the file's
   // convention is `.$` snapshots for hook-free reads, reactive reads only at top level).
   const { panes: splitViewPanes, focusedPaneId: splitFocusedPaneId } =
-    Stores.SplitView
+    SplitViewStore
   const isLeftmostPane = !!pane && splitViewPanes[0]?.paneId === pane.paneId
   // On a small screen the FOCUSED pane is the only visible one; it should read like
   // a normal single-pane conversation — native document-scroll + the SAME auto-hiding
@@ -227,10 +230,10 @@ export function ConversationPane() {
     if (kind === 'pane') {
       if (!pane) return
       const from = readPaneDragId(e.dataTransfer)
-      const idx = from ? reorderIndices(Stores.SplitView.$.panes, from, pane.paneId) : null
+      const idx = from ? reorderIndices(SplitViewStore.$.panes, from, pane.paneId) : null
       if (idx) {
         e.preventDefault()
-        Stores.SplitView.reorderPanes(idx.from, idx.to)
+        SplitViewStore.reorderPanes(idx.from, idx.to)
       }
       return
     }
@@ -242,14 +245,14 @@ export function ConversationPane() {
     const zone = zoneForX(e.clientX, rect.left, rect.width)
     if (pane) {
       // Existing split: insert before/after THIS pane, or replace it.
-      const atCap = Stores.SplitView.$.panes.length >= SPLIT_LIMITS.MAX_PANES
+      const atCap = SplitViewStore.$.panes.length >= SPLIT_LIMITS.MAX_PANES
       const plan = planSplitPaneDrop(zone, conversationId, droppedId, atCap)
       if (plan.kind === 'replace') {
-        Stores.SplitView.setPaneConversation(pane.paneId, droppedId)
+        SplitViewStore.setPaneConversation(pane.paneId, droppedId)
       } else if (plan.kind === 'insertBefore') {
-        Stores.SplitView.openPane({ conversationId: droppedId, beforePaneId: pane.paneId })
+        SplitViewStore.openPane({ conversationId: droppedId, beforePaneId: pane.paneId })
       } else if (plan.kind === 'insertAfter') {
-        Stores.SplitView.openPane({ conversationId: droppedId, afterPaneId: pane.paneId })
+        SplitViewStore.openPane({ conversationId: droppedId, afterPaneId: pane.paneId })
       }
       return
     }
@@ -265,9 +268,9 @@ export function ConversationPane() {
       const droppedOnLeft = plan.order[0] === droppedId
       void openConversationInWorkspace(droppedId, { intent: 'newPane' }).then(() => {
         if (!droppedOnLeft) return
-        const panes = Stores.SplitView.$.panes
+        const panes = SplitViewStore.$.panes
         const idx = panes.findIndex(p => p.conversationId === droppedId)
-        if (idx > 0) Stores.SplitView.reorderPanes(idx, 0)
+        if (idx > 0) SplitViewStore.reorderPanes(idx, 0)
       })
     }
   }
@@ -288,21 +291,21 @@ export function ConversationPane() {
   // so reading it only in one ternary branch would ADD/DROP a hook when
   // `useMobileShell` flips on a focus-switch → a Rules-of-Hooks crash. Apply the
   // condition to the VALUE, never to the read.
-  const appNativeScroll = Stores.AppLayout.nativeScroll
+  const appNativeScroll = AppLayout.nativeScroll
   const nativeScroll = !pane || useMobileShell ? appNativeScroll : false
   // Live MCP tool-call statuses — subscribed reactively (proxy destructure) so a
   // newly-`pending_approval` tool triggers the scroll-to-approval effect below.
   // NOTE (split-awareness, Stage-2 candidate): `toolCalls` reads the McpComposer
   // store as a process-global map (see the effect below) — not yet pane-scoped.
-  const { toolCalls } = Stores.McpComposer
+  const { toolCalls } = McpComposerStore
 
   // Split affordance: open the current conversation beside a fresh pane. On the
   // single-pane route this seeds pane 0 with the current conversation first.
   const onSplit = () => {
-    if (Stores.SplitView.$.panes.length === 0 && conversationId) {
-      Stores.SplitView.openPane({ conversationId })
+    if (SplitViewStore.$.panes.length === 0 && conversationId) {
+      SplitViewStore.openPane({ conversationId })
     }
-    Stores.SplitView.openPane({ conversationId: null })
+    SplitViewStore.openPane({ conversationId: null })
   }
 
   // Load conversation and messages on mount or when ID changes — single-pane
@@ -496,7 +499,7 @@ export function ConversationPane() {
         // Each pane registers this window listener; only the FOCUSED pane opens
         // its find bar (audit #2) — otherwise Cmd-F opened it in EVERY loaded pane.
         // Single-pane (`!pane`) is always "focused".
-        if (pane && pane.paneId !== Stores.SplitView.$.focusedPaneId) return
+        if (pane && pane.paneId !== SplitViewStore.$.focusedPaneId) return
         e.preventDefault()
         setFindOpen(true)
       }
@@ -769,7 +772,7 @@ export function ConversationPane() {
   // store's conversation becoming set.
   useEffect(() => {
     if (pane && !pane.conversationId && conversation?.id) {
-      Stores.SplitView.setPaneConversation(pane.paneId, conversation.id)
+      SplitViewStore.setPaneConversation(pane.paneId, conversation.id)
     }
   }, [pane, conversation?.id])
 
@@ -856,7 +859,7 @@ export function ConversationPane() {
               icon={<Columns2 />}
               aria-label="Open panes"
               aria-haspopup="dialog"
-              onClick={() => Stores.SplitView.setPaneManagerOpen(true)}
+              onClick={() => SplitViewStore.setPaneManagerOpen(true)}
             />
           </Tooltip>
         ) : (
@@ -1005,7 +1008,7 @@ export function ConversationPane() {
                 // Snapshot read (`.$`) — NOT the reactive proxy — so this is a plain
                 // value read, not a hook call inside a loop/conditional (Rules of Hooks).
                 const atCap =
-                  !!pane && Stores.SplitView.$.panes.length >= SPLIT_LIMITS.MAX_PANES
+                  !!pane && SplitViewStore.$.panes.length >= SPLIT_LIMITS.MAX_PANES
                 const label =
                   z === 'center'
                     ? 'Replace'

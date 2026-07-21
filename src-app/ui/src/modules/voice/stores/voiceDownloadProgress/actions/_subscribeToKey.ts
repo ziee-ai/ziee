@@ -1,7 +1,8 @@
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import type { VoiceDownloadProgressGet, VoiceDownloadProgressSet } from '../state'
 import { claimSubscription, percentOf } from '../../downloadProgress.helpers'
+import { VoiceRuntimeVersion } from '@/modules/voice/stores/voiceRuntimeVersion'
+import { VoiceUpdate } from '@/modules/voice/stores/voiceUpdate'
 
 /** SSE abort-controller map (module-level, page-reload-safe). */
 const sseAborts = new Map<string, AbortController>()
@@ -65,8 +66,8 @@ export default (
               }
               return { activeByKey: next }
             })
-            Stores.VoiceRuntimeVersion.loadVersions().catch(() => {})
-            Stores.VoiceUpdate.checkForUpdates().catch(() => {})
+            VoiceRuntimeVersion.loadVersions().catch(() => {})
+            VoiceUpdate.checkForUpdates().catch(() => {})
             window.setTimeout(() => {
               void dismissEntry(key)
             }, 2000)

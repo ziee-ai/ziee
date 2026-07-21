@@ -2,7 +2,8 @@ import { Inbox } from 'lucide-react'
 import { Alert, Button, Dialog, Space, Text, Upload, message } from '@ziee/kit'
 import { useState } from 'react'
 import type { ValidateWorkflowResponse } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
+import { Workflow as WorkflowStore } from '@/modules/workflow/stores/workflow'
+import { SystemWorkflow } from '@/modules/workflow/stores/systemWorkflow'
 
 interface ImportWorkflowDialogProps {
   open: boolean
@@ -50,7 +51,7 @@ export function ImportWorkflowDialog({
     setValidating(true)
     try {
       const text = await file.text()
-      setValidation(await Stores.Workflow.validateWorkflow(text))
+      setValidation(await WorkflowStore.validateWorkflow(text))
     } catch {
       message.error('Validation request failed')
     } finally {
@@ -70,9 +71,9 @@ export function ImportWorkflowDialog({
       form.append('bundle', file)
       if (system) form.append('scope', 'system')
       if (system) {
-        await Stores.SystemWorkflow.importSystemWorkflow(form)
+        await SystemWorkflow.importSystemWorkflow(form)
       } else {
-        await Stores.Workflow.importWorkflow(form)
+        await WorkflowStore.importWorkflow(form)
       }
       message.success('Workflow imported')
       reset()

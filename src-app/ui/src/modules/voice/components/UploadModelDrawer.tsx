@@ -11,9 +11,10 @@ import {
   Upload,
 } from '@ziee/kit'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { formatBytes } from '@/utils/downloadUtils'
+import { VoiceModelUpload } from '@/modules/voice/stores/voiceModelUpload'
+import { VoiceUploadModelDrawer } from '@/modules/voice/stores/voiceUploadModelDrawer'
 
 /**
  * Upload a whisper ggml model file (.bin / .gguf) as a new installed model.
@@ -21,9 +22,9 @@ import { formatBytes } from '@/utils/downloadUtils'
  * + per-file/overall Progress + Cancel), single-file.
  */
 export function UploadModelDrawer() {
-  const { open } = Stores.VoiceUploadModelDrawer
+  const { open } = VoiceUploadModelDrawer
   const { uploading, uploadProgress, overallUploadProgress, uploadError } =
-    Stores.VoiceModelUpload
+    VoiceModelUpload
   const canManage = usePermission(Permissions.VoiceAdminManage)
 
   const [file, setFile] = useState<File | null>(null)
@@ -45,7 +46,7 @@ export function UploadModelDrawer() {
   const reset = () => {
     setFile(null)
     setName('')
-    Stores.VoiceModelUpload.clearUploadState()
+    VoiceModelUpload.clearUploadState()
   }
 
   const handleClose = () => {
@@ -56,7 +57,7 @@ export function UploadModelDrawer() {
       return
     }
     reset()
-    Stores.VoiceUploadModelDrawer.closeUploadModelDrawer()
+    VoiceUploadModelDrawer.closeUploadModelDrawer()
   }
 
   const handleSubmit = async () => {
@@ -69,10 +70,10 @@ export function UploadModelDrawer() {
       return
     }
     try {
-      await Stores.VoiceModelUpload.uploadModel({ name: name.trim(), file })
+      await VoiceModelUpload.uploadModel({ name: name.trim(), file })
       message.success('Model uploaded')
       reset()
-      Stores.VoiceUploadModelDrawer.closeUploadModelDrawer()
+      VoiceUploadModelDrawer.closeUploadModelDrawer()
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to upload model')
     }
@@ -183,7 +184,7 @@ export function UploadModelDrawer() {
                 <Button
                   variant="link"
                   size="default"
-                  onClick={() => Stores.VoiceModelUpload.cancelUpload()}
+                  onClick={() => VoiceModelUpload.cancelUpload()}
                   className="text-destructive"
                   data-testid="voice-upload-cancel-btn"
                 >

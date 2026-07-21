@@ -27,10 +27,10 @@
  */
 
 import { useRef, useLayoutEffect, useCallback } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { isTauriView, isMacOS, isLinux } from '@ziee/desktop/core/platform'
 import { useHeaderLeftInset } from '@/modules/layouts/app-layout/hooks/useHeaderLeftInset'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { AppLayout as AppLayoutStore } from '@/modules/layouts/app-layout/appLayout'
 
 // Selector matching anything we'd consider an "interactive" descendant.
 // A mousedown on any of these (or their inner content) should NOT
@@ -55,7 +55,7 @@ export const HeaderBarContainer = ({
   className = '',
   style = {},
 }: HeaderBarContainerProps) => {
-  const { isFullscreen } = Stores.AppLayout
+  const { isFullscreen } = AppLayoutStore
 
   // Soft-fade overlay color matched to the content surface, faded
   // through alpha so the gradient doesn't pass through a faint

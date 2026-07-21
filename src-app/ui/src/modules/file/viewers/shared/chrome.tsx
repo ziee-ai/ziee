@@ -14,6 +14,7 @@ import { Stores } from '@ziee/framework/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import { message } from '@ziee/kit'
 import { isHighlightSupported } from './find/highlightSupported'
+import { FilePreviewDrawer } from '@/modules/file/stores/filePreviewDrawer'
 
 /**
  * Shared chrome building blocks for file viewer headers. Viewers compose
@@ -282,7 +283,7 @@ function RouterFullPageButton({ file }: { file: FileEntity }) {
       aria-label="Open file full page"
       icon={<Maximize2 />}
       onClick={() => {
-        Stores.FilePreviewDrawer.closePreview()
+        FilePreviewDrawer.closePreview()
         navigate(`/files/${file.id}`)
       }}
       data-testid="file-viewer-fullpage-btn"
@@ -299,7 +300,7 @@ function AnchorFullPageButton({ file }: { file: FileEntity }) {
       aria-label="Open file full page"
       icon={<Maximize2 />}
       href={`/files/${file.id}`}
-      onClick={() => Stores.FilePreviewDrawer.closePreview()}
+      onClick={() => FilePreviewDrawer.closePreview()}
       data-testid="file-viewer-fullpage-btn"
     />
   )

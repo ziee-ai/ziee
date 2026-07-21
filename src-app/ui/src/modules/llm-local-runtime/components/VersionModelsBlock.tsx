@@ -12,9 +12,9 @@ import {
   Tooltip,
 } from '@ziee/kit'
 import { ChevronDown, CirclePlay, Power, RotateCw, ChevronUp } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import type { RuntimeEngine } from '../types'
 import { LiveLogsPanel } from './LiveLogsPanel'
+import { RuntimeModelUsage } from '@/modules/llm-local-runtime/stores/runtimeModelUsage'
 
 interface ModelInfo {
   id: string
@@ -124,7 +124,7 @@ function ModelRow({
   canManage: boolean
   canViewLogs: boolean
 }) {
-  const { acting, instances } = Stores.RuntimeModelUsage
+  const { acting, instances } = RuntimeModelUsage
   const [expanded, setExpanded] = useState(false)
   const busy = acting.get(model.id) || false
   const instance = instances.get(model.id)
@@ -132,7 +132,7 @@ function ModelRow({
   // Lazily fetch instance detail when the row is expanded on a running model.
   useEffect(() => {
     if (expanded && model.running) {
-      Stores.RuntimeModelUsage.loadInstance(model.id)
+      RuntimeModelUsage.loadInstance(model.id)
     }
   }, [expanded, model.running, model.id])
 
@@ -162,7 +162,7 @@ function ModelRow({
                   loading={busy}
                   disabled={busy || versionOptions.length < 2}
                   onChange={vid =>
-                    Stores.RuntimeModelUsage.swapVersion(engine, model.id, vid).catch(
+                    RuntimeModelUsage.swapVersion(engine, model.id, vid).catch(
                       () => {},
                     )
                   }
@@ -180,7 +180,7 @@ function ModelRow({
                     data-testid={`llmrt-model-restart-${model.id}`}
                     loading={busy}
                     onClick={() =>
-                      Stores.RuntimeModelUsage.restartModel(engine, model.id).catch(
+                      RuntimeModelUsage.restartModel(engine, model.id).catch(
                         () => {},
                       )
                     }
@@ -193,7 +193,7 @@ function ModelRow({
                     data-testid={`llmrt-model-stop-${model.id}`}
                     loading={busy}
                     onClick={() =>
-                      Stores.RuntimeModelUsage.stopModel(engine, model.id).catch(
+                      RuntimeModelUsage.stopModel(engine, model.id).catch(
                         () => {},
                       )
                     }
@@ -207,7 +207,7 @@ function ModelRow({
                   data-testid={`llmrt-model-start-${model.id}`}
                   loading={busy}
                   onClick={() =>
-                    Stores.RuntimeModelUsage.startModel(engine, model.id).catch(
+                    RuntimeModelUsage.startModel(engine, model.id).catch(
                       () => {},
                     )
                   }

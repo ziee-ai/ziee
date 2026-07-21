@@ -4,9 +4,10 @@ import { useParams } from 'react-router-dom'
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { UserGroupAssignment } from '@/components/common/UserGroupAssignment'
 import { emitLlmProviderGroupsChanged } from '@/modules/llm-provider/events'
+import { ProviderGroupAssignmentCard as ProviderGroupAssignmentCardStore } from '@/modules/llm-provider/components/providerGroupAssignmentCard'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 
 /**
  * Card for managing which user groups have access to an LLM provider. Thin
@@ -15,7 +16,7 @@ import { emitLlmProviderGroupsChanged } from '@/modules/llm-provider/events'
  */
 export function ProviderGroupAssignmentCard() {
   const { providerId } = useParams<{ providerId?: string }>()
-  const { providerGroups } = Stores.ProviderGroupAssignmentCard
+  const { providerGroups } = ProviderGroupAssignmentCardStore
   const providerData = providerId ? providerGroups.get(providerId) : undefined
   // Assigning providers to groups requires llm_providers::assign_groups (the
   // assign/remove/update endpoints enforce it). Hoisted ABOVE the early return
@@ -24,7 +25,7 @@ export function ProviderGroupAssignmentCard() {
 
   useEffect(() => {
     if (providerId) {
-      Stores.ProviderGroupAssignmentCard.loadGroupsForProvider(providerId)
+      ProviderGroupAssignmentCardStore.loadGroupsForProvider(providerId)
     }
   }, [providerId])
 
@@ -47,14 +48,14 @@ export function ProviderGroupAssignmentCard() {
             return res.groups.map(g => ({ id: g.id, name: g.name, description: g.description, is_default: g.is_default }))
           },
           save: async ids => {
-            const currentGroups = await Stores.LlmProvider.getGroupsForProvider(pid)
+            const currentGroups = await LlmProvider.getGroupsForProvider(pid)
             const currentIds = new Set(currentGroups.map(g => g.id))
             const newIds = new Set(ids)
             for (const gid of ids.filter(id => !currentIds.has(id))) {
-              await Stores.LlmProvider.assignGroupToProvider(pid, gid)
+              await LlmProvider.assignGroupToProvider(pid, gid)
             }
             for (const gid of [...currentIds].filter(id => !newIds.has(id))) {
-              await Stores.LlmProvider.removeGroupFromProvider(pid, gid)
+              await LlmProvider.removeGroupFromProvider(pid, gid)
             }
             await emitLlmProviderGroupsChanged(pid, ids)
           },

@@ -17,12 +17,12 @@
 
 import { Button, Tooltip } from '@ziee/kit'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
-import { Stores } from '@ziee/framework/stores'
 import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
 import { TauriDragRegion } from '@ziee/desktop/components/TauriDragRegion.tsx'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 
 export function SidebarToggleButton() {
-  const { isSidebarCollapsed, isFullscreen } = Stores.AppLayout
+  const { isSidebarCollapsed, isFullscreen } = AppLayout
 
   // Tauri desktop is always mouse/trackpad — the WCAG-2.5.5 44px
   // touch target the core uses isn't required here. Keep a single
@@ -63,7 +63,7 @@ export function SidebarToggleButton() {
         <Button
           variant="ghost"
           data-testid="desktop-layout-sidebar-toggle-btn"
-          onClick={Stores.AppLayout.toggleSidebar}
+          onClick={AppLayout.toggleSidebar}
           className="flex items-center justify-center size-7 min-w-7 p-0 text-xl rounded"
           aria-label={
             isSidebarCollapsed

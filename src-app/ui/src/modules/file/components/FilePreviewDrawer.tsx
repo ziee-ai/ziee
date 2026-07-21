@@ -1,6 +1,6 @@
 // Global file-preview drawer. Mounted at app root by file/module.tsx
 // (always-available; useDelayedFalse keeps it in the tree for the exit
-// animation when closed). Reads from `Stores.FilePreviewDrawer`.
+// animation when closed). Reads from `FilePreviewDrawerStore`.
 //
 // Uses the app's shared Drawer wrapper (custom mask + resize handle +
 // themed chrome) at default size. The wrapper's title slot accepts a
@@ -11,13 +11,13 @@
 // duplicating the filename inside the body.
 
 import { Title } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { FilePanel, FilePanelHeaderActions } from '@/modules/file/components/FilePanel'
+import { FilePreviewDrawer as FilePreviewDrawerStore } from '@/modules/file/stores/filePreviewDrawer'
 
 export function FilePreviewDrawer() {
-  const isOpen = Stores.FilePreviewDrawer.isOpen
-  const file = Stores.FilePreviewDrawer.file
+  const isOpen = FilePreviewDrawerStore.isOpen
+  const file = FilePreviewDrawerStore.file
 
   const titleNode = file ? (
     <Title level={5} className="!m-0 truncate w-full" title={file.filename}>
@@ -32,7 +32,7 @@ export function FilePreviewDrawer() {
   return (
     <Drawer
       open={isOpen}
-      onClose={() => Stores.FilePreviewDrawer.closePreview()}
+      onClose={() => FilePreviewDrawerStore.closePreview()}
       placement="right"
       title={titleNode}
       // All viewer actions (rendered/raw toggle, copy, download, …) live in the

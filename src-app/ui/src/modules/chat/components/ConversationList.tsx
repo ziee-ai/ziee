@@ -5,12 +5,13 @@ import { Card, Button, Text, Empty, ErrorState, Flex, Confirm, Input, message } 
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { CircleX, Search as SearchIcon, Trash2 } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import { VirtualizedConversationList } from '@/modules/chat/components/VirtualizedConversationList'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { cn } from '@/lib/utils'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
+import { ChatHistory } from '@/modules/chat/stores/chatHistory'
 
 
 interface ConversationListProps {
@@ -38,7 +39,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   const [, forceRender] = useState({})
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const canDelete = usePermission(Permissions.ConversationsDelete)
-  const { nativeScroll } = Stores.AppLayout
+  const { nativeScroll } = AppLayout
 
   // Row virtualization (chats-page-virtualization ITEM-4): the card list scrolls
   // inside this OverlayScrollbars viewport on desktop. Resolve its root element
@@ -64,7 +65,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     total,
     isInitialized,
     error,
-  } = Stores.ChatHistory
+  } = ChatHistory
 
   // Force a second render when getSearchBoxContainer is provided to ensure container is available
   useEffect(() => {
@@ -76,7 +77,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // Debounce search query
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      Stores.ChatHistory.setSearchQuery(localSearchQuery)
+      ChatHistory.setSearchQuery(localSearchQuery)
     }, 500)
 
     return () => clearTimeout(timeoutId)
@@ -92,12 +93,12 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // concurrent calls via its internal `loading/loadingMore` in-flight check,
   // so an unconditional refetch is safe.
   useEffect(() => {
-    Stores.ChatHistory.loadConversations()
+    ChatHistory.loadConversations()
   }, [])
 
   const handleLoadMore = async () => {
     try {
-      await Stores.ChatHistory.loadNextPage()
+      await ChatHistory.loadNextPage()
     } catch (error) {
       console.error('Failed to load more conversations:', error)
     }
@@ -105,7 +106,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
 
   const handleDeleteSelected = async () => {
     try {
-      await Stores.ChatHistory.bulkDelete()
+      await ChatHistory.bulkDelete()
       message.success(`${selectedIds.size} conversations deleted successfully`)
     } catch (error) {
       console.error('Failed to delete selected conversations:', error)
@@ -115,11 +116,11 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   // Stable across renders so the memoized row card (MemoConversationCard) can
   // skip re-rendering unchanged rows on every scroll-driven virtualizer update.
   const handleToggleSelection = useCallback((id: string) => {
-    Stores.ChatHistory.toggleSelection(id)
+    ChatHistory.toggleSelection(id)
   }, [])
 
   const handleDeleteConversation = useCallback(async (id: string) => {
-    await Stores.ChatHistory.deleteConversation(id)
+    await ChatHistory.deleteConversation(id)
   }, [])
 
   // The list is the server-filtered/sorted result set directly.
@@ -172,13 +173,13 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                   <Button
                     data-testid="chat-bulk-deselect-btn"
                     icon={<CircleX />}
-                    onClick={() => Stores.ChatHistory.deselectAll()}
+                    onClick={() => ChatHistory.deselectAll()}
                   >
                     Deselect All
                   </Button>
                   <Button
                     data-testid="chat-bulk-select-all-btn"
-                    onClick={() => Stores.ChatHistory.selectAll()}
+                    onClick={() => ChatHistory.selectAll()}
                   >
                     Select All
                   </Button>
@@ -218,7 +219,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                     resource="chat history"
                     description="Your chat history couldn't be loaded. Check your connection and try again."
                     details={error}
-                    onRetry={() => Stores.ChatHistory.loadConversations()}
+                    onRetry={() => ChatHistory.loadConversations()}
                     data-testid="chat-history-error"
                   />
                 </div>

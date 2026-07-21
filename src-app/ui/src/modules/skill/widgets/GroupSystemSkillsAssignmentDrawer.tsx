@@ -3,9 +3,10 @@ import { Tag } from '@ziee/kit'
 import type { Skill } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { GroupEntityAssignmentDrawer } from '@/components/common/group-entity-assignment/GroupEntityAssignmentDrawer'
+import { GroupSystemSkillsAssignment } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
+import { GroupSystemSkillsWidget } from '@/modules/skill/widgets/groupSystemSkillsWidget'
 
 const skillLabel = (s: Skill) => s.display_name ?? s.name
 
@@ -15,7 +16,7 @@ const skillLabel = (s: Skill) => s.display_name ?? s.name
  * the group-centric assign endpoints.
  */
 export function GroupSystemSkillsAssignmentDrawer() {
-  const { isOpen, selectedGroup } = Stores.GroupSystemSkillsAssignment
+  const { isOpen, selectedGroup } = GroupSystemSkillsAssignment
   const canManage = usePermission(Permissions.SkillsAssignToGroups)
   const [allSkills, setAllSkills] = useState<Skill[]>([])
 
@@ -46,9 +47,9 @@ export function GroupSystemSkillsAssignmentDrawer() {
         )
       }
       save={(gid, ids) =>
-        Stores.GroupSystemSkillsWidget.updateGroupSkills(gid, ids)
+        GroupSystemSkillsWidget.updateGroupSkills(gid, ids)
       }
-      onClose={() => Stores.GroupSystemSkillsAssignment.closeDrawer()}
+      onClose={() => GroupSystemSkillsAssignment.closeDrawer()}
       entityLabel={skillLabel}
       emptyText="No system skills available"
       entityBadges={s =>

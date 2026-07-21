@@ -1,7 +1,6 @@
 import { Flex, Text, message } from '@ziee/kit'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import { Loading } from '@/core/components/Loading'
 import { ProviderHeader } from '@/modules/llm-provider/components/ProviderHeader'
 import { LlmModelsSection } from '@/modules/llm-provider/components/LlmModelsSection'
@@ -10,15 +9,16 @@ import { DownloadsSection } from '@/modules/llm-provider/components/downloads/Do
 import { AddLocalLlmModelUploadDrawer } from '@/modules/llm-provider/components/llm-models/AddLocalLlmModelUploadDrawer'
 import { AddLocalLlmModelDownloadDrawer } from '@/modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer'
 import { EditLlmModelDrawer } from '@/modules/llm-provider/components/llm-models/EditLlmModelDrawer'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 
 export function LocalProviderSettings() {
   const { providerId } = useParams<{ providerId?: string }>()
 
   // Store data
-  const { error, loading, isInitialized } = Stores.LlmProvider
+  const { error, loading, isInitialized } = LlmProvider
 
   // Get current provider
-  const currentProvider = Stores.LlmProvider.providers.find(
+  const currentProvider = LlmProvider.providers.find(
     p => p.id === providerId,
   )
 
@@ -26,7 +26,7 @@ export function LocalProviderSettings() {
   useEffect(() => {
     if (error) {
       message.error(error)
-      Stores.LlmProvider.clearLlmProviderStoreError()
+      LlmProvider.clearLlmProviderStoreError()
     }
   }, [error])
 

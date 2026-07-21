@@ -19,11 +19,11 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { type LlmProvider } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { LlmProvider as LlmProviderStore } from '@/modules/llm-provider/stores/llmProvider'
 
 const nameSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -43,7 +43,7 @@ export function ProviderHeader() {
   const canDelete = usePermission(Permissions.LlmProvidersDelete)
 
   // Get current provider from store
-  const currentProvider = Stores.LlmProvider.providers.find(
+  const currentProvider = LlmProviderStore.providers.find(
     p => p.id === providerId,
   )
 
@@ -71,7 +71,7 @@ export function ProviderHeader() {
     if (!currentProvider) return
 
     try {
-      await Stores.LlmProvider.updateLlmProvider(providerId, {
+      await LlmProviderStore.updateLlmProvider(providerId, {
         enabled: enabled,
       })
       message.success(
@@ -86,7 +86,7 @@ export function ProviderHeader() {
   const handleDeleteProvider = async () => {
     if (!currentProvider) return
     try {
-      await Stores.LlmProvider.deleteLlmProvider(currentProvider.id)
+      await LlmProviderStore.deleteLlmProvider(currentProvider.id)
       navigate(`/settings/llm-providers`, { replace: true })
       message.success('Provider deleted successfully')
     } catch (error: any) {
@@ -97,7 +97,7 @@ export function ProviderHeader() {
 
   const handleSaveName = async (values: NameValues) => {
     if (!currentProvider) return
-    await Stores.LlmProvider.updateLlmProvider(currentProvider.id, {
+    await LlmProviderStore.updateLlmProvider(currentProvider.id, {
       name: values.name,
     })
     setIsEditingName(false)

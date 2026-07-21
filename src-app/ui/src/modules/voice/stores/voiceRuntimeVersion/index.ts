@@ -1,9 +1,9 @@
 import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
 import { defineStore, registerLazyStore } from '@ziee/framework/store-kit'
-import { Stores } from '@ziee/framework/stores'
 import { voiceRuntimeVersionState, type VoiceRuntimeVersionState } from './state'
 import type { Actions } from './actions.gen'
+import { VoiceUpdate } from '@/modules/voice/stores/voiceUpdate'
 
 const VoiceRuntimeVersionDef = defineStore<VoiceRuntimeVersionState, Actions>('VoiceRuntimeVersion', {
   state: voiceRuntimeVersionState,
@@ -18,7 +18,7 @@ const VoiceRuntimeVersionDef = defineStore<VoiceRuntimeVersionState, Actions>('V
     // Keep the update-check fresh when the installed set is invalidated.
     on('sync:voice_runtime_version', () => {
       if (hasPermissionNow(Permissions.VoiceAdminRead)) {
-        Stores.VoiceUpdate.checkForUpdates().catch(() => {})
+        VoiceUpdate.checkForUpdates().catch(() => {})
       }
     })
   },

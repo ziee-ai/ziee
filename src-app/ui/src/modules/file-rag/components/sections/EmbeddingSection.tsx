@@ -16,11 +16,11 @@ import {
 } from '@ziee/kit'
 import { z } from 'zod'
 import { RotateCw } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
+import { FileRagAdmin } from '@/modules/file-rag/stores/fileRagAdmin'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -55,7 +55,7 @@ export function EmbeddingSection() {
     loadingModels,
     triggeringReembed,
     error,
-  } = Stores.FileRagAdmin
+  } = FileRagAdmin
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -94,7 +94,7 @@ export function EmbeddingSection() {
       <SettingsSectionStatus
         title="Embedding (semantic search)"
         error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
+        onRetry={() => FileRagAdmin.load()}
       />
     )
 
@@ -102,7 +102,7 @@ export function EmbeddingSection() {
 
   const persist = async (values: FormValues, modelChanged: boolean) => {
     try {
-      await Stores.FileRagAdmin.update({
+      await FileRagAdmin.update({
         semantic_enabled: values.semantic_enabled,
         embedding_model_id: values.embedding_model_id ?? null,
         cosine_threshold: values.cosine_threshold,
@@ -135,7 +135,7 @@ export function EmbeddingSection() {
     if (!settings.embedding_model_id) return
     setReembedConfirmOpen(false)
     try {
-      await Stores.FileRagAdmin.triggerReembed()
+      await FileRagAdmin.triggerReembed()
       message.info('Re-embed dispatched in the background.')
     } catch (error) {
       message.error(

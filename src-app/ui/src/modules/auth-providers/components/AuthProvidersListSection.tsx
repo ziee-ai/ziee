@@ -17,11 +17,11 @@ import {
 import { Trash2, Pencil, FlaskConical, Lock } from 'lucide-react'
 import { type AuthProviderResponse } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions/Can'
 import { AddProviderMenu } from './AddProviderMenu'
 import { AuthProviderEditDrawer } from './AuthProviderEditDrawer'
 import type { ProviderTemplate } from '../types'
+import { AuthProvidersAdmin } from '@/modules/auth-providers/stores/authProvidersAdmin'
 
 type DrawerState =
   | { mode: 'closed' }
@@ -43,14 +43,14 @@ function relativeTime(iso: string | null | undefined): string {
 }
 
 export function AuthProvidersListSection() {
-  const { providers, loading, error, testingIds } = Stores.AuthProvidersAdmin
+  const { providers, loading, error, testingIds } = AuthProvidersAdmin
   const [drawer, setDrawer] = useState<DrawerState>({ mode: 'closed' })
   const [pendingToggleId, setPendingToggleId] = useState<string | null>(null)
 
   const onToggle = async (row: AuthProviderResponse, next: boolean) => {
     setPendingToggleId(row.id)
     try {
-      await Stores.AuthProvidersAdmin.updateProvider(row.id, { enabled: next })
+      await AuthProvidersAdmin.updateProvider(row.id, { enabled: next })
       message.success(next ? 'Provider enabled' : 'Provider disabled')
     } catch (e: any) {
       // The backend's enable-transition probe failure returns 400 with
@@ -65,7 +65,7 @@ export function AuthProvidersListSection() {
   }
 
   const onTest = async (row: AuthProviderResponse) => {
-    const res = await Stores.AuthProvidersAdmin.testProvider(row.id)
+    const res = await AuthProvidersAdmin.testProvider(row.id)
     if (res.ok) {
       message.success(`${row.name}: ${res.message}`)
     } else {
@@ -75,7 +75,7 @@ export function AuthProvidersListSection() {
 
   const onDelete = async (row: AuthProviderResponse) => {
     try {
-      await Stores.AuthProvidersAdmin.deleteProvider(row.id)
+      await AuthProvidersAdmin.deleteProvider(row.id)
       message.success(`Deleted ${row.name}`)
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to delete provider')
@@ -185,7 +185,7 @@ export function AuthProvidersListSection() {
               resource="auth providers"
               description="The configured providers couldn't be loaded. Check your connection and try again."
               details={error}
-              onRetry={() => void Stores.AuthProvidersAdmin.loadProviders()}
+              onRetry={() => void AuthProvidersAdmin.loadProviders()}
               data-testid="authprov-list-error"
             />
           ) : (

@@ -42,7 +42,7 @@ const UsersStoreDef = defineStore<UsersState, Actions>('Users', {
 })
 
 /** Direct-handle proxy — `import { Users }; Users.users` / `Users.loadUsers()`.
- *  Importing this file self-registers the store (so `Stores.Users` resolves too). */
+ *  Importing this file self-registers the store (so `UsersStore` resolves too). */
 export const Users = registerLazyStore(UsersStoreDef)
 /** Raw zustand store (kept for the type augmentation + any raw consumer). */
 export const useUsersStore = UsersStoreDef.store

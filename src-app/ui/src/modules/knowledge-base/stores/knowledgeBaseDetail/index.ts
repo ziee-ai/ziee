@@ -34,7 +34,7 @@ const KnowledgeBaseDetailDef = defineStore<KnowledgeBaseDetailState, Actions>(
 )
 
 /** Direct-handle proxy — `import { KnowledgeBaseDetail }; KnowledgeBaseDetail.kb` / `KnowledgeBaseDetail.load()`.
- *  Importing this file self-registers the store (so `Stores.KnowledgeBaseDetail` resolves too). */
+ *  Importing this file self-registers the store (so `KnowledgeBaseDetailStore` resolves too). */
 export const KnowledgeBaseDetail = registerLazyStore(KnowledgeBaseDetailDef)
 /** Raw zustand store (kept for the type augmentation + any raw consumer). */
 export const useKnowledgeBaseDetailStore = KnowledgeBaseDetailDef.store

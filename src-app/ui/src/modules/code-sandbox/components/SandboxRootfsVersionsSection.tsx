@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import { Alert, Button, dialog, ErrorState, Flex, Spin, Tag, Text, message } from '@ziee/kit'
 import { RotateCw, Star } from 'lucide-react'
 import type { SandboxAvailability } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { AvailableRootfsCard } from './AvailableRootfsCard'
 import { DownloadedRootfsCard } from './DownloadedRootfsCard'
@@ -15,6 +14,7 @@ import {
   READ_PERM,
   type VersionGroup,
 } from './_rootfsShared'
+import { SandboxRootfsVersions } from '@/modules/code-sandbox/stores/sandboxRootfsVersions'
 
 /** Admin-facing explanation for each not-`ready` sandbox state. The server sends
  *  only the machine-readable enum; copy lives here (i18n-friendly, mirrors the
@@ -56,7 +56,7 @@ export function SandboxRootfsVersionsSection() {
     hostArch: serverHostArch,
     hostPackage: serverHostPackage,
     availability,
-  } = Stores.SandboxRootfsVersions
+  } = SandboxRootfsVersions
 
   const canManage = usePermission(MANAGE_PERM)
   const canRead = usePermission(READ_PERM) || canManage
@@ -132,7 +132,7 @@ export function SandboxRootfsVersionsSection() {
   }
 
   const doSetPin = async (version: string) => {
-    const ok = await Stores.SandboxRootfsVersions.setPin(version)
+    const ok = await SandboxRootfsVersions.setPin(version)
     if (ok) message.success(`Default rootfs set to v${version}`)
     else message.error(`Failed to set default rootfs to v${version}`)
   }
@@ -204,7 +204,7 @@ export function SandboxRootfsVersionsSection() {
     // refreshes the list (migrating the version to the Downloaded card) once
     // every flavor lands.
     for (const f of group.missingFlavors) {
-      void Stores.SandboxRootfsVersions.installVersion(
+      void SandboxRootfsVersions.installVersion(
         group.version,
         f.arch,
         f.flavor,
@@ -219,7 +219,7 @@ export function SandboxRootfsVersionsSection() {
       .map(f => f.artifact?.id)
       .filter((id): id is string => !!id)
     const results = await Promise.all(
-      ids.map(id => Stores.SandboxRootfsVersions.deleteArtifact(id)),
+      ids.map(id => SandboxRootfsVersions.deleteArtifact(id)),
     )
     const failed = results.filter(ok => !ok).length
     if (failed === 0) {
@@ -258,7 +258,7 @@ export function SandboxRootfsVersionsSection() {
         </div>
         <Button
           icon={<RotateCw />}
-          onClick={() => Stores.SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
+          onClick={() => SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
           data-testid="rootfs-refresh-button"
         >
           Refresh
@@ -320,7 +320,7 @@ export function SandboxRootfsVersionsSection() {
           resource="rootfs versions"
           description="The rootfs environment list couldn't be loaded."
           details={error}
-          onRetry={() => Stores.SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
+          onRetry={() => SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
           data-testid="sandbox-rootfs-error"
         />
       ) : (
@@ -330,7 +330,7 @@ export function SandboxRootfsVersionsSection() {
               resource="rootfs versions"
               description="Couldn't refresh the list — showing the last-loaded state."
               details={error}
-              onRetry={() => Stores.SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
+              onRetry={() => SandboxRootfsVersions.loadStatus({ pruneFailed: true })}
               data-testid="sandbox-rootfs-refresh-error"
             />
           )}

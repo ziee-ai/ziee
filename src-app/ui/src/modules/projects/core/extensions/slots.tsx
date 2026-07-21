@@ -15,7 +15,7 @@ import { projectExtensionRegistry } from '@/modules/projects/core/extensions/reg
  *   - "inlinePreview" → the project detail page's knowledge card
  *   - "managePanel" → the knowledge drawer
  *
- * Extensions read `Stores.ProjectDetail.project` directly for context
+ * Extensions read `ProjectDetail.project` directly for context
  * (mirrors how chat extensions read `Stores.Chat.conversation`). No
  * props are passed to slot components.
  */

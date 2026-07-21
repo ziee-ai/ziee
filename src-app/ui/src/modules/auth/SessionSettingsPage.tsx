@@ -12,9 +12,9 @@ import {
 } from '@ziee/kit'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { SessionSettings } from '@/modules/auth/sessionSettings'
 
 type FormValues = {
   access_token_expiry_hours: number
@@ -29,7 +29,7 @@ type FormValues = {
  * tokens minted from that moment on; existing tokens keep their exp.
  */
 export function SessionSettingsPage() {
-  const { settings, loading, saving, error } = Stores.SessionSettings
+  const { settings, loading, saving, error } = SessionSettings
   const canManage = usePermission(Permissions.SessionSettingsManage)
 
   const form = useForm<FormValues>()
@@ -47,7 +47,7 @@ export function SessionSettingsPage() {
 
   const onSubmit = async (v: FormValues) => {
     try {
-      await Stores.SessionSettings.update({
+      await SessionSettings.update({
         access_token_expiry_hours: v.access_token_expiry_hours,
         refresh_token_expiry_days: v.refresh_token_expiry_days,
       })
@@ -86,7 +86,7 @@ export function SessionSettingsPage() {
           resource="session settings"
           description="The session settings couldn't be loaded. Check your connection and try again."
           details={error}
-          onRetry={() => void Stores.SessionSettings.load()}
+          onRetry={() => void SessionSettings.load()}
           data-testid="session-settings-error"
         />
       </SettingsPageContainer>

@@ -7,7 +7,6 @@
  */
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyBound, lazyNamed } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
 import {
   DEEP_PROJECT_ID,
   deepProject,
@@ -15,6 +14,7 @@ import {
   deepProjectFiles,
   projectDeepCassette,
 } from '@/dev/gallery/fixtures/project-deep'
+import { ProjectDrawer } from '@/modules/projects/stores/projectDrawer'
 
 const noop = () => {}
 
@@ -67,7 +67,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/projects/components/ProjectFormDrawer'),
         'ProjectFormDrawer',
       ),
-      open: () => Stores.ProjectDrawer.openProjectDrawer(),
+      open: () => ProjectDrawer.openProjectDrawer(),
     },
     {
       slug: 'overlay-add-to-project-modal',

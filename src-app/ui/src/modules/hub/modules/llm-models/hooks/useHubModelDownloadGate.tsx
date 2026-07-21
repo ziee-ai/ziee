@@ -7,7 +7,7 @@
  *   1. Repository must be `enabled`. Otherwise → "Repository Disabled"
  *      modal whose primary button opens the LlmRepositoryDrawer for
  *      that repo.
- *   2. Connection probe (via `Stores.LlmRepository.testLlmRepositoryById`)
+ *   2. Connection probe (via `LlmRepositoryStore.testLlmRepositoryById`)
  *      must succeed. On failure, branches by whether auth is the
  *      likely culprit (`model.auth_required && !source_auth_configured`)
  *      and shows either "Authentication Required" or "Cannot Connect
@@ -33,8 +33,9 @@
 
 import { Text, dialog, message } from '@ziee/kit'
 import { useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import type { HubModel, LlmRepository } from '@/api-client/types'
+import { LlmRepositoryDrawer as LlmRepositoryDrawerStore } from '@/modules/llm-repository/stores/llmRepositoryDrawer'
+import { LlmRepository as LlmRepositoryStore } from '@/modules/llm-repository/stores/llmRepository'
 
 /**
  * Module-scope guard so a Retry click in the sidebar widget can't
@@ -79,7 +80,7 @@ export function useHubModelDownloadGate() {
         gateModalOpen = false
         // Primary button opens the LlmRepositoryDrawer for that repo so
         // the user can fix the gate (enable / add credential) in place.
-        if (confirmed) Stores.LlmRepositoryDrawer.openDrawer(repository)
+        if (confirmed) LlmRepositoryDrawerStore.openDrawer(repository)
       })
   }
 
@@ -166,14 +167,14 @@ export function useHubModelDownloadGate() {
     // + GitHub. Call the load action explicitly here — it's idempotent
     // via the store's `isInitialized` guard, so it's a no-op when the
     // store is already populated.
-    await Stores.LlmRepository.loadLlmRepositories()
+    await LlmRepositoryStore.loadLlmRepositories()
     // Snapshot the current repositories list via `.$` — this
     // function is invoked from event handlers (Download click in the
     // hub card, Retry click in the download widget), NOT from a React
     // render path. The bare proxy access would call React hooks
     // outside render. See `feedback_stores_state_in_handlers` in
     // project memory.
-    const { repositories } = Stores.LlmRepository.$
+    const { repositories } = LlmRepositoryStore.$
 
     // ── Resolve repo ────────────────────────────────────────────────
     // v2 Phase 7: derive the registry URL from sources[0] rather than
@@ -218,7 +219,7 @@ export function useHubModelDownloadGate() {
     // modal with a misleading error. Skip the duplicate probe and
     // surface a brief info toast — the user can re-click once the
     // other surface settles.
-    if (Stores.LlmRepository.$.testing) {
+    if (LlmRepositoryStore.$.testing) {
       message.info(
         'Connection test already running — try again in a moment.',
       )
@@ -229,7 +230,7 @@ export function useHubModelDownloadGate() {
     setProbing(true)
     let probeResult: { success: boolean; message: string }
     try {
-      probeResult = await Stores.LlmRepository.testLlmRepositoryById(
+      probeResult = await LlmRepositoryStore.testLlmRepositoryById(
         repository.id,
         {},
       )

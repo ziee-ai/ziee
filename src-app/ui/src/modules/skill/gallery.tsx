@@ -14,6 +14,8 @@ import {
   skillsAvailable,
   skillsList,
 } from '@/dev/gallery/fixtures/skills'
+import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
+import { GroupSystemSkillsAssignment } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
 
 const noop = () => {}
 
@@ -64,7 +66,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/skill/widgets/GroupSystemSkillsAssignmentDrawer'),
         'GroupSystemSkillsAssignmentDrawer',
       ),
-      open: () => Stores.GroupSystemSkillsAssignment.openDrawer(group),
+      open: () => GroupSystemSkillsAssignment.openDrawer(group),
     },
     {
       slug: 'overlay-skills-conversation-loaded',
@@ -128,7 +130,7 @@ export const gallery: ModuleGallery = {
       ),
       open: () => {
         void seedSkills(skillsList, skillsAvailable)
-        Stores.SkillDrawer.open(skillsList[0] as any, SKILLS_CONVERSATION_ID)
+        SkillDrawer.open(skillsList[0] as any, SKILLS_CONVERSATION_ID)
       },
     },
     {

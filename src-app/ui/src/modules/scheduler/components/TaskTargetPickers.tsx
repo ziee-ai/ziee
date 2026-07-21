@@ -1,9 +1,12 @@
 import { forwardRef } from 'react'
 
 import { Combobox, MultiSelect, Select } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 
 import { buildModelOptions } from './taskTargetOptions'
+import { ModelPicker } from '@/modules/user-llm-providers/modelPicker'
+import { Workflow as WorkflowStore } from '@/modules/workflow/stores/workflow'
+import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
+import { McpServer } from '@/modules/mcp/stores/mcpServer'
 
 // Re-exported so existing importers keep resolving `buildModelOptions` from the
 // component module; the pure implementation lives in `taskTargetOptions.ts` so
@@ -40,7 +43,7 @@ export const AssistantField = forwardRef<HTMLInputElement, StringControlProps>(
     { value, onChange, onBlur, id, name, invalid, ...aria },
     ref,
   ) {
-    const { availableAssistants } = Stores.AssistantPicker
+    const { availableAssistants } = AssistantPicker
     const options = [
       { label: 'Default assistant', value: '' },
       ...availableAssistants.map(a => ({ label: a.name, value: a.id })),
@@ -72,7 +75,7 @@ export const WorkflowField = forwardRef<HTMLInputElement, StringControlProps>(
     { value, onChange, onBlur, id, name, invalid, ...aria },
     ref,
   ) {
-    const { workflows } = Stores.Workflow
+    const { workflows } = WorkflowStore
     const options = workflows.map(w => ({
       label: w.display_name || w.name,
       value: w.id,
@@ -104,7 +107,7 @@ export const ModelField = forwardRef<HTMLButtonElement, StringControlProps>(
     { value, onChange, onBlur, id, name, invalid, ...aria },
     ref,
   ) {
-    const { providers, loading } = Stores.ModelPicker
+    const { providers, loading } = ModelPicker
     const options = buildModelOptions(providers)
     return (
       <Select
@@ -157,7 +160,7 @@ export const AllowedToolsField = forwardRef<
   { value, onChange, onBlur, id, name, invalid, ...aria },
   ref,
 ) {
-  const { servers } = Stores.McpServer
+  const { servers } = McpServer
   const options = servers.map(s => ({
     label: s.display_name || s.name,
     value: s.id,

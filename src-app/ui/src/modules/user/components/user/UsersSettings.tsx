@@ -30,6 +30,11 @@ import { EditUserDrawer } from '@/modules/user/components/user/EditUserDrawer.ts
 import { ResetPasswordDrawer } from '@/modules/user/components/user/ResetPasswordDrawer.tsx'
 import { UserGroupsDrawer } from '@/modules/user/components/user/UserGroupsDrawer.tsx'
 import { AssignGroupDrawer } from '@/modules/user/components/user/AssignGroupDrawer.tsx'
+import { EditUserDrawer as EditUserDrawerStore } from '@/modules/user/components/user/editUserDrawer'
+import { ResetPasswordDrawer as ResetPasswordDrawerStore } from '@/modules/user/components/user/resetPasswordDrawer'
+import { UserGroupsDrawer as UserGroupsDrawerStore } from '@/modules/user/components/user/userGroupsDrawer'
+import { CreateUserDrawer as CreateUserDrawerStore } from '@/modules/user/components/user/createUserDrawer'
+import { UserGroups } from '@/modules/user/stores/userGroups'
 
 export function UsersSettings() {
   // Stores
@@ -41,7 +46,7 @@ export function UsersSettings() {
     loading: loadingUsers,
     error: usersError,
   } = UsersStore
-  const { error: groupsError } = Stores.UserGroups
+  const { error: groupsError } = UserGroups
   const { user: currentUser } = Stores.Auth
   // Which user's activate/deactivate confirmation is open (shared by the status
   // Switch + the Activate/Deactivate Button — both open the same Confirm).
@@ -72,7 +77,7 @@ export function UsersSettings() {
     }
     if (groupsError) {
       message.error(groupsError)
-      Stores.UserGroups.clearError()
+      UserGroups.clearError()
     }
   }, [usersError, groupsError, users.length])
 
@@ -143,7 +148,7 @@ export function UsersSettings() {
           key="edit"
           variant="ghost"
           icon={<Pencil />}
-          onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
+          onClick={() => EditUserDrawerStore.openEditUserDrawer(user)}
           onMouseEnter={() => void UsersStore.updateUser.preload()}
           data-testid={`user-edit-button-${user.id}`}
         >
@@ -159,7 +164,7 @@ export function UsersSettings() {
           variant="ghost"
           icon={<Lock />}
           onClick={() =>
-            Stores.ResetPasswordDrawer.openResetPasswordDrawer(user)
+            ResetPasswordDrawerStore.openResetPasswordDrawer(user)
           }
           onMouseEnter={() => void UsersStore.resetUserPassword.preload()}
           data-testid={`user-reset-password-button-${user.id}`}
@@ -175,7 +180,7 @@ export function UsersSettings() {
           key="groups"
           variant="ghost"
           icon={<Users />}
-          onClick={() => Stores.UserGroupsDrawer.openUserGroupsDrawer(user)}
+          onClick={() => UserGroupsDrawerStore.openUserGroupsDrawer(user)}
           data-testid={`user-groups-button-${user.id}`}
         >
           Groups
@@ -237,7 +242,7 @@ export function UsersSettings() {
               <Can permission={Permissions.UsersCreate}>
                 <AddButton
                   label="Create user"
-                  onClick={() => Stores.CreateUserDrawer.openCreateUserDrawer()}
+                  onClick={() => CreateUserDrawerStore.openCreateUserDrawer()}
                   onMouseEnter={() => void UsersStore.createUser.preload()}
                   data-testid="user-create-open-button"
                 />

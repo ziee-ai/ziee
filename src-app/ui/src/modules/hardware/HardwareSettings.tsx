@@ -11,12 +11,12 @@ import {
 } from '@ziee/kit'
 import { useEffect } from 'react'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { HardwareMonitorButton } from '@/modules/hardware/HardwareMonitorButton'
+import { Hardware as HardwareStore } from '@/modules/hardware/hardware'
 
 // A standalone copy button (reuses the kit Text `copyable` affordance with no
 // content) placed next to a diagnostic value, so operators can lift model
@@ -35,7 +35,7 @@ export default function HardwareSettings() {
     currentUsage,
     usageLoading,
     sseConnected,
-  } = Stores.Hardware
+  } = HardwareStore
 
   const canMonitor = usePermission(Permissions.HardwareMonitor)
 
@@ -46,11 +46,11 @@ export default function HardwareSettings() {
   useEffect(() => {
     if (!canMonitor) return
 
-    Stores.Hardware.subscribeToHardwareUsage().catch(console.error)
+    HardwareStore.subscribeToHardwareUsage().catch(console.error)
 
     // Cleanup on component unmount
     return () => {
-      Stores.Hardware.disconnectHardwareUsage()
+      HardwareStore.disconnectHardwareUsage()
     }
   }, [canMonitor])
 
@@ -75,7 +75,7 @@ export default function HardwareSettings() {
           resource="hardware information"
           description="Your hardware information couldn't be loaded. Check your connection and try again."
           details={hardwareError}
-          onRetry={() => void Stores.Hardware.loadHardwareInfo()}
+          onRetry={() => void HardwareStore.loadHardwareInfo()}
           data-testid="hardware-settings-error"
         />
       </SettingsPageContainer>
@@ -505,7 +505,7 @@ export default function HardwareSettings() {
 
   const handleManualConnect = async () => {
     try {
-      await Stores.Hardware.subscribeToHardwareUsage()
+      await HardwareStore.subscribeToHardwareUsage()
       message.success('Connecting to hardware monitoring...')
     } catch (_error) {
       message.error('Failed to connect to hardware monitoring')

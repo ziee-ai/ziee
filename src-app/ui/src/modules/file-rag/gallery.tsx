@@ -10,12 +10,12 @@ import { holdPatch, lazyNamed, whenTrue } from '@/dev/gallery/support'
 
 export const gallery: ModuleGallery = {
   seeded: [
-    // ── file_rag admin: 5 section cards share Stores.FileRagAdmin. Once settings
+    // ── file_rag admin: 5 section cards share FileRagAdmin. Once settings
     // load, seeding `.error` flips every section's inline save-error alert. ──────
     {
       slug: 'seeded-file-rag-error',
       title: 'Document RAG admin — save error (all sections)',
-      note: 'settings loaded, then Stores.FileRagAdmin.error set → every section inline error alert',
+      note: 'settings loaded, then FileRagAdmin.error set → every section inline error alert',
       path: '/settings/file-rag-admin',
       initialPath: '/settings/file-rag-admin',
       component: lazyNamed(

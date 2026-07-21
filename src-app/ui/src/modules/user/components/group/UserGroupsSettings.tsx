@@ -17,7 +17,6 @@ import { z } from 'zod'
 import { Loading } from '@/core/components/Loading'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
-import { Stores } from '@ziee/framework/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { type CreateGroupRequest, type Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
@@ -26,6 +25,9 @@ import { EditUserGroupDrawer } from '@/modules/user/components/group/EditUserGro
 import { GroupMembersDrawer } from '@/modules/user/components/group/GroupMembersDrawer.tsx'
 import { GroupListItem } from '@/modules/user/components/group/GroupListItem.tsx'
 import { PermissionsField } from '@/modules/user/components/PermissionsField.tsx'
+import { GroupMembersDrawer as GroupMembersDrawerStore } from '@/modules/user/components/group/groupMembersDrawer'
+import { EditUserGroupDrawer as EditUserGroupDrawerStore } from '@/modules/user/components/group/editUserGroupDrawer'
+import { UserGroups } from '@/modules/user/stores/userGroups'
 
 interface CreateGroupFormValues {
   name: string
@@ -47,7 +49,7 @@ export function UserGroupsSettings() {
     pageSize: storePageSize,
     loadingGroups,
     error,
-  } = Stores.UserGroups
+  } = UserGroups
 
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const createForm = useForm<CreateGroupFormValues>({
@@ -61,7 +63,7 @@ export function UserGroupsSettings() {
   useEffect(() => {
     if (error && groups.length > 0) {
       message.error(error)
-      Stores.UserGroups.clearError()
+      UserGroups.clearError()
     }
   }, [error, groups.length])
 
@@ -72,7 +74,7 @@ export function UserGroupsSettings() {
         description: values.description,
         permissions: values.permissions ?? [],
       }
-      await Stores.UserGroups.createUserGroup(groupData)
+      await UserGroups.createUserGroup(groupData)
       message.success('User group created successfully')
       setCreateModalVisible(false)
       createForm.reset()
@@ -84,7 +86,7 @@ export function UserGroupsSettings() {
 
   const handleDeleteGroup = async (groupId: string) => {
     try {
-      await Stores.UserGroups.deleteUserGroup(groupId)
+      await UserGroups.deleteUserGroup(groupId)
       message.success('User group deleted successfully')
     } catch (error) {
       console.error('Failed to delete user group:', error)
@@ -93,18 +95,18 @@ export function UserGroupsSettings() {
   }
 
   const handleViewMembers = (group: Group) => {
-    Stores.GroupMembersDrawer.openGroupMembersDrawer(group)
+    GroupMembersDrawerStore.openGroupMembersDrawer(group)
   }
 
   const openEditModal = (group: Group) => {
-    Stores.EditUserGroupDrawer.openUserGroupDrawer(group)
+    EditUserGroupDrawerStore.openUserGroupDrawer(group)
   }
 
   const handlePageChange = (page: number, size?: number) => {
     const newPageSize = size || storePageSize
     const newPage = size && size !== storePageSize ? 1 : page // Reset to page 1 if page size changes
 
-    Stores.UserGroups.loadUserGroups(newPage, newPageSize)
+    UserGroups.loadUserGroups(newPage, newPageSize)
   }
 
   // Title row with the Add button on the right — matches the
@@ -139,7 +141,7 @@ export function UserGroupsSettings() {
             resource="user groups"
             description="The user groups couldn't be loaded. Check your connection and try again."
             details={error}
-            onRetry={() => Stores.UserGroups.loadUserGroups(storePage, storePageSize)}
+            onRetry={() => UserGroups.loadUserGroups(storePage, storePageSize)}
             data-testid="user-groups-error"
           />
         ) : (

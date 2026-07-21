@@ -15,10 +15,10 @@ import {
   Tooltip,
   message,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type RuntimeVersionResponse2 } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { VoiceRuntimeVersion } from '@/modules/voice/stores/voiceRuntimeVersion'
 
 /**
  * Installed whisper runtimes. Each row shows the version metadata plus
@@ -26,10 +26,10 @@ import { Permissions } from '@/api-client/permissions'
  * InstalledVersionsCard / RuntimeVersionCard, single-engine.
  */
 export function InstalledVersionsCard() {
-  const { versions, loading, error } = Stores.VoiceRuntimeVersion
+  const { versions, loading, error } = VoiceRuntimeVersion
 
   const handleRefresh = () => {
-    Stores.VoiceRuntimeVersion.loadVersions().catch(() =>
+    VoiceRuntimeVersion.loadVersions().catch(() =>
       message.error('Failed to refresh runtime versions'),
     )
   }
@@ -80,7 +80,7 @@ export function InstalledVersionsCard() {
 }
 
 function InstalledVersionRow({ version }: { version: RuntimeVersionResponse2 }) {
-  const { settingDefault, deleting } = Stores.VoiceRuntimeVersion
+  const { settingDefault, deleting } = VoiceRuntimeVersion
   const canManage = usePermission(Permissions.VoiceAdminManage)
   const isSettingDefault = settingDefault.get(version.id) || false
   const isDeleting = deleting.get(version.id) || false
@@ -89,7 +89,7 @@ function InstalledVersionRow({ version }: { version: RuntimeVersionResponse2 }) 
 
   const handleSetDefault = async () => {
     try {
-      await Stores.VoiceRuntimeVersion.setDefaultVersion(version.id)
+      await VoiceRuntimeVersion.setDefaultVersion(version.id)
     } catch {
       /* error surfaced in store */
     }
@@ -97,7 +97,7 @@ function InstalledVersionRow({ version }: { version: RuntimeVersionResponse2 }) 
 
   const handleDelete = async () => {
     try {
-      await Stores.VoiceRuntimeVersion.deleteVersion(version.id, removeBinary)
+      await VoiceRuntimeVersion.deleteVersion(version.id, removeBinary)
       setAckDefault(false)
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Failed to delete version')

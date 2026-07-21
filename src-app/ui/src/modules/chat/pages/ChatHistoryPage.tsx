@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Tooltip, Text, Title } from '@ziee/kit'
 import { MessageSquare, Plus, Search as SearchIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import { ConversationList } from '@/modules/chat/components/ConversationList'
 import { ChatHistorySortControl } from '@/modules/chat/components/ChatHistorySortControl'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 import { cn } from '@/lib/utils'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
+import { ChatHistory } from '@/modules/chat/stores/chatHistory'
 
 /**
  * ChatHistoryPage
@@ -41,8 +42,8 @@ export default function ChatHistoryPage() {
   // Chat history store for empty state detection
   // Native document-scroll on mobile (iOS toolbar collapse + under-notch flow).
   useNativeScroll(true)
-  const { nativeScroll } = Stores.AppLayout
-  const { conversations, loading, error, searchQuery } = Stores.ChatHistory
+  const { nativeScroll } = AppLayout
+  const { conversations, loading, error, searchQuery } = ChatHistory
   // A non-empty search must keep ConversationList mounted even when it returns
   // zero rows: search is server-side now, so `conversations` becomes empty on a
   // no-match — but the list owns the search box and the "no results matching
@@ -58,7 +59,7 @@ export default function ChatHistoryPage() {
   // useEffect never fires. Trigger the refetch here so newly-created
   // conversations always appear.
   useEffect(() => {
-    Stores.ChatHistory.loadConversations()
+    ChatHistory.loadConversations()
   }, [])
 
   // Closing the body search affordance when the page grows back to

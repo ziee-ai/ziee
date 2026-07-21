@@ -15,7 +15,7 @@ import {
   Text,
 } from '@ziee/kit'
 import { Can, usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
+import { VoiceInstance } from '@/modules/voice/stores/voiceInstance'
 
 /** Format a duration in seconds as `1h 02m 03s`. */
 function formatUptime(secs: number): string {
@@ -35,11 +35,11 @@ function formatUptime(secs: number): string {
  * captured-log viewer.
  */
 export function VoiceInstanceCard() {
-  const { info, loading, busy, error } = Stores.VoiceInstance
+  const { info, loading, busy, error } = VoiceInstance
 
   const handleRestart = async () => {
     try {
-      await Stores.VoiceInstance.restartInstance()
+      await VoiceInstance.restartInstance()
       message.success('Instance restarting')
     } catch (e) {
       message.error(
@@ -50,7 +50,7 @@ export function VoiceInstanceCard() {
 
   const handleStop = async () => {
     try {
-      await Stores.VoiceInstance.stopInstance()
+      await VoiceInstance.stopInstance()
       message.success('Instance stopped')
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to stop instance')
@@ -97,7 +97,7 @@ export function VoiceInstanceCard() {
           resource="instance"
           description="The instance status couldn't be loaded."
           details={error}
-          onRetry={() => Stores.VoiceInstance.loadInstance()}
+          onRetry={() => VoiceInstance.loadInstance()}
           data-testid="voice-instance-error"
         />
       ) : !info ? (

@@ -11,11 +11,11 @@ import {
   zodResolver,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
+import { FileRagAdmin } from '@/modules/file-rag/stores/fileRagAdmin'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -36,7 +36,7 @@ type FormValues = z.infer<typeof schema>
 export function RetrievalLimitsSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving, error } = Stores.FileRagAdmin
+  const { settings, saving, error } = FileRagAdmin
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -75,13 +75,13 @@ export function RetrievalLimitsSection() {
       <SettingsSectionStatus
         title="Retrieval limits"
         error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
+        onRetry={() => FileRagAdmin.load()}
       />
     )
 
   const handleSubmit = async (values: FormValues) => {
     try {
-      await Stores.FileRagAdmin.update({
+      await FileRagAdmin.update({
         kb_max_documents: values.kb_max_documents,
         search_max_hit_chars: values.search_max_hit_chars,
         search_snippet_chars: values.search_snippet_chars,

@@ -6,6 +6,8 @@ import { type KnowledgeBase } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
+import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
+import { KnowledgeBases } from '@/modules/knowledge-base/stores/knowledgeBases'
 
 /**
  * Full management of a project's attached knowledge bases — inside the knowledge
@@ -15,10 +17,10 @@ import { Stores } from '@ziee/framework/stores'
  */
 export function ProjectKnowledgeBasesManagePanel() {
   const canUse = usePermission(Permissions.KnowledgeBaseUse)
-  const project = Stores.ProjectDetail.project
+  const project = ProjectDetail.project
   const projectId = project?.id ?? null
   // The user's full KB library (for the attach picker) comes from the store.
-  const { items: allKbs } = Stores.KnowledgeBases
+  const { items: allKbs } = KnowledgeBases
   const [attached, setAttached] = useState<KnowledgeBase[]>([])
   const [loading, setLoading] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)

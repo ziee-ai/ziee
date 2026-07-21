@@ -19,6 +19,7 @@ import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/
 import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { useHubModelDownloadGate } from '@/modules/hub/modules/llm-models/hooks/useHubModelDownloadGate'
+import { LlmModelDownload as LlmModelDownloadStore } from '@/modules/llm-provider/stores/llmModelDownload'
 
 interface ModelHubCardProps {
   model: HubModel
@@ -34,7 +35,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
   const { runGates, probing } = useHubModelDownloadGate()
 
   const { localProviders } = Stores.HubModels
-  const { downloads } = Stores.LlmModelDownload
+  const { downloads } = LlmModelDownloadStore
 
   // v2 Phase 7: repository_path moved off the model and onto each
   // source. Walk every source's identifier to match (a single model

@@ -11,11 +11,11 @@ import {
   message,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
+import { FileRagAdmin } from '@/modules/file-rag/stores/fileRagAdmin'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -37,7 +37,7 @@ type FormValues = z.infer<typeof schema>
 export function ChunkingSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving, error } = Stores.FileRagAdmin
+  const { settings, saving, error } = FileRagAdmin
   // Client-side cross-field validation (overlap < chunk) surfaced as a persistent
   // alert, alongside the toast + field errors.
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -77,7 +77,7 @@ export function ChunkingSection() {
       <SettingsSectionStatus
         title="Chunking"
         error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
+        onRetry={() => FileRagAdmin.load()}
       />
     )
 
@@ -97,7 +97,7 @@ export function ChunkingSection() {
     }
     setValidationError(null)
     try {
-      await Stores.FileRagAdmin.update({
+      await FileRagAdmin.update({
         chunk_chars: values.chunk_chars,
         chunk_overlap_chars: values.chunk_overlap_chars,
         max_chunks_per_file: values.max_chunks_per_file,

@@ -1,8 +1,8 @@
 import { ErrorState, Tabs } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { LitSearchGlobalSection } from './LitSearchGlobalSection'
 import { LitSearchConnectorsSection } from './LitSearchConnectorsSection'
+import { LitSearchAdmin } from '@/modules/literature/stores/litSearchAdmin'
 
 /**
  * Literature Search admin settings — one page, two cards: general (enable +
@@ -11,7 +11,7 @@ import { LitSearchConnectorsSection } from './LitSearchConnectorsSection'
  * built-in MCP server row is hidden from the System MCP page.
  */
 export function LitSearchSettingsPage() {
-  const { error, settings } = Stores.LitSearchAdmin
+  const { error, settings } = LitSearchAdmin
   const subtitle =
     'Search scholarly literature (Europe PMC, Crossref, Semantic Scholar, PubMed, arXiv, CORE), screen results, and fetch open-access full text. Connected-only — results are treated as untrusted data and this is an adjunct to systematic searching.'
   // Primary load failed (no settings) → replace the tabs with a persistent,
@@ -24,7 +24,7 @@ export function LitSearchSettingsPage() {
           resource="literature search settings"
           description="The literature search settings couldn't be loaded. Check your connection and try again."
           details={error}
-          onRetry={() => void Stores.LitSearchAdmin.load()}
+          onRetry={() => void LitSearchAdmin.load()}
           data-testid="lit-settings-error"
         />
       </SettingsPageContainer>

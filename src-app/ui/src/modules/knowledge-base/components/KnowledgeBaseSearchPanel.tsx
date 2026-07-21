@@ -4,6 +4,9 @@ import { Button, Card, Flex, Input, Tag, Text } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
 import { ApiClient } from '@/api-client'
 import type { KnowledgeSearchHit } from '@/api-client/types'
+import { KnowledgeBaseDetail } from '@/modules/knowledge-base/stores/knowledgeBaseDetail'
+import { FilePreviewDrawer } from '@/modules/file/stores/filePreviewDrawer'
+import { PdfHighlight as PdfHighlightStore } from '@/modules/file/stores/pdfHighlight'
 
 /**
  * Detail-page "test retrieval" box (FB-8 / DEC-40) — runs the same retrieval
@@ -13,10 +16,10 @@ import type { KnowledgeSearchHit } from '@/api-client/types'
  * (reuses the global `PdfHighlight` mechanism the chat `kb_source` panel uses).
  */
 export function KnowledgeBaseSearchPanel({ kbId }: { kbId: string }) {
-  const { searching, searchResults } = Stores.KnowledgeBaseDetail
+  const { searching, searchResults } = KnowledgeBaseDetail
   const [q, setQ] = useState('')
 
-  const run = () => void Stores.KnowledgeBaseDetail.searchKb(kbId, q)
+  const run = () => void KnowledgeBaseDetail.searchKb(kbId, q)
 
   const openHit = async (h: KnowledgeSearchHit) => {
     const file = await Stores.File.getFileEntityById(h.file_id)
@@ -28,15 +31,15 @@ export function KnowledgeBaseSearchPanel({ kbId }: { kbId: string }) {
           start: h.char_start,
           end: h.char_end,
         })
-        Stores.PdfHighlight.setTarget(h.file_id, { page: h.page_number, rects: res.rects })
+        PdfHighlightStore.setTarget(h.file_id, { page: h.page_number, rects: res.rects })
       } catch {
-        Stores.PdfHighlight.setTarget(h.file_id, { page: h.page_number, rects: [] })
+        PdfHighlightStore.setTarget(h.file_id, { page: h.page_number, rects: [] })
       }
     } else {
       // Non-PDF: drive find-in-document to the passage prefix (scroll+highlight).
       Stores.File.setFileFindQuery(h.file_id, (h.content ?? '').trim().slice(0, 60))
     }
-    Stores.FilePreviewDrawer.openPreview(file)
+    FilePreviewDrawer.openPreview(file)
   }
 
   const inc = searchResults?.indexing_incomplete

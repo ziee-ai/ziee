@@ -1,5 +1,4 @@
 import { Alert, Flex } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AvailableModelsCard } from './AvailableModelsCard'
 import { AvailableVersionsCard } from './AvailableVersionsCard'
@@ -8,6 +7,9 @@ import { InstalledVersionsCard } from './InstalledVersionsCard'
 import { UploadModelDrawer } from './UploadModelDrawer'
 import { VoiceConfigCard } from './VoiceConfigCard'
 import { VoiceInstanceCard } from './VoiceInstanceCard'
+import { VoiceRuntimeVersion } from '@/modules/voice/stores/voiceRuntimeVersion'
+import { VoiceConfig } from '@/modules/voice/stores/voiceConfig'
+import { VoiceModel } from '@/modules/voice/stores/voiceModel'
 
 /**
  * Voice dictation admin page. Stacks:
@@ -19,9 +21,9 @@ import { VoiceInstanceCard } from './VoiceInstanceCard'
  *   6. Deployment-wide config (enable, model, language, timeouts, caps)
  */
 export function VoiceSettingsPage() {
-  const { versions } = Stores.VoiceRuntimeVersion
-  const { installed } = Stores.VoiceModel
-  const { settings } = Stores.VoiceConfig
+  const { versions } = VoiceRuntimeVersion
+  const { installed } = VoiceModel
+  const { settings } = VoiceConfig
 
   // Ready when a runtime is installed AND an installed model matches the
   // configured settings.model pointer.

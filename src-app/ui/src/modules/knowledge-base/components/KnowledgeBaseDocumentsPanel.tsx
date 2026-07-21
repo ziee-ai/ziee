@@ -13,12 +13,12 @@ import {
   message,
 } from '@ziee/kit'
 import { Can } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { type KnowledgeBaseDocument } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { ListPagination } from '@/components/common/ListPagination'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { docStatusBadge, docToFileEntity, isRetryable, partitionKbUploads } from '../docStatus'
+import { KnowledgeBaseDetail } from '@/modules/knowledge-base/stores/knowledgeBaseDetail'
 
 interface Props {
   kbId: string
@@ -50,7 +50,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
     documentsPageSize,
     uploadingFiles,
     selectedFileIds,
-  } = Stores.KnowledgeBaseDetail
+  } = KnowledgeBaseDetail
 
   const rootRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -81,7 +81,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
     }
     if (accepted.length === 0) return
     try {
-      const result = await Stores.KnowledgeBaseDetail.uploadAndAttach(kbId, accepted)
+      const result = await KnowledgeBaseDetail.uploadAndAttach(kbId, accepted)
       const parts: string[] = []
       if (result.attached > 0) parts.push(`${result.attached} added`)
       if (result.skipped_duplicates > 0)
@@ -94,7 +94,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
 
   const handleRetryAll = async () => {
     try {
-      await Stores.KnowledgeBaseDetail.retryAllFailed(kbId)
+      await KnowledgeBaseDetail.retryAllFailed(kbId)
       message.success('Re-indexing failed documents')
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to re-index')
@@ -105,7 +105,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
 
   const handleRemove = async (doc: KnowledgeBaseDocument) => {
     try {
-      await Stores.KnowledgeBaseDetail.removeDocument(kbId, doc.file_id)
+      await KnowledgeBaseDetail.removeDocument(kbId, doc.file_id)
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to remove')
     }
@@ -115,7 +115,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
     const n = selectedFileIds.size
     if (n === 0) return
     try {
-      await Stores.KnowledgeBaseDetail.batchRemove(kbId)
+      await KnowledgeBaseDetail.batchRemove(kbId)
       message.success(`Removed ${n} document${n === 1 ? '' : 's'}`)
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to remove')
@@ -124,7 +124,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
 
   const handleReindex = async (doc: KnowledgeBaseDocument) => {
     try {
-      await Stores.KnowledgeBaseDetail.reindexDocument(kbId, doc.file_id)
+      await KnowledgeBaseDetail.reindexDocument(kbId, doc.file_id)
       message.success('Re-indexing started')
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'Failed to re-index')
@@ -261,7 +261,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
               size="default"
               variant="outline"
               data-testid="kb-documents-clear-selection"
-              onClick={() => Stores.KnowledgeBaseDetail.deselectAll()}
+              onClick={() => KnowledgeBaseDetail.deselectAll()}
             >
               Clear
             </Button>
@@ -287,7 +287,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
               uploadProgress={progress}
               variant="row"
               onRemove={() =>
-                Stores.KnowledgeBaseDetail.dismissUploadingFile(progress.id)
+                KnowledgeBaseDetail.dismissUploadingFile(progress.id)
               }
             />
           ))}
@@ -316,7 +316,7 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
                 selectable
                 selected={selectedFileIds.has(doc.file_id)}
                 onSelectChange={() =>
-                  Stores.KnowledgeBaseDetail.toggleSelection(doc.file_id)
+                  KnowledgeBaseDetail.toggleSelection(doc.file_id)
                 }
                 subtitle={
                   <>
@@ -377,14 +377,14 @@ export function KnowledgeBaseDocumentsPanel({ kbId }: Props) {
           pageSize={documentsPageSize}
           itemNoun="documents"
           onChange={p =>
-            void Stores.KnowledgeBaseDetail.loadDocumentsPage(
+            void KnowledgeBaseDetail.loadDocumentsPage(
               kbId,
               p,
               documentsPageSize,
             )
           }
           onPageSizeChange={s =>
-            void Stores.KnowledgeBaseDetail.loadDocumentsPage(kbId, 1, s)
+            void KnowledgeBaseDetail.loadDocumentsPage(kbId, 1, s)
           }
         />
       )}

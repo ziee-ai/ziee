@@ -10,7 +10,7 @@ import { Alert, Button, Link } from '@ziee/kit'
 import { useNavigate } from 'react-router-dom'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
-import { Stores } from '@ziee/framework/stores'
+import { ServerUpdate } from '@/modules/server-update/stores/serverUpdate'
 
 export function ServerUpdateBanner() {
   return (
@@ -23,7 +23,7 @@ export function ServerUpdateBanner() {
 function ServerUpdateBannerInner() {
   const navigate = useNavigate()
   const { enabled, updateAvailable, dismissed, latestVersion, releaseUrl } =
-    Stores.ServerUpdate
+    ServerUpdate
 
   // Never surface an update prompt when update checks are disabled in server
   // config (air-gapped deployments) — guard against a stale `updateAvailable`
@@ -35,7 +35,7 @@ function ServerUpdateBannerInner() {
       data-testid="serverupd-banner-alert"
       tone="info"
       aria-label="Software update available"
-      onClose={() => Stores.ServerUpdate.dismiss()}
+      onClose={() => ServerUpdate.dismiss()}
       closeLabel="Close"
       title={
         <span>

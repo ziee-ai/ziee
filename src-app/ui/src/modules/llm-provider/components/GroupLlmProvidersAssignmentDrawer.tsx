@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Button, Card, Flex, Spin, Switch, Tag, Text, Title, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
+import { GroupLlmProvidersAssignment } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 
 /**
  * Drawer for assigning/removing LLM Providers to/from a group.
  * Self-contained - owned by LLM Provider module.
  */
 export function GroupLlmProvidersAssignmentDrawer() {
-  const { isOpen, selectedGroup } = Stores.GroupLlmProvidersAssignment
-  const { providers } = Stores.LlmProvider
+  const { isOpen, selectedGroup } = GroupLlmProvidersAssignment
+  const { providers } = LlmProvider
 
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -27,7 +28,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
 
     setLoading(true)
     try {
-      const assigned = await Stores.LlmProvider.getProvidersForGroup(
+      const assigned = await LlmProvider.getProvidersForGroup(
         selectedGroup.id,
       )
       setAssignedIds(assigned.map(p => p.id))
@@ -44,12 +45,12 @@ export function GroupLlmProvidersAssignmentDrawer() {
 
     setSaving(true)
     try {
-      await Stores.LlmProvider.updateGroupProviders(
+      await LlmProvider.updateGroupProviders(
         selectedGroup.id,
         assignedIds,
       )
       message.success('Provider assignments updated')
-      Stores.GroupLlmProvidersAssignment.closeDrawer()
+      GroupLlmProvidersAssignment.closeDrawer()
     } catch (error) {
       console.error('Failed to update provider assignments:', error)
       message.error('Failed to update provider assignments')
@@ -59,7 +60,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
   }
 
   const handleClose = () => {
-    Stores.GroupLlmProvidersAssignment.closeDrawer()
+    GroupLlmProvidersAssignment.closeDrawer()
   }
 
   const handleToggle = (providerId: string, checked: boolean) => {

@@ -12,9 +12,9 @@ import { FileEditBody } from '@/modules/file/components/FileEditBody'
 import { FileExportMenu } from '@/modules/file/components/FileExportMenu'
 import { DeliverablePinButton } from '@/modules/file/components/DeliverablePinButton'
 import { editableKind } from '@/modules/file/utils/editableTypes'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
+import { FileVersions } from '@/modules/file/stores/fileVersions'
 
 /** Hard cap on previewable file size — the SINGLE outer OOM backstop that
  *  prevents even fetching a pathological file. Files above this never trigger a
@@ -134,11 +134,11 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
   const isViewingOld = selectedVersion !== null && selectedVersion !== file.version
   // Read versionTextCache REACTIVELY so the body re-renders when the async text
   // load lands. Fire-and-forget background load if not already cached.
-  const versionTextCache = Stores.FileVersions.versionTextCache
+  const versionTextCache = FileVersions.versionTextCache
   const oldVersionText = isViewingOld
     ? (() => {
         if (versionTextCache.get(`${file.id}:${selectedVersion}`) === undefined) {
-          void Stores.FileVersions.loadVersionText(file.id, selectedVersion)
+          void FileVersions.loadVersionText(file.id, selectedVersion)
         }
         return versionTextCache.get(`${file.id}:${selectedVersion}`) ?? null
       })()

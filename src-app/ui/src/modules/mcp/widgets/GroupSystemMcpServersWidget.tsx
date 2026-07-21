@@ -2,9 +2,10 @@ import { useEffect } from 'react'
 import { Button, Card, Flex, Space, Tag, Text, Spin } from '@ziee/kit'
 import { Plug, Pencil } from 'lucide-react'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
+import { GroupSystemMcpServersWidget as GroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/groupSystemMcpServersWidget'
+import { GroupSystemMcpServersAssignment } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
 
 /**
  * Widget that displays System MCP Servers assigned to a group.
@@ -16,7 +17,7 @@ import { Permissions } from '@/api-client/permissions'
  */
 export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   // Get data from store
-  const serverData = Stores.GroupSystemMcpServersWidget.groupServers.get(
+  const serverData = GroupSystemMcpServersWidgetStore.groupServers.get(
     group.id,
   )
   const servers = serverData?.servers || []
@@ -32,11 +33,11 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   // CRITICAL: Load data on mount
   // The store has 30-second caching, so this won't cause excessive API calls
   useEffect(() => {
-    if (canRead) Stores.GroupSystemMcpServersWidget.loadServersForGroup(group.id)
+    if (canRead) GroupSystemMcpServersWidgetStore.loadServersForGroup(group.id)
   }, [group.id, canRead])
 
   const handleEdit = () => {
-    Stores.GroupSystemMcpServersAssignment.openDrawer(group)
+    GroupSystemMcpServersAssignment.openDrawer(group)
   }
 
   return (

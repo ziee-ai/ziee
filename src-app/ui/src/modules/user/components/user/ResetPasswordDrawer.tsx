@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import { Button, Form, FormField, useForm, zodResolver, PasswordInput, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { Users } from '@/modules/user/stores/users'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
+import { ResetPasswordDrawer as ResetPasswordDrawerStore } from '@/modules/user/components/user/resetPasswordDrawer'
 
 const resetPasswordSchema = z
   .object({
@@ -22,7 +22,7 @@ const resetPasswordSchema = z
 type ResetPasswordValues = z.infer<typeof resetPasswordSchema>
 
 export function ResetPasswordDrawer() {
-  const { isOpen, user } = Stores.ResetPasswordDrawer
+  const { isOpen, user } = ResetPasswordDrawerStore
   const canReset = usePermission(Permissions.UsersResetPassword)
   const form = useForm<ResetPasswordValues>({
     resolver: zodResolver(resetPasswordSchema),
@@ -36,7 +36,7 @@ export function ResetPasswordDrawer() {
       await Users.resetUserPassword(user.id, values.new_password)
 
       message.success('Password reset successfully')
-      Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
+      ResetPasswordDrawerStore.closeResetPasswordDrawer()
       form.reset()
     } catch (error) {
       console.error('Failed to reset password:', error)
@@ -50,7 +50,7 @@ export function ResetPasswordDrawer() {
       size={600}
       open={isOpen}
       onClose={() => {
-        Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
+        ResetPasswordDrawerStore.closeResetPasswordDrawer()
         form.reset()
       }}
       footer={
@@ -58,7 +58,7 @@ export function ResetPasswordDrawer() {
           <Button
             variant="outline"
             onClick={() => {
-              Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
+              ResetPasswordDrawerStore.closeResetPasswordDrawer()
               form.reset()
             }}
             data-testid="user-reset-password-cancel-button"

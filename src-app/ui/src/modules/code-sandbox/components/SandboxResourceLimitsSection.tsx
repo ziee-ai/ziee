@@ -15,11 +15,11 @@ import {
   message,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { type CodeSandboxResourceLimits, type UpdateCodeSandboxResourceLimits } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { SandboxResourceLimits } from '@/modules/code-sandbox/stores/sandboxResourceLimits'
 
 const MANAGE_PERM = Permissions.CodeSandboxResourceLimitsManage
 const READ_PERM = Permissions.CodeSandboxResourceLimitsRead
@@ -143,7 +143,7 @@ function formToPatch(v: FormValues): UpdateCodeSandboxResourceLimits {
  * is disabled (read access is implicit via the surrounding container).
  */
 export function SandboxResourceLimitsSection() {
-  const { limits, loading, saving, error } = Stores.SandboxResourceLimits
+  const { limits, loading, saving, error } = SandboxResourceLimits
   const canManage = usePermission(MANAGE_PERM)
   const canRead = usePermission(READ_PERM) || canManage
 
@@ -169,7 +169,7 @@ export function SandboxResourceLimitsSection() {
 
   const onSubmit = async (v: FormValues) => {
     try {
-      await Stores.SandboxResourceLimits.saveLimits(formToPatch(v))
+      await SandboxResourceLimits.saveLimits(formToPatch(v))
       message.success('Resource limits saved')
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to save')

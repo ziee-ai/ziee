@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
-import { Stores } from '@ziee/framework/stores'
 import type { RuntimeEngine, RuntimeUpdateCheck } from '../../../types'
 import type { RuntimeUpdateGet, RuntimeUpdateSet } from '../state'
+import { RuntimeVersion } from '@/modules/llm-local-runtime/stores/runtimeVersion'
 
 export default (set: RuntimeUpdateSet, _get: RuntimeUpdateGet) =>
   async (engine: RuntimeEngine): Promise<RuntimeUpdateCheck> => {
@@ -12,7 +12,7 @@ export default (set: RuntimeUpdateSet, _get: RuntimeUpdateGet) =>
     try {
       const response = await ApiClient.RuntimeVersion.checkUpdates({ engine })
       // Get current default version for this engine
-      const currentVersion = Stores.RuntimeVersion.versions.find(
+      const currentVersion = RuntimeVersion.versions.find(
         v => v.engine === engine && v.is_system_default,
       ) || null
       // Releases come newest-first. The "latest" we can actually install is the

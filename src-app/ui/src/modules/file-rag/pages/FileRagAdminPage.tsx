@@ -1,5 +1,4 @@
 import { Alert, Spinner } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { EnableSection } from '../components/sections/EnableSection'
 import { EmbeddingSection } from '../components/sections/EmbeddingSection'
@@ -8,6 +7,7 @@ import { RetrievalLimitsSection } from '../components/sections/RetrievalLimitsSe
 import { ChunkingSection } from '../components/sections/ChunkingSection'
 import { FullTextSection } from '../components/sections/FullTextSection'
 import { MaintenanceSection } from '../components/sections/MaintenanceSection'
+import { FileRagAdmin } from '@/modules/file-rag/stores/fileRagAdmin'
 
 /**
  * Deployment-wide Document-RAG (file_rag) admin settings. Stacked section
@@ -24,7 +24,7 @@ import { MaintenanceSection } from '../components/sections/MaintenanceSection'
  * model is configured under "Embedding".
  */
 export function FileRagAdminPage() {
-  const { settings, loading, error } = Stores.FileRagAdmin
+  const { settings, loading, error } = FileRagAdmin
   return (
     <SettingsPageContainer
       title="Document RAG"

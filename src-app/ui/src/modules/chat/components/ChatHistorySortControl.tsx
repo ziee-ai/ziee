@@ -1,8 +1,8 @@
 import { ArrowUpDown, Check } from 'lucide-react'
 import { Button, Dropdown, Select } from '@ziee/kit'
 import type { DropdownItem } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { ConversationSort } from '@/modules/chat/stores/chatHistory'
+import { ChatHistory } from '@/modules/chat/stores/chatHistory'
 
 export const SORT_OPTIONS: { value: ConversationSort; label: string }[] = [
   { value: 'recent', label: 'Most recent' },
@@ -18,14 +18,14 @@ export const SORT_OPTIONS: { value: ConversationSort; label: string }[] = [
  * dropdown, the active option check-marked.
  */
 export function ChatHistorySortControl({ iconOnly }: { iconOnly?: boolean }) {
-  const { sort } = Stores.ChatHistory
+  const { sort } = ChatHistory
 
   if (iconOnly) {
     const items: DropdownItem[] = SORT_OPTIONS.map(o => ({
       key: o.value,
       label: o.label,
       icon: sort === o.value ? <Check /> : <span className="size-4" />,
-      onClick: () => Stores.ChatHistory.setSort(o.value),
+      onClick: () => ChatHistory.setSort(o.value),
     }))
     return (
       <Dropdown items={items} data-testid="chat-history-sort-dropdown">
@@ -45,7 +45,7 @@ export function ChatHistorySortControl({ iconOnly }: { iconOnly?: boolean }) {
       data-testid="chat-history-sort-select"
       aria-label="Sort conversations"
       value={sort}
-      onChange={value => Stores.ChatHistory.setSort(value as ConversationSort)}
+      onChange={value => ChatHistory.setSort(value as ConversationSort)}
       options={SORT_OPTIONS}
       className="w-40"
     />

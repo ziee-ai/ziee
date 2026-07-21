@@ -12,7 +12,6 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { Button, Input, Separator, Spin, Text, Tooltip } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import type { FileViewerSlotProps } from '../../types/viewer'
 import type { PdfController, ScaleValue } from './pdfjs'
 import { usePdfDocument } from './usePdfDocument'
@@ -22,6 +21,7 @@ import {
   useFileHighlightScope,
 } from '@/modules/file/viewers/highlightScope'
 import { nextZoomStep } from './zoom'
+import { PdfHighlight } from '@/modules/file/stores/pdfHighlight'
 
 // Client-side PDF viewer (ITEM-5/6/7/8/9, DEC-11). Mounts PDF.js's own
 // `PDFViewer` component — native continuous-scroll virtualization, incremental
@@ -43,7 +43,7 @@ export function PdfJsBody(props: FileViewerSlotProps) {
   // the bare fileId key (unchanged single-pane behavior).
   const hlScope = useFileHighlightScope()
   const highlightTarget =
-    Stores.PdfHighlight.targets.get(scopedHighlightKey(hlScope, file.id)) ?? null
+    PdfHighlight.targets.get(scopedHighlightKey(hlScope, file.id)) ?? null
 
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)

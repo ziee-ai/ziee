@@ -16,9 +16,9 @@ import {
   message,
   useForm,
 } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
+import { LitSearchUserKeys } from '@/modules/literature/stores/litSearchUserKeys'
 
 /**
  * User-facing page: the caller's OWN lit-search connector keys. Mirrors the
@@ -27,7 +27,7 @@ import { SettingsFormActions } from '@/modules/settings/components/SettingsFormA
  * Registered in the `settingsUserPages` slot, gated on `lit_search::use`.
  */
 export function LitSearchUserKeysPage() {
-  const { connectors, loading, error, savingConnector } = Stores.LitSearchUserKeys
+  const { connectors, loading, error, savingConnector } = LitSearchUserKeys
 
   const buildDefaults = () => {
     const out: Record<string, string> = {}
@@ -54,7 +54,7 @@ export function LitSearchUserKeysPage() {
       for (const c of connectors) {
         const key = (values[c.connector] ?? '').trim()
         if (key.length === 0) continue
-        await Stores.LitSearchUserKeys.saveKey(c.connector, key)
+        await LitSearchUserKeys.saveKey(c.connector, key)
         saved += 1
       }
       if (saved > 0) {
@@ -70,7 +70,7 @@ export function LitSearchUserKeysPage() {
 
   const clearKey = async (connector: string, displayName: string) => {
     try {
-      await Stores.LitSearchUserKeys.clearKey(connector)
+      await LitSearchUserKeys.clearKey(connector)
       message.success(`Your ${displayName} key was removed`)
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to remove key')
@@ -107,7 +107,7 @@ export function LitSearchUserKeysPage() {
               resource="your literature keys"
               description="Your connector keys couldn't be loaded. Check your connection and try again."
               details={error}
-              onRetry={() => void Stores.LitSearchUserKeys.load()}
+              onRetry={() => void LitSearchUserKeys.load()}
               data-testid="litsearch-user-keys-error"
             />
           ) : (

@@ -3,13 +3,13 @@ import { TriangleAlert } from 'lucide-react'
 import { Button, Spin, message } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import type { File as FileEntity } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
 import { LazyMarkdownEditor } from '@/components/kit/editor/LazyMarkdownEditor'
 import { LazyCodeEditor } from '@/components/kit/editor/LazyCodeEditor'
 import { CsvGridEditor } from '@/modules/file/components/CsvGridEditor'
 import { CanvasSelectionPopover } from '@/modules/file/components/CanvasSelectionPopover'
 import type { CanvasEditorHandle } from '@/components/kit/editor/types'
 import { editableKind } from '@/modules/file/utils/editableTypes'
+import { FileVersions as FileVersionsStore } from '@/modules/file/stores/fileVersions'
 
 /**
  * The canvas edit-mode body: loads the file's head content, mounts the
@@ -42,7 +42,7 @@ export function FileEditBody({
   const kind = editableKind(file)
 
   // Reactive current head (authoritative: FileVersions list, else the prop).
-  const versionsByFile = Stores.FileVersions.versionsByFile
+  const versionsByFile = FileVersionsStore.versionsByFile
   const currentHead =
     versionsByFile.get(file.id)?.find(v => v.is_head)?.version ?? file.version
   const changedUnderneath =
@@ -65,7 +65,7 @@ export function FileEditBody({
         setText(t)
         // Snapshot the head this text came from (read state in handlers via `$`).
         const head =
-          Stores.FileVersions.$.versionsByFile
+          FileVersionsStore.$.versionsByFile
             .get(file.id)
             ?.find(v => v.is_head)?.version ?? file.version
         loadedHeadRef.current = head
@@ -99,7 +99,7 @@ export function FileEditBody({
     const content = editorRef.current?.getContent() ?? ''
     setSaving(true)
     try {
-      await Stores.FileVersions.appendVersion(file.id, content)
+      await FileVersionsStore.appendVersion(file.id, content)
       message.success('Saved')
       onDone()
     } catch (e) {

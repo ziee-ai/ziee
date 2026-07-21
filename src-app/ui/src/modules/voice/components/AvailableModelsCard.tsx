@@ -19,8 +19,10 @@ import {
   Text,
 } from '@ziee/kit'
 import { Can } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { formatBytes } from '@/utils/downloadUtils'
+import { VoiceModelUpdate } from '@/modules/voice/stores/voiceModelUpdate'
+import { VoiceModelDownloadProgress as VoiceModelDownloadProgressStore } from '@/modules/voice/stores/voiceModelDownloadProgress'
+import { VoiceUploadModelDrawer } from '@/modules/voice/stores/voiceUploadModelDrawer'
 
 const PAGE_SIZE = 10
 
@@ -32,13 +34,13 @@ const PAGE_SIZE = 10
  */
 export function AvailableModelsCard() {
   const { catalog, sourceReachable, sourceRepo, checking, error, hasLoaded } =
-    Stores.VoiceModelUpdate
-  const { activeByKey } = Stores.VoiceModelDownloadProgress
+    VoiceModelUpdate
+  const { activeByKey } = VoiceModelDownloadProgressStore
   const [page, setPage] = useState(1)
 
   const handleDownload = async (m: VoiceCatalogModel) => {
     try {
-      await Stores.VoiceModelDownloadProgress.startDownload({ name: m.name })
+      await VoiceModelDownloadProgressStore.startDownload({ name: m.name })
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to start download')
     }
@@ -46,7 +48,7 @@ export function AvailableModelsCard() {
 
   const handleCheckForUpdates = async () => {
     try {
-      const result = await Stores.VoiceModelUpdate.checkForUpdates()
+      const result = await VoiceModelUpdate.checkForUpdates()
       const newCount = (result?.models ?? []).filter(m => !m.installed).length
       if (newCount === 0) {
         message.success("No new models — you're up to date.")
@@ -78,7 +80,7 @@ export function AvailableModelsCard() {
               icon={<UploadIcon />}
               variant="outline"
               onClick={() =>
-                Stores.VoiceUploadModelDrawer.openUploadModelDrawer()
+                VoiceUploadModelDrawer.openUploadModelDrawer()
               }
               data-testid="voice-model-upload-open-btn"
               aria-label="Upload a model file"
@@ -122,7 +124,7 @@ export function AvailableModelsCard() {
             description="Couldn't reach the model source."
             details={error}
             onRetry={() =>
-              void Stores.VoiceModelUpdate.checkForUpdates().catch(() => {
+              void VoiceModelUpdate.checkForUpdates().catch(() => {
                 /* non-fatal */
               })
             }
@@ -325,7 +327,7 @@ function AddFromUrlForm() {
 
   const handleAdd = async () => {
     try {
-      await Stores.VoiceModelDownloadProgress.startDownload({
+      await VoiceModelDownloadProgressStore.startDownload({
         name: name.trim(),
         url: url.trim() || undefined,
         repository: repository.trim() || undefined,

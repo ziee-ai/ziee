@@ -25,7 +25,6 @@ import {
   FieldTitle,
 } from '@ziee/kit/shadcn/field'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 
 import { chooseInputMode, selectDeclaredInputs } from './inputMode'
@@ -37,6 +36,12 @@ import {
   ModelField,
   WorkflowField,
 } from './TaskTargetPickers'
+import { ModelPicker } from '@/modules/user-llm-providers/modelPicker'
+import { Workflow as WorkflowStore } from '@/modules/workflow/stores/workflow'
+import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
+import { McpServer } from '@/modules/mcp/stores/mcpServer'
+import { SchedulerDrawer } from '@/modules/scheduler/stores/schedulerDrawer'
+import { ScheduledTasks } from '@/modules/scheduler/stores/scheduledTasks'
 
 const browserTz = (): string => {
   try {
@@ -153,8 +158,8 @@ const isValidJson = (s: string): boolean => {
 }
 
 export function ScheduledTaskFormDrawer() {
-  const { open, editing, loading } = Stores.SchedulerDrawer
-  const { workflows } = Stores.Workflow
+  const { open, editing, loading } = SchedulerDrawer
+  const { workflows } = WorkflowStore
   const canUse = usePermission(Permissions.SchedulerUse)
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -181,10 +186,10 @@ export function ScheduledTaskFormDrawer() {
   // Populate the picker lists on open (each store self-gates + loads once).
   useEffect(() => {
     if (!open) return
-    void Stores.AssistantPicker.loadAssistants()
-    void Stores.Workflow.loadWorkflows()
-    void Stores.ModelPicker.loadProviders()
-    void Stores.McpServer.loadMcpServers()
+    void AssistantPicker.loadAssistants()
+    void WorkflowStore.loadWorkflows()
+    void ModelPicker.loadProviders()
+    void McpServer.loadMcpServers()
   }, [open])
 
   useEffect(() => {
@@ -315,20 +320,20 @@ export function ScheduledTaskFormDrawer() {
       message.error('Inputs must be valid JSON')
       return
     }
-    Stores.SchedulerDrawer.setLoading(true)
+    SchedulerDrawer.setLoading(true)
     try {
       if (editing) {
-        await Stores.ScheduledTasks.updateTask(editing.id, buildBody(values))
+        await ScheduledTasks.updateTask(editing.id, buildBody(values))
         message.success('Task updated')
       } else {
-        await Stores.ScheduledTasks.createTask(buildBody(values))
+        await ScheduledTasks.createTask(buildBody(values))
         message.success('Task created')
       }
-      Stores.SchedulerDrawer.close()
+      SchedulerDrawer.close()
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to save task')
     } finally {
-      Stores.SchedulerDrawer.setLoading(false)
+      SchedulerDrawer.setLoading(false)
     }
   }
 
@@ -356,7 +361,7 @@ export function ScheduledTaskFormDrawer() {
     setTesting(true)
     setTestResult(null)
     try {
-      const result = await Stores.ScheduledTasks.testFire({
+      const result = await ScheduledTasks.testFire({
         target_kind: values.target_kind,
         workflow_id:
           values.target_kind === 'workflow'
@@ -386,7 +391,7 @@ export function ScheduledTaskFormDrawer() {
     <Drawer
       title={editing ? 'Edit scheduled task' : 'New scheduled task'}
       open={open}
-      onClose={() => Stores.SchedulerDrawer.close()}
+      onClose={() => SchedulerDrawer.close()}
       size={640}
       destroyOnHidden
       footer={
@@ -403,7 +408,7 @@ export function ScheduledTaskFormDrawer() {
           <Button
             data-testid="task-form-cancel"
             variant="outline"
-            onClick={() => Stores.SchedulerDrawer.close()}
+            onClick={() => SchedulerDrawer.close()}
             disabled={loading}
           >
             {canUse ? 'Cancel' : 'Close'}

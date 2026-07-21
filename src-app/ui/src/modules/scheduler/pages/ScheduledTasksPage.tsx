@@ -12,12 +12,14 @@ import {
   Title,
 } from '@ziee/kit'
 import { Can } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
 import { cn } from '@/lib/utils'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScroll'
 
 import { ScheduledTaskCard } from '../components/ScheduledTaskCard'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
+import { SchedulerDrawer } from '@/modules/scheduler/stores/schedulerDrawer'
+import { ScheduledTasks } from '@/modules/scheduler/stores/scheduledTasks'
 
 // Client-side "Load More" paging (the store loads the full set): reveal a page at
 // a time, mirroring KnowledgeBasesListPage + ProjectsListPage + the chat list.
@@ -25,14 +27,14 @@ const PAGE_SIZE = 12
 
 export function ScheduledTasksPage() {
   useNativeScroll(true)
-  const { nativeScroll } = Stores.AppLayout
-  const { tasks, loading, error } = Stores.ScheduledTasks
+  const { nativeScroll } = AppLayout
+  const { tasks, loading, error } = ScheduledTasks
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const visibleTasks = tasks.slice(0, visibleCount)
   const hasMore = visibleCount < tasks.length
 
   useEffect(() => {
-    void Stores.ScheduledTasks.loadTasks()
+    void ScheduledTasks.loadTasks()
   }, [])
 
   // Mutation errors (a task already on screen) → toast once, then clear so a
@@ -41,7 +43,7 @@ export function ScheduledTasksPage() {
   useEffect(() => {
     if (error && tasks.length > 0) {
       message.error(error)
-      Stores.ScheduledTasks.clearError()
+      ScheduledTasks.clearError()
     }
   }, [error, tasks.length])
 
@@ -69,7 +71,7 @@ export function ScheduledTasksPage() {
               size="icon"
               icon={<Plus />}
               aria-label="New scheduled task"
-              onClick={() => Stores.SchedulerDrawer.openCreate()}
+              onClick={() => SchedulerDrawer.openCreate()}
             />
           </Can>
         </div>
@@ -139,7 +141,7 @@ export function ScheduledTasksPage() {
               resource="scheduled tasks"
               description="Your scheduled tasks couldn't be loaded. Check your connection and try again."
               details={error}
-              onRetry={() => void Stores.ScheduledTasks.loadTasks()}
+              onRetry={() => void ScheduledTasks.loadTasks()}
               data-testid="scheduled-tasks-error"
             />
           </div>
@@ -155,7 +157,7 @@ export function ScheduledTasksPage() {
                 data-testid="scheduled-tasks-empty-create"
                 variant="default"
                 icon={<Plus />}
-                onClick={() => Stores.SchedulerDrawer.openCreate()}
+                onClick={() => SchedulerDrawer.openCreate()}
               >
                 New task
               </Button>

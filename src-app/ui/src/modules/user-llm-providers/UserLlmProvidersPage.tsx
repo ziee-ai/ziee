@@ -19,9 +19,9 @@ import {
 } from '@ziee/kit'
 import { CircleCheck } from 'lucide-react'
 import { IoIosArrowDown } from 'react-icons/io'
-import { Stores } from '@ziee/framework/stores'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { UserLlmProviders } from '@/modules/user-llm-providers/userLlmProviders'
 
 const KEY_DISPLAY_PLACEHOLDER = '••••••••••••••••••••••••'
 
@@ -29,11 +29,11 @@ export default function UserLlmProvidersPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [savingFor, setSavingFor] = useState<string | null>(null)
 
-  const providers = Stores.UserLlmProviders.providers
-  const userKeys = Stores.UserLlmProviders.userKeys
-  const loading = Stores.UserLlmProviders.loading
-  const error = Stores.UserLlmProviders.error
-  const saving = Stores.UserLlmProviders.saving
+  const providers = UserLlmProviders.providers
+  const userKeys = UserLlmProviders.userKeys
+  const loading = UserLlmProviders.loading
+  const error = UserLlmProviders.error
+  const saving = UserLlmProviders.saving
   const windowMinSize = useWindowMinSize()
 
   const form = useForm<{ apiKey: string }>({ defaultValues: { apiKey: '' } })
@@ -64,7 +64,7 @@ export default function UserLlmProvidersPage() {
 
     setSavingFor(selectedId)
     try {
-      await Stores.UserLlmProviders.saveKey(selectedId, key)
+      await UserLlmProviders.saveKey(selectedId, key)
       message.success('API key saved')
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to save API key')
@@ -76,7 +76,7 @@ export default function UserLlmProvidersPage() {
   const handleDelete = async () => {
     if (!selectedId) return
     try {
-      await Stores.UserLlmProviders.deleteKey(selectedId)
+      await UserLlmProviders.deleteKey(selectedId)
       message.success('API key removed')
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Failed to remove API key')
@@ -125,7 +125,7 @@ export default function UserLlmProvidersPage() {
         resource="AI providers"
         description="Your available AI providers couldn't be loaded."
         details={error}
-        onRetry={() => Stores.UserLlmProviders.load()}
+        onRetry={() => UserLlmProviders.load()}
         data-testid="ullm-error-alert"
       />
     )

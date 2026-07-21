@@ -13,11 +13,11 @@ import {
   zodResolver,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
+import { FileRagAdmin } from '@/modules/file-rag/stores/fileRagAdmin'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -42,7 +42,7 @@ const schema = z.object({
 export function RerankSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, rerankerModels, saving, error } = Stores.FileRagAdmin
+  const { settings, rerankerModels, saving, error } = FileRagAdmin
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -79,7 +79,7 @@ export function RerankSection() {
       <SettingsSectionStatus
         title="Reranker"
         error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
+        onRetry={() => FileRagAdmin.load()}
       />
     )
 
@@ -94,7 +94,7 @@ export function RerankSection() {
 
   const persist = async (values: FormValues) => {
     try {
-      await Stores.FileRagAdmin.update({
+      await FileRagAdmin.update({
         rerank_enabled: values.rerank_enabled,
         reranker_model_id: values.reranker_model_id ? values.reranker_model_id : null,
         rerank_candidate_k: values.rerank_candidate_k,

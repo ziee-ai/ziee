@@ -5,6 +5,7 @@ import { Stores } from '@ziee/framework/stores'
 import { type File as FileEntity } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
+import { Deliverables } from '@/modules/file/stores/deliverables'
 
 /**
  * Pin/unpin a file as a deliverable of the ACTIVE conversation. Renders nothing
@@ -22,19 +23,19 @@ export function DeliverablePinButton({ file }: { file: FileEntity }) {
   // Read cached reactively; fall back to async load on first render.
   const [list, setList] = useState<FileEntity[]>(() => {
     if (!convId) return []
-    return Stores.Deliverables.byConversation.get(convId) ?? []
+    return Deliverables.byConversation.get(convId) ?? []
   })
 
   useEffect(() => {
     if (!convId) return
-    const cached = Stores.Deliverables.byConversation.get(convId)
+    const cached = Deliverables.byConversation.get(convId)
     if (cached) {
       setList(cached)
       return
     }
     // First render with no cached data — trigger async load.
     let cancelled = false
-    void Stores.Deliverables.getForConversation(convId).then(result => {
+    void Deliverables.getForConversation(convId).then(result => {
       if (!cancelled) setList(result)
     })
     return () => { cancelled = true }
@@ -46,10 +47,10 @@ export function DeliverablePinButton({ file }: { file: FileEntity }) {
   const toggle = async () => {
     try {
       if (isDeliverable) {
-        await Stores.Deliverables.unpin(convId, file.id)
+        await Deliverables.unpin(convId, file.id)
         message.success('Removed from deliverables')
       } else {
-        await Stores.Deliverables.pin(convId, file.id, true)
+        await Deliverables.pin(convId, file.id, true)
         message.success('Pinned as deliverable')
       }
     } catch (e) {

@@ -15,9 +15,10 @@ import type {
 } from '@/api-client/types'
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyBound, lazyNamed, lazyProps } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
 import { workflowCassette } from '@/dev/gallery/fixtures/workflow'
 import { llmGroupsList } from '@/dev/gallery/fixtures/llm-providers'
+import { GroupSystemWorkflowsAssignment } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
+import { WorkflowDrawer } from '@/modules/workflow/stores/workflowDrawer'
 
 const group = llmGroupsList.groups[0]
 
@@ -119,7 +120,7 @@ const galleryElicitation: SSEElicitationRequiredData = {
 /**
  * Build a lazy wrapper for the modal panels (tests / dry-run) whose loading /
  * error / result branches live in LOCAL `useState`, driven entirely by the
- * outcome of a `Stores.Workflow` action. We patch that action on the store —
+ * outcome of a `WorkflowStore` action. We patch that action on the store —
  * inside the async lazy loader, BEFORE the panel ever mounts — so the panel's
  * mount-effect call resolves/rejects/hangs into the branch we want.
  */
@@ -234,7 +235,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/workflow/widgets/GroupSystemWorkflowsAssignmentDrawer'),
         'GroupSystemWorkflowsAssignmentDrawer',
       ),
-      open: () => Stores.GroupSystemWorkflowsAssignment.openDrawer(group),
+      open: () => GroupSystemWorkflowsAssignment.openDrawer(group),
     },
     {
       slug: 'overlay-workflow-detail-drawer',
@@ -244,7 +245,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/workflow/components/WorkflowDetailDrawer'),
         'WorkflowDetailDrawer',
       ),
-      open: () => Stores.WorkflowDrawer.open(workflowFixture as any),
+      open: () => WorkflowDrawer.open(workflowFixture as any),
     },
     {
       slug: 'overlay-import-workflow-dialog',
@@ -417,7 +418,7 @@ export const gallery: ModuleGallery = {
       },
     },
     // ── WorkflowTestsPanel: loading / error / result (local useState driven by
-    //    Stores.Workflow.test). :60 / :61 / :62,66,67. ──────────────────────────
+    //    WorkflowStore.test). :60 / :61 / :62,66,67. ──────────────────────────
     {
       slug: 'seeded-s1-tests-loading',
       title: 'Workflow tests — loading',
@@ -448,7 +449,7 @@ export const gallery: ModuleGallery = {
         cannedTestResult,
       ),
     },
-    // ── DryRunPreviewDialog: loading / error / result (Stores.Workflow.dryRun).
+    // ── DryRunPreviewDialog: loading / error / result (WorkflowStore.dryRun).
     //    :58 / :59 / :60. ───────────────────────────────────────────────────────
     {
       slug: 'seeded-s1-dry-run-loading',

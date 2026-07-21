@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
 import { Alert, Card, Form, FormField, InputNumber, Switch, message, useForm, zodResolver } from '@ziee/kit'
 import { z } from 'zod'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsSectionStatus } from '@/components/common/SettingsSectionStatus'
+import { FileRagAdmin } from '@/modules/file-rag/stores/fileRagAdmin'
 
 const READ_PERM = Permissions.FileRagAdminRead
 const MANAGE_PERM = Permissions.FileRagAdminManage
@@ -25,7 +25,7 @@ type FormValues = z.infer<typeof schema>
 export function EnableSection() {
   const canRead = usePermission(READ_PERM) || usePermission(MANAGE_PERM)
   const canManage = usePermission(MANAGE_PERM)
-  const { settings, saving, error } = Stores.FileRagAdmin
+  const { settings, saving, error } = FileRagAdmin
   const form = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   useEffect(() => {
@@ -55,13 +55,13 @@ export function EnableSection() {
       <SettingsSectionStatus
         title="Document search"
         error={error}
-        onRetry={() => Stores.FileRagAdmin.load()}
+        onRetry={() => FileRagAdmin.load()}
       />
     )
 
   const handleSubmit = async (values: FormValues) => {
     try {
-      await Stores.FileRagAdmin.update({
+      await FileRagAdmin.update({
         enabled: values.enabled,
         default_top_k: values.default_top_k,
       })

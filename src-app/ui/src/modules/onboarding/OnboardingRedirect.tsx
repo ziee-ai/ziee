@@ -26,10 +26,11 @@ import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Stores } from '@ziee/framework/stores'
 import type { OnboardingSlot } from './types/OnboardingSlot'
+import { Onboarding } from '@/modules/onboarding/stores/onboarding'
 
 export function OnboardingRedirect() {
   const { isAuthenticated, user, isInitializing } = Stores.Auth
-  const { completedGuideIds, loaded } = Stores.Onboarding
+  const { completedGuideIds, loaded } = Onboarding
   const guides = (Stores.ModuleSystem.slots.get('onboarding') as
     | OnboardingSlot[]
     | undefined) ?? []

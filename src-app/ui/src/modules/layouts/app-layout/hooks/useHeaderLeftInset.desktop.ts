@@ -1,5 +1,5 @@
-import { Stores } from '@ziee/framework/stores'
 import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 
 /**
  * DESKTOP override of {@link useHeaderLeftInset} — adds the macOS traffic-light
@@ -10,7 +10,7 @@ import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
  * source of truth for the app header + the split leftmost pane header (ITEM-71).
  */
 export function useHeaderLeftInset(): number {
-  const { isSidebarCollapsed, isFullscreen } = Stores.AppLayout
+  const { isSidebarCollapsed, isFullscreen } = AppLayout
   if (isSidebarCollapsed && isTauriView && !isFullscreen && isMacOS) return 118
   return isSidebarCollapsed ? 48 : 12
 }

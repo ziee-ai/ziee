@@ -10,9 +10,9 @@ import {
   type TagTone,
 } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
-import { Stores } from '@ziee/framework/stores'
 import { type McpToolCall } from '@/api-client/types'
 import { toolStatusOf } from '@/modules/chat/core/tool-status'
+import { McpToolCalls as McpToolCallsStore } from '@/modules/mcp/stores/mcpToolCalls'
 
 // Status badge tone is derived per-row from the single TOOL_STATUS source
 // (`toolStatusOf(row.status, row.is_error).tone`) so the drawer's chips can never
@@ -36,12 +36,12 @@ const SOURCE_TONE: Record<string, TagTone> = {
  */
 export function McpToolCallsTab({ serverId }: { serverId: string }) {
   const { calls, total, currentPage, pageSize, loading, hideBuiltIn, error } =
-    Stores.McpToolCalls
+    McpToolCallsStore
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // (Re)load this server's calls on mount / when the drawer swaps servers.
   useEffect(() => {
-    void Stores.McpToolCalls.loadCalls(serverId, 1)
+    void McpToolCallsStore.loadCalls(serverId, 1)
   }, [serverId])
 
   const columns: TableColumn<McpToolCall>[] = [
@@ -103,7 +103,7 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
         <Switch
           size="sm"
           checked={hideBuiltIn}
-          onChange={v => Stores.McpToolCalls.setHideBuiltIn(v)}
+          onChange={v => McpToolCallsStore.setHideBuiltIn(v)}
           tooltip="Hide built-in"
           data-testid="mcp-tool-calls-hide-builtin"
         />
@@ -164,8 +164,8 @@ export function McpToolCallsTab({ serverId }: { serverId: string }) {
           current={currentPage}
           total={total}
           pageSize={pageSize}
-          onChange={page => Stores.McpToolCalls.setPage(page, pageSize)}
-          onPageSizeChange={size => Stores.McpToolCalls.setPage(1, size)}
+          onChange={page => McpToolCallsStore.setPage(page, pageSize)}
+          onPageSizeChange={size => McpToolCallsStore.setPage(1, size)}
           aria-label="Tool-call pages"
         />
     </div>

@@ -1,26 +1,28 @@
 import { useEffect } from 'react'
 import { CircleCheck, Rocket } from 'lucide-react'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
-import { Stores } from '@ziee/framework/stores'
 import { Title, Paragraph, Text } from '@ziee/kit'
+import { Onboarding } from '@/modules/onboarding/stores/onboarding'
+import { ApiKeysStep } from '@/modules/onboarding/guides/getting-started/components/apiKeysStep'
+import { McpServersStep as McpServersStepStore } from '@/modules/onboarding/guides/getting-started/components/mcpServersStep'
 
 export default function FinishStep({ registerBeforeNext }: OnboardingStepProps) {
   // Read the REACTIVE field (not `.$`) in render so the count re-renders
   // when the selection changes — `.$` reads via getState() and does not
   // subscribe, leaving a stale MCP count.
-  const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
-  const enteredApiKeys = Stores.ApiKeysStep.enteredApiKeys
+  const selectedMcpServerIds = McpServersStepStore.selectedMcpServerIds
+  const enteredApiKeys = ApiKeysStep.enteredApiKeys
 
   const apiKeysCount = Object.values(enteredApiKeys).filter(k => k.trim()).length
   const mcpCount = selectedMcpServerIds.length
 
   useEffect(() => {
-    Stores.Onboarding.setReady(true)
+    Onboarding.setReady(true)
     // Hub-server installations and system-server toggles were already applied
     // when the user clicked Next on the McpServersStep (if visited).
     // Re-apply here as a safety net for guides that skip the MCP step.
     registerBeforeNext(async () => {
-      await Stores.McpServersStep.applyMcpServerChanges()
+      await McpServersStepStore.applyMcpServerChanges()
     })
   }, [])
 

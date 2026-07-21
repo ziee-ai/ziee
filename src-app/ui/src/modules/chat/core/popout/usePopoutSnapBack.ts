@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import { SPLIT_LIMITS } from '@/modules/chat/core/split/limits'
 import { snapBackAsNewPane } from './planPopoutSnapBack'
 import {
   registerPopoutCloseEmitter,
   registerMainWindowSnapBackListener,
 } from './popoutSnapBack'
+import { SplitView } from '@/modules/chat/core/stores/splitView'
 
 /** Parse a conversation id out of a `/chat/<id>` path (the main window's URL). */
 function conversationIdFromPath(pathname: string): string | null {
@@ -53,12 +53,12 @@ export function usePopoutSnapBackListener(): void {
     let cancelled = false
     void registerMainWindowSnapBackListener({
       getPaneConversationIds: () =>
-        Stores.SplitView.$.panes.map(p => p.conversationId),
+        SplitView.$.panes.map(p => p.conversationId),
       getSinglePaneConversationId: () =>
         conversationIdFromPath(window.location.pathname),
       maxPanes: SPLIT_LIMITS.MAX_PANES,
       openAsNewPane: id => {
-        const sv = Stores.SplitView.$
+        const sv = SplitView.$
         const focused = sv.panes.find(p => p.paneId === sv.focusedPaneId)
         // store-open THEN navigate (snapBackAsNewPane) — navigate is required so the
         // main window mounts ConversationPage/SplitChatView even when it was on a
@@ -68,7 +68,7 @@ export function usePopoutSnapBackListener(): void {
             focused?.conversationId ??
             conversationIdFromPath(window.location.pathname),
           reconcileOpen: (cid, intent, ctx) => {
-            Stores.SplitView.openConversationInWorkspace(cid, intent, ctx)
+            SplitView.openConversationInWorkspace(cid, intent, ctx)
           },
           navigate: path => navigateRef.current(path),
         })

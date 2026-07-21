@@ -13,10 +13,11 @@ import {
 } from '@ziee/kit'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type CreateProjectRequest, type UpdateProjectRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { ProjectDrawer } from '@/modules/projects/stores/projectDrawer'
+import { Projects } from '@/modules/projects/stores/projects'
 
 interface ProjectFormValues {
   name: string
@@ -40,7 +41,7 @@ const schema = z.object({
 /// instructions" content drawer.
 
 export function ProjectFormDrawer() {
-  const { open, editingProject, loading } = Stores.ProjectDrawer
+  const { open, editingProject, loading } = ProjectDrawer
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(schema),
     defaultValues: { name: '', description: '', instructions: '' },
@@ -124,11 +125,11 @@ export function ProjectFormDrawer() {
 
   const handleClose = () => {
     if (loading) return
-    Stores.ProjectDrawer.closeProjectDrawer()
+    ProjectDrawer.closeProjectDrawer()
   }
 
   const handleSubmit = async (values: ProjectFormValues) => {
-    Stores.ProjectDrawer.setProjectDrawerLoading(true)
+    ProjectDrawer.setProjectDrawerLoading(true)
     try {
       if (isEdit && editingProject) {
         // Default assistant / default model are edited inline on the
@@ -139,7 +140,7 @@ export function ProjectFormDrawer() {
           description: values.description ?? '',
           instructions: values.instructions ?? '',
         }
-        await Stores.Projects.updateProject(editingProject.id, patch)
+        await Projects.updateProject(editingProject.id, patch)
         message.success('Project updated')
       } else {
         const req: CreateProjectRequest = {
@@ -147,16 +148,16 @@ export function ProjectFormDrawer() {
           description: values.description,
           instructions: values.instructions,
         }
-        await Stores.Projects.createProject(req)
+        await Projects.createProject(req)
         message.success('Project created')
       }
-      Stores.ProjectDrawer.closeProjectDrawer()
+      ProjectDrawer.closeProjectDrawer()
     } catch (err) {
       message.error(
         err instanceof Error ? err.message : 'Failed to save project',
       )
     } finally {
-      Stores.ProjectDrawer.setProjectDrawerLoading(false)
+      ProjectDrawer.setProjectDrawerLoading(false)
     }
   }
 

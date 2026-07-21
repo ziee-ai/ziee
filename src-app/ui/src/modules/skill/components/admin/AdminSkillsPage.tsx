@@ -10,6 +10,8 @@ import { ImportSkillDialog } from '@/modules/skill/components/ImportSkillDialog'
 import { SkillDetailDrawer } from '@/modules/skill/components/SkillDetailDrawer'
 import { SkillScopeBadge } from '@/modules/skill/components/SkillScopeBadge'
 import { AdminSkillGroupAssignment } from './AdminSkillGroupAssignment'
+import { SystemSkill } from '@/modules/skill/stores/systemSkill'
+import { SkillDrawer } from '@/modules/skill/stores/skillDrawer'
 
 /**
  * `/settings/admin/skills` — lists system-scope skills with per-skill
@@ -17,7 +19,7 @@ import { AdminSkillGroupAssignment } from './AdminSkillGroupAssignment'
  * (scope dropdown on the hub card) or via local import.
  */
 export function AdminSkillsPage() {
-  const { systemSkills, loading, error } = Stores.SystemSkill
+  const { systemSkills, loading, error } = SystemSkill
   const { multiUserMode } = Stores.AppMode
   const [importOpen, setImportOpen] = useState(false)
 
@@ -67,11 +69,11 @@ export function AdminSkillsPage() {
                 className="p-3 cursor-pointer focus-visible:outline focus-visible:outline-2"
                 role="button"
                 tabIndex={0}
-                onClick={() => Stores.SkillDrawer.open(skill)}
+                onClick={() => SkillDrawer.open(skill)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
-                    Stores.SkillDrawer.open(skill)
+                    SkillDrawer.open(skill)
                   }
                 }}
               >
@@ -99,7 +101,7 @@ export function AdminSkillsPage() {
             resource="system skills"
             description="Something went wrong while loading system skills."
             details={error}
-            onRetry={() => Stores.SystemSkill.loadSystemSkills()}
+            onRetry={() => SystemSkill.loadSystemSkills()}
             data-testid="skill-admin-error"
           />
         ) : (

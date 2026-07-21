@@ -12,8 +12,11 @@ import {
 } from '@ziee/kit'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import type { DownloadVersionRequest } from '@/api-client/types'
+import { RuntimeConfig } from '@/modules/llm-local-runtime/stores/runtimeConfig'
+import { RuntimeDownloadDrawer as RuntimeDownloadDrawerStore } from '@/modules/llm-local-runtime/stores/runtimeDownloadDrawer'
+import { RuntimeUpdate } from '@/modules/llm-local-runtime/stores/runtimeUpdate'
+import { RuntimeVersion } from '@/modules/llm-local-runtime/stores/runtimeVersion'
 
 const schema = z.object({
   engine: z.string(),
@@ -24,11 +27,11 @@ const schema = z.object({
 })
 
 export function RuntimeDownloadDrawer() {
-  const { open, engine, closeDrawer } = Stores.RuntimeDownloadDrawer
-  const { updateChecks, checking } = Stores.RuntimeUpdate
+  const { open, engine, closeDrawer } = RuntimeDownloadDrawerStore
+  const { updateChecks, checking } = RuntimeUpdate
   // Server-host platform/arch from the GPU-detection store — always available
   // (local probe), unlike the update check which hits github.com and can fail.
-  const { gpu } = Stores.RuntimeConfig
+  const { gpu } = RuntimeConfig
   const form = useForm<DownloadVersionRequest>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -59,10 +62,10 @@ export function RuntimeDownloadDrawer() {
   React.useEffect(() => {
     if (!open || !engine) return
     if (!gpu) {
-      Stores.RuntimeConfig.loadGpu().catch(() => {})
+      RuntimeConfig.loadGpu().catch(() => {})
     }
     if (!updateCheck && !isChecking) {
-      Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {
+      RuntimeUpdate.checkForUpdates(engine).catch(() => {
         // Surfaced via the store; the form still seeds from detect-gpu + cpu.
       })
     }
@@ -86,7 +89,7 @@ export function RuntimeDownloadDrawer() {
   const handleSubmit = async (values: DownloadVersionRequest) => {
     setSubmitting(true)
     try {
-      await Stores.RuntimeVersion.downloadVersion(values)
+      await RuntimeVersion.downloadVersion(values)
       message.success('Runtime version download started')
       closeDrawer()
       form.reset()

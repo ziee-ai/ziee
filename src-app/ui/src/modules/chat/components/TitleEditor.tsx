@@ -15,6 +15,7 @@ import { Stores } from '@ziee/framework/stores'
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
+import { SplitView } from '@/modules/chat/core/stores/splitView'
 
 interface TitleFormValues {
   title: string
@@ -47,7 +48,7 @@ export function TitleEditor() {
   //    shell into the window (undoing the chat-only ITEM-52).
   // So show it ONLY in the normal single-pane view: hide when a split is open (panes
   // >= 2, reactive) or in the pop-out window.
-  const isSplit = Stores.SplitView.panes.length >= 2
+  const isSplit = SplitView.panes.length >= 2
   const isPopoutWindow = useIsPopoutWindow()
   const showBackButton = !isSplit && !isPopoutWindow
 

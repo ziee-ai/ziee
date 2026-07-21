@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Button, Card, Flex, Spinner, Switch, Tag, Text, Title, message } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type McpServer } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { SystemMcpServer } from '@/modules/mcp/stores/systemMcpServer'
+import { GroupSystemMcpServersAssignment } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
 
 /**
  * Drawer for assigning/removing system MCP servers to/from a group.
  * Self-contained - owned by MCP module.
  */
 export function GroupSystemMcpServersAssignmentDrawer() {
-  const { isOpen, selectedGroup } = Stores.GroupSystemMcpServersAssignment
-  const { systemServers } = Stores.SystemMcpServer
+  const { isOpen, selectedGroup } = GroupSystemMcpServersAssignment
+  const { systemServers } = SystemMcpServer
 
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -31,7 +32,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
 
     setLoading(true)
     try {
-      const assigned = await Stores.SystemMcpServer.getServersForGroup(
+      const assigned = await SystemMcpServer.getServersForGroup(
         selectedGroup.id,
       )
       setAssignedIds(assigned.map(s => s.id))
@@ -48,12 +49,12 @@ export function GroupSystemMcpServersAssignmentDrawer() {
 
     setSaving(true)
     try {
-      await Stores.SystemMcpServer.updateGroupServers(
+      await SystemMcpServer.updateGroupServers(
         selectedGroup.id,
         assignedIds,
       )
       message.success('Server assignments updated')
-      Stores.GroupSystemMcpServersAssignment.closeDrawer()
+      GroupSystemMcpServersAssignment.closeDrawer()
     } catch (error) {
       console.error('Failed to update server assignments:', error)
       message.error('Failed to update server assignments')
@@ -63,7 +64,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
   }
 
   const handleClose = () => {
-    Stores.GroupSystemMcpServersAssignment.closeDrawer()
+    GroupSystemMcpServersAssignment.closeDrawer()
   }
 
   const handleToggle = (serverId: string, checked: boolean) => {

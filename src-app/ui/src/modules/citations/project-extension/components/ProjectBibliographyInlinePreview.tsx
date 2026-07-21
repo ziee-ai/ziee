@@ -4,13 +4,14 @@ import { Button, Text } from '@ziee/kit'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@ziee/framework/stores'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
+import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
 
 /** Compact view-only summary of a project's reference list (the knowledge card).
  *  Header mirrors the file knowledge card (icon + "References" + count); refetches
  *  on `sync:bibliography_entry` so the count stays current after an import/attach/
  *  detach happens elsewhere. */
 export function ProjectBibliographyInlinePreview() {
-  const project = Stores.ProjectDetail.project
+  const project = ProjectDetail.project
   const projectId = project?.id
   const openManageDrawer = useOpenManageDrawer()
   // `null` = not loaded / error (distinct from a real 0), so a fetch failure

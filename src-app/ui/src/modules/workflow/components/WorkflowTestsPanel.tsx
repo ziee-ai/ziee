@@ -3,7 +3,7 @@ import { Alert, List, Space, Spin, Tag, Text } from '@ziee/kit'
 import { Dialog } from '@ziee/kit'
 import { useEffect, useState } from 'react'
 import type { TestRunResponse, Workflow } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
+import { Workflow as WorkflowStore } from '@/modules/workflow/stores/workflow'
 
 interface WorkflowTestsPanelProps {
   workflow: Workflow
@@ -31,7 +31,7 @@ export function WorkflowTestsPanel({
     setLoading(true)
     setError(null)
     setResult(null)
-    Stores.Workflow
+    WorkflowStore
       .test(workflow.id)
       .then(r => {
         if (!cancelled) setResult(r)

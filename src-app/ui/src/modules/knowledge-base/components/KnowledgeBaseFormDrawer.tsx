@@ -12,10 +12,10 @@ import {
 } from '@ziee/kit'
 import { z } from 'zod'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type KnowledgeBase } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { KnowledgeBases } from '@/modules/knowledge-base/stores/knowledgeBases'
 
 interface Values {
   name: string
@@ -61,13 +61,13 @@ export function KnowledgeBaseFormDrawer({ open, editing, onClose }: Props) {
     setSaving(true)
     try {
       if (isEdit && editing) {
-        await Stores.KnowledgeBases.update(editing.id, {
+        await KnowledgeBases.update(editing.id, {
           name: values.name,
           description: values.description ?? '',
         })
         message.success('Knowledge base updated')
       } else {
-        await Stores.KnowledgeBases.create({
+        await KnowledgeBases.create({
           name: values.name,
           description: values.description,
         })

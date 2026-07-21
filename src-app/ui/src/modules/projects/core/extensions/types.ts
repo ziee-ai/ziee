@@ -53,11 +53,11 @@ export interface KnowledgeKindContribution {
   /** Section header icon. */
   icon?: React.ReactNode
   /** Renders in the project detail page's knowledge card — view-only,
-   *  compact. Zero props; reads from `Stores.ProjectDetail.project`. */
+   *  compact. Zero props; reads from `ProjectDetail.project`. */
   inlinePreview: React.ComponentType
   /** Renders inside the knowledge drawer — full management UX
    *  (upload/select/detach). Zero props; reads from
-   *  `Stores.ProjectDetail.project`. */
+   *  `ProjectDetail.project`. */
   managePanel: React.ComponentType
   /** Render order across kinds (lower first). Default 100. */
   order?: number
@@ -76,7 +76,7 @@ export interface KnowledgeKindContribution {
 /**
  * Contribution for `advanced_settings`. The panel is fully self-
  * contained — it renders its own card/title; the host just stacks
- * panels in order. Zero props; reads from `Stores.ProjectDetail.project`
+ * panels in order. Zero props; reads from `ProjectDetail.project`
  * + its own extension-specific store.
  */
 export interface AdvancedSettingsContribution {

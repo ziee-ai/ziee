@@ -24,6 +24,8 @@ import { useNativeScroll } from '@/modules/layouts/app-layout/hooks/useNativeScr
 import { cn } from '@/lib/utils'
 import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { McpUserPolicy } from '@/modules/mcp/stores/mcpUserPolicy'
+import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 
 export function HubPage() {
   const { activeTab: urlActiveTab } = useParams()
@@ -33,7 +35,7 @@ export function HubPage() {
   // Subscribe to the MCP policy so the MCP tab's shouldRender gate re-evaluates
   // the moment an admin saves a new policy (its presence in visibleTabs deps is
   // the load-bearing piece).
-  const { policy: mcpPolicy } = Stores.McpUserPolicy
+  const { policy: mcpPolicy } = McpUserPolicy
   // Layout flips from a left side-menu to a header dropdown based on the page's
   // OWN width (mirrors the Settings page), not the viewport.
   const containerRef = useRef<HTMLDivElement>(null)
@@ -42,7 +44,7 @@ export function HubPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   // Native document-scroll on mobile (iOS toolbar collapse + under-notch flow).
   useNativeScroll(true)
-  const { nativeScroll } = Stores.AppLayout
+  const { nativeScroll } = AppLayout
   const [refreshing, setRefreshing] = useState(false)
 
   // Get hub tabs from slot system, sorted

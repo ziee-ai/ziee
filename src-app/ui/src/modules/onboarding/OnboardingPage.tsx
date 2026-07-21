@@ -19,17 +19,20 @@ import { CircleCheck, Book, ArrowLeft } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import type { OnboardingSlot } from './types/OnboardingSlot'
 import type { OnboardingStepProps } from './types/onboarding'
+import { Onboarding as OnboardingStore } from '@/modules/onboarding/stores/onboarding'
+import { ApiKeysStep } from '@/modules/onboarding/guides/getting-started/components/apiKeysStep'
+import { McpServersStep } from '@/modules/onboarding/guides/getting-started/components/mcpServersStep'
 
 export default function OnboardingPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  const nextEnabled = Stores.Onboarding.nextEnabled
-  const nextLoading = Stores.Onboarding.nextLoading
-  const nextError = Stores.Onboarding.nextError
-  const completedGuideIds = Stores.Onboarding.completedGuideIds
-  const completedStepIds = Stores.Onboarding.completedStepIds
-  const loaded = Stores.Onboarding.loaded
+  const nextEnabled = OnboardingStore.nextEnabled
+  const nextLoading = OnboardingStore.nextLoading
+  const nextError = OnboardingStore.nextError
+  const completedGuideIds = OnboardingStore.completedGuideIds
+  const completedStepIds = OnboardingStore.completedStepIds
+  const loaded = OnboardingStore.loaded
   const slots = Stores.ModuleSystem.slots
 
   // Holds the async action registered by the current step (not in store — functions don't go in Zustand/immer)
@@ -37,9 +40,9 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     return () => {
-      Stores.Onboarding.reset()
-      Stores.ApiKeysStep.reset()
-      Stores.McpServersStep.reset()
+      OnboardingStore.reset()
+      ApiKeysStep.reset()
+      McpServersStep.reset()
     }
   }, [])
 
@@ -69,31 +72,31 @@ export default function OnboardingPage() {
 
   // Reset navigation state and before-next action on every step change
   useEffect(() => {
-    Stores.Onboarding.setReady(currentStep?.skippable !== false)
-    Stores.Onboarding.setNextError(null)
+    OnboardingStore.setReady(currentStep?.skippable !== false)
+    OnboardingStore.setNextError(null)
     beforeNextRef.current = null
   }, [currentStepIndex, activeGuideId])
 
   const handleGlobalNext = useCallback(async () => {
     if (!guide) return
-    Stores.Onboarding.setNextLoading(true)
-    Stores.Onboarding.setNextError(null)
+    OnboardingStore.setNextLoading(true)
+    OnboardingStore.setNextError(null)
     try {
       await beforeNextRef.current?.()
-      await Stores.Onboarding.completeStep(guide.id, guide.steps[currentStepIndex].id)
+      await OnboardingStore.completeStep(guide.id, guide.steps[currentStepIndex].id)
       if (currentStepIndex === guide.steps.length - 1) {
-        await Stores.Onboarding.completeGuide(guide.id)
-        Stores.Onboarding.reset()
-        Stores.ApiKeysStep.reset()
-        Stores.McpServersStep.reset()
+        await OnboardingStore.completeGuide(guide.id)
+        OnboardingStore.reset()
+        ApiKeysStep.reset()
+        McpServersStep.reset()
         navigate('/chat', { replace: true })
       } else {
         setManualStep(currentStepIndex + 1)
       }
     } catch (err: any) {
-      Stores.Onboarding.setNextError(err.message || 'Something went wrong')
+      OnboardingStore.setNextError(err.message || 'Something went wrong')
     } finally {
-      Stores.Onboarding.setNextLoading(false)
+      OnboardingStore.setNextLoading(false)
     }
   }, [guide, currentStepIndex, navigate])
 
@@ -219,7 +222,7 @@ export default function OnboardingPage() {
               data-testid="onboarding-page-next-error-alert"
               tone="error"
               title={nextError}
-              onClose={() => Stores.Onboarding.setNextError(null)}
+              onClose={() => OnboardingStore.setNextError(null)}
               closeLabel="Close"
               className="mb-4"
             />

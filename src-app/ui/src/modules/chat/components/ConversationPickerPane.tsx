@@ -3,9 +3,10 @@ import { ArrowLeft, MessageSquarePlus, Search, X } from 'lucide-react'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { Button, Empty, Input, Title, Tooltip } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { ChatInput } from '@/modules/chat/components/ChatInput'
 import { useClosePane } from '@/modules/chat/core/pane/useOpenConversation'
+import { ChatHistory } from '@/modules/chat/stores/chatHistory'
+import { SplitView } from '@/modules/chat/core/stores/splitView'
 
 dayjs.extend(relativeTime)
 
@@ -25,10 +26,10 @@ export function ConversationPickerPane({ paneId }: { paneId: string }) {
   const [mode, setMode] = useState<'pick' | 'new'>('pick')
   const [query, setQuery] = useState('')
   const closePane = useClosePane()
-  const { conversations, isInitialized } = Stores.ChatHistory
+  const { conversations, isInitialized } = ChatHistory
 
   useEffect(() => {
-    if (!isInitialized) Stores.ChatHistory.loadConversations()
+    if (!isInitialized) ChatHistory.loadConversations()
   }, [isInitialized])
 
   const filtered = useMemo(() => {
@@ -37,7 +38,7 @@ export function ConversationPickerPane({ paneId }: { paneId: string }) {
     // workspace) — hide those already targeted by a pane so the list only offers
     // openable conversations.
     const openIds = new Set(
-      Stores.SplitView.$.panes
+      SplitView.$.panes
         .map((p) => p.conversationId)
         .filter((id): id is string => id != null),
     )
@@ -145,7 +146,7 @@ export function ConversationPickerPane({ paneId }: { paneId: string }) {
                     data-testid={`conversation-picker-item-${c.id}`}
                     className="h-auto w-full justify-between gap-2 px-2 py-2 font-normal"
                     onClick={() =>
-                      Stores.SplitView.setPaneConversation(paneId, c.id)
+                      SplitView.setPaneConversation(paneId, c.id)
                     }
                   >
                     <span className="min-w-0 flex-1 truncate text-start text-sm">

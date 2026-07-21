@@ -3,7 +3,7 @@ import { Alert, Button, Textarea } from '@ziee/kit'
 import { Dialog, Paragraph, Text } from '@ziee/kit'
 import { message } from '@ziee/kit'
 import type { BatchReport, CitationInput } from '@/api-client/types'
-import { Stores } from '@ziee/framework/stores'
+import { Citations as CitationsStore } from '@/modules/citations/stores/citations'
 
 /** Summarize a batch report into a one-line human note. */
 function summary(report: BatchReport): string {
@@ -54,7 +54,7 @@ export function ImportCitationsModal({
     if (items.length === 0) return
     setBusy(true)
     try {
-      const report = await Stores.Citations.importItems(items, projectId ?? null)
+      const report = await CitationsStore.importItems(items, projectId ?? null)
       setResult(report)
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Import failed')

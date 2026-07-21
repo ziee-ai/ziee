@@ -7,7 +7,6 @@ import {
   FieldGroup,
   FieldTitle,
 } from '@ziee/kit/shadcn/field'
-import { Stores } from '@ziee/framework/stores'
 import type { ThemePreference } from '@/modules/config-client/configClient'
 import {
   ACCENT_PRESETS,
@@ -15,12 +14,13 @@ import {
   type AccentPreset,
 } from '@/components/ThemeProvider/accentPresets'
 import { cn } from '@/lib/utils'
+import { ConfigClient } from '@/modules/config-client/configClient'
 
 export function ThemeSettings() {
-  const { themePreference, accentPreset } = Stores.ConfigClient
+  const { themePreference, accentPreset } = ConfigClient
 
   const handleChange = (value: string) => {
-    Stores.ConfigClient.setThemePreference(value as ThemePreference)
+    ConfigClient.setThemePreference(value as ThemePreference)
   }
 
   return (
@@ -72,7 +72,7 @@ export function ThemeSettings() {
                   aria-label={`${def.label} accent`}
                   data-testid={`settingsgen-accent-${id}`}
                   onClick={() =>
-                    Stores.ConfigClient.setAccentPreset(id as AccentPreset)
+                    ConfigClient.setAccentPreset(id as AccentPreset)
                   }
                   // genuinely-dynamic: the swatch shows the preset's own color.
                   data-allow-custom-color

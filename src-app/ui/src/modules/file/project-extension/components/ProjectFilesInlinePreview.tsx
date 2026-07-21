@@ -1,14 +1,15 @@
 import { File } from 'lucide-react'
 import { Button, Spin } from '@ziee/kit'
 import { Text } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { FileCard } from '@/modules/file/components/FileCard'
 import { useOpenManageDrawer } from '@/modules/projects/core/extensions'
+import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
+import { ProjectFiles } from '@/modules/file/project-extension/stores/projectFiles'
 
 export function ProjectFilesInlinePreview() {
   const openManageDrawer = useOpenManageDrawer()
-  const { files, filesLoading } = Stores.ProjectFiles
-  const project = Stores.ProjectDetail.project
+  const { files, filesLoading } = ProjectFiles
+  const project = ProjectDetail.project
 
   if (!project) return null
 

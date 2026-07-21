@@ -9,7 +9,6 @@ import {
 import { Search, Eraser } from 'lucide-react'
 import { AddButton } from '@/modules/settings/components/AddButton'
 import { Loading } from '@/core/components/Loading'
-import { Stores } from '@ziee/framework/stores'
 import { Can } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
@@ -17,6 +16,9 @@ import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { message } from '@ziee/kit'
 import { ListPagination } from '@/components/common/ListPagination'
+import { McpUserPolicy } from '@/modules/mcp/stores/mcpUserPolicy'
+import { McpServer } from '@/modules/mcp/stores/mcpServer'
+import { McpServerDrawer as McpServerDrawerStore } from '@/modules/mcp/stores/mcpServerDrawer'
 
 export function McpServersSettings() {
   const {
@@ -28,15 +30,15 @@ export function McpServersSettings() {
     pageSize: storePageSize,
     searchTerm,
     statusFilter,
-  } = Stores.McpServer
-  const setSearchTerm = Stores.McpServer.setSearchTerm
-  const setStatusFilter = Stores.McpServer.setStatusFilter
+  } = McpServer
+  const setSearchTerm = McpServer.setSearchTerm
+  const setStatusFilter = McpServer.setStatusFilter
 
   // Subscribe to the policy state property (not the function
   // accessor) so this component re-renders when the admin saves a
   // new policy and the Add button + empty-state copy update without
   // a page reload.
-  const { policy: mcpUserPolicy } = Stores.McpUserPolicy
+  const { policy: mcpUserPolicy } = McpUserPolicy
   const policyAllowsAdd =
     (mcpUserPolicy?.allowed_transports?.length ?? 0) > 0
 
@@ -45,12 +47,12 @@ export function McpServersSettings() {
   useEffect(() => {
     if (error && servers.length > 0) {
       message.error(error)
-      Stores.McpServer.clearMcpError()
+      McpServer.clearMcpError()
     }
   }, [error, servers.length])
 
   const handleAddServer = () => {
-    Stores.McpServerDrawer.openMcpServerDrawer(undefined, 'create')
+    McpServerDrawerStore.openMcpServerDrawer(undefined, 'create')
   }
 
   const clearAllFilters = () => {
@@ -63,7 +65,7 @@ export function McpServersSettings() {
     // Reset to page 1 when the user changes page size, so the new
     // window starts at the top — matches UsersSettings behavior.
     const nextPage = size && size !== storePageSize ? 1 : page
-    Stores.McpServer.loadMcpServers(nextPage, nextSize)
+    McpServer.loadMcpServers(nextPage, nextSize)
   }
 
   // Server-side filtering — `servers` already reflects the
@@ -96,7 +98,7 @@ export function McpServersSettings() {
           description="Your MCP servers couldn't be loaded. Check your connection and try again."
           details={error}
           onRetry={() => {
-            Stores.McpServer.loadMcpServers().catch((err: Error) => {
+            McpServer.loadMcpServers().catch((err: Error) => {
               console.error('Failed to load MCP servers:', err)
             })
           }}

@@ -8,6 +8,7 @@ import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 import type { McpServerDrawerPrefill } from '@/modules/mcp/stores/mcpServerDrawer/state'
+import { McpServerDrawer as McpServerDrawerStore } from '@/modules/mcp/stores/mcpServerDrawer'
 
 interface McpServerHubCardProps {
   server: HubMCPServer
@@ -144,7 +145,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const handleInstall = () => {
     try {
       setInstalling(true)
-      Stores.McpServerDrawer.openMcpServerDrawer(
+      McpServerDrawerStore.openMcpServerDrawer(
         undefined,
         'create',
         prefillFromHub(),
@@ -158,7 +159,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const handleInstallAsSystem = () => {
     try {
       setInstallingSystem(true)
-      Stores.McpServerDrawer.openMcpServerDrawer(
+      McpServerDrawerStore.openMcpServerDrawer(
         undefined,
         'create-system',
         prefillFromHub(),

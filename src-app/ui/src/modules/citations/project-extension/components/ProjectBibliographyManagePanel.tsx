@@ -8,13 +8,14 @@ import { usePermission } from '@/core/permissions'
 import { Stores } from '@ziee/framework/stores'
 import { CitationCard } from '../../components/CitationCard'
 import { ImportCitationsModal } from '../../components/ImportCitationsModal'
+import { ProjectDetail } from '@/modules/projects/stores/projectDetail'
 
 /** Full management of a project's reference list — inside the knowledge drawer. */
 export function ProjectBibliographyManagePanel() {
   // Import-into-project + per-card Delete require manage; gate them so a
   // read-only (`citations::use`) viewer doesn't see actions that would 403.
   const canManage = usePermission(Permissions.CitationsManage)
-  const project = Stores.ProjectDetail.project
+  const project = ProjectDetail.project
   const projectId = project?.id ?? null
   const [entries, setEntries] = useState<BibliographyEntry[]>([])
   const [loading, setLoading] = useState(false)

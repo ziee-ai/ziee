@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Permissions } from '@/api-client/permissions'
 import { usePermission } from '@/core/permissions'
-import { Stores } from '@ziee/framework/stores'
+import { WorkflowRuns } from '@/modules/workflow/stores/workflowRuns'
 
 const STATUS_COLOR: Record<string, string> = {
   completed: 'green',
@@ -39,19 +39,19 @@ export function WorkflowRunsList({
 }) {
   const navigate = useNavigate()
   const canExecute = usePermission(Permissions.WorkflowsExecute)
-  const { runs, loading, deleting } = Stores.WorkflowRuns
+  const { runs, loading, deleting } = WorkflowRuns
 
   // Parameterized load: refetch whenever the open workflow changes. Live
   // updates ride the store's sync:workflow_run subscription.
   useEffect(() => {
-    void Stores.WorkflowRuns.loadRuns(workflowId)
+    void WorkflowRuns.loadRuns(workflowId)
   }, [workflowId])
 
   const items = runs[workflowId] || []
 
   const handleDelete = async (runId: string) => {
     try {
-      await Stores.WorkflowRuns.deleteRun(runId, workflowId)
+      await WorkflowRuns.deleteRun(runId, workflowId)
     } catch {
       // The store re-throws on failure (the row is only removed after the API
       // succeeds, so there is nothing to roll back) — surface the failure.

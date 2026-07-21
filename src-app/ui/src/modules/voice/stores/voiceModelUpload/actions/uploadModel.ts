@@ -2,7 +2,7 @@ import { ApiClient } from '@/api-client'
 import type { VoiceModel } from '@/api-client/types'
 import type { VoiceModelUploadSet, VoiceModelUploadGet } from '../state'
 import { setCurrentUploadXhr } from '../state'
-import { Stores } from '@ziee/framework/stores'
+import { VoiceModel as VoiceModelStore } from '@/modules/voice/stores/voiceModel'
 
 export default (set: VoiceModelUploadSet, _get: VoiceModelUploadGet) =>
   async (data: { name: string; file: File }): Promise<VoiceModel> => {
@@ -64,7 +64,7 @@ export default (set: VoiceModelUploadSet, _get: VoiceModelUploadGet) =>
             }))
             setCurrentUploadXhr(null)
             // Refresh the installed-models library (don't await to avoid blocking).
-            void Stores.VoiceModel.loadInstalled()
+            void VoiceModelStore.loadInstalled()
           },
           onError: (error: string, fileName?: string) => {
             set(state => ({

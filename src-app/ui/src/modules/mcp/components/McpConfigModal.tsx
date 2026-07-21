@@ -3,9 +3,10 @@ import { Dialog, Accordion, Switch, Tag, Text, Title, Empty, Checkbox, Select, S
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Trash2 } from 'lucide-react'
-import { Stores } from '@ziee/framework/stores'
 import type { Tool } from '@/api-client/types'
 import { pendingConversationKey, projectConfigKey } from '@/modules/mcp/stores/mcpComposer'
+import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
+import { McpServer } from '@/modules/mcp/stores/mcpServer'
 
 /**
  * MCP Configuration Modal
@@ -21,7 +22,7 @@ import { pendingConversationKey, projectConfigKey } from '@/modules/mcp/stores/m
  * - Groups tools by MCP server
  * - Server-level toggle (enable all tools from server)
  * - Individual tool toggles
- * - Visibility controlled via store (Stores.McpComposer.openConfigModal/closeConfigModal)
+ * - Visibility controlled via store (McpComposer.openConfigModal/closeConfigModal)
  */
 // The modal is a global-store-driven singleton, but it is mounted from more
 // than one host (the chat composer's `input_area_suffix` slot AND the project
@@ -45,8 +46,8 @@ export function McpConfigModal() {
     }
   }, [])
 
-  const { servers } = Stores.McpServer  // Reactive access to MCP module store
-  const mcpStore = Stores.McpComposer
+  const { servers } = McpServer  // Reactive access to MCP module store
+  const mcpStore = McpComposer
   // Extract all store properties unconditionally at the top (store proxy uses hooks).
   // currentProjectId scopes the modal to a project's MCP defaults when set
   // alongside a null currentConversationId; both falsy = chat scope.
@@ -167,7 +168,7 @@ export function McpConfigModal() {
           setLoadingTools(prev => new Set(prev).add(server.id))
 
           try {
-            const response = await Stores.McpComposer.listServerTools(server.id)
+            const response = await McpComposer.listServerTools(server.id)
             setServerTools(prev => new Map(prev).set(server.id, response.tools))
           } catch (error) {
             console.error('[MCP Config Modal] Failed to load tools for server:', server.id, error)

@@ -9,6 +9,8 @@ import {
   useClosePane,
   useOpenConversationInWorkspace,
 } from '@/modules/chat/core/pane/useOpenConversation'
+import { ChatHistory } from '@/modules/chat/stores/chatHistory'
+import { SplitView as SplitViewStore } from '@/modules/chat/core/stores/splitView'
 
 /**
  * Small-screen pane manager (ITEM-83 / FB-26). Below the `md` breakpoint the split
@@ -20,12 +22,12 @@ import {
  *   2. open ANOTHER conversation into a new pane (searchable list + New chat).
  *
  * It REPLACES the always-visible mobile tab strip. Open-state is the transient
- * `Stores.SplitView.paneManagerOpen` (never persisted). Rendered once in the chat
+ * `SplitViewStore.paneManagerOpen` (never persisted). Rendered once in the chat
  * route brancher, so it's reachable from both the single-pane and split headers.
  */
 export function PaneManagerDrawer() {
-  const { panes, focusedPaneId, paneManagerOpen } = Stores.SplitView
-  const { conversations, isInitialized } = Stores.ChatHistory
+  const { panes, focusedPaneId, paneManagerOpen } = SplitViewStore
+  const { conversations, isInitialized } = ChatHistory
   // The single-pane route's conversation (0 SplitView panes) — read reactively off
   // the focused-pane bridge, which resolves to the primary pane outside a split.
   const primaryConvId = Stores.Chat.conversation?.id ?? null
@@ -36,7 +38,7 @@ export function PaneManagerDrawer() {
   const openListRef = useRef<HTMLUListElement>(null)
 
   useEffect(() => {
-    if (paneManagerOpen && !isInitialized) Stores.ChatHistory.loadConversations()
+    if (paneManagerOpen && !isInitialized) ChatHistory.loadConversations()
   }, [paneManagerOpen, isInitialized])
 
   // Auto-dismiss on a LINGERING collapse (exactly 1 pane): a valid open state is
@@ -47,11 +49,11 @@ export function PaneManagerDrawer() {
   // drawer stranded over the survivor. Close it so the survivor is visible.
   useEffect(() => {
     if (paneManagerOpen && panes.length === 1) {
-      Stores.SplitView.setPaneManagerOpen(false)
+      SplitViewStore.setPaneManagerOpen(false)
     }
   }, [paneManagerOpen, panes.length])
 
-  const close = () => Stores.SplitView.setPaneManagerOpen(false)
+  const close = () => SplitViewStore.setPaneManagerOpen(false)
 
   // Close a pane through the shared hook (collapse-to-single + navigate to the
   // survivor). If the workspace collapses to a single pane, dismiss the manager so
@@ -61,7 +63,7 @@ export function PaneManagerDrawer() {
   // surviving row here (WCAG 2.4.3, in-list removal).
   const closePane = (paneId: string) => {
     closePaneHook(paneId)
-    if (Stores.SplitView.$.panes.length < 2) {
+    if (SplitViewStore.$.panes.length < 2) {
       close()
       return
     }
@@ -125,7 +127,7 @@ export function PaneManagerDrawer() {
   const atCap = panes.length >= SPLIT_LIMITS.MAX_PANES
 
   const focusEntry = (paneId: string | null) => {
-    if (paneId) Stores.SplitView.focusPane(paneId)
+    if (paneId) SplitViewStore.focusPane(paneId)
     close()
   }
 
@@ -133,8 +135,8 @@ export function PaneManagerDrawer() {
   // so the first "open another" from a lone conversation yields a real 2-pane split
   // (mirrors `onSplit`'s bootstrap in ConversationPage).
   const seedIfSingle = () => {
-    if (Stores.SplitView.$.panes.length === 0 && primaryConvId) {
-      Stores.SplitView.openPane({ conversationId: primaryConvId })
+    if (SplitViewStore.$.panes.length === 0 && primaryConvId) {
+      SplitViewStore.openPane({ conversationId: primaryConvId })
     }
   }
 
@@ -152,7 +154,7 @@ export function PaneManagerDrawer() {
 
   const newChat = () => {
     seedIfSingle()
-    Stores.SplitView.openPane({ conversationId: null }) // empty picker pane, focused
+    SplitViewStore.openPane({ conversationId: null }) // empty picker pane, focused
     setQuery('')
     close()
   }

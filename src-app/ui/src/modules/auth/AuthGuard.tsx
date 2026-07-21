@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Stores } from '@ziee/framework/stores'
 import { AuthPage } from '@/modules/auth/AuthPage'
 import { Loading } from '@/core/components/Loading'
+import { App } from '@/modules/app/stores/app'
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -10,7 +11,7 @@ interface AuthGuardProps {
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const { isAuthenticated, isInitializing } = Stores.Auth
-  const { needsSetup } = Stores.App
+  const { needsSetup } = App
   const { multiUserMode } = Stores.AppMode
   const navigate = useNavigate()
   const location = useLocation()

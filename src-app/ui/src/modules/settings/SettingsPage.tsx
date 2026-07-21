@@ -6,6 +6,7 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 import { cn } from '@/lib/utils'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { BookOpen, Compass, ExternalLink } from 'lucide-react'
+import { AppLayout as AppLayoutStore } from '@/modules/layouts/app-layout/appLayout'
 
 // Help destination: the app's GitHub repo README is the de-facto operator
 // documentation. (`ziee-ai/ziee` — renamed from `phibya/ziee-chat-new` in the
@@ -36,7 +37,7 @@ export default function SettingsPage() {
   // collapse). No-op on desktop / non-xs — the two-pane inner-scroll layout is
   // untouched there. `nativeScroll` from the store drives the flow classes.
   useNativeScroll(true)
-  const { nativeScroll } = Stores.AppLayout
+  const { nativeScroll } = AppLayoutStore
   // The settings layout needs the side-menu (~180px) + a content
   // column wide enough for cards/forms (~440px) to feel non-cramped
   // — that's ~620px total. Use `sm` (≤640px) as the threshold so

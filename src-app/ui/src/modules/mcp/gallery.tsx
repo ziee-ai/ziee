@@ -9,12 +9,14 @@
 import { lazy } from 'react'
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyNamed, lazyProps } from '@/dev/gallery/support'
-import { Stores } from '@ziee/framework/stores'
 import { llmGroupsList } from '@/dev/gallery/fixtures/llm-providers'
+import { McpComposer } from '@/modules/mcp/stores/mcpComposer'
+import { McpServerDrawer as McpServerDrawerStore } from '@/modules/mcp/stores/mcpServerDrawer'
+import { GroupSystemMcpServersAssignment } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
 
 const group = llmGroupsList.groups[0]
 
-/** A project stub — enough for `Stores.ProjectDetail.project` reads (`project.id`). */
+/** A project stub — enough for `ProjectDetail.project` reads (`project.id`). */
 const galleryProject = { id: 'proj-s4', name: 'Gallery Project' }
 
 export const gallery: ModuleGallery = {
@@ -27,7 +29,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer'),
         'GroupSystemMcpServersAssignmentDrawer',
       ),
-      open: () => Stores.GroupSystemMcpServersAssignment.openDrawer(group),
+      open: () => GroupSystemMcpServersAssignment.openDrawer(group),
     },
     {
       slug: 'overlay-mcp-server-drawer',
@@ -37,7 +39,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/mcp/components/common/McpServerDrawer'),
         'McpServerDrawer',
       ),
-      open: () => Stores.McpServerDrawer.openMcpServerDrawer(),
+      open: () => McpServerDrawerStore.openMcpServerDrawer(),
     },
     {
       slug: 'overlay-mcp-config-modal',
@@ -47,7 +49,7 @@ export const gallery: ModuleGallery = {
         () => import('@/modules/mcp/components/McpConfigModal'),
         'McpConfigModal',
       ),
-      open: () => Stores.McpComposer.openConfigModal(),
+      open: () => McpComposer.openConfigModal(),
     },
   ],
   seeded: [
@@ -55,7 +57,7 @@ export const gallery: ModuleGallery = {
     {
       slug: 'seeded-mcp-tool-calls-error',
       title: 'MCP tool calls — error',
-      note: 'Stores.McpToolCalls.error → the danger text',
+      note: 'McpToolCalls.error → the danger text',
       path: '/',
       initialPath: '/',
       component: lazyProps(
@@ -82,7 +84,7 @@ export const gallery: ModuleGallery = {
     {
       slug: 'seeded-mcp-tool-calls-loaded',
       title: 'MCP tool calls — loaded',
-      note: 'Stores.McpToolCalls.calls → sortable/filterable grid rows',
+      note: 'McpToolCalls.calls → sortable/filterable grid rows',
       path: '/',
       initialPath: '/',
       component: lazyProps(

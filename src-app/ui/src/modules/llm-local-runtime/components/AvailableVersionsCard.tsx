@@ -19,6 +19,8 @@ import { Permissions } from '@/api-client/permissions'
 import type { DownloadSnapshot, GpuDetectionResponse } from '@/api-client/types'
 import type { RuntimeAvailableVersion, RuntimeEngine } from '../types'
 import { HoverRow, formatBytes } from './_engineVersionsShared'
+import { RuntimeConfig } from '@/modules/llm-local-runtime/stores/runtimeConfig'
+import { RuntimeUpdate } from '@/modules/llm-local-runtime/stores/runtimeUpdate'
 
 const BACKEND_LABEL: Record<string, string> = {
   cpu: 'CPU',
@@ -48,8 +50,8 @@ const BACKEND_LABEL: Record<string, string> = {
  *    when a download is in flight via the SSE store).
  */
 export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
-  const { gpu, loadingGpu } = Stores.RuntimeConfig
-  const { updateChecks, checking, error: updateError } = Stores.RuntimeUpdate
+  const { gpu, loadingGpu } = RuntimeConfig
+  const { updateChecks, checking, error: updateError } = RuntimeUpdate
   const { activeByKey } = Stores.RuntimeDownloadProgress
 
   const updateCheck = updateChecks.get(engine)
@@ -65,10 +67,10 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
   // Auto-load gpu + update check on mount.
   useEffect(() => {
     if (!gpu && !loadingGpu) {
-      Stores.RuntimeConfig.loadGpu().catch(() => {})
+      RuntimeConfig.loadGpu().catch(() => {})
     }
     if (!updateCheck && !isChecking) {
-      Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {
+      RuntimeUpdate.checkForUpdates(engine).catch(() => {
         // Surfaced via the store; the card just shows "couldn't check".
       })
     }
@@ -120,7 +122,7 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
 
   const handleCheckForUpdates = async () => {
     try {
-      const result = await Stores.RuntimeUpdate.checkForUpdates(engine)
+      const result = await RuntimeUpdate.checkForUpdates(engine)
       const readyAfter = (result?.versions ?? []).filter(rv => rv.binary_ready)
       const newCount = readyAfter.filter(rv => !rv.installed).length
       if (newCount === 0) {
@@ -171,7 +173,7 @@ export function AvailableVersionsCard({ engine }: { engine: RuntimeEngine }) {
             description="Couldn't reach the upstream release feed."
             details={updateError}
             onRetry={() => {
-              void Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {})
+              void RuntimeUpdate.checkForUpdates(engine).catch(() => {})
             }}
             data-testid="llmrt-available-error"
           />

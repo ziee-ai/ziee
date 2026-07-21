@@ -12,7 +12,6 @@ import {
 } from '@ziee/kit'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { SettingsFormActions } from '@/modules/settings/components/SettingsFormActions'
@@ -23,6 +22,7 @@ import { ProviderGroupAssignmentCard } from '@/modules/llm-provider/components/P
 import { AddRemoteLlmModelDrawer } from '@/modules/llm-provider/components/llm-models/AddRemoteLlmModelDrawer'
 import { EditLlmModelDrawer } from '@/modules/llm-provider/components/llm-models/EditLlmModelDrawer'
 import type { ProxySettings } from '@/api-client/types'
+import { LlmProvider } from '@/modules/llm-provider/stores/llmProvider'
 
 interface RemoteProviderFormValues {
   api_key?: string
@@ -37,11 +37,11 @@ export function RemoteProviderSettings() {
   })
 
   // Store data
-  const { error } = Stores.LlmProvider
+  const { error } = LlmProvider
   const canEditProvider = usePermission(Permissions.LlmProvidersEdit)
 
   // Get current provider and its models
-  const currentProvider = Stores.LlmProvider.providers.find(
+  const currentProvider = LlmProvider.providers.find(
     p => p.id === providerId,
   )
 
@@ -61,7 +61,7 @@ export function RemoteProviderSettings() {
     if (Object.keys(pendingSettings).length === 0) return
 
     try {
-      await Stores.LlmProvider.updateLlmProvider(
+      await LlmProvider.updateLlmProvider(
         currentProvider.id,
         pendingSettings,
       )
@@ -79,7 +79,7 @@ export function RemoteProviderSettings() {
     if (!currentProvider) return
 
     try {
-      await Stores.LlmProvider.updateLlmProvider(currentProvider.id, {
+      await LlmProvider.updateLlmProvider(currentProvider.id, {
         proxy_settings: proxySettings,
       })
       message.success('Proxy settings saved')
@@ -93,7 +93,7 @@ export function RemoteProviderSettings() {
   useEffect(() => {
     if (error) {
       message.error(error)
-      Stores.LlmProvider.clearLlmProviderStoreError()
+      LlmProvider.clearLlmProviderStoreError()
     }
   }, [error])
 

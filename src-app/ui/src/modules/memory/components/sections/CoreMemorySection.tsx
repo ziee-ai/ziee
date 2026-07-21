@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Card, Empty, ErrorState, Combobox, Spin, Paragraph } from '@ziee/kit'
-import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/permissions'
 import { CoreMemoryBlocksEditor } from '@/modules/memory/components/CoreMemoryBlocksEditor'
+import { UserAssistants } from '@/modules/assistant/stores/userAssistants'
 
 const READ_PERM = Permissions.CoreMemoryRead
 
@@ -14,7 +14,7 @@ const READ_PERM = Permissions.CoreMemoryRead
  */
 export function CoreMemorySection() {
   const canRead = usePermission(READ_PERM)
-  const { assistants: assistantsMap, loading, error } = Stores.UserAssistants
+  const { assistants: assistantsMap, loading, error } = UserAssistants
   const [assistantId, setAssistantId] = useState<string | null>(null)
 
   const assistants = useMemo(
@@ -39,7 +39,7 @@ export function CoreMemorySection() {
             resource="assistants"
             description="Something went wrong while loading your assistants."
             details={error}
-            onRetry={() => Stores.UserAssistants.loadUserAssistants()}
+            onRetry={() => UserAssistants.loadUserAssistants()}
             data-testid="memory-core-error"
           />
         ) : loading ? (

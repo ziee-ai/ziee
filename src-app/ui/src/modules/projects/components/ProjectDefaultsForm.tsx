@@ -5,6 +5,7 @@ import { Stores } from '@ziee/framework/stores'
 import { usePermission } from '@/core/permissions'
 import { type Assistant, type LlmModel, type Project, type UpdateProjectRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/permissions'
+import { Projects } from '@/modules/projects/stores/projects'
 
 interface ProjectDefaultsFormProps {
   project: Project
@@ -112,7 +113,7 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
       const patch: UpdateProjectRequest = {
         default_assistant_id: (resolved ?? null) as unknown as string | undefined,
       }
-      await Stores.Projects.updateProject(project.id, patch)
+      await Projects.updateProject(project.id, patch)
       message.success('Default assistant updated')
     } catch (err) {
       message.error(
@@ -131,7 +132,7 @@ export function ProjectDefaultsForm({ project }: ProjectDefaultsFormProps) {
       const patch: UpdateProjectRequest = {
         default_model_id: (resolved ?? null) as unknown as string | undefined,
       }
-      await Stores.Projects.updateProject(project.id, patch)
+      await Projects.updateProject(project.id, patch)
       message.success('Default model updated')
     } catch (err) {
       message.error(
