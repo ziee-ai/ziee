@@ -1,5 +1,5 @@
 /**
- * Pure helpers for `VoiceDownloadProgress.store.ts`, extracted so they can be
+ * Pure helpers for `voiceDownloadProgress`, extracted so they can be
  * unit-tested without the store's runtime `@/api-client/types` (enum) import.
  * The store's permission self-gating (`loadActive` returns early unless
  * `VoiceAdminRead`) and the SSE wiring are covered by the voice admin e2e specs;

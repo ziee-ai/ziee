@@ -1,6 +1,6 @@
 import type { StoreProxy } from '@ziee/framework/stores'
 import type { useVoiceConfigStore } from './stores/voiceConfig'
-import type { useVoiceDownloadProgressStore } from './stores/VoiceDownloadProgress.store'
+import type { useVoiceDownloadProgressStore } from './stores/voiceDownloadProgress'
 import type { useVoiceInstanceStore } from './stores/VoiceInstance.store'
 import type { useVoiceModelStore } from './stores/VoiceModel.store'
 import type { useVoiceModelDownloadProgressStore } from './stores/VoiceModelDownloadProgress.store'

@@ -1,5 +1,5 @@
 export { useVoiceConfigStore } from './voiceConfig'
-export { useVoiceDownloadProgressStore } from './VoiceDownloadProgress.store'
+export { useVoiceDownloadProgressStore } from './voiceDownloadProgress'
 export { useVoiceInstanceStore } from './VoiceInstance.store'
 export { useVoiceModelStore } from './VoiceModel.store'
 export { useVoiceModelDownloadProgressStore } from './VoiceModelDownloadProgress.store'
