@@ -8,7 +8,7 @@ import type { useVoiceModelUpdateStore } from './stores/voiceModelUpdate'
 import type { useVoiceModelUploadStore } from './stores/voiceModelUpload'
 import type { useVoiceRuntimeVersionStore } from './stores/voiceRuntimeVersion'
 import type { useVoiceUpdateStore } from './stores/voiceUpdate'
-import type { useVoiceUploadModelDrawerStore } from './stores/VoiceUploadModelDrawer.store'
+import type { useVoiceUploadModelDrawerStore } from './stores/voiceUploadModelDrawer'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
