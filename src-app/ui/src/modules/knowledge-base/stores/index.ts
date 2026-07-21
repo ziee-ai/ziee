@@ -6,4 +6,4 @@ export {
 export {
   KnowledgeBaseComposer,
   useKnowledgeBaseComposerStore,
-} from './KnowledgeBaseComposer.store'
+} from './knowledgeBaseComposer'
