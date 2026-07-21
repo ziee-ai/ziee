@@ -140,8 +140,15 @@ test.describe('untitled conversation display label', () => {
     expect(overflows, 'the page must not scroll horizontally at 390px').toBe(false)
   })
 
-  // TEST-13 — search finds it by CONTENT, not by the word "Untitled".
-  test('an untitled conversation is findable by its first-message text', async ({
+  // TEST-13 — the CLIENT-SIDE filter that ITEM-8 actually changed.
+  //
+  // Deliberately drives the PaneManagerDrawer, NOT the sidebar widget: the
+  // sidebar's search resolves SERVER-SIDE (ChatHistory.searchQuery → the list
+  // endpoint's ILIKE), so it never matched the placeholder string client-side
+  // and ITEM-8 does not touch it. The drawer and the picker pane are the two
+  // surfaces that filter the already-loaded list in the browser, and they are
+  // what previously matched only the literal "Untitled".
+  test('the pane-manager filter matches first-message text, not "Untitled"', async ({
     page,
     testInfra,
   }) => {
@@ -149,19 +156,28 @@ test.describe('untitled conversation display label', () => {
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
     const modelId = await seedModel(apiURL, token)
-    const id = await seedConversation(apiURL, token, modelId, { firstMessage: PREVIEW })
+    const target = await seedConversation(apiURL, token, modelId, { firstMessage: PREVIEW })
+    // A second conversation to open, so the drawer's list has a row to filter
+    // that is NOT the currently-open one (open panes are excluded from it).
+    const other = await seedConversation(apiURL, token, modelId, {
+      firstMessage: 'an unrelated question about protein folding',
+    })
 
-    await page.goto(`${baseURL}/chats`)
-    await page.reload()
+    await page.goto(`${baseURL}/chats/${other}`)
+    await page.getByTestId('chat-split-btn').click()
+    await expect(page.getByTestId('pane-manager-drawer')).toBeVisible()
 
-    const search = page.getByRole('textbox', { name: /search/i }).first()
+    const search = page.getByTestId('pane-manager-search').getByRole('textbox')
+
+    // Findable by what the user actually asked.
     await search.fill('TP53')
-    await expect(recentRow(page, id)).toBeVisible()
+    await expect(page.getByTestId(`pane-manager-list`)).toContainText('TP53')
 
-    // And the old escape hatch is gone: a conversation that now renders a real
-    // preview must NOT match the placeholder string any more.
+    // And the old escape hatch is gone: a row that now renders a real preview
+    // must NOT match the placeholder string any more.
     await search.fill('Untitled')
-    await expect(recentRow(page, id)).toHaveCount(0)
+    await expect(page.getByTestId('pane-manager-list')).not.toContainText('TP53')
+    void target
   })
 
   // TEST-15 — the display-only contract.
