@@ -18,7 +18,7 @@ import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Result, Spin } from '@ziee/kit'
 import { Stores } from '@ziee/framework/stores'
-import { useTunnelAuthStore } from './TunnelAuth.store'
+import { useTunnelAuthStore } from '../tunnelAuth'
 
 /**
  * Match the page chrome to the theme-aware layout background so

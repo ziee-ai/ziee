@@ -35,7 +35,7 @@ import {
   zodResolver,
 } from '@ziee/kit'
 import { z } from 'zod'
-import { useTunnelAuthStore } from './TunnelAuth.store'
+import { useTunnelAuthStore } from '../tunnelAuth'
 
 const passwordSchema = z.object({
   password: z.string().min(1, 'Enter your password'),
