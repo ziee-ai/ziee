@@ -1,7 +1,7 @@
 import type { StoreProxy } from '@ziee/framework/stores'
 import type { useUserLlmProvidersStore } from './UserLlmProviders.store'
 import type { useModelPickerStore } from './ModelPicker.store'
-import type { useUserProviderKeysStore } from './UserProviderKeys.store'
+import type { useUserProviderKeysStore } from './userProviderKeys'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
