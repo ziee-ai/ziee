@@ -8,7 +8,7 @@ import type { useGroupMembersDrawerStore } from '@/modules/user/components/group
 import type { useCreateUserDrawerStore } from '@/modules/user/components/user/createUserDrawer'
 import type { useEditUserDrawerStore } from '@/modules/user/components/user/editUserDrawer'
 import type { useResetPasswordDrawerStore } from '@/modules/user/components/user/resetPasswordDrawer'
-import type { useUserGroupsDrawerStore } from '@/modules/user/components/user/UserGroupsDrawer.store'
+import type { useUserGroupsDrawerStore } from '@/modules/user/components/user/userGroupsDrawer'
 import type { useAssignGroupDrawerStore } from '@/modules/user/components/user/assignGroupDrawer'
 
 // Augment the RegisteredStores interface to add Users and UserGroups stores

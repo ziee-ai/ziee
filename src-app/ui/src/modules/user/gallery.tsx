@@ -92,7 +92,7 @@ export const gallery: ModuleGallery = {
     },
     {
       slug: 'overlay-user-groups-drawer',
-      surface: 'modules/user/components/user/UserGroupsDrawer',
+      surface: 'modules/user/components/user/userGroupsDrawer',
       title: 'User Groups (drawer)',
       component: lazyNamed(
         () => import('@/modules/user/components/user/UserGroupsDrawer'),
