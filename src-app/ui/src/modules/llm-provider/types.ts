@@ -9,7 +9,7 @@ import type {
   useViewDownloadDrawerStore,
   useUploadStore,
 } from '@/modules/llm-provider/stores'
-import type { useProviderGroupCardStore } from '@/modules/llm-provider/components/ProviderGroupAssignmentCard.store'
+import type { useProviderGroupAssignmentCardStore } from '@/modules/llm-provider/components/providerGroupAssignmentCard'
 import type { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
 import type { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
 
@@ -42,7 +42,7 @@ declare module '@ziee/framework/stores' {
       ReturnType<typeof useGroupLlmProvidersAssignmentStore.getState>
     >
     ProviderGroupAssignmentCard: StoreProxy<
-      ReturnType<typeof useProviderGroupCardStore.getState>
+      ReturnType<typeof useProviderGroupAssignmentCardStore.getState>
     >
   }
 }

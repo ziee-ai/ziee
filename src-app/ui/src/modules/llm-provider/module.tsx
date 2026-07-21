@@ -4,7 +4,7 @@ import { createModule } from '@ziee/framework'
 import { Stores } from '@ziee/framework/stores'
 import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
 import { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
-import { useProviderGroupCardStore } from '@/modules/llm-provider/components/ProviderGroupAssignmentCard.store'
+import { useProviderGroupAssignmentCardStore } from '@/modules/llm-provider/components/providerGroupAssignmentCard'
 import { DownloadIndicatorWidget } from '@/modules/llm-provider/components/widgets/DownloadIndicatorWidget'
 import {
   useAddLocalLlmModelDownloadDrawerStore,
@@ -103,7 +103,7 @@ export default createModule({
     },
     {
       name: 'ProviderGroupAssignmentCard',
-      store: useProviderGroupCardStore,
+      store: useProviderGroupAssignmentCardStore,
     },
   ],
   components: [
