@@ -1,6 +1,6 @@
 import type { StoreProxy } from '@ziee/framework/stores'
 import type { useWebSearchAdminStore } from './stores/webSearchAdmin'
-import type { useWebSearchUserKeysStore } from './stores/WebSearchUserKeys.store'
+import type { useWebSearchUserKeysStore } from './stores/webSearchUserKeys'
 
 declare module '@ziee/framework/stores' {
   interface RegisteredStores {
