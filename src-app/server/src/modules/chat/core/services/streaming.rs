@@ -403,6 +403,17 @@ impl StreamingService {
                             // Skip LLM call, complete gracefully
                             tracing::info!("Skipping LLM call - extension requested completion");
 
+                            // The turn ends here without the provider ever being
+                            // called, so `finalize()` — and with it
+                            // `call_after_llm_call` — never runs. Give the
+                            // post-LLM extensions their turn-end pass. MUST come
+                            // before the terminal chunk: `start_generation`
+                            // drains the extension channel on the invariant that
+                            // extension events precede it.
+                            registry
+                                .call_after_llm_skipped(&stream_context, Some(&ext_tx))
+                                .await;
+
                             // Send complete event
                             let _ = tx.send(Ok(ChatStreamChunk {
                                 content: Vec::new(),
@@ -439,6 +450,16 @@ impl StreamingService {
                                 error: None,
                             };
                             let _ = tx.send(Ok(text_chunk));
+
+                            // Same turn-end pass as the `Complete` arm above.
+                            // Ordered AFTER the `append_content` that persisted
+                            // the answer text, so an extension that inspects the
+                            // assistant row (the title extension's
+                            // `assistant_produced_output` check) sees it — and
+                            // before the terminal chunk, for the drain invariant.
+                            registry
+                                .call_after_llm_skipped(&stream_context, Some(&ext_tx))
+                                .await;
 
                             let complete_chunk = ChatStreamChunk {
                                 content: Vec::new(),

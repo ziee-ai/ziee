@@ -462,7 +462,15 @@ async fn send_one_and_capture(
         1,
         "turn should complete once"
     );
-    stub.requests().last().expect("a provider request was recorded").all_text.clone()
+    // The MAIN chat request, not the title-generation one. `.last()` was
+    // vacuous here: the title request is always last, so the assertion this
+    // feeds could never have failed on the bio note it claims to check.
+    stub.requests()
+        .iter()
+        .find(|r| !r.is_title_request)
+        .expect("a non-title provider request was recorded")
+        .all_text
+        .clone()
 }
 
 #[tokio::test]

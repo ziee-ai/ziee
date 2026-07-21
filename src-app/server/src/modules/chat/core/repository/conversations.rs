@@ -139,6 +139,15 @@ pub fn normalize_sort(sort: Option<&str>) -> &'static str {
     }
 }
 
+/// Server-side truncation cap for [`ConversationResponse::first_message_preview`].
+///
+/// A fixed constant rather than an admin setting: this is a display-string
+/// length, not an operational tunable — it has no resource, retention, quota, or
+/// security dimension. Mirrors `TITLE_MAX_CHARS` in the title extension. Named
+/// (not inlined) so it can be promoted to configurable without a rewrite.
+/// 120 chars fills the widest sidebar row while keeping the list payload small.
+pub const CONVERSATION_PREVIEW_MAX_CHARS: i32 = 120;
+
 /// List the user's conversations with optional content search + sort.
 ///
 /// - `search`: when `Some`, filters to conversations whose title OR any
@@ -160,10 +169,29 @@ pub async fn list_conversations(
         SELECT
             c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
             c.created_at, c.updated_at,
-            COUNT(bm.message_id) as message_count
+            COUNT(bm.message_id) as message_count,
+            LEFT(fm.text, $6) as first_message_preview
         FROM conversations c
         LEFT JOIN branches b ON b.conversation_id = c.id
         LEFT JOIN branch_messages bm ON bm.branch_id = b.id
+        -- First user text on the ACTIVE branch, for the client's display label
+        -- when `title` is NULL. A LATERAL (not a correlated scalar subquery)
+        -- so it contributes exactly one row per conversation and therefore
+        -- cannot disturb the COUNT(bm.message_id) aggregate or the GROUP BY.
+        -- Active-branch-only for the same reason the search filter below is
+        -- (superseded edit-branch content is invisible when opened).
+        LEFT JOIN LATERAL (
+            SELECT mc.content->>'text' AS text
+            FROM branch_messages bm3
+            JOIN messages m ON m.id = bm3.message_id
+            JOIN message_contents mc ON mc.message_id = m.id
+            WHERE bm3.branch_id = c.active_branch_id
+              AND m.role = 'user'
+              AND mc.content_type = 'text'
+              AND NULLIF(TRIM(mc.content->>'text'), '') IS NOT NULL
+            ORDER BY bm3.created_at ASC, m.id ASC, mc.sequence_order ASC
+            LIMIT 1
+        ) fm ON TRUE
         WHERE c.user_id = $1
           AND (
             $4::text IS NULL
@@ -180,7 +208,10 @@ pub async fn list_conversations(
                 AND mc.content->>'text' ILIKE '%' || $4 || '%'
             )
           )
-        GROUP BY c.id
+        -- fm.text joins one row per conversation, so grouping by it cannot
+        -- change cardinality; Postgres needs it listed because functional
+        -- dependency on c.id is only inferred for columns of `c` itself.
+        GROUP BY c.id, fm.text
         ORDER BY
           CASE WHEN $5 = 'oldest' THEN c.updated_at END ASC NULLS LAST,
           CASE WHEN $5 = 'alpha' THEN c.title END ASC NULLS LAST,
@@ -193,6 +224,7 @@ pub async fn list_conversations(
         offset,
         search,
         sort_key,
+        CONVERSATION_PREVIEW_MAX_CHARS,
     )
     .fetch_all(pool)
     .await
@@ -211,6 +243,7 @@ pub async fn list_conversations(
                 updated_at: to_chrono_datetime(row.updated_at),
             },
             message_count: row.message_count.unwrap_or(0),
+            first_message_preview: row.first_message_preview,
         })
         .collect())
 }

@@ -835,3 +835,153 @@ async fn test_concurrent_cross_user_conversation_access_is_isolated() {
     assert_eq!(a_cross, StatusCode::NOT_FOUND, "alice must not see bob's conversation");
     assert_eq!(b_cross, StatusCode::NOT_FOUND, "bob must not see alice's conversation");
 }
+
+// =====================================================
+// first_message_preview (display label for untitled conversations)
+// =====================================================
+
+/// The preview exists so the client can LABEL a conversation that has no title.
+/// Title generation deliberately leaves `title` NULL rather than persisting the
+/// user's raw message, so without this every untitled row renders as the same
+/// "Untitled Conversation" string and the user cannot tell them apart.
+///
+/// Also guards the aggregate-disturbance risk: the preview is joined with a
+/// LATERAL, and a join that fanned out would corrupt `message_count`.
+#[tokio::test]
+async fn test_list_conversations_first_message_preview() {
+    use crate::common::stub_chat::{self, StubChat};
+
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "preview", &["*"]).await;
+    let stub = StubChat::start().await;
+    let model_id = stub_chat::register_stub_model(
+        &server,
+        &user.token,
+        &user.user_id,
+        &stub.base_url,
+        false,
+        None,
+    )
+    .await;
+    let model_id = uuid::Uuid::parse_str(&model_id).unwrap();
+
+    // (a) A conversation with a user message.
+    let with_msg = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    let with_msg_id = super::helpers::parse_uuid(&with_msg["id"]);
+    let branch_id = super::helpers::parse_uuid(&with_msg["active_branch_id"]);
+    let question = "What does the knowledge base say about TP53 mutations?";
+    super::helpers::send_and_collect(
+        &server,
+        &user.token,
+        with_msg_id,
+        branch_id,
+        model_id,
+        question,
+    )
+    .await;
+
+    // (b) A conversation with NO messages at all.
+    let empty = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    let empty_id = super::helpers::parse_uuid(&empty["id"]);
+
+    let response = reqwest::Client::new()
+        .get(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    let rows = body["conversations"]
+        .as_array()
+        .expect("list endpoint returns a paginated object");
+
+    let find = |id: uuid::Uuid| {
+        rows.iter()
+            .find(|c| c["id"].as_str() == Some(&id.to_string()))
+            .unwrap_or_else(|| panic!("conversation {id} missing from the list"))
+            .clone()
+    };
+
+    let with_msg_row = find(with_msg_id);
+    assert_eq!(
+        with_msg_row["first_message_preview"].as_str(),
+        Some(question),
+        "the preview must be the first USER message on the active branch"
+    );
+    // The preview is populated INDEPENDENTLY of the title — the server always
+    // reports it and the CLIENT applies the precedence (title first, preview as
+    // the fallback). Coupling them server-side would mean a conversation that
+    // loses its title could never recover a label.
+    assert!(
+        with_msg_row["first_message_preview"].is_string(),
+        "the preview must be present even when a title exists"
+    );
+    // The LATERAL must not fan out and inflate the aggregate.
+    assert_eq!(
+        with_msg_row["message_count"], 2,
+        "one user + one assistant message; a fan-out would inflate this"
+    );
+
+    assert!(
+        find(empty_id)["first_message_preview"].is_null(),
+        "a conversation with no user text must report a null preview, not an empty string"
+    );
+}
+
+/// The preview is truncated SERVER-side so a long first message cannot bloat
+/// every row of the paginated list payload.
+#[tokio::test]
+async fn test_first_message_preview_is_truncated() {
+    use crate::common::stub_chat::{self, StubChat};
+
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "preview_trunc", &["*"])
+            .await;
+    let stub = StubChat::start().await;
+    let model_id = stub_chat::register_stub_model(
+        &server,
+        &user.token,
+        &user.user_id,
+        &stub.base_url,
+        false,
+        None,
+    )
+    .await;
+    let model_id = uuid::Uuid::parse_str(&model_id).unwrap();
+
+    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let long = "z".repeat(500);
+    super::helpers::send_and_collect(
+        &server,
+        &user.token,
+        conversation_id,
+        branch_id,
+        model_id,
+        &long,
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .get(server.api_url("/conversations"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = response.json().await.unwrap();
+    let preview = body["conversations"][0]["first_message_preview"]
+        .as_str()
+        .expect("preview present");
+
+    assert_eq!(
+        preview.chars().count(),
+        120,
+        "must be capped at CONVERSATION_PREVIEW_MAX_CHARS, not shipped whole"
+    );
+    assert!(preview.chars().all(|c| c == 'z'));
+}
