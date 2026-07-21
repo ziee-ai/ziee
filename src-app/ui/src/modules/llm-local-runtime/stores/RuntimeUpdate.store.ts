@@ -18,7 +18,7 @@ export const RuntimeUpdate = defineStore('RuntimeUpdate', {
       try {
         const response = await ApiClient.RuntimeVersion.checkUpdates({ engine })
         // Get current default version for this engine
-        const currentVersion = Stores.RuntimeVersion.getDefaultVersion(engine)
+        const currentVersion = Stores.RuntimeVersion.versions.find(v => v.engine === engine && v.is_system_default) || null
         // Releases come newest-first. The "latest" we can actually install is the
         // newest one whose binary is published for this host.
         const versions = response.versions
