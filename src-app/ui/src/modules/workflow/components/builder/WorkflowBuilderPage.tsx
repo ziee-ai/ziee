@@ -88,7 +88,7 @@ export function WorkflowBuilderPage() {
   if (!canAccess) {
     return (
       <Result
-        data-testid="settings-forbidden-result"
+        data-testid="workflow-forbidden-result"
         status="403"
         title="Not authorized"
         subtitle="You don't have permission to author workflows."
