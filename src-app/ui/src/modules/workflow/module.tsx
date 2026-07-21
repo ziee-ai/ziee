@@ -5,6 +5,7 @@ import { Stores } from '@ziee/framework/stores'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
 import '@/modules/workflow/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
 
@@ -40,6 +41,8 @@ export default createModule({
   },
   dependencies: ['router'],
   stores: [
+    // BOOT-EAGER (always-mounted overlay) — must stay registered.
+    { name: 'GroupSystemWorkflowsAssignment', store: useGroupSystemWorkflowsAssignmentStore },
   ],
   components: [
     {

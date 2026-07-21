@@ -11,6 +11,7 @@ import {
   } from '@/modules/mcp/stores'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
 import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import '@/modules/mcp/project-extension/events/types' // Project↔MCP event declaration merging
@@ -71,6 +72,8 @@ export default createModule({
     },
   ],
   stores: [
+    // BOOT-EAGER (always-mounted overlay) — must stay registered.
+    { name: 'GroupSystemMcpServersAssignment', store: useGroupSystemMcpServersAssignmentStore },
     {
       name: 'SystemMcpServerGroupCard',
       store: useSystemMcpServerGroupCardStore,

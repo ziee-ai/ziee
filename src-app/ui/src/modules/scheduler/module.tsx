@@ -7,6 +7,7 @@ import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useSchedulerDrawerStore } from '@/modules/scheduler/stores/schedulerDrawer'
 import '@/modules/scheduler/types' // register Stores.* (declaration merge)
 import '@/modules/settings/types/SettingsSlots'
 
@@ -53,6 +54,8 @@ export default createModule({
     },
   ],
   stores: [
+    // BOOT-EAGER (always-mounted overlay) — must stay registered.
+    { name: 'SchedulerDrawer', store: useSchedulerDrawerStore },
   ],
   components: [
     {

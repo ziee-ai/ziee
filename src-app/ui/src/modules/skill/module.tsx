@@ -9,6 +9,7 @@ import {
   useSkillConversationDrawerStore,
   } from '@/modules/skill/stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
 import '@/modules/skill/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
 
@@ -42,6 +43,8 @@ export default createModule({
   },
   dependencies: ['router'],
   stores: [
+    // BOOT-EAGER (always-mounted overlay) — must stay registered.
+    { name: 'GroupSystemSkillsAssignment', store: useGroupSystemSkillsAssignmentStore },
     { name: 'ConversationSkills', store: useConversationSkillsStore },
     {
       name: 'SkillConversationDrawer',
