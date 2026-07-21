@@ -8,7 +8,7 @@ import {
 import { TextContent } from '@/modules/chat/extensions/text/components/TextContent'
 import { ThinkingContent } from '@/modules/chat/extensions/text/components/ThinkingContent'
 import { TextInput } from '@/modules/chat/extensions/text/components/TextInput'
-import { createTextStore } from '@/modules/chat/extensions/text/Text.store'
+import { createTextStore } from '@/modules/chat/extensions/text/textStore'
 import { clearDraft, getDraft, makeDraftKey } from '@/modules/chat/extensions/text/chatDrafts'
 import { PaneDraftKeys } from '@/modules/chat/extensions/text/paneDraftKeys'
 import type { MessageContent } from '@/api-client/types'
