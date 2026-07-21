@@ -4,7 +4,7 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useConversationSummarizationStore } from './stores/conversationSummarization'
-import { useSummarizationAdminStore } from './stores/SummarizationAdmin.store'
+import { useSummarizationAdminStore } from './stores/summarizationAdmin'
 import './types'
 
 const SummarizationAdminPage = lazyWithPreload(() =>
