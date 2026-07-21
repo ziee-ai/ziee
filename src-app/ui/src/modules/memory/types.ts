@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@ziee/framework/stores'
-import type { useMemoriesStore } from './stores/Memories.store'
+import type { useMemoriesStore } from './stores/memories'
 import type { useMemorySettingsStore } from './stores/MemorySettings.store'
 import type { useMemoryAdminStore } from './stores/MemoryAdmin.store'
 import type { useMemoryAuditStore } from './stores/memoryAudit'
