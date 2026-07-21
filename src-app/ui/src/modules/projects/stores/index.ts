@@ -1,5 +1,5 @@
 export { useProjectsStore } from './Projects.store'
-export { useProjectDetailStore } from './ProjectDetail.store'
+export { useProjectDetailStore } from './projectDetail'
 export { useProjectDrawerStore } from './ProjectDrawer.store'
 
 // Re-export the Stores proxy for convenient `Stores.Projects.method()` access

@@ -151,14 +151,14 @@ export const gallery: ModuleGallery = {
         'ProjectMcpSettingsPanel',
       ),
       setup: async () => {
-        const { ProjectDetail } = await import(
-          '@/modules/projects/stores/ProjectDetail.store'
+        const { ProjectDetailDef } = await import(
+          '@/modules/projects/stores/projectDetail'
         )
         const { ProjectMcpSettingsStore } = await import(
           '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
         )
         await holdPatch(() => {
-          ProjectDetail.store.setState({ project: galleryProject } as any)
+          ProjectDetailDef.store.setState({ project: galleryProject } as any)
           ProjectMcpSettingsStore.store.setState({
             loading: true,
             settings: null,
@@ -182,14 +182,14 @@ export const gallery: ModuleGallery = {
         'ProjectMcpSettingsPanel',
       ),
       setup: async () => {
-        const { ProjectDetail } = await import(
-          '@/modules/projects/stores/ProjectDetail.store'
+        const { ProjectDetailDef } = await import(
+          '@/modules/projects/stores/projectDetail'
         )
         const { ProjectMcpSettingsStore } = await import(
           '@/modules/mcp/project-extension/stores/ProjectMcpSettings.store'
         )
         await holdPatch(() => {
-          ProjectDetail.store.setState({ project: galleryProject } as any)
+          ProjectDetailDef.store.setState({ project: galleryProject } as any)
           ProjectMcpSettingsStore.store.setState({
             loading: false,
             settings: {

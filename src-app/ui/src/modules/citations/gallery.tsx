@@ -17,11 +17,11 @@ const galleryProject = { id: 'proj-s4', name: 'Gallery Project' }
 /** Seed the active project so the project-scoped panels mount past their
  *  `if (!project) return null` guard and their effects fetch with a real id. */
 const seedProject = async () => {
-  const { ProjectDetail } = await import(
-    '@/modules/projects/stores/ProjectDetail.store'
+  const { ProjectDetailDef } = await import(
+    '@/modules/projects/stores/projectDetail'
   )
   await holdPatch(() =>
-    ProjectDetail.store.setState({ project: galleryProject } as any),
+    ProjectDetailDef.store.setState({ project: galleryProject } as any),
   )
 }
 

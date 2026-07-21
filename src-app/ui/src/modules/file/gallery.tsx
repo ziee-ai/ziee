@@ -78,14 +78,14 @@ const seedBinary = async (id: string, buf: ArrayBuffer) => {
 
 /** Seed a non-null project + a ProjectFiles state, held. */
 const seedProjectFiles = async (patch: Record<string, unknown>) => {
-  const { ProjectDetail } = await import(
-    '@/modules/projects/stores/ProjectDetail.store'
+  const { ProjectDetailDef } = await import(
+    '@/modules/projects/stores/projectDetail'
   )
   const { ProjectFilesDef } = await import(
     '@/modules/file/project-extension/stores/projectFiles'
   )
   await holdPatch(() => {
-    ProjectDetail.store.setState({
+    ProjectDetailDef.store.setState({
       project: { id: 'proj-s2-0001', name: 'Gallery Project' },
     } as any)
     ProjectFilesDef.store.setState(patch as any)

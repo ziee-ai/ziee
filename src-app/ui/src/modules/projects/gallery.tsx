@@ -30,14 +30,14 @@ async function seedProjectDetail(patch: {
   files?: (typeof deepProjectFiles)[number][]
   error?: string | null
 }): Promise<void> {
-  const { ProjectDetail } = await import(
-    '@/modules/projects/stores/ProjectDetail.store'
+  const { ProjectDetailDef } = await import(
+    '@/modules/projects/stores/projectDetail'
   )
   const { ProjectFilesDef } = await import(
     '@/modules/file/project-extension/stores/projectFiles'
   )
   await holdPatch(() => {
-    ProjectDetail.store.setState({
+    ProjectDetailDef.store.setState({
       project: patch.project,
       loading: false,
       error: patch.error ?? null,
