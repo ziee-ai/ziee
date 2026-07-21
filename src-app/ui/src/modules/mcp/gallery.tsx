@@ -64,11 +64,11 @@ export const gallery: ModuleGallery = {
         { serverId: 'srv-1' },
       ),
       setup: async () => {
-        const { McpToolCalls } = await import(
-          '@/modules/mcp/stores/McpToolCalls.store'
+        const { useMcpToolCallsStore } = await import(
+          '@/modules/mcp/stores/mcpToolCalls'
         )
         await holdPatch(() =>
-          McpToolCalls.store.setState({
+          useMcpToolCallsStore.setState({
             error: 'Failed to load tool calls.',
             calls: [],
             loading: false,
@@ -91,8 +91,8 @@ export const gallery: ModuleGallery = {
         { serverId: 'srv-1' },
       ),
       setup: async () => {
-        const { McpToolCalls } = await import(
-          '@/modules/mcp/stores/McpToolCalls.store'
+        const { useMcpToolCallsStore } = await import(
+          '@/modules/mcp/stores/mcpToolCalls'
         )
         const mk = (
           id: string,
@@ -118,7 +118,7 @@ export const gallery: ModuleGallery = {
           user_id: 'u-1',
         })
         await holdPatch(() =>
-          McpToolCalls.store.setState({
+          useMcpToolCallsStore.setState({
             calls: [
               mk('1', 'search', 'completed', 'chat', 120),
               mk('2', 'fetch', 'failed', 'approval', 40),
