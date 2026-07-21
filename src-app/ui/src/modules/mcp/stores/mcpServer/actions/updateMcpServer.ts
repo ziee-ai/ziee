@@ -1,7 +1,7 @@
 import { ApiClient } from '@/api-client'
 import { type McpServer, type UpdateMcpServerRequest } from '@/api-client/types'
 import { emitMcpServerUpdated } from '@/modules/mcp/events'
-import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
+import { useSystemMcpServersStore } from '@/modules/mcp/stores/systemMcpServer'
 import type { McpServerGet, McpServerSet } from '../state'
 
 export default (set: McpServerSet, _get: McpServerGet) =>

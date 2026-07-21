@@ -1,6 +1,6 @@
 // Only export hooks, not action functions
 export { useMcpStore } from './mcpServer'
-export { useSystemMcpServersStore } from './SystemMcpServer.store'
+export { useSystemMcpServersStore } from './systemMcpServer'
 export { useMcpServerDrawerStore } from './mcpServerDrawer'
 export { useMcpComposerStore } from './McpComposer.store'
 export { useMcpToolCallsStore } from './mcpToolCalls'
