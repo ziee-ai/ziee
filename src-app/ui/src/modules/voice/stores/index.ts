@@ -6,5 +6,5 @@ export { useVoiceModelDownloadProgressStore } from './VoiceModelDownloadProgress
 export { useVoiceModelUpdateStore } from './voiceModelUpdate'
 export { useVoiceModelUploadStore } from './voiceModelUpload'
 export { useVoiceRuntimeVersionStore } from './voiceRuntimeVersion'
-export { useVoiceUpdateStore } from './VoiceUpdate.store'
+export { useVoiceUpdateStore } from './voiceUpdate'
 export { useVoiceUploadModelDrawerStore } from './VoiceUploadModelDrawer.store'
