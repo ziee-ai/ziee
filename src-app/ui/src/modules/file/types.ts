@@ -2,7 +2,7 @@ import type { StoreProxy } from '@ziee/framework/stores'
 import type { useFileStore } from './stores/File.store'
 import { useFilePreviewDrawerStore } from './stores/filePreviewDrawer'
 import type { useFileVersionsStore } from './stores/fileVersions'
-import type { usePdfHighlightStore } from './stores/PdfHighlight.store'
+import type { usePdfHighlightStore } from './stores/pdfHighlight'
 import type { useDeliverablesStore } from './stores/deliverables'
 import type { ProjectFilesDef } from './project-extension/stores/projectFiles'
 
