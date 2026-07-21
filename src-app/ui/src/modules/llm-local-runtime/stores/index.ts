@@ -1,7 +1,7 @@
 export { useRuntimeVersionStore } from './runtimeVersion'
 export { useRuntimeUpdateStore } from './RuntimeUpdate.store'
 export { useRuntimeDownloadDrawerStore } from './RuntimeDownloadDrawer.store'
-export { useRuntimeDeleteConfirmStore } from './RuntimeDeleteConfirm.store'
+export { useRuntimeDeleteConfirmStore } from './runtimeDeleteConfirm'
 export { useRuntimeConfigStore } from './runtimeConfig'
 export { useRuntimeModelUsageStore } from './RuntimeModelUsage.store'
 export { useRuntimeDownloadProgressStore } from './RuntimeDownloadProgress.store'
