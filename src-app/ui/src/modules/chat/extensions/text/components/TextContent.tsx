@@ -6,7 +6,10 @@ import { Stores } from '@ziee/framework/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
-import { chatMarkdownPlugins } from '@/modules/chat/core/utils/chatMarkdownPlugins'
+import {
+  chatMarkdownPlugins,
+  chatRehypePlugins,
+} from '@/modules/chat/core/utils/chatMarkdownPlugins'
 import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 import { citationTokenize } from '@/modules/chat/core/utils/citationTokenize'
 
@@ -44,6 +47,7 @@ export const TextContent = memo(function TextContent({
           isAnimating={!isUser && isStreaming}
           shikiTheme={['github-light-high-contrast', 'github-dark-high-contrast']}
           plugins={chatMarkdownPlugins}
+          rehypePlugins={chatRehypePlugins}
           components={components}
           urlTransform={streamdownUrlTransform}
         >
