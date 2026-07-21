@@ -307,11 +307,11 @@ export const gallery: ModuleGallery = {
         { workflowId: 'wf-1', onSelectRun: () => undefined },
       ),
       setup: async () => {
-        const { WorkflowRuns } = await import(
-          '@/modules/workflow/stores/WorkflowRuns.store'
+        const { useWorkflowRunsStore } = await import(
+          '@/modules/workflow/stores/workflowRuns'
         )
         await holdPatch(() =>
-          WorkflowRuns.store.setState({
+          useWorkflowRunsStore.setState({
             runs: { 'wf-1': [] },
             loading: { 'wf-1': false },
           } as any),
