@@ -4,7 +4,6 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import {
-  useRuntimeDownloadProgressStore,
   } from './stores'
 import './types' // Register event types
 
@@ -49,10 +48,6 @@ export default createModule({
   ],
 
   stores: [
-    {
-      name: 'RuntimeDownloadProgress',
-      store: useRuntimeDownloadProgressStore,
-    },
   ],
 
   slots: {

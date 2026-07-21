@@ -45,52 +45,47 @@
 
 import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
 import type { ChatExtension } from '@/modules/chat/core/extensions'
-import { collectGlobDefaults } from '@ziee/framework/slots'
 
-// Path 1: in-chat extensions.
+// LAZY globs (no `{ eager: true }`): each extension.tsx becomes its OWN chunk
+// instead of being inlined into the eager chat module → the entry chunk. Every
+// extension.tsx statically imports its renderer components, which import their
+// stores, so an EAGER glob dragged that whole subtree (components + stores) into
+// entry. Lazy-globbing keeps it out. Registration still AUTO-STARTS at boot (the
+// IIFE below runs when chat/module.tsx imports this), so extensions are
+// registered well before the lazy `/chat` route renders; `chatExtensionsReady`
+// is exported for anything that must await it.
 const inChatExtensions = import.meta.glob<{ default: ChatExtension }>(
   './*/extension.tsx',
-  { eager: true },
 )
-
-// Path 2: sibling-module extensions at modules/<name>/chat-extension/extension.tsx.
-// Relative pattern is required — `@/` alias isn't supported by import.meta.glob.
 const siblingModuleExtensions = import.meta.glob<{ default: ChatExtension }>(
   '../../*/chat-extension/extension.tsx',
-  { eager: true },
 )
 
-console.log('[Chat Extensions] Auto-discovering extensions...')
-
-// Merge both glob maps + extract default exports via the generic
-// auto-discovery helper (gap G8); the priority-ordering policy stays here.
-const discovered = collectGlobDefaults<ChatExtension>(
-  inChatExtensions,
-  siblingModuleExtensions,
-)
-
-const discoveredExtensions: ChatExtension[] = []
-for (const { path, value: extension } of discovered) {
-  discoveredExtensions.push(extension)
-  console.log(`[Chat Extensions] Discovered: ${extension.name} (${path})`)
-}
-
-// Sort extensions by priority (lower = higher priority)
-const sortedExtensions = discoveredExtensions.sort(
-  (a, b) => (a.priority ?? 100) - (b.priority ?? 100),
-)
-
-// Register extensions in priority order
-for (const extension of sortedExtensions) {
-  chatExtensionRegistry.register(extension, { enabled: true })
-}
-
-console.log(
-  '[Chat Extensions] Registered',
-  chatExtensionRegistry.getExtensions().length,
-  'extensions:',
-  sortedExtensions.map(ext => `${ext.name}(${ext.priority ?? 100})`).join(', '),
-)
+/** Resolves once every discovered chat-extension has been registered. */
+export const chatExtensionsReady: Promise<void> = (async () => {
+  const loaders = { ...inChatExtensions, ...siblingModuleExtensions }
+  const modules = await Promise.all(
+    Object.entries(loaders).map(async ([path, load]) => ({
+      path,
+      ext: (await load()).default,
+    })),
+  )
+  const discoveredExtensions: ChatExtension[] = []
+  for (const { path, ext } of modules) {
+    if (!ext) continue
+    discoveredExtensions.push(ext)
+    console.log(`[Chat Extensions] Discovered: ${ext.name} (${path})`)
+  }
+  discoveredExtensions.sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100))
+  for (const extension of discoveredExtensions) {
+    chatExtensionRegistry.register(extension, { enabled: true })
+  }
+  console.log(
+    '[Chat Extensions] Registered',
+    chatExtensionRegistry.getExtensions().length,
+    'extensions',
+  )
+})()
 
 /**
  * Re-export extension registry for convenience

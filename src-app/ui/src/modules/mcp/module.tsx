@@ -3,8 +3,6 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { useMcpUserPolicyStore } from './stores/mcpUserPolicy'
-import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/mcpServerGroupsAssignmentCard'
-import { useProjectMcpSettingsStore } from '@/modules/mcp/project-extension/stores/projectMcpSettings'
 import {
   useMcpToolCallsStore,
   } from '@/modules/mcp/stores'
@@ -75,18 +73,10 @@ export default createModule({
     // BOOT-EAGER (always-mounted overlay) — must stay registered.
     { name: 'GroupSystemMcpServersAssignment', store: useGroupSystemMcpServersAssignmentStore },
     {
-      name: 'SystemMcpServerGroupCard',
-      store: useSystemMcpServerGroupCardStore,
-    },
-    {
       // Per-server tool-call history (mcp_tool_calls), shown in the
       // McpServerDrawer "Calls" tab. Refetches live on sync:mcp_tool_call.
       name: 'McpToolCalls',
       store: useMcpToolCallsStore,
-    },
-    {
-      name: 'ProjectMcpSettings',
-      store: useProjectMcpSettingsStore,
     },
     {
       // Global MCP user-policy (allowed transports + sandbox flavor

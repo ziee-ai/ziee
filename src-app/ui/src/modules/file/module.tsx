@@ -1,6 +1,5 @@
 import { createModule } from '@ziee/framework'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
-import { useFileStore } from './stores/file'
 import { ProjectFilesDef } from './project-extension/stores/projectFiles'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -57,7 +56,6 @@ export default createModule({
     },
   ],
   stores: [
-    { name: 'File', store: useFileStore },
     // defineStore handle already carries its { name, store } — name once.
     ProjectFilesDef,
   ],

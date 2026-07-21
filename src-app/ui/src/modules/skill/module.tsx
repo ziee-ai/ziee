@@ -3,10 +3,6 @@ import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import {
-  useConversationSkillsStore,
-  useSkillConversationDrawerStore,
-  } from '@/modules/skill/stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
 import { GroupSystemSkillsAssignment as GroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
@@ -45,11 +41,6 @@ export default createModule({
   stores: [
     // BOOT-EAGER (always-mounted overlay) — must stay registered.
     { name: 'GroupSystemSkillsAssignment', store: useGroupSystemSkillsAssignmentStore },
-    { name: 'ConversationSkills', store: useConversationSkillsStore },
-    {
-      name: 'SkillConversationDrawer',
-      store: useSkillConversationDrawerStore,
-    },
   ],
   components: [
     {
