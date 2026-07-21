@@ -2,7 +2,7 @@ import { CloudDownload } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useLlmRepositoryDrawerStore } from '@/modules/llm-repository/components/LlmRepositoryDrawer.store'
-import { useLlmRepositoryStore } from '@/modules/llm-repository/stores/LlmRepository.store'
+import { useLlmRepositoryStore } from '@/modules/llm-repository/stores/llmRepository'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/llm-repository/types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
