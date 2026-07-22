@@ -150,6 +150,11 @@ async fn lit_search_record_doi_feeds_citations_and_is_verified() {
 // under the same conversation scope without interfering.
 #[tokio::test]
 async fn memory_and_lit_search_compose_in_one_conversation() {
+    if crate::common::memory_setup::skip_if_no_embedding_key(
+        "memory_and_lit_search_compose_in_one_conversation",
+    ) {
+        return;
+    }
     let epmc = mock_europepmc_known_doi().await;
     let server = TestServer::start_with_options(TestServerOptions {
         extra_env: vec![
@@ -168,10 +173,19 @@ async fn memory_and_lit_search_compose_in_one_conversation() {
             "lit_search::admin::manage",
             "memory::read",
             "memory::write",
+            "memory::admin::read",
+            "memory::admin::manage",
+            "llm_providers::read",
+            "llm_providers::edit",
+            "llm_models::create",
         ],
     )
     .await;
     configure(&server, &user.token, &["europepmc"]).await;
+
+    // Memory now defaults OFF: enable it deployment-wide + configure the
+    // embedding model (against the local bridge) before remember/recall.
+    crate::common::memory_setup::enable_semantic_memory(&server, &user.token).await;
 
     let conv = uuid::Uuid::new_v4().to_string();
 

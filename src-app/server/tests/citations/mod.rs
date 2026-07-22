@@ -815,14 +815,32 @@ async fn test_delete_citation_cascades_project_bibliography_link() {
 // independently under the same conversation scope.
 #[tokio::test]
 async fn memory_and_citations_compose_for_one_user() {
+    if crate::common::memory_setup::skip_if_no_embedding_key("memory_and_citations_compose_for_one_user")
+    {
+        return;
+    }
     let server = TestServer::start().await;
     let user = create_user_with_permissions(
         &server,
         "mem_cit_user",
-        &["citations::use", "citations::manage", "memory::read", "memory::write"],
+        &[
+            "citations::use",
+            "citations::manage",
+            "memory::read",
+            "memory::write",
+            "memory::admin::read",
+            "memory::admin::manage",
+            "llm_providers::read",
+            "llm_providers::edit",
+            "llm_models::create",
+        ],
     )
     .await;
     let conv = Uuid::new_v4().to_string();
+
+    // Memory now defaults OFF: enable it deployment-wide + configure the
+    // embedding model (against the local bridge) before remember/recall.
+    crate::common::memory_setup::enable_semantic_memory(&server, &user.token).await;
 
     // Memory: remember + recall.
     let remember = reqwest::Client::new()

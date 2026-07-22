@@ -6,6 +6,7 @@
 //! deps that only server tests need.
 
 pub mod chat_stream_probe;
+pub mod memory_setup;
 pub mod oai_capture_stub;
 pub mod stub_chat;
 pub mod stub_engine;

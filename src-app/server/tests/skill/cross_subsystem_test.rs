@@ -42,6 +42,11 @@ async fn call(
 
 #[tokio::test]
 async fn skill_files_and_memory_compose_in_one_conversation() {
+    if crate::common::memory_setup::skip_if_no_embedding_key(
+        "skill_files_and_memory_compose_in_one_conversation",
+    ) {
+        return;
+    }
     let (server, _mock) = server_with_skill_catalog().await;
     // One identity with broad perms drives every subsystem.
     let user = create_user_with_permissions(
@@ -56,6 +61,11 @@ async fn skill_files_and_memory_compose_in_one_conversation() {
             "files::write",
             "memory::read",
             "memory::write",
+            "memory::admin::read",
+            "memory::admin::manage",
+            "llm_providers::read",
+            "llm_providers::edit",
+            "llm_models::create",
         ],
     )
     .await;
@@ -63,6 +73,10 @@ async fn skill_files_and_memory_compose_in_one_conversation() {
     // catalog server; ensure catalog is active before install.
     super::refresh_catalog(&server, &user.token).await;
     install_fixture_skill(&server, &user.token).await;
+
+    // Memory now defaults OFF: enable it deployment-wide + configure the
+    // embedding model (against the local bridge) before remember/recall.
+    crate::common::memory_setup::enable_semantic_memory(&server, &user.token).await;
 
     // A single conversation shared across all three subsystems.
     let conv_res = reqwest::Client::new()
