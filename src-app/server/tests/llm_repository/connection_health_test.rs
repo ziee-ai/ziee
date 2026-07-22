@@ -724,9 +724,12 @@ async fn create_enabled_huggingface_repo_probes_live_and_persists_healthy() {
     let body: Value = reqwest::Client::new()
         .post(server.api_url("/llm-repositories"))
         .header("Authorization", format!("Bearer {}", admin.token))
+        // Unique URL: https://huggingface.co is already seeded, so the exact URL
+        // would 409 DUPLICATE_REPOSITORY. The create-flow live probe uses
+        // auth_test_api_endpoint (whoami-v2), independent of this URL.
         .json(&json!({
             "name": "live-hf",
-            "url": "https://huggingface.co",
+            "url": format!("https://huggingface.co/repo-{}", Uuid::new_v4()),
             "auth_type": "bearer_token",
             "auth_config": {
                 "token": api_key,
@@ -902,9 +905,13 @@ async fn test_by_id_real_huggingface_credentials_probe_succeeds() {
     let created: Value = reqwest::Client::new()
         .post(server.api_url("/llm-repositories"))
         .header("Authorization", format!("Bearer {}", admin.token))
+        // Unique URL: a "Hugging Face Hub" repo at https://huggingface.co is
+        // already seeded (llm_repository seed), so reusing that exact URL 409s
+        // DUPLICATE_REPOSITORY. The live probe uses auth_test_api_endpoint, not
+        // this URL, so a unique URL exercises the same create+probe path.
         .json(&json!({
             "name": "hf-live",
-            "url": "https://huggingface.co",
+            "url": format!("https://huggingface.co/repo-{}", Uuid::new_v4()),
             "auth_type": "api_key",
             "enabled": false,
             "auth_config": {
