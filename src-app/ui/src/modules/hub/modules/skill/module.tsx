@@ -1,7 +1,6 @@
 import { BookOpen } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
-import { useHubSkillsStore } from '@/modules/hub/modules/skill/stores/hub-skills-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/skill/types'
 
@@ -20,7 +19,7 @@ export default createModule({
   // smart-loading gate (build-lifted into the manifest)
   shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
   dependencies: [],
-  stores: [{ name: 'HubSkills', store: useHubSkillsStore }],
+  stores: [],
   slots: {
     hubTabs: [
       {
@@ -34,6 +33,7 @@ export default createModule({
           refresh: Permissions.HubCatalogManage,
         },
         refresh: async () => {
+          const { useHubSkillsStore } = await import('@/modules/hub/modules/skill/stores/hub-skills-store')
           await useHubSkillsStore.getState().refresh()
         },
       },

@@ -1,7 +1,6 @@
 import { Workflow } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
-import { useHubWorkflowsStore } from '@/modules/hub/modules/workflow/stores/hub-workflows-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/workflow/types'
 
@@ -20,7 +19,7 @@ export default createModule({
   // smart-loading gate (build-lifted into the manifest)
   shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
   dependencies: [],
-  stores: [{ name: 'HubWorkflows', store: useHubWorkflowsStore }],
+  stores: [],
   slots: {
     hubTabs: [
       {
@@ -34,6 +33,7 @@ export default createModule({
           refresh: Permissions.HubCatalogManage,
         },
         refresh: async () => {
+          const { useHubWorkflowsStore } = await import('@/modules/hub/modules/workflow/stores/hub-workflows-store')
           await useHubWorkflowsStore.getState().refresh()
         },
       },

@@ -2,7 +2,6 @@ import { createModule } from '@ziee/framework'
 import { Plug } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { hasPermissionNow } from '@/core/permissions'
-import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/mcp/types'
 import { McpUserPolicy } from '@/modules/mcp/stores/mcpUserPolicy'
@@ -22,12 +21,7 @@ export default createModule({
   // smart-loading gate (build-lifted into the manifest)
   shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
   dependencies: [],
-  stores: [
-    {
-      name: 'HubMcpServers',
-      store: useHubMcpServersStore,
-    },
-  ],
+  stores: [],
   slots: {
     hubTabs: [
       {
@@ -59,6 +53,7 @@ export default createModule({
           return !!policy && policy.allowed_transports.length > 0
         },
         refresh: async () => {
+          const { useHubMcpServersStore } = await import('@/modules/hub/modules/mcp/stores/hub-mcp-servers-store')
           await useHubMcpServersStore.getState().refreshFromGitHub()
         },
       },

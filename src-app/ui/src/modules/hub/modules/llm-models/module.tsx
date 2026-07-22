@@ -1,7 +1,6 @@
 import { Server } from 'lucide-react'
 import { createModule } from '@ziee/framework'
 import { Permissions } from '@/api-client/permissions'
-import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/llm-models/types'
 
@@ -18,12 +17,7 @@ export default createModule({
   // smart-loading gate (build-lifted into the manifest)
   shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
   dependencies: [],
-  stores: [
-    {
-      name: 'HubModels',
-      store: useHubModelsStore,
-    },
-  ],
+  stores: [],
   slots: {
     hubTabs: [
       {
@@ -37,6 +31,7 @@ export default createModule({
           refresh: Permissions.HubModelsRefresh,
         },
         refresh: async () => {
+          const { useHubModelsStore } = await import('@/modules/hub/modules/llm-models/stores/hub-models-store')
           await useHubModelsStore.getState().refreshFromGitHub()
         },
       },

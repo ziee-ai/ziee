@@ -1,7 +1,6 @@
 import { Bot } from 'lucide-react'
 import { createModule } from '@ziee/framework'
 import { Permissions } from '@/api-client/permissions'
-import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/assistants/types'
 
@@ -20,12 +19,7 @@ export default createModule({
   // smart-loading gate (build-lifted into the manifest)
   shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
   dependencies: [],
-  stores: [
-    {
-      name: 'HubAssistants',
-      store: useHubAssistantsStore,
-    },
-  ],
+  stores: [],
   slots: {
     hubTabs: [
       {
@@ -39,6 +33,7 @@ export default createModule({
           refresh: Permissions.HubAssistantsRefresh,
         },
         refresh: async () => {
+          const { useHubAssistantsStore } = await import('@/modules/hub/modules/assistants/stores/hub-assistants-store')
           await useHubAssistantsStore.getState().refreshFromGitHub()
         },
       },

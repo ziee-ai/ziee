@@ -2,7 +2,6 @@ import { createModule } from '@ziee/framework'
 import { LayoutGrid } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 
 // "Installed" hub tab. Shows every tracked install (models, assistants,
 // MCP servers) the user can see — their own user-scoped installs plus,
@@ -48,6 +47,7 @@ export default createModule({
           },
         },
         refresh: async () => {
+          const { useHubInstalledStore } = await import('@/modules/hub/stores/hub-installed-store')
           await useHubInstalledStore.getState().loadInstalled()
         },
       },
