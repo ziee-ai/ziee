@@ -116,9 +116,6 @@ export function ModelSelector() {
   // to fit the composer toolbar; the full ErrorState card is for sections.
   if (error && providers.length === 0) {
     return (
-      // `min-w-0` mirrors the loaded branch below: the composer's right toolbar
-      // group is shrinkable, so this wrapper must be able to shrink with it
-      // rather than overflow into the Send button at narrow widths.
       <div data-testid="model-selector" className="min-w-0">
         <Tooltip content="Couldn't load models. Click to try again.">
           <Button
@@ -127,7 +124,18 @@ export function ModelSelector() {
             onClick={() => void Stores.ModelPicker.loadProviders()}
             loading={loading}
             data-testid="ullm-model-retry"
-            className="text-[15px] max-w-[200px] text-destructive"
+            // `max-w-full truncate` is what actually bounds this, NOT the
+            // wrapper's `min-w-0`: the wrapper is a plain block child of a
+            // block, so its min-width is already 0 and setting it changes
+            // nothing. The kit Button is `inline-flex shrink-0
+            // whitespace-nowrap`, so its shrink-to-fit width floors at
+            // min-content (~175px) and `max-w-[200px]` never binds — in a
+            // narrow pane it would run underneath the Send button, which paints
+            // over it and makes the label unreadable. `w-full` opts out of
+            // shrink-to-fit so the button follows its (block) wrapper's width,
+            // `max-w` keeps the old 200px ceiling on a wide composer, and
+            // `truncate` clips rather than overflowing when neither is enough.
+            className="text-[15px] w-full max-w-[200px] truncate text-destructive"
           >
             Models unavailable
           </Button>
@@ -176,10 +184,12 @@ export function ModelSelector() {
         // (measured: a 320px trigger inside a 274px composer). That is why the
         // kit sets `w-full` in the first place.
         //
-        // `max-w` is the absolute soft ceiling so one pathological name can't
-        // swallow a wide toolbar; the composer's right group carries the
-        // relative (`60%`) bound that protects the left actions.
-        className="text-[15px] min-w-0 max-w-[20rem] border-0 shadow-none bg-transparent"
+        // `max-w` is the soft ceiling so one pathological name can't swallow a
+        // wide toolbar. What protects the toolbar's LEFT actions is not a bound
+        // here but the left group's own content-derived minimum in ChatInput —
+        // it never shrinks below its un-shrinkable children, so the deficit
+        // lands on this trigger instead.
+        className="text-[15px] max-w-[20rem] border-0 shadow-none bg-transparent"
       />
       {pendingProviderForKey && (
         <ProviderApiKeyModal

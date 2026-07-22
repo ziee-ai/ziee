@@ -78,19 +78,28 @@ export function ChatInput({
         {/* Toolbar — the left (secondary) group yields space first so the right
             send group is never clipped on narrow widths (chat panel or mobile). */}
         <div className="flex justify-between items-center gap-2 px-2 pt-1 pb-2">
-          {/* Left: + dropdown + other toolbar actions. `flex-1` + a min-width
-              floor lets the keyboard-tips text truncate instead of pushing Send
-              off the edge, while guaranteeing the group never drops below the
-              "+" button it must always show.
+          {/* Left: + dropdown + other toolbar actions. `min-w-10` (40px) floors
+              the group at the "+" button it must always show (38px: a `size-4`
+              icon + `px-2.5` + the kit Button's 1px transparent border).
 
-              The floor (`min-w-9` = 36px = the "+" button's `h-8` + `px-2.5`)
-              replaces a plain `min-w-0`. With a zero floor this group — whose
-              basis is 0, so it never competes for space — was squeezed to ~2px
-              by a long model name and its `shrink-0` "+" button overflowed. The
-              floor makes the RIGHT group absorb the deficit instead, which is
-              the intended yield order. The tips text still truncates: it lives
-              in the actions slot below, which keeps its own `min-w-0`. */}
-          <div className="flex items-center gap-1 min-w-9 flex-1">
+              A plain `min-w-0` was the bug: this group's basis is 0, so it never
+              competes for space and only receives what the right group leaves
+              over — a long model name squeezed it to ~2px and its `shrink-0` "+"
+              button overflowed. Dropping the override entirely does NOT work
+              either (measured: Send pushed 150px outside the composer): a flex
+              container's min-content sums its children's MIN-CONTENT sizes, and
+              `min-width:0` on the keyboard-tips only permits it to be shrunk
+              during layout — it does not reduce that contribution, so the
+              group floored at the full `nowrap` width of the tips text.
+
+              KNOWN LIMIT: this floor covers the always-present "+" only. With
+              the voice extension enabled, MicButton adds another `shrink-0`
+              38px button into `toolbar_actions`, so at extreme narrowness it can
+              still overflow. Protecting it would need a floor that knows which
+              extensions are registered; the durable fix is for the tips element
+              to contribute 0 (e.g. `w-0 flex-1`), which lives in the keyboard
+              extension and is out of scope here. */}
+          <div className="flex items-center gap-1 min-w-10 flex-1">
             {/* Tooltip anchors to the wrapper span (a distinct DOM node), not
                 the Popover-trigger button — two triggers on ONE node thrash and
                 flicker. The button suppresses its own aria-label auto-tooltip via

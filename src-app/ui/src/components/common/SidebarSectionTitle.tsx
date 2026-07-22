@@ -21,15 +21,23 @@ interface SidebarSectionTitleProps {
  * headings form their own vertical scan line down the rail. That is the
  * relationship "Recent chats" already had, now applied consistently.
  *
- * Rendered as a real `<h2>`, not a styled `<div>`. Because the caption is a
- * SIBLING of the section's `<nav>` (that is what removes the kit's stacked
- * padding), a div would leave the text stranded outside every landmark on the
- * page: skipped by landmark navigation, and — being neither heading nor
- * labelled region — unreachable by heading-key skimming, which is how a rail
- * is normally scanned. A heading also gives the recent-chats section a name in
- * its error / loading / empty states, where the labelled `<ul>` is not rendered
- * at all and no accessible name would otherwise exist. Tailwind's preflight
- * strips default heading size/margin, so the element renders exactly as before.
+ * Rendered as a real `<h2>`, not a styled `<div>`, and that is a deliberate
+ * mitigation rather than a free win. Removing the kit's stacked padding means
+ * the caption is now a SIBLING of the section's `<nav>` instead of living
+ * inside it, so the text sits outside every landmark on the page — the kit used
+ * to render it within the `<nav aria-label=…>` it names. A heading does not put
+ * it back inside that landmark; it gives the stranded text a role, so it is
+ * still reachable by heading-key skimming, which is how a rail is actually
+ * scanned. It also gives the recent-chats section a name in its error /
+ * loading / empty states, where the labelled `<ul>` is not rendered at all and
+ * no accessible name would otherwise exist.
+ *
+ * Tailwind's preflight zeroes heading margin and sets `font-size`/`font-weight`
+ * to `inherit`, so the element renders pixel-identically to the previous div.
+ *
+ * Not verified by a gate: the axe pass runs `wcag2a`/`wcag2aa` only (so the
+ * best-practice `region` rule is off) and the gallery never renders the
+ * sidebar, so this is reasoned from the DOM rather than measured.
  */
 export function SidebarSectionTitle({
   children,
