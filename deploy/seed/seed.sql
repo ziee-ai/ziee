@@ -11,7 +11,8 @@
 --      the default Users group.
 --   2. Fills + enables the pre-seeded `google` auth provider (app-compatible
 --      pgcrypto encryption of the client secret).
---   3. Reduces the default Users group's permissions (hides feature surfaces).
+--   3. Reduces the default Users group's permissions (hides feature surfaces),
+--      then re-asserts files::* on it (cutover restore, issue #173).
 --   4. Creates the first admin (create-only; never reverts a later UI change).
 --
 -- SECRETS: this file contains ONLY psql `:placeholders` — NEVER a secret literal.
@@ -189,6 +190,26 @@ UPDATE groups
             ORDER BY ord),
        updated_at = NOW()
  WHERE name = 'Users';
+
+-- ── 4b. Restore file permissions to the Users group ──────────────────────────
+-- files::* is granted by the file_grant_permissions migration, but the deploy's
+-- data-only DB cutover overwrites the groups row and can drop it, so normal
+-- users lose file upload (issue #173). Re-assert here — additive + idempotent.
+-- The `@>` guard makes this a TRUE no-op (no row rewrite, no updated_at bump)
+-- once all six are present, so it only writes when something is actually
+-- missing. Admins are unaffected (Administrators = '{*}').
+UPDATE groups
+   SET permissions = ARRAY(SELECT DISTINCT unnest(
+         permissions || ARRAY[
+           'files::read','files::upload','files::download',
+           'files::delete','files::preview','files::generate_token'
+         ])),
+       updated_at = NOW()
+ WHERE name = 'Users' AND is_system = TRUE
+   AND NOT (permissions @> ARRAY[
+           'files::read','files::upload','files::download',
+           'files::delete','files::preview','files::generate_token'
+         ]);
 
 -- ── 5. First admin — create-only ─────────────────────────────────────────────
 -- bcrypt via pgcrypto (cost 12 = the app's DEFAULT_COST → $2a$12$…, verify-compatible
