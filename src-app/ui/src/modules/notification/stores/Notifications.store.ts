@@ -6,6 +6,7 @@
 // unchanged.
 import { ApiClient } from '@/api-client'
 import { Permissions } from '@/api-client/permissions'
+import { createStoreProxy } from '@ziee/framework/stores'
 import {
   createNotificationsStore,
   notificationsSeam,
@@ -32,5 +33,13 @@ export const Notifications = createNotificationsStore({
 
 export const useNotificationsStore = Notifications.store
 
-// SEAM: inject into the SDK notification widgets (replaces the old global Stores.Notifications).
-notificationsSeam.set(Notifications as unknown as Parameters<typeof notificationsSeam.set>[0])
+// SEAM: inject into the SDK notification widgets (replaces the old global
+// Stores.Notifications). `createNotificationsStore` returns the defineStore
+// HANDLE (no reactive fields), but the widgets read `.items`/`.unread`
+// reactively — so inject a store PROXY (what `Stores.Notifications` used to
+// resolve to), not the bare handle.
+notificationsSeam.set(
+  createStoreProxy(
+    Notifications.store,
+  ) as unknown as Parameters<typeof notificationsSeam.set>[0],
+)

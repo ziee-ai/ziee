@@ -16,7 +16,7 @@ export default createModule({
     description: 'Hub catalog for LLM models',
   },
   // smart-loading gate (build-lifted into the manifest)
-  shouldLoad: (ctx) => ctx.isAuthenticated,
+  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
   dependencies: [],
   stores: [
     {
