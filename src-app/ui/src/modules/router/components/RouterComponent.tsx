@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react'
+import { useEffect, type ComponentType, type ReactNode } from 'react'
 import {
   BrowserRouter,
   Routes,
@@ -6,10 +6,12 @@ import {
   Navigate,
   Outlet,
   Link,
+  useLocation,
 } from 'react-router-dom'
 import { Button, Result } from '@ziee/kit'
 import { ModuleSystem } from '@ziee/framework/stores'
 import { useRoutesStore } from '@/modules/router/stores/routes-store'
+import { ensureModuleForPath } from '@/modules/loader'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
 import { usePermission } from '@/core/permissions'
@@ -80,6 +82,22 @@ function renderRouteElement(route: RouteConfig<any>) {
  * - Wraps protected routes with the registered `routeGuards`
  * - Renders routes with their layouts
  */
+/**
+ * Route-driven safety net (smart loading): on navigation to a path no
+ * currently-registered module owns, load the manifest module that DOES own it
+ * (a deep-link that arrives before the reactive load wave, or a page whose
+ * predicate hasn't fired). No-op when a loaded module already owns the path or
+ * nothing in the manifest matches (a genuine 404). The freshly-registered
+ * module's routes appear reactively, so the route resolves on the next render.
+ */
+function RouteModuleLoader() {
+  const location = useLocation()
+  useEffect(() => {
+    void ensureModuleForPath(location.pathname)
+  }, [location.pathname])
+  return null
+}
+
 export function RouterComponent() {
   const routes = useRoutesStore(s => s.routes) as RouteConfig<any>[]
 
@@ -184,6 +202,7 @@ export function RouterComponent() {
 
   return (
     <BrowserRouter>
+      <RouteModuleLoader />
       {routerEffects.map(({ id, component: Effect }) => (
         <Effect key={id} />
       ))}
