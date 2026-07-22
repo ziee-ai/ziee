@@ -293,17 +293,25 @@ async fn test_fts_rebuild_trigger_and_status() {
         trigger.text().await.unwrap_or_default()
     );
 
-    // After a synchronous rebuild (no memories), status reports completion
-    // (not in progress, completed_at set).
-    let s1: Value = client
-        .get(server.api_url("/memory/admin/fts/rebuild/status"))
-        .header("Authorization", &bearer)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    // The trigger dispatches the rebuild asynchronously (202 Accepted), so poll
+    // the status until the worker finishes (empty table → quick, but not
+    // instant). Then it reports completion (not in progress, completed_at set).
+    let mut s1 = serde_json::Value::Null;
+    for _ in 0..50 {
+        s1 = client
+            .get(server.api_url("/memory/admin/fts/rebuild/status"))
+            .header("Authorization", &bearer)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        if s1["in_progress"] == false && !s1["completed_at"].is_null() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
     assert_eq!(s1["in_progress"], false, "rebuild finished: {s1}");
     assert!(!s1["completed_at"].is_null(), "completed_at must be set after a rebuild: {s1}");
 }

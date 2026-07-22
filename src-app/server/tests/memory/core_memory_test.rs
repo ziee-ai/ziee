@@ -213,8 +213,14 @@ async fn test_core_memory_endpoints_require_permission() {
     // A user holding neither memory::core::read nor memory::core::write must be
     // rejected with 403 on every core-memory endpoint (perm-gate coverage —
     // the module had no test asserting the RequirePermissions gate fires).
+    // Use `create_user_with_only_permissions` (NOT `_with_permissions`): the
+    // memory grant migration (…146070) gives memory::core::{read,write} to the
+    // system `Users` group, which every registered user joins — so a
+    // `_with_permissions(&[])` user WOULD still hold the perm via Users and get
+    // 200. `_with_only_permissions` drops the user from Users, leaving a
+    // genuinely unpermitted user.
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(
+    let user = crate::common::test_helpers::create_user_with_only_permissions(
         &server,
         "core_noperm",
         &[],
@@ -610,7 +616,9 @@ async fn test_core_memory_blocks_are_isolated_per_user() {
         .send()
         .await
         .unwrap();
-    assert_eq!(del.status(), 200, "bob deletes his own block");
+    // DELETE returns 204 No Content (ApiResult<()>), per the DELETE-handler
+    // convention — not 200.
+    assert_eq!(del.status(), 204, "bob deletes his own block");
 
     let alice_after = list(alice.token.clone()).await;
     assert_eq!(alice_after.len(), 1, "alice's block survives bob's delete");
