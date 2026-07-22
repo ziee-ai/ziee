@@ -718,3 +718,31 @@ pub async fn delete_hub_tracking(
 
     Ok(())
 }
+
+/// In-transaction twin of [`delete_hub_tracking`]. The `replace_existing`
+/// system-MCP re-install deletes the prior server AND creates its
+/// replacement in ONE transaction; the prior server's `hub_entities` row
+/// must be removed in that same transaction, BEFORE the new
+/// `track_hub_entity_in_tx` insert, or the insert trips the
+/// `uniq_hub_system_mcp_install` partial unique index (`hub_id` WHERE
+/// `entity_type = 'mcp_server' AND created_by IS NULL`) and the whole
+/// install 409s. The event-driven `CleanupHubEntitiesHandler` can't help
+/// here — it runs post-commit, so within the tx the stale tracking row is
+/// still visible. That post-commit cleanup then becomes an idempotent no-op.
+pub async fn delete_hub_tracking_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    entity_type: HubEntityType,
+    entity_id: Uuid,
+) -> Result<(), AppError> {
+    let entity_type_str = entity_type.as_str();
+
+    sqlx::query!(
+        "DELETE FROM hub_entities WHERE entity_type = $1 AND entity_id = $2",
+        entity_type_str,
+        entity_id
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
