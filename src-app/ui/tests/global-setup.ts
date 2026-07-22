@@ -223,9 +223,20 @@ export default async function globalSetup(_config: FullConfig) {
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+// Smart-loading needs the module manifest (\`virtual:ziee-module-manifest\`,
+// imported by src/modules/loader.ts) — without this plugin the build fails to
+// resolve that virtual id. preloadGraphPlugin emits the idle-prefetch graph so
+// the prod-mode e2e build matches prod (and doesn't 404 on the graph fetch).
+import { moduleManifestPlugin } from ${JSON.stringify(resolve(uiRoot, 'plugins/vite-plugin-module-manifest.js'))}
+import { preloadGraphPlugin } from ${JSON.stringify(resolve(uiRoot, 'plugins/vite-plugin-preload-graph.js'))}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    moduleManifestPlugin({ srcDir: ${JSON.stringify(srcRoot)} }),
+    preloadGraphPlugin(),
+  ],
   root: ${JSON.stringify(srcRoot)},
   cacheDir: ${JSON.stringify(resolve(uiRoot, 'node_modules/.vite-e2e-build'))},
   resolve: {
