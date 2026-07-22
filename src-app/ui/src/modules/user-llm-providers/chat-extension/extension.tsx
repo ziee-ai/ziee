@@ -78,8 +78,13 @@ const modelExtension: ChatExtension = createExtension({
       '@/modules/user-llm-providers/modelPicker'
     )
     const key = ctx.conversationId ?? newChatModelKey(ctx.paneId)
+    // getModelId/defaultModelId are LAZY store actions → they return a Promise
+    // (the dispatcher loads the action chunk first). They MUST be awaited: using
+    // the Promise directly makes `model_id` serialize to `{}`, so the backend
+    // rejects the conversation-create with 422 "model_id: invalid type: map".
     const modelId =
-      ModelPicker.getModelId(key) ?? ModelPicker.defaultModelId()
+      (await ModelPicker.getModelId(key)) ??
+      (await ModelPicker.defaultModelId())
     if (!modelId) {
       throw new Error('No model selected')
     }
