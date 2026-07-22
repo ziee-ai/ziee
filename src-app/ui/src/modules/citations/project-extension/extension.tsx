@@ -4,11 +4,25 @@
 // mirrors file/project-extension/extension.tsx. Triggered both by the projects
 // auto-discovery glob and a direct import from citations/module.tsx.
 
+import { lazy } from 'react'
 import { Book } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { projectExtensionRegistry } from '@/modules/projects/core/extensions'
-import { ProjectBibliographyInlinePreview } from './components/ProjectBibliographyInlinePreview'
-import { ProjectBibliographyManagePanel } from './components/ProjectBibliographyManagePanel'
+
+// Lazy: these panels (+ the ProjectDetail store they pull) load when the
+// project Knowledge area renders, not at app boot — the projects auto-discovery
+// glob is eager, so a value import here would ride every page's bundle (chat
+// home included). The projects registry wraps panels in <Suspense>.
+const ProjectBibliographyInlinePreview = lazy(() =>
+  import('./components/ProjectBibliographyInlinePreview').then(m => ({
+    default: m.ProjectBibliographyInlinePreview,
+  })),
+)
+const ProjectBibliographyManagePanel = lazy(() =>
+  import('./components/ProjectBibliographyManagePanel').then(m => ({
+    default: m.ProjectBibliographyManagePanel,
+  })),
+)
 
 projectExtensionRegistry.register({
   name: 'citations',

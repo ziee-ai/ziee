@@ -2,8 +2,19 @@ import { BookOpen } from 'lucide-react'
 import { usePlusDropdown } from '@/modules/chat/components/PlusDropdownContext'
 import { PlusMenuItem } from '@/modules/chat/components/PlusMenuItem'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
-import { SkillConversationDrawer } from '@/modules/skill/components/SkillConversationDrawer'
+import { Suspense, lazy } from 'react'
 import { SkillConversationDrawer as SkillConversationDrawerStore } from '@/modules/skill/stores/skillConversationDrawer'
+import { useDelayedFalse } from '@/hooks/useDelayedFalse'
+
+// Lazy body: SkillConversationDrawer pulls in SkillDetailDrawer + the skills
+// panel — all opened on demand from the composer, so they must not ride the
+// chat bundle. The drawer store is already loaded here, so gating the mount on
+// its open state is free; mount the body only once a skills drawer is opened.
+const SkillConversationDrawer = lazy(() =>
+  import('@/modules/skill/components/SkillConversationDrawer').then(m => ({
+    default: m.SkillConversationDrawer,
+  })),
+)
 import { Chat } from '@/modules/chat/core/stores/chatBridge'
 
 /**
@@ -51,6 +62,16 @@ export function SkillConversationDrawerHost() {
   const pane = useChatPaneOrNull()
   const chat = (pane?.store ?? Chat) as typeof Chat
   const conversation = chat.conversation
-  if (!conversation?.id) return null
-  return <SkillConversationDrawer conversationId={conversation.id} />
+  // Gate the lazy body on THIS pane's drawer being open (kept mounted briefly
+  // after close for the exit animation). Reads the already-loaded store, so the
+  // heavy chunk downloads only when the user opens the skills drawer here.
+  const open = useDelayedFalse(
+    () => SkillConversationDrawerStore.openConversationId === conversation?.id,
+  )
+  if (!conversation?.id || !open) return null
+  return (
+    <Suspense fallback={null}>
+      <SkillConversationDrawer conversationId={conversation.id} />
+    </Suspense>
+  )
 }

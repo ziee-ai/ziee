@@ -14,7 +14,7 @@ import type { McpToolCall } from '@/modules/mcp/stores/mcpComposer'
 import type { MessageContent, MessageContentDataToolUse, MessageContentDataToolResult, MessageWithContent, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/mcp/chat-extension/components/ToolCallPendingApprovalContent'
 import { McpMenuItem } from '@/modules/mcp/chat-extension/components/McpMenuItem'
-import { McpConfigModal } from '@/modules/mcp/components/McpConfigModal'
+import { McpConfigModalMount } from '@/modules/mcp/chat-extension/components/McpConfigModalMount'
 import { McpStatusRow } from '@/modules/mcp/chat-extension/components/McpStatusRow'
 import { McpInitializer } from '@/modules/mcp/chat-extension/components/McpInitializer'
 import { ElicitationFormContent } from '@/modules/mcp/chat-extension/components/ElicitationFormContent'
@@ -1208,7 +1208,7 @@ const mcpExtension: ChatExtension = createExtension({
     toolbar_status: { component: McpStatusRow, order: 10 },
     // The config modal is hosted from an always-mounted composer slot (NOT the
     // "+" dropdown item) so it survives the dropdown closing on click.
-    input_area_suffix: { component: McpConfigModal, order: 20 },
+    input_area_suffix: { component: McpConfigModalMount, order: 20 },
   },
 
   cleanup: async (ctx) => {

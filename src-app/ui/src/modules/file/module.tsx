@@ -1,6 +1,5 @@
 import { createModule } from '@ziee/framework'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
-import { ProjectFilesDef } from './project-extension/stores/projectFiles'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { useOverlayOpen } from '@/core/overlays/overlayVisibility'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -57,10 +56,11 @@ export default createModule({
       layout: AppLayoutDef,
     },
   ],
-  stores: [
-    // defineStore handle already carries its { name, store } — name once.
-    ProjectFilesDef,
-  ],
+  // NOTE: ProjectFilesDef (the project↔file attachment store) is a
+  // registerLazyStore proxy — it self-registers when a project-detail surface
+  // imports it. Listing it here loaded it onto every page (chat home included)
+  // at file-module registration, so it's intentionally NOT registered here.
+  stores: [],
   components: [
     {
       // Global file-preview drawer — FileCard's default click opens
