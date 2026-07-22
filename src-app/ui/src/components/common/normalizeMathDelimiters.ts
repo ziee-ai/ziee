@@ -259,8 +259,23 @@ function normalizeDisplayMath(md: string): string {
  * every one of which degrades to "leave the text exactly as it renders today".
  *
  * MUST run after `normalizeDisplayMath` — see the module header.
+ *
+ * KNOWN LIMIT of the paragraph guard: `preprocessMarkdown` splits on code fences
+ * and inline-code spans BEFORE calling us, so a paragraph interrupted by an
+ * inline-code span arrives as two separate strings and a live `$` on the far side
+ * of that span is invisible here. Deliberately not chased: excluding `$` that
+ * lives INSIDE code is correct (it isn't live math), the residual case needs an
+ * unpaired `$`, an inline-code span, and inline math in one paragraph, and the
+ * result is the same mangling markdown already produces today for a lone `$`
+ * beside any `$…$` span. The same part-local reasoning applies to `lineHead`
+ * below, exactly as it already does in the display pass.
  */
 function normalizeInlineMath(md: string): string {
+  // One O(n) scan instead of a per-match paragraph scan: with no live `$` in the
+  // string at all, no paragraph can contain one. This is the overwhelmingly
+  // common case, and it keeps the guard off the hot path during streaming.
+  const anyDollar = hasLiveDollar(md)
+
   return md.replace(
     INLINE_MATH_RE,
     (whole: string, body: string, offset: number, str: string) => {
@@ -287,7 +302,9 @@ function normalizeInlineMath(md: string): string {
 
       // The hijack guard — last because it is the only one that scans beyond the
       // match itself.
-      if (paragraphHasLiveDollar(str, offset, offset + whole.length)) return whole
+      if (anyDollar && paragraphHasLiveDollar(str, offset, offset + whole.length)) {
+        return whole
+      }
 
       return `$${inner}$`
     },

@@ -342,11 +342,15 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
         'Pattern \\(a\\|b\\) matched 4 lines.',
     )
     const bubble = assistantBubble(page)
-    // The two prose cases became equations...
+    // The two prose cases became equations — exactly two of them.
     await expect(bubble.locator('.katex').first()).toBeVisible({ timeout: 10000 })
     expect(
       await bubble.evaluate(el => el.querySelectorAll('.katex').length),
-    ).toBeGreaterThan(0)
+    ).toBe(2)
+    // ...and the sed line's parentheses are GONE, which is the discriminator: a
+    // `.katex` count alone would also pass if some unrelated span had converted.
+    // `s/(foo)/bar/` is what this rendered as BEFORE inline conversion existed.
+    await expect(bubble).not.toContainText("s/(foo)/bar/")
     // ...but the regex line is untouched, parens and pipe intact, exactly as
     // markdown has always rendered it.
     await expect(bubble).toContainText('Pattern (a|b) matched 4 lines.')
