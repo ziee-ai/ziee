@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { OverlayScrollbarsComponentRef } from 'overlayscrollbars-react'
 import {
@@ -25,6 +25,7 @@ import {
   chatExtensionRegistry,
   useConversationMenuContributions,
 } from '@/modules/chat/core/extensions'
+import { useChatExtensionsReady } from '@/modules/chat/extensions'
 import { ChatHistory } from '@/modules/chat/stores/chatHistory'
 
 // INITIAL height estimate for one recent-chat row: the Menu row button is
@@ -355,10 +356,64 @@ export function RecentConversationsWidget() {
  * The wrapper has `onClick={e => e.stopPropagation()}` so opening the dropdown
  * does NOT bubble up to any ancestor row handler.
  */
+/**
+ * Gate for the per-row ⋯ menu. `useConversationMenuContributions` calls ONE hook
+ * per registered chat extension in a loop, so it is only Rules-of-Hooks-safe
+ * against a FROZEN extension set. Chat extensions all register at boot (via their
+ * own discovery glob); `useChatExtensionsReady()` signals the set has settled.
+ * Until then, render the base menu with NO extension items; once ready, mount the
+ * hook-caller — mirrors the `ChatInput` gate. Without this, an extension
+ * registering after a row has mounted changes the loop's hook count between
+ * renders → React #310 (which blanks the app via the router error boundary).
+ */
 function ConversationRowActions({
   conversation,
 }: {
   conversation: ConversationResponse
+}) {
+  const ready = useChatExtensionsReady()
+  if (!ready) {
+    return (
+      <ConversationRowActionsView
+        conversation={conversation}
+        extensionItems={[]}
+        overlays={null}
+        keepMenuOpen={false}
+      />
+    )
+  }
+  return <ConversationRowActionsWithExtensions conversation={conversation} />
+}
+
+/** Hook-caller — mounted only once the extension set is frozen (see the gate). */
+function ConversationRowActionsWithExtensions({
+  conversation,
+}: {
+  conversation: ConversationResponse
+}) {
+  const { items, overlays, keepMenuOpen } =
+    useConversationMenuContributions(conversation)
+  return (
+    <ConversationRowActionsView
+      conversation={conversation}
+      extensionItems={items ?? []}
+      overlays={overlays}
+      keepMenuOpen={keepMenuOpen}
+    />
+  )
+}
+
+/** Presentational — no extension hooks; contributions arrive as props. */
+function ConversationRowActionsView({
+  conversation,
+  extensionItems,
+  overlays,
+  keepMenuOpen,
+}: {
+  conversation: ConversationResponse
+  extensionItems: DropdownItem[]
+  overlays: ReactNode
+  keepMenuOpen: boolean
 }) {
   const [deleting, setDeleting] = useState(false)
   // Controlled dropdown open so we can suppress closing while an
@@ -366,9 +421,6 @@ function ConversationRowActions({
   const [menuOpen, setMenuOpen] = useState(false)
   // Split-chat: the ⋯ menu offers an explicit "Open in split pane" action.
   const openConversation = useOpenConversationInWorkspace()
-
-  const { items: extensionItems, overlays, keepMenuOpen } =
-    useConversationMenuContributions(conversation)
 
   const confirmDelete = async () => {
     const title = conversation.title || 'Untitled Conversation'
