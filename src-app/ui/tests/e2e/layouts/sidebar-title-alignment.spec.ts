@@ -1,5 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import { loginAsAdmin, getAdminToken } from '../../common/auth-helpers'
 
 /**
  * E2E — the left sidebar's three section captions share ONE left edge.
@@ -31,6 +31,34 @@ const EPS = 0.5
 interface Edges {
   captions: { name: string; left: number }[]
   rows: { name: string; left: number }[]
+  /** How many of `rows` came from the recent-chats widget (see TEST-7). */
+  recentRowCount: number
+}
+
+/**
+ * Seed conversations so the recent-chats list actually renders ROWS.
+ *
+ * Load-bearing for TEST-7, not decoration: the kit-`Menu` rows (primary
+ * actions / navigation / tools) all derive from the same `menuRowClasses()`
+ * string inside a `px-2` `<ul>`, so they cannot disagree with each other by
+ * construction. The recent-chat rows are the only INDEPENDENTLY styled rows in
+ * the rail (their own scroll container + `MenuRowButton`), so they are the only
+ * ones whose alignment is a real question. On a freshly provisioned e2e account
+ * the widget takes its empty branch and contributes nothing — leaving the
+ * "control" comparing three copies of one style to itself.
+ */
+async function seedConversations(
+  page: import('@playwright/test').Page,
+  apiURL: string,
+  token: string,
+): Promise<void> {
+  for (const title of ['Alignment Alpha', 'Alignment Bravo']) {
+    const res = await page.request.post(`${apiURL}/api/conversations`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { title },
+    })
+    expect(res.status()).toBeLessThan(300)
+  }
 }
 
 /**
@@ -68,14 +96,20 @@ async function readEdges(page: import('@playwright/test').Page): Promise<Edges> 
 
     // Every menu row button across all four sections (primary actions,
     // navigation, tools, and the virtualized recent-chat rows).
-    const rows = Array.from(
-      sidebar.querySelectorAll<HTMLElement>('nav ul > li > button, [data-testid^="chat-recent-conversations-menu-item-"]'),
-    ).map(el => ({
+    const RECENT = '[data-testid^="chat-recent-conversations-menu-item-"]'
+    const rowEls = Array.from(
+      sidebar.querySelectorAll<HTMLElement>(`nav ul > li > button, ${RECENT}`),
+    )
+    const rows = rowEls.map(el => ({
       name: el.getAttribute('data-testid') ?? el.textContent?.trim() ?? 'row',
       left: contentLeft(el),
     }))
 
-    return { captions, rows }
+    return {
+      captions,
+      rows,
+      recentRowCount: rowEls.filter(el => el.matches(RECENT)).length,
+    }
   })
 }
 
@@ -121,12 +155,19 @@ test.describe('App layout — sidebar section title alignment', () => {
     page,
     testInfra,
   }) => {
-    await loginAsAdmin(page, testInfra.baseURL)
+    const { baseURL, apiURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+    await seedConversations(page, apiURL, await getAdminToken(apiURL))
+    await page.reload()
     await expect(page.getByTestId('layout-sidebar-nav-title')).toBeVisible({
       timeout: 30000,
     })
+    // Wait for a real recent-chat row, not just the caption — see below.
+    await expect(
+      page.locator('[data-testid^="chat-recent-conversations-menu-item-"]').first(),
+    ).toBeVisible({ timeout: 30000 })
 
-    const { captions, rows } = await readEdges(page)
+    const { captions, rows, recentRowCount } = await readEdges(page)
 
     // This is the anti-cheat control for TEST-6: the captions could trivially be
     // "aligned" by dragging the ROWS around instead. Pin the rows to one shared
@@ -135,6 +176,15 @@ test.describe('App layout — sidebar section title alignment', () => {
       rows.length,
       'no sidebar menu rows found — this control would prove nothing',
     ).toBeGreaterThanOrEqual(2)
+    // The kit-Menu rows all derive from one shared class string inside a `px-2`
+    // <ul>, so comparing only those would compare a style to itself. At least one
+    // INDEPENDENTLY styled recent-chat row must be in the set for this control to
+    // mean anything.
+    expect(
+      recentRowCount,
+      'no recent-chat row was measured — the remaining rows all share one kit ' +
+        'class string, so their agreement is a tautology rather than a control',
+    ).toBeGreaterThanOrEqual(1)
     const rowLeft = rows[0].left
     for (const r of rows) {
       expect(

@@ -73,11 +73,13 @@ test.describe('Split chat — "New Chat" collapses the split (no hijack)', () =>
     // ── The reported action: click "New Chat" in the sidebar.
     await byTestId(page, 'layout-sidebar-primary-actions-menu-item-new-chat').click()
 
-    // The split is gone the moment we land on the new-chat route — before a
-    // single character is typed. On `main` the split survives here.
+    // We are on the new-chat route. NOTE: asserting `split-chat-view` is absent
+    // HERE would prove nothing — `/chat` renders NewChatPage, and the split DOM
+    // only ever exists under ConversationPage, so it is absent with or without
+    // the fix. The store still holds two panes at this moment and that is not
+    // observable from the DOM; the discriminating assertions are after the send,
+    // once ConversationPage mounts again and acts on the pane count.
     await expect(byTestId(page, 'new-chat-greeting')).toBeVisible({ timeout: 15000 })
-    await expect(byTestId(page, 'split-chat-view')).toHaveCount(0)
-    await expect(byTestId(page, 'chat-pane-1')).toHaveCount(0)
 
     // ── ...and type a message, which is where the old split used to reappear.
     const input = page.locator('textarea[placeholder*="Type your message"]')

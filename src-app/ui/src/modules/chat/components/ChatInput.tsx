@@ -78,9 +78,19 @@ export function ChatInput({
         {/* Toolbar — the left (secondary) group yields space first so the right
             send group is never clipped on narrow widths (chat panel or mobile). */}
         <div className="flex justify-between items-center gap-2 px-2 pt-1 pb-2">
-          {/* Left: + dropdown + other toolbar actions. `min-w-0 flex-1` lets the
-              keyboard-tips text truncate instead of pushing Send off the edge. */}
-          <div className="flex items-center gap-1 min-w-0 flex-1">
+          {/* Left: + dropdown + other toolbar actions. `flex-1` + a min-width
+              floor lets the keyboard-tips text truncate instead of pushing Send
+              off the edge, while guaranteeing the group never drops below the
+              "+" button it must always show.
+
+              The floor (`min-w-9` = 36px = the "+" button's `h-8` + `px-2.5`)
+              replaces a plain `min-w-0`. With a zero floor this group — whose
+              basis is 0, so it never competes for space — was squeezed to ~2px
+              by a long model name and its `shrink-0` "+" button overflowed. The
+              floor makes the RIGHT group absorb the deficit instead, which is
+              the intended yield order. The tips text still truncates: it lives
+              in the actions slot below, which keeps its own `min-w-0`. */}
+          <div className="flex items-center gap-1 min-w-9 flex-1">
             {/* Tooltip anchors to the wrapper span (a distinct DOM node), not
                 the Popover-trigger button — two triggers on ONE node thrash and
                 flicker. The button suppresses its own aria-label auto-tooltip via
@@ -120,16 +130,15 @@ export function ChatInput({
               `shrink-0` on the whole group would instead force the left actions
               to absorb every pixel and let a long name push Send off the edge.
 
-              `max-w-[60%]` is what keeps a content-sized selector honest. The
-              LEFT group is `flex-1` with a ZERO basis, so it never competes for
-              space: it only receives what the right group leaves over. Without a
-              bound, a long enough model name therefore starves it to ~0 and its
-              `shrink-0` "+" button overflows (measured at 390px — the right group
-              sat at its full 364px and the left group got 2px). Capping the right
-              group against the toolbar ROW — a definite width, so no container
-              query is needed — guarantees the left actions always keep ~40% and
-              makes the model name yield first, which is the intended order. */}
-          <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
+              The left group's protection is a min-width FLOOR on that group (see
+              above), deliberately not a `max-w` ceiling here. A ceiling reserves
+              space unconditionally: the left group is `flex-1` with a zero basis,
+              so it grows into whatever the ceiling leaves over even when it holds
+              nothing but the 36px "+" button — which truncated the model name
+              ~90px earlier than the row actually required and left a hole in the
+              middle of the toolbar. A floor gives the left group exactly what it
+              needs and hands the model name everything else. */}
+          <div className="flex items-center gap-2 min-w-0">
             <ExtensionSlot name="toolbar_model" className="min-w-0" />
             <Button
               data-testid="chat-input-send-btn"

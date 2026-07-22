@@ -197,6 +197,15 @@ export function ProjectDetailPage() {
     // Clear stale chat state from a prior session so the next send
     // takes the auto-create branch (Stores.Chat.conversation === null).
     Stores.Chat.reset()
+    // ...and collapse the split workspace, for the same reason NewChatPage
+    // does. This page's composer creates a conversation and navigates to
+    // `/projects/:id/chat/:cid`, which renders the SAME ConversationPage — so
+    // with a split still open in the store, its URL→workspace reconcile takes
+    // the "auto while split" branch and REPLACES the focused pane, wedging the
+    // brand-new project conversation into the old split instead of showing it
+    // on its own. Starting a chat from a project is a fresh single-pane surface
+    // exactly like starting one from the sidebar.
+    Stores.SplitView.reset()
 
     const unsubscribe = Stores.EventBus.on(
       'conversation.created',

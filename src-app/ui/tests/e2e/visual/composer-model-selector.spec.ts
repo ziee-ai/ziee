@@ -289,7 +289,7 @@ test.describe('composer model selector — long name', () => {
     // It is `flex-1` with a zero basis, so it receives only what the right group
     // leaves over — an unbounded content-sized selector starves it to ~0 and its
     // `shrink-0` "+" button overflows INTO the selector. (Observed exactly that
-    // at 390px before the right group was capped against the toolbar row.)
+    // at 390px before the left group was given a min-width floor.)
     for (const [label, m] of [
       ['wide', wide],
       ['narrow', narrow],
@@ -301,6 +301,22 @@ test.describe('composer model selector — long name', () => {
           `until it starved the left toolbar group`,
       ).toBeLessThanOrEqual(m.triggerLeft + 1)
     }
+
+    // ...and it must not yield TOO MUCH either. Protecting the left group with a
+    // `max-w` CEILING on the right group instead of a min-width FLOOR on the left
+    // one reserves space unconditionally: the left group is `flex-1` with a zero
+    // basis, so it grows into whatever the ceiling leaves spare even when it holds
+    // nothing but the 36px "+" button. Measured at 390px under a 60% ceiling, that
+    // stranded ~90px of empty gutter between "+" and the model name while the name
+    // itself was ellipsized — truncating far earlier than the row required. So
+    // when the name IS under pressure, the space between them must stay of the
+    // order of the toolbar's own gaps.
+    const gutter = narrow.triggerLeft - narrow.plusRight
+    expect(
+      gutter,
+      `${gutter.toFixed(1)}px of empty space sits between the "+" button and an ` +
+        `ELLIPSIZED model name — the name is yielding space that nothing is using`,
+    ).toBeLessThanOrEqual(24)
   })
 
   test('TEST-5: the OPEN list still shows the full name while the trigger is truncated', async ({

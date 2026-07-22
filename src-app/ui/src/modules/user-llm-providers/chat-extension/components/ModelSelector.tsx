@@ -116,7 +116,10 @@ export function ModelSelector() {
   // to fit the composer toolbar; the full ErrorState card is for sections.
   if (error && providers.length === 0) {
     return (
-      <div data-testid="model-selector">
+      // `min-w-0` mirrors the loaded branch below: the composer's right toolbar
+      // group is shrinkable, so this wrapper must be able to shrink with it
+      // rather than overflow into the Send button at narrow widths.
+      <div data-testid="model-selector" className="min-w-0">
         <Tooltip content="Couldn't load models. Click to try again.">
           <Button
             variant="ghost"

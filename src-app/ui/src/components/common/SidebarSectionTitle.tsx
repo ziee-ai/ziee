@@ -21,22 +21,26 @@ interface SidebarSectionTitleProps {
  * headings form their own vertical scan line down the rail. That is the
  * relationship "Recent chats" already had, now applied consistently.
  *
- * This is decorative section chrome, not a heading landmark — each sidebar
- * section is already named for assistive tech by its `<nav aria-label=…>`
- * (or, for recent chats, the list's own `aria-label`), so it is intentionally
- * NOT an `<h*>`: adding one would announce a heading that duplicates the
- * landmark name.
+ * Rendered as a real `<h2>`, not a styled `<div>`. Because the caption is a
+ * SIBLING of the section's `<nav>` (that is what removes the kit's stacked
+ * padding), a div would leave the text stranded outside every landmark on the
+ * page: skipped by landmark navigation, and — being neither heading nor
+ * labelled region — unreachable by heading-key skimming, which is how a rail
+ * is normally scanned. A heading also gives the recent-chats section a name in
+ * its error / loading / empty states, where the labelled `<ul>` is not rendered
+ * at all and no accessible name would otherwise exist. Tailwind's preflight
+ * strips default heading size/margin, so the element renders exactly as before.
  */
 export function SidebarSectionTitle({
   children,
   'data-testid': testid,
 }: SidebarSectionTitleProps) {
   return (
-    <div
+    <h2
       data-testid={testid}
-      className="px-3 pt-0 pb-0.5 text-xs font-semibold tracking-wide text-muted-foreground"
+      className="px-3 pt-0 pb-1 text-xs font-semibold tracking-wide text-muted-foreground"
     >
       {children}
-    </div>
+    </h2>
   )
 }
