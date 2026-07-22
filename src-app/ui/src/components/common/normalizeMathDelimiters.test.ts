@@ -24,31 +24,121 @@ test('display delimiters become block math', () => {
   check('literal \\\\[ not math \\\\]', 'literal \\\\[ not math \\\\]')
 })
 
-// TEST-2 — inline `\( … \)` is DELIBERATELY NOT converted. It is byte-identical
-// to POSIX BRE group syntax, and no structural rule separates a sed command from
-// real math — `To escape use \( and \)` is whitespace-padded exactly like
-// `\( E = mc^2 \)`. Converting it would delete the backslashes and italicise
-// ordinary prose. Inline math still renders via `$…$`.
-test('inline delimiters pass through untouched', () => {
-  // the shell/regex family — the reason this branch does not exist
+// TEST-1b — inline `\( … \)` becomes INLINE math `$…$`. No newline is injected:
+// `$…$` is a text construct, unlike the display form.
+test('inline delimiters become inline math', () => {
+  check('Energy \\( E = mc^2 \\) is nice.', 'Energy $E = mc^2$ is nice.')
+  check(
+    'decay \\( \\lambda = \\sqrt{D/k} \\) here',
+    'decay $\\lambda = \\sqrt{D/k}$ here',
+  )
+  // padding inside the delimiters is trimmed; text outside is preserved verbatim
+  check('a \\(   x   \\) b', 'a $x$ b')
+})
+
+// TEST-2 — Flavor B: there is NO content/math-signal gate. A bare symbol and
+// bare function notation are what models write most often in science prose, and
+// a heuristic that demands `=` or a `\command` misses all of them.
+test('bare symbols and function notation convert (no content gate)', () => {
+  check('the coefficient \\(D\\) is fixed', 'the coefficient $D$ is fixed')
+  check('let \\( C(x) \\) denote', 'let $C(x)$ denote')
+  check('and \\(f(x)\\) too', 'and $f(x)$ too')
+  check('- a \\( x \\) b', '- a $x$ b')
+})
+
+// TEST-3 — the regression trio, under Flavor B.
+//
+// Two of the three now render as math-italic. That is the accepted tradeoff, and
+// it is NOT a corruption: in un-fenced prose markdown's own character-escape rule
+// ALREADY strips `\(` → `(`, so `sed -e 's/\(foo\)/bar/'` renders today as
+// `sed -e 's/(foo)/bar/'` — the backslashes are lost either way. Converting
+// trades `(foo)` for an italic `foo`. A real sed command belongs in a code block,
+// which `preprocessMarkdown` protects before this function is ever called (see
+// markdownPreprocess.test.ts).
+//
+// The third — regex alternation — is caught by the BRE guard and stays EXACTLY as
+// it renders today.
+test('the regression trio behaves as Flavor B specifies', () => {
   check(
     "Ran: sed -e 's/\\(foo\\)/bar/' on 3 files",
-    "Ran: sed -e 's/\\(foo\\)/bar/' on 3 files",
+    "Ran: sed -e 's/$foo$/bar/' on 3 files",
   )
+  check('To escape use \\( and \\) in LaTeX.', 'To escape use $and$ in LaTeX.')
+  check("grep -E '\\(x\\)' file.txt", "grep -E '$x$' file.txt")
+
+  // ...but explicit regex syntax is left untouched, byte-for-byte as today
   check('Pattern \\(a\\|b\\) matched 4 lines', 'Pattern \\(a\\|b\\) matched 4 lines')
-  check("grep -E '\\(x\\)' file.txt", "grep -E '\\(x\\)' file.txt")
+})
 
-  // prose documenting LaTeX escaping — padded exactly like real math, which is
-  // why no heuristic could have told them apart
-  check('To escape use \\( and \\) in LaTeX.', 'To escape use \\( and \\) in LaTeX.')
+// TEST-4 — every BRE/ERE signal skips: alternation, backreference, interval,
+// and the `\+` / `\?` quantifiers.
+test('BRE signals in the body skip conversion', () => {
+  check('alt \\(a\\|b\\) x', 'alt \\(a\\|b\\) x')
+  // the signal has to be INSIDE the body to be seen — a trailing backreference
+  // (`s/\(a\)\1/x/`, the usual shape) leaves the body a bare `a`, which converts
+  check('backref \\(a\\1\\) x', 'backref \\(a\\1\\) x')
+  check('interval \\(ab\\{2,3\\}\\) x', 'interval \\(ab\\{2,3\\}\\) x')
+  check('plus \\(a\\+\\) x', 'plus \\(a\\+\\) x')
+  check('opt \\(a\\?\\) x', 'opt \\(a\\?\\) x')
+})
 
-  // ...and genuine inline math is left alone too: that is the accepted tradeoff
-  check('Energy \\( E = mc^2 \\) is nice.', 'Energy \\( E = mc^2 \\) is nice.')
-  check('- a \\( x \\) b', '- a \\( x \\) b')
-  check('a\\\\(b)', 'a\\\\(b)')
+// TEST-5 — THE hijack guard. Injecting a `$` into a paragraph that already holds
+// a live `$` lets the two pair up: `cost $5 and $E$ here` tokenizes as math
+// "5 and " plus a dangling literal `E$ here`. That is real corruption, so the
+// whole match is left alone. A `$…$` span crosses a plain newline, so the guard
+// is paragraph-scoped, not line-scoped.
+test('an unpaired $ in the paragraph blocks conversion', () => {
+  check('cost $5 and \\( E=mc^2 \\) here', 'cost $5 and \\( E=mc^2 \\) here')
+  check(
+    'cost $5 line one\nand \\( E=mc^2 \\) here',
+    'cost $5 line one\nand \\( E=mc^2 \\) here',
+  )
+  // a `$` AFTER the match blocks it just the same
+  check('\\( E=mc^2 \\) then cost $5', '\\( E=mc^2 \\) then cost $5')
+  // converting inside an existing `$…$` span would break that span
+  check('see $a \\( b \\) c$ end', 'see $a \\( b \\) c$ end')
+  // an even count still hijacks — micromark pairs left-to-right — so the rule is
+  // "any live `$`", not "an odd number of them"
+  check('$5 and $10 for \\( E \\)', '$5 and $10 for \\( E \\)')
+})
 
-  // an inline pair INSIDE a display block still rides along in the body, since
-  // only the outer display delimiters are rewritten
+// TEST-6 — ...but the guard is PARAGRAPH-scoped and escape-aware, so it does not
+// suppress conversion further than it must.
+test('the dollar guard is paragraph-scoped and escape-aware', () => {
+  // a blank line ends the paragraph, so the `$5` cannot reach this match
+  check('cost $5 para one\n\nand \\( E=mc^2 \\) here', 'cost $5 para one\n\nand $E=mc^2$ here')
+  // an escaped `\$` never opens a math span, so it cannot hijack
+  check('cost \\$5 and \\( E=mc^2 \\) here', 'cost \\$5 and $E=mc^2$ here')
+  // ...but `\\$` is a literal backslash followed by a LIVE `$`, which does
+  check('cost \\\\$5 and \\( E \\) here', 'cost \\\\$5 and \\( E \\) here')
+})
+
+// TEST-7 — body-shape guards, all degrading to "leave it exactly as it is".
+test('inline body-shape guards leave unsafe cases untouched', () => {
+  // empty delimiters are not math
+  check('a \\(\\) b', 'a \\(\\) b')
+  // a nested `\(` means the lazy closer matched the INNER `\)`
+  check('x \\( a \\( b \\) c \\) y', 'x \\( a \\( b \\) c \\) y')
+  // a `$` in the body would close the emitted span early
+  check('a \\( x $ y \\) b', 'a \\( x $ y \\) b')
+})
+
+// TEST-8 — an indented code block is never touched. `preprocessMarkdown` splits
+// out fenced + inline code before calling us; the 4-column indented block is the
+// one code form that split cannot see, so it is guarded here.
+test('indented code blocks are not converted inline', () => {
+  check('    \\( x \\)', '    \\( x \\)')
+  check('\t\\( x \\)', '\t\\( x \\)')
+  // ...but a list item or blockquote at the same indent is NOT a code block
+  check('  - a \\( x \\) b', '  - a $x$ b')
+  check('> quote \\( x \\)', '> quote $x$')
+})
+
+// TEST-11 — display/inline ORDERING. The display pass runs first; the inline
+// pass then sees the `$$` it emitted, so the paragraph guard declines to rewrite
+// the `\(` riding along in the body. Were the order reversed (or the guard
+// absent) this would emit `$$\na $b$ c\n$$`, which KaTeX cannot parse.
+test('an inline pair inside a display block is left in the body', () => {
   check('\\[ a \\( b \\) c \\]', '$$\na \\( b \\) c\n$$')
 })
 
@@ -133,6 +223,34 @@ test('partial and pre-existing math pass through unchanged', () => {
   // non-strings and delimiter-free strings short-circuit
   assert.equal(normalizeMathDelimiters(''), '')
   assert.equal(normalizeMathDelimiters('plain prose [1] and arr[0]'), 'plain prose [1] and arr[0]')
+})
+
+// TEST-9 — the same streaming/ReDoS contract for the INLINE pass. An unclosed
+// opener simply fails to match, which is what makes this safe to run on every
+// frame of a response.
+test('inline partials and over-cap bodies pass through unchanged', () => {
+  // mid-stream: the closer hasn't arrived yet
+  check('streaming \\( E=', 'streaming \\( E=')
+
+  // a doubly-escaped opener is a literal backslash + paren, not math
+  check('a\\\\(b\\\\)', 'a\\\\(b\\\\)')
+
+  // over the 300-char ReDoS cap it simply doesn't convert
+  check(`a \\( ${'x'.repeat(310)} \\) b`, `a \\( ${'x'.repeat(310)} \\) b`)
+
+  // an inline body may not span a line — a newline means an unclosed `\(` ran on
+  check('a \\( x\ny \\) b', 'a \\( x\ny \\) b')
+
+  // the complete pair converts; the trailing partial waits for the next frame
+  check('\\( a \\) then \\( b', '$a$ then \\( b')
+})
+
+// TEST-10 — the two passes coexist without interfering.
+test('display and inline math convert in the same document', () => {
+  check(
+    'Steady state:\n\n\\[ \\frac{d^2C}{dx^2} = 0 \\]\n\nwith \\( C(x) \\) bounded.',
+    'Steady state:\n\n$$\n\\frac{d^2C}{dx^2} = 0\n$$\n\nwith $C(x)$ bounded.',
+  )
 })
 
 // A CRLF document (an uploaded .md, a Windows-authored SKILL.md) must produce the

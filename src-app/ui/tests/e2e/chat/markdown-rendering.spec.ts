@@ -38,8 +38,10 @@ import {
  * stylesheet. The former `[[no-katex-remark-rehype]]` directive is
  * retired — it outlived the code it described. Because remark-math only
  * understands `$` delimiters, `preprocessMarkdown` normalizes LaTeX's
- * own display `\[ … \]` into `$$ … $$` first (issue #177). Inline
- * `\( … \)` is deliberately left alone — it is POSIX BRE grouping.
+ * own delimiters first: display `\[ … \]` into `$$ … $$` (issue #177)
+ * and inline `\( … \)` into `$ … $`. The inline pass is guarded against
+ * regex syntax (`\(a\|b\)`), code (fences + inline spans), and an
+ * unpaired `$` in the same paragraph — the specs below pin all three.
  */
 
 const assistantTextMessage = (id: string, text: string): MockMessageWithContent => ({
@@ -289,50 +291,117 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
     ).toBe(2)
   })
 
-  // Inline `\( … \)` is deliberately NOT converted: it is byte-identical to POSIX
-  // BRE grouping, so converting it would turn shell prose into an equation.
+  // TEST-15 — the inline counterpart of #177. `\( … \)` must reach the DOM as
+  // INLINE KaTeX, not a display block: `.katex` present, `.katex-display` absent.
   //
-  // Note what "untouched" means at the DOM level. Markdown's OWN character-escape
-  // rule already turns `\(` into `(` — `(` is ASCII punctuation, so it is
-  // escapable — and that is pre-existing behavior this change does not alter. So
-  // the user sees `sed -e 's/(foo)/bar/'`: parentheses intact, structure readable.
-  // Converting would instead have produced `$foo$`, rendering as an italicised
-  // math `foo` with the parentheses gone entirely. That difference is the point.
-  test('leaves inline \\( … \\) untouched so sed/grep prose survives', async ({
+  // This message contains no `[` at all, which is deliberate — it is the only
+  // thing that exercises `preprocessMarkdown`'s early return. That guard used to
+  // bail on any bracket-free document, which made the whole inline-math path a
+  // silent no-op for exactly this, the most common real input.
+  test('renders \\( … \\) as inline math, not a display block', async ({
     page,
     testInfra,
   }) => {
     await seedAssistantWithText(
       page,
       testInfra.baseURL,
-      "Ran: sed -e 's/\\(foo\\)/bar/' on 3 files.\n\nTo escape use \\( and \\) in LaTeX.",
+      'The decay length is \\( \\lambda = \\sqrt{D/k} \\) at steady state.',
     )
     const bubble = assistantBubble(page)
-    // The grouping parens survive — they would be GONE had this become math.
-    await expect(bubble).toContainText("sed -e 's/(foo)/bar/' on 3 files")
-    await expect(bubble).toContainText('To escape use ( and ) in LaTeX.')
-    // ...and nothing here was rendered as an equation.
+    await expect(bubble).toContainText('The decay length is')
+    await expect(bubble.locator('.katex').first()).toBeVisible({ timeout: 10000 })
+    expect(
+      await bubble.evaluate(el => el.querySelectorAll('.katex').length),
+    ).toBeGreaterThan(0)
+    // INLINE, not display — this is what separates it from the `\[ … \]` path.
+    expect(
+      await bubble.evaluate(el => el.querySelectorAll('.katex-display').length),
+    ).toBe(0)
+  })
+
+  // TEST-16 — the prose tradeoff, pinned at the DOM level.
+  //
+  // Inline `\( … \)` in un-fenced prose NOW converts, so `sed -e 's/\(foo\)/bar/'`
+  // renders with an italic math `foo` and no parens. That is a deliberate change,
+  // not a regression: markdown's OWN character-escape rule already turned `\(`
+  // into `(` before this feature existed, so the backslashes were lost either way
+  // — the user previously saw `s/(foo)/bar/`, never the literal source. A real sed
+  // command belongs in a code block, which stays literal (see the fence spec).
+  //
+  // Explicit regex syntax is the exception: `\(a\|b\)` carries a BRE signal, so it
+  // is skipped and renders EXACTLY as it always has.
+  test('converts inline \\( … \\) in prose but skips regex alternation', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedAssistantWithText(
+      page,
+      testInfra.baseURL,
+      "Ran: sed -e 's/\\(foo\\)/bar/' on 3 files.\n\n" +
+        'To escape use \\( and \\) in LaTeX.\n\n' +
+        'Pattern \\(a\\|b\\) matched 4 lines.',
+    )
+    const bubble = assistantBubble(page)
+    // The two prose cases became equations...
+    await expect(bubble.locator('.katex').first()).toBeVisible({ timeout: 10000 })
+    expect(
+      await bubble.evaluate(el => el.querySelectorAll('.katex').length),
+    ).toBeGreaterThan(0)
+    // ...but the regex line is untouched, parens and pipe intact, exactly as
+    // markdown has always rendered it.
+    await expect(bubble).toContainText('Pattern (a|b) matched 4 lines.')
+  })
+
+  // TEST-18 — the unpaired-`$` hijack guard, proved in the real renderer.
+  //
+  // Without it, `That costs $5 and the rate \( k \) is fixed.` would become
+  // `…$5 and the rate $k$ is fixed.`, and remark-math would pair the price's `$`
+  // with our injected opener — rendering `5 and the rate ` as an equation and
+  // leaving a dangling literal `k$`. The guard skips the match instead, so the
+  // sentence renders as plain text with the price intact.
+  test('an unpaired $ in the paragraph suppresses inline conversion', async ({
+    page,
+    testInfra,
+  }) => {
+    await seedAssistantWithText(
+      page,
+      testInfra.baseURL,
+      'That costs $5 and the rate \\( k \\) is fixed.',
+    )
+    const bubble = assistantBubble(page)
+    await expect(bubble).toContainText('That costs $5 and the rate (k) is fixed.')
+    // Nothing became an equation — in particular there is no mangled `5 and …`
+    // span and no dangling `k$`.
     expect(await bubble.evaluate(el => el.querySelectorAll('.katex').length)).toBe(0)
   })
 
-  // TEST-8 — the main correctness risk: a `\[` inside code must stay literal.
-  test('leaves \\[ … \\] inside a code block literal', async ({
+  // TEST-8 / TEST-17 — the main correctness risk: a delimiter inside code must
+  // stay literal. This matters far more now that INLINE `\( … \)` converts too,
+  // because a code fence is where a genuine sed/grep command actually lives — and
+  // `preprocessMarkdown`'s fence + inline-code split is the only thing protecting
+  // it (the guards inside `normalizeMathDelimiters` cannot see code structure).
+  test('leaves \\[ … \\] and \\( … \\) inside a code block literal', async ({
     page,
     testInfra,
   }) => {
     await seedAssistantWithText(
       page,
       testInfra.baseURL,
-      'Escaping in LaTeX source:\n\n```tex\n\\[ x^2 \\]\n```\n\nand inline `\\[ y \\]` too.',
+      'Escaping in LaTeX source:\n\n' +
+        "```tex\n\\[ x^2 \\]\nsed -e 's/\\(foo\\)/bar/'\n```\n\n" +
+        'and inline `\\[ y \\]` plus `\\( y \\)` too.',
     )
     const bubble = assistantBubble(page)
     await expect(bubble).toContainText('Escaping in LaTeX source')
     const codeBlock = bubble.locator('[data-streamdown="code-block"]')
     await expect(codeBlock).toBeVisible({ timeout: 15000 })
 
-    // The delimiters survive verbatim inside the fence and the inline span...
+    // The delimiters survive verbatim inside the fence — both forms...
     await expect(codeBlock).toContainText('\\[ x^2 \\]')
+    await expect(codeBlock).toContainText("sed -e 's/\\(foo\\)/bar/'")
+    // ...and inside the inline-code spans.
     await expect(bubble.locator('code', { hasText: '\\[ y \\]' }).first()).toBeVisible()
+    await expect(bubble.locator('code', { hasText: '\\( y \\)' }).first()).toBeVisible()
     // ...and nothing in the bubble was turned into math.
     expect(await bubble.evaluate(el => el.querySelectorAll('.katex').length)).toBe(0)
   })

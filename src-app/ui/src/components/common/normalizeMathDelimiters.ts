@@ -9,19 +9,38 @@
 // (`x_1 … y_1` consumed as emphasis, backslash escapes dropped). Same layer as the
 // sibling `citationTokenize` / `preprocessMarkdown` pre-tokenizers.
 //
-// INLINE `\( … \)` IS DELIBERATELY NOT CONVERTED. It is byte-identical to POSIX
-// BRE group syntax, so converting it corrupts ordinary prose that no reader would
-// consider math:
+// INLINE `\( … \)` IS ALSO CONVERTED, in a second pass. The original version of
+// this module refused to, on the theory that `\(foo\)` is byte-identical to POSIX
+// BRE grouping and converting it would corrupt shell prose. Measured against the
+// installed micromark, that premise does not hold: in UN-FENCED prose markdown's
+// own character-escape rule ALREADY strips `\(` → `(` before any math logic runs.
 //
-//     sed -e 's/\(foo\)/bar/'      would become   sed -e 's/$foo$/bar/'
-//     Pattern \(a\|b\) matched     would become   Pattern $a\|b$ matched
-//     To escape use \( and \).     would become   To escape use $and$.
+//     Ran: sed -e 's/\(foo\)/bar/'   renders TODAY as   Ran: sed -e 's/(foo)/bar/'
+//     Pattern \(a\|b\) matched       renders TODAY as   Pattern (a|b) matched
+//     To escape use \( and \).       renders TODAY as   To escape use ( and ).
+//     energy \( E = mc^2 \) here     renders TODAY as   energy ( E = mc^2 ) here
 //
-// and there is no structural rule that separates those from a real `\( E=mc^2 \)`
-// — the last example is whitespace-padded exactly like genuine math. Since inline
-// math already renders via `$…$` (singleDollarTextMath is enabled), the tradeoff
-// is one-sided: convert display only, and never risk mangling prose. Issue #177
-// is a display-math report.
+// The backslashes are lost either way, so converting cannot make those cases
+// MEANINGFULLY worse — it trades `(foo)` for a math-italic `foo`. Meanwhile the
+// only correct home for a real sed/regex command is a code block, and the caller
+// (`preprocessMarkdown`) already splits on fences + inline code before this runs,
+// so genuine code is never reached. Models emit inline math constantly
+// (`\( E=mc^2 \)`, `\( \lambda \)`, `\( D \)`, `\( C(x) \)`); leaving it raw was
+// the larger, far more common defect.
+//
+// THE ONE REAL CORRUPTION VECTOR is not prose — it is an unpaired `$` nearby.
+// Injecting a `$` delimiter into text that already contains a lone `$` lets the
+// two pair up:
+//
+//     cost $5 and \( E \) here   ->   cost $5 and $E$ here
+//                                     ...which renders as math "5 and " followed
+//                                     by a dangling literal "E$ here".
+//
+// The display pass is immune (a `$$` run cannot pair with a lone `$`); the inline
+// pass is not. `paragraphHasLiveDollar` below is the guard, and it is the reason
+// this pass runs SECOND — by then the display pass has emitted its `$$` fences,
+// which the same guard sees, so a `\(` sitting inside a display body is left
+// alone instead of being rewritten into KaTeX-unparseable `$$\na $b$ c\n$$`.
 
 // Display delimiters only. The lookbehind guards the OPENER, rejecting a
 // doubly-escaped `\\[` (a literal backslash the model escaped). The closer is
@@ -36,6 +55,89 @@
 // beyond any real display equation; a longer one simply doesn't convert, which is
 // the same degrade-don't-corrupt contract every other guard follows.
 const MATH_RE = /(?<!\\)\\\[([\s\S]{0,2000}?)\\\]/g
+
+// Inline delimiters. Same doubly-escaped-opener lookbehind as the display form,
+// and the same degrade-don't-corrupt contract.
+//
+// The body is SINGLE-LINE by construction (`[^\r\n]`), which is stricter than the
+// display path's blank-line guard and deliberately so: a real inline equation
+// never spans a line, while allowing newlines would let one unclosed `\(` run on
+// to some later `\)` and swallow arbitrary downstream text. The 300-char cap is
+// the same ReDoS bound the display path documents — this runs on every frame of a
+// streaming response, so each unmatched opener must cost O(cap), not O(n). 300 is
+// ~6x the longest plausible inline equation.
+const INLINE_MATH_RE = /(?<!\\)\\\(([^\r\n]{0,300}?)\\\)/g
+
+// POSIX BRE / ERE syntax with no LaTeX-math reading: alternation `\|`, a
+// backreference `\1`-`\9`, an interval `\{n,m\}`, `\+`, `\?`. A body carrying any
+// of these is regex, not an equation, so it is left exactly as it renders today.
+// This does cost the rare genuine `\( \{1,2\} \)` (set braces) and `\( \|v\| \)`
+// (norms), which stay literal — a deliberate degrade, never a corruption.
+const BRE_SIGNAL_RE = /\\[|{}+?1-9]/
+
+/**
+ * Does `s` contain a `$` that markdown would treat as LIVE (able to open or close
+ * a math span)? A `$` is escaped only when preceded by an ODD number of
+ * backslashes — `\$` is escaped, `\\$` is a literal backslash followed by a live
+ * `$`. A lookbehind can't count, hence the loop.
+ */
+function hasLiveDollar(s: string): boolean {
+  for (let i = s.indexOf('$'); i !== -1; i = s.indexOf('$', i + 1)) {
+    let slashes = 0
+    while (i - slashes - 1 >= 0 && s[i - slashes - 1] === '\\') slashes++
+    if (slashes % 2 === 0) return true
+  }
+  return false
+}
+
+/**
+ * Index of the first character of the blank-line-delimited paragraph containing
+ * `from`. Paragraph, not line: verified against micromark that a `$…$` span DOES
+ * cross a plain newline but does NOT cross a blank line, so a line-scoped guard
+ * would miss a real hijack. `\r?` is handled by trimming the candidate line.
+ */
+function paragraphStart(str: string, from: number): number {
+  let cursor = from
+  while (cursor > 0) {
+    const nl = str.lastIndexOf('\n', cursor - 1)
+    if (nl === -1) return 0
+    const prev = str.lastIndexOf('\n', nl - 1)
+    if (str.slice(prev + 1, nl).trim() === '') return nl + 1
+    cursor = nl
+  }
+  return 0
+}
+
+/** Index just past the last character of that paragraph. Mirror of the above. */
+function paragraphEnd(str: string, from: number): number {
+  let cursor = from
+  while (cursor < str.length) {
+    const nl = str.indexOf('\n', cursor)
+    if (nl === -1) return str.length
+    const next = str.indexOf('\n', nl + 1)
+    if (str.slice(nl + 1, next === -1 ? str.length : next).trim() === '') return nl
+    cursor = nl + 1
+  }
+  return str.length
+}
+
+/**
+ * Is there a live `$` elsewhere in this match's paragraph? If so, emitting a `$`
+ * delimiter here could pair with it instead of with our own closer — the one way
+ * this rewrite can genuinely corrupt output (see the module header).
+ *
+ * The test is "ANY live `$`", not "an ODD number of them": micromark pairs
+ * left-to-right, so `$5 and $10 for \( E \)` has an even count and still hijacks.
+ * Any-`$` is the only rule that provably cannot change how pre-existing `$`
+ * tokens pair. It costs under-conversion in a paragraph that mixes `$` math with
+ * `\( … \)` — a degrade, which is the contract every guard here follows.
+ */
+function paragraphHasLiveDollar(str: string, start: number, end: number): boolean {
+  return (
+    hasLiveDollar(str.slice(paragraphStart(str, start), start)) ||
+    hasLiveDollar(str.slice(end, paragraphEnd(str, end)))
+  )
+}
 
 // Leading indent, blockquote markers, then an optional list marker. Used to
 // reconstruct the prefix every continuation line of a block needs in order to stay
@@ -78,8 +180,7 @@ const asInlineMath = (inner: string, whole: string): string =>
 
 /**
  * Rewrite LaTeX display delimiters `\[ … \]` into the `$$ … $$` block form that
- * remark-math parses. Inline `\( … \)` is passed through UNCHANGED — see the
- * module header for why.
+ * remark-math parses.
  *
  * Two parser mechanics drive the block form, both verified against the installed
  * micromark-extension-math rather than assumed:
@@ -96,10 +197,7 @@ const asInlineMath = (inner: string, whole: string): string =>
  * particular an unclosed `\[` simply fails to match, which is what makes the
  * function safe to run on every frame of a streaming response.
  */
-export function normalizeMathDelimiters(md: string): string {
-  if (typeof md !== 'string') return md
-  if (md.indexOf('\\[') === -1) return md
-
+function normalizeDisplayMath(md: string): string {
   return md.replace(
     MATH_RE,
     (whole: string, display: string, offset: number, str: string) => {
@@ -149,4 +247,76 @@ export function normalizeMathDelimiters(md: string): string {
       return `${open}$$\n${body}${close}`
     },
   )
+}
+
+/**
+ * Rewrite inline `\( … \)` into the `$ … $` form remark-math parses
+ * (`singleDollarTextMath` is enabled — see `streamdownPlugins.ts`).
+ *
+ * Simpler than the display pass in one important way: `$…$` is a TEXT construct,
+ * so it needs no newline injection and therefore none of the container /
+ * blockquote / list-continuation machinery. It just has to survive six guards,
+ * every one of which degrades to "leave the text exactly as it renders today".
+ *
+ * MUST run after `normalizeDisplayMath` — see the module header.
+ */
+function normalizeInlineMath(md: string): string {
+  return md.replace(
+    INLINE_MATH_RE,
+    (whole: string, body: string, offset: number, str: string) => {
+      const inner = body.trim()
+      if (!inner) return whole
+
+      // A nested `\(` means the lazy closer matched the INNER `\)`, so converting
+      // would emit a span plus a dangling literal `\)`. Same reasoning as the
+      // display path's nested-`\[` guard.
+      if (inner.includes('\\(')) return whole
+
+      // A `$` anywhere in the body would close the emitted span early.
+      if (inner.includes('$')) return whole
+
+      // Regex, not math.
+      if (BRE_SIGNAL_RE.test(inner)) return whole
+
+      // An indented code block must never be touched. `preprocessMarkdown`
+      // already splits out FENCED and INLINE code before calling us, so this
+      // covers the one code form that split cannot see: the 4-column indented
+      // block. `continuationPrefix` returns null for exactly that case.
+      const lineHead = str.slice(str.lastIndexOf('\n', offset - 1) + 1, offset)
+      if (continuationPrefix(lineHead) === null) return whole
+
+      // The hijack guard — last because it is the only one that scans beyond the
+      // match itself.
+      if (paragraphHasLiveDollar(str, offset, offset + whole.length)) return whole
+
+      return `$${inner}$`
+    },
+  )
+}
+
+/**
+ * Rewrite LaTeX's own math delimiters into the `$`-based forms remark-math
+ * understands: display `\[ … \]` → `$$ … $$`, inline `\( … \)` → `$ … $`.
+ *
+ * Order is load-bearing: display first, inline second. The inline pass's
+ * paragraph guard then sees the `$$` fences the display pass just emitted and
+ * declines to rewrite a `\(` sitting inside a display body — which would produce
+ * KaTeX-unparseable `$$\na $b$ c\n$$`.
+ *
+ * Both passes are idempotent (neither output contains `\[` or `\(`) and both are
+ * safe on partial input: an unclosed opener simply fails to match, so running
+ * this on every frame of a streaming response cannot corrupt a half-written
+ * equation.
+ */
+export function normalizeMathDelimiters(md: string): string {
+  if (typeof md !== 'string') return md
+
+  const hasDisplay = md.indexOf('\\[') !== -1
+  if (!hasDisplay && md.indexOf('\\(') === -1) return md
+
+  const withDisplay = hasDisplay ? normalizeDisplayMath(md) : md
+  // The display pass can introduce no `\(`, so this re-check is exact.
+  return withDisplay.indexOf('\\(') === -1
+    ? withDisplay
+    : normalizeInlineMath(withDisplay)
 }
