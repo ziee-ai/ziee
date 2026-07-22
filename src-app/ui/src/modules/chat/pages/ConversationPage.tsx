@@ -309,11 +309,20 @@ export function ConversationPane() {
     SplitViewStore.openPane({ conversationId: null })
   }
 
+  // The conversation id we've dispatched a load for (single-pane route). Used by
+  // the loading gate below so the not-found / error branch never renders in the
+  // PRE-LOAD frame: `loadConversation` runs in the effect below (AFTER the first
+  // render), so on a fresh mount the first render still has the store's initial
+  // `loading=false, conversation=null` — which would otherwise flash the
+  // "Conversation not found" alert for one frame before the load even begins.
+  const loadDispatchedForRef = useRef<string | null>(null)
+
   // Load conversation and messages on mount or when ID changes — single-pane
   // route only; in a pane `ChatPaneProvider` owns loading into the pane's own
   // store, so ConversationPane must not re-load via the (focused-pane) bridge.
   useEffect(() => {
     if (!pane && conversationId) {
+      loadDispatchedForRef.current = conversationId
       chat.loadConversation(conversationId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -777,11 +786,14 @@ export function ConversationPane() {
     }
   }, [pane, conversation?.id])
 
-  // Loading state
-  if (loading && !conversation) {
-    return (
-      <Loading />
-    )
+  // Loading state — also covers the PRE-LOAD frame on the single-pane route: the
+  // load effect above runs after the first render, so without `loadPending` the
+  // not-found branch below would flash for one frame on a fresh mount (e.g. a
+  // hard reload / deep link straight to /chat/:id) before the load begins.
+  const loadPending =
+    !pane && !!conversationId && loadDispatchedForRef.current !== conversationId
+  if ((loading || loadPending) && !conversation) {
+    return <Loading />
   }
 
   // Empty PANE (ITEM-27): a split pane with no conversation targeted yet is the
