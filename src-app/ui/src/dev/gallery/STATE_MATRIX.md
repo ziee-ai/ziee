@@ -7,8 +7,8 @@
 
 ## Summary
 
-- **371** surfaces carry at least one renderable-state signal.
-- **2216** signals total: 1756 branch, 141 empty, 113 error, 106 loading, 97 overlay, 3 panel.
+- **308** surfaces carry at least one renderable-state signal.
+- **1946** signals total: 1524 branch, 128 empty, 110 error, 88 loading, 93 overlay, 3 panel.
 - **3** right-panel renderers registered (each a right-panel-open state).
 - **34** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,10 +16,10 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 94 |
-| `empty` | 111 |
-| `error` | 89 |
-| `open` | 83 |
+| `delayed` | 79 |
+| `empty` | 103 |
+| `error` | 86 |
+| `open` | 79 |
 | `panel-open` | 3 |
 
 ## Right-panel renderers (`registerPanelRenderer`)
@@ -74,598 +74,6 @@ conversation page.
 | `sidebarContent` | `modules/chat/module`:117 |
 
 ## Per-surface required states
-
-### `components/ui/kit/accordion`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `props.type === 'multiple'` | 41 |
-
-### `components/ui/kit/alert`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `icon != null` | 57 |
-| branch | `title != null` | 69 |
-| branch | `(description != null \|\| children != null)` | 70 |
-| branch | `onClose` | 73 |
-
-### `components/ui/kit/avatar`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `safe != null` | 20 |
-
-### `components/ui/kit/badge`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `count != null \|\| dot` | 71 |
-| branch | `children == null` | 86 |
-| branch | `hideBubble` | 87 |
-| branch | `dot` | 88 |
-| branch | `!(hideBubble)` | 108 |
-| branch | `icon != null` | 144 |
-
-### `components/ui/kit/button`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `regionLoading` | 72 |
-| loading | `loading` | 106 |
-| branch | `icon != null` | 106 |
-| branch | `linkHref && !isDisabled` | 113 |
-
-### `components/ui/kit/card`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `(title != null \|\| extra != null)` | 41 |
-| branch | `title != null` | 43 |
-| loading | `skeleton` | 52 |
-| branch | `footer != null` | 62 |
-
-### `components/ui/kit/checkbox`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 41 |
-
-### `components/ui/kit/combobox`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 75 |
-
-### `components/ui/kit/confirm`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `children != null` | 54 |
-| branch | `description != null` | 59 |
-
-### `components/ui/kit/date-picker`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `v == null \|\| v === ''` | 15 |
-| loading | `s.loading` | 94 |
-| branch | `s.readOnly` | 97 |
-| branch | `blocked` | 103 |
-| branch | `name != null` | 105 |
-
-### `components/ui/kit/descriptions`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!el` | 41 |
-| branch | `title != null` | 79 |
-
-### `components/ui/kit/dialog`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `trigger != null` | 41 |
-| branch | `description != null` | 57 |
-| branch | `footer != null` | 74 |
-
-### `components/ui/kit/dialog-host`
-
-Required states: `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!items.some((x) => x.id === it.id)` | 121 |
-| branch | `it == null` | 129 |
-| overlay | `<AlertDialog open>` | 138 |
-| branch | `Icon != null` | 142 |
-| branch | `it.description != null` | 145 |
-| branch | `it.choices != null` | 147 |
-| branch | `it.cancelText != null` | 164 |
-| branch | `it.cancelText != null` | 176 |
-
-### `components/ui/kit/dropdown`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 79 |
-| branch | `'type' in it && it.type === 'label'` | 81 |
-| branch | `(it as { icon?: React.ReactNode }).icon != null` | 99 |
-
-### `components/ui/kit/empty`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `image != null` | 21 |
-| branch | `icon != null` | 23 |
-| branch | `title != null` | 24 |
-| branch | `description != null` | 25 |
-| branch | `children != null` | 27 |
-
-### `components/ui/kit/error-state`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `hasActions` | 75 |
-| branch | `onRetry != null` | 77 |
-| branch | `details != null` | 86 |
-| branch | `details != null && showDetails` | 98 |
-| branch | `variant === 'page'` | 109 |
-
-### `components/ui/kit/form`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!el \|\| layout !== 'horizontal'` | 157 |
-| branch | `label != null` | 276 |
-| branch | `required` | 285 |
-| branch | `description != null` | 289 |
-| branch | `showError` | 291 |
-| branch | `beside` | 293 |
-
-### `components/ui/kit/image`
-
-Required states: `error`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!el` | 50 |
-| branch | `scale <= 1` | 61 |
-| error | `safe == null \|\| failed` | 93 |
-
-### `components/ui/kit/input`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 28 |
-| branch | `showClear` | 33 |
-| loading | `loading` | 43 |
-| branch | `prefix` | 70 |
-| branch | `rightAdornment` | 76 |
-| branch | `show` | 111 |
-
-### `components/ui/kit/input-number`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `raw === '' \|\| isIntermediate(raw)` | 46 |
-
-### `components/ui/kit/list`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `header != null` | 37 |
-| branch | `busy` | 38 |
-| empty | `dataSource.length === 0` | 44 |
-| branch | `footer != null` | 53 |
-
-### `components/ui/kit/menu`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `'type' in it && it.type === 'divider'` | 164 |
-| branch | `'type' in it && it.type === 'group'` | 170 |
-| branch | `!collapsed` | 174 |
-| branch | `'type' in it && it.type === 'label'` | 182 |
-| branch | `!(collapsed)` | 183 |
-| branch | `item.icon != null` | 215 |
-| branch | `!collapsed` | 217 |
-| branch | `hasActions` | 219 |
-
-### `components/ui/kit/multi-select`
-
-Required states: `delayed`, `empty`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `o && !o.disabled` | 94 |
-| branch | `exact && !exact.disabled` | 97 |
-| branch | `canCreate` | 121 |
-| empty | `filtered.length === 0 && !canCreate` | 131 |
-| empty | `!(filtered.length === 0)` | 133 |
-| branch | `locked` | 241 |
-| branch | `locked` | 243 |
-| loading | `s.loading` | 259 |
-| branch | `locked && o` | 261 |
-| branch | `name != null` | 263 |
-| branch | `locked` | 286 |
-| empty | `uniqueCurrent.length === 0` | 296 |
-| branch | `virtual` | 312 |
-| branch | `!canCreate` | 323 |
-| branch | `canCreate` | 324 |
-
-### `components/ui/kit/pagination`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `pageCount <= 1 && showTotal == null && !showSizeChanger` | 91 |
-| branch | `showTotal != null` | 103 |
-| branch | `pageCount > 1` | 104 |
-| branch | `p === 'gap'` | 119 |
-| branch | `showSizeChanger` | 152 |
-| branch | `showQuickJumper && pageCount > 1` | 162 |
-
-### `components/ui/kit/popover`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `hover` | 45 |
-| branch | `title != null` | 48 |
-
-### `components/ui/kit/progress`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `shape === 'circle'` | 44 |
-| branch | `showCenter` | 66 |
-
-### `components/ui/kit/radio-group`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 44 |
-
-### `components/ui/kit/result`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `subtitle != null` | 35 |
-| branch | `extra != null` | 36 |
-
-### `components/ui/kit/section-header`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `description != null` | 49 |
-| branch | `actions != null` | 55 |
-
-### `components/ui/kit/segmented`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 47 |
-| branch | `name != null` | 51 |
-
-### `components/ui/kit/select`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `isGroup(o)` | 103 |
-| branch | `o.label != null` | 106 |
-| loading | `s.loading` | 139 |
-| loading | `loading` | 177 |
-| branch | `showClear` | 179 |
-
-### `components/ui/kit/separator`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `children` | 14 |
-
-### `components/ui/kit/sheet`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!drag.current` | 57 |
-| branch | `!o && maskClosable === false && (details as { reason?: string }).reason === 'outside-press'` | 87 |
-| branch | `trigger != null` | 91 |
-| branch | `description != null` | 101 |
-| loading | `loading` | 105 |
-| branch | `footer != null` | 109 |
-| branch | `resizable` | 110 |
-
-### `components/ui/kit/spinner`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `children === undefined` | 35 |
-| branch | `description != null` | 39 |
-| branch | `spinning` | 46 |
-| branch | `description != null` | 49 |
-
-### `components/ui/kit/statistic`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `prefix != null` | 30 |
-| branch | `suffix != null` | 32 |
-
-### `components/ui/kit/switch`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 50 |
-| loading | `loading` | 79 |
-| branch | `tooltip != null` | 89 |
-
-### `components/ui/kit/table`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `v == null \|\| typeof v === 'boolean'` | 126 |
-| branch | `!active` | 158 |
-| branch | `view.sort!.dir === 'asc'` | 159 |
-| branch | `meta.sortable` | 162 |
-| branch | `props.filterable` | 236 |
-| branch | `props.columnChooser && hideable.length > 0` | 252 |
-| branch | `props.toolbarExtra` | 280 |
-| branch | `target.tagName === 'INPUT' \|\| target.tagName === 'TEXTAREA'` | 333 |
-| branch | `!tsv` | 335 |
-| branch | `showVirtual` | 346 |
-| branch | `hasToolbar` | 357 |
-| branch | `idx == null \|\| idx < 0 \|\| idx >= rows.length` | 388 |
-| branch | `caption != null` | 407 |
-| branch | `resizableTable` | 408 |
-| branch | `meta.resizable` | 428 |
-| branch | `busy` | 435 |
-| empty | `rows.length === 0` | 443 |
-| branch | `meta.resizable` | 559 |
-| branch | `mode === 'none'` | 609 |
-| branch | `(props.selectionMode ?? 'none') === 'none'` | 614 |
-| branch | `!selectionActive(props, col)` | 621 |
-
-### `components/ui/kit/tabs`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `scrollX` | 108 |
-| branch | `showClose` | 151 |
-| branch | `editable && !hideAdd` | 167 |
-
-### `components/ui/kit/tag`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `icon != null` | 85 |
-| branch | `onClose != null` | 87 |
-
-### `components/ui/kit/textarea`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `s.loading` | 21 |
-
-### `components/ui/kit/theme`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `theme !== 'system' \|\| typeof window === 'undefined'` | 63 |
-| branch | `typeof document === 'undefined'` | 75 |
-
-### `components/ui/kit/tree`
-
-Required states: `delayed`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `el` | 156 |
-| branch | `pendingFocus.current == null` | 161 |
-| branch | `!isOpen && loadData && !node.children?.length && !node.isLeaf && !loadingKeys.has(key)` | 169 |
-| branch | `node.disabled` | 181 |
-| branch | `active == null` | 187 |
-| branch | `!row` | 190 |
-| branch | `n.disabled` | 240 |
-| loading | `loading` | 242 |
-| branch | `hasKids` | 244 |
-| branch | `checkable` | 247 |
-| branch | `virtualStyle` | 277 |
-| branch | `!virtual` | 282 |
-
-### `components/ui/kit/typography`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `done` | 47 |
-| branch | `copyable != null` | 75 |
-| branch | `copyable != null` | 130 |
-| branch | `safe == null` | 145 |
-
-### `components/ui/kit/upload`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!list \|\| locked` | 34 |
-
-### `components/ui/shadcn/accordion`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `extra != null` | 51 |
-
-### `components/ui/shadcn/calendar`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `orientation === "left"` | 146 |
-| branch | `orientation === "right"` | 152 |
-
-### `components/ui/shadcn/carousel`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!api` | 63 |
-| branch | `!api \|\| !setApi` | 90 |
-| branch | `!api` | 95 |
-
-### `components/ui/shadcn/combobox`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `showTrigger` | 80 |
-| branch | `showClear` | 91 |
-| branch | `showRemove` | 267 |
-
-### `components/ui/shadcn/dialog`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `showCloseButton` | 93 |
-| branch | `showCloseButton` | 142 |
-
-### `components/ui/shadcn/field`
-
-Required states: `error`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `children` | 162 |
-| branch | `!errors?.length` | 187 |
-| error | `error?.message` | 203 |
-| branch | `!content` | 209 |
-
-### `components/ui/shadcn/input-group`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `(e.target as HTMLElement).closest("button")` | 58 |
-
-### `components/ui/shadcn/input-otp`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `hasFakeCaret` | 64 |
-
-### `components/ui/shadcn/resizable`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `withHandle` | 41 |
-
-### `components/ui/shadcn/sheet`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `showCloseButton` | 73 |
-
-### `components/ui/shadcn/sidebar`
-
-Required states: `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `collapsible === "none"` | 167 |
-| branch | `isMobile` | 182 |
-| overlay | `<Sheet open>` | 184 |
-| branch | `!tooltip` | 521 |
-| branch | `showIcon` | 619 |
 
 ### `modules/app/SetupPage`
 
@@ -937,10 +345,10 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!el` | 79 |
-| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 90 |
-| branch | `overflowing` | 125 |
-| branch | `collapsed` | 130 |
+| branch | `!el` | 96 |
+| branch | `!el \|\| typeof ResizeObserver === 'undefined'` | 107 |
+| branch | `overflowing` | 189 |
+| branch | `collapsed` | 197 |
 
 ### `modules/chat/components/ContentRenderer`
 
@@ -956,12 +364,12 @@ Required states: `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isInSelectionMode && onSelect` | 64 |
-| branch | `e && e.button === 2` | 70 |
-| branch | `conversation.message_count > 0` | 150 |
-| branch | `canDelete && !isInSelectionMode` | 188 |
-| overlay | `<Confirm open>` | 212 |
-| branch | `onSelect` | 230 |
+| branch | `isInSelectionMode && onSelect` | 65 |
+| branch | `e && e.button === 2` | 71 |
+| branch | `conversation.message_count > 0` | 151 |
+| branch | `canDelete && !isInSelectionMode` | 189 |
+| overlay | `<Confirm open>` | 213 |
+| branch | `onSelect` | 231 |
 
 ### `modules/chat/components/ConversationFindBar`
 
@@ -1001,9 +409,9 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `openIds.has(c.id)` | 45 |
-| branch | `mode === 'new'` | 79 |
-| empty | `filtered.length === 0` | 129 |
+| branch | `openIds.has(c.id)` | 46 |
+| branch | `mode === 'new'` | 80 |
+| empty | `filtered.length === 0` | 130 |
 
 ### `modules/chat/components/EditingMessageBanner`
 
@@ -1086,13 +494,13 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `Stores.SplitView.$.panes.length < 2` | 64 |
-| branch | `openIds.has(c.id)` | 119 |
-| overlay | `<Drawer open>` | 161 |
-| branch | `e.active` | 201 |
-| branch | `e.closable && e.paneId` | 207 |
-| branch | `atCap` | 250 |
-| empty | `filtered.length === 0` | 256 |
+| branch | `Stores.SplitView.$.panes.length < 2` | 65 |
+| branch | `openIds.has(c.id)` | 120 |
+| overlay | `<Drawer open>` | 162 |
+| branch | `e.active` | 202 |
+| branch | `e.closable && e.paneId` | 208 |
+| branch | `atCap` | 251 |
+| empty | `filtered.length === 0` | 257 |
 
 ### `modules/chat/components/PlusMenuItem`
 
@@ -1117,8 +525,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 24 |
-| branch | `isUser` | 29 |
+| branch | `!textData.text` | 28 |
+| branch | `isUser` | 33 |
 
 ### `modules/chat/components/TitleEditor`
 
@@ -1126,8 +534,8 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isEditing` | 92 |
-| branch | `showBackButton` | 138 |
+| branch | `isEditing` | 93 |
+| branch | `showBackButton` | 139 |
 
 ### `modules/chat/components/VirtualizedConversationList`
 
@@ -1164,19 +572,10 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `this.initialized` | 365 |
-| empty | `extensions.length === 0` | 543 |
-| empty | `extensions.length === 0` | 576 |
-| empty | `!registered \|\| registered.length === 0` | 895 |
-
-### `modules/chat/core/extensions/slots`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| empty | `renderers.length === 0` | 32 |
-| branch | `fallback` | 33 |
+| branch | `this.initialized` | 353 |
+| empty | `extensions.length === 0` | 531 |
+| empty | `extensions.length === 0` | 564 |
+| empty | `!registered \|\| registered.length === 0` | 883 |
 
 ### `modules/chat/core/extensions/utils`
 
@@ -1226,13 +625,15 @@ Required states: `empty`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `isFootnoteLabel(props.id)` | 62 |
-| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 78 |
-| branch | `citeN !== null` | 94 |
-| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 98 |
-| branch | `scopedHref?.startsWith('#')` | 115 |
-| empty | `verdict === 'empty'` | 181 |
-| branch | `verdict === 'allowed'` | 182 |
+| branch | `isFootnoteLabel(props.id)` | 64 |
+| branch | `(rest as Record<string, unknown>)['data-footnotes'] === undefined` | 80 |
+| branch | `citeN !== null` | 96 |
+| branch | `className?.includes('data-footnote-backref') \|\| (rest as Record<string, unknown>)['data-footnote-backref'] !== undefined` | 100 |
+| branch | `scopedHref?.startsWith('#')` | 137 |
+| empty | `verdict === 'empty'` | 204 |
+| branch | `verdict === 'allowed'` | 205 |
+| branch | `typeof paperLabel === 'string'` | 219 |
+| branch | `typeof excerptLabel === 'string'` | 237 |
 
 ### `modules/chat/extensions/export/extension`
 
@@ -1269,7 +670,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!textData.text` | 27 |
+| branch | `!textData.text` | 30 |
 
 ### `modules/chat/extensions/text/components/TextInput`
 
@@ -1333,57 +734,57 @@ Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!conversationId` | 80 |
-| branch | `sv.panes.length < 2` | 82 |
-| branch | `focused?.conversationId === conversationId` | 84 |
-| empty | `panes.length === 0` | 106 |
-| branch | `!focusedConvId \|\| focusedConvId === conversationId` | 107 |
-| branch | `panes.length >= 2` | 117 |
-| branch | `!conversationId` | 207 |
-| branch | `kind === 'pane'` | 227 |
-| branch | `!pane` | 228 |
-| branch | `kind !== 'conversation' \|\| !conversationId` | 237 |
-| branch | `!droppedId` | 239 |
-| branch | `pane` | 243 |
-| branch | `!droppedOnLeft` | 267 |
-| branch | `!sentinel` | 421 |
-| branch | `!el` | 441 |
-| branch | `!nativeScroll` | 456 |
-| branch | `y < 0 \|\| y > maxY` | 465 |
-| branch | `maxY - y <= 8` | 469 |
-| branch | `Math.abs(dy) < 6` | 475 |
-| branch | `!chat.$.conversation` | 495 |
-| branch | `pane && pane.paneId !== Stores.SplitView.$.focusedPaneId` | 499 |
-| branch | `!conversationId` | 541 |
-| branch | `didSeedApprovalsRef.current` | 597 |
-| branch | `conversation?.id !== conversationId` | 598 |
-| branch | `!hasNewApproval` | 633 |
-| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 637 |
-| branch | `!sentinel` | 665 |
-| branch | `!entries[0]?.isIntersecting` | 669 |
-| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 672 |
-| branch | `!sentinel` | 707 |
-| branch | `!entries[0]?.isIntersecting` | 711 |
-| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 712 |
-| loading | `!pending` | 727 |
-| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 730 |
-| branch | `!conversation?.id` | 739 |
-| branch | `!m` | 743 |
-| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 746 |
-| loading | `loading && !conversation` | 777 |
-| branch | `pane && !conversationId && !conversation` | 789 |
-| loading | `!loading && !conversation` | 796 |
-| error | `error` | 799 |
-| branch | `!isPopoutWindow` | 849 |
-| branch | `md` | 850 |
-| branch | `splitViewPanes.length < SPLIT_LIMITS.MAX_PANES` | 863 |
-| branch | `pane && !useMobileShell` | 900 |
-| branch | `!md` | 923 |
-| branch | `!md` | 948 |
-| error | `error` | 974 |
-| branch | `!md && dropZone` | 1002 |
-| branch | `dropZone === z` | 1031 |
-| branch | `nativeScroll && !composerHidden` | 1127 |
+| branch | `!conversationId` | 86 |
+| branch | `sv.panes.length < 2` | 88 |
+| branch | `focused?.conversationId === conversationId` | 90 |
+| empty | `panes.length === 0` | 112 |
+| branch | `!focusedConvId \|\| focusedConvId === conversationId` | 113 |
+| branch | `panes.length >= 2` | 123 |
+| branch | `!conversationId` | 213 |
+| branch | `kind === 'pane'` | 233 |
+| branch | `!pane` | 234 |
+| branch | `kind !== 'conversation' \|\| !conversationId` | 243 |
+| branch | `!droppedId` | 245 |
+| branch | `pane` | 249 |
+| branch | `!droppedOnLeft` | 273 |
+| branch | `!sentinel` | 427 |
+| branch | `!el` | 447 |
+| branch | `!nativeScroll` | 462 |
+| branch | `y < 0 \|\| y > maxY` | 471 |
+| branch | `maxY - y <= 8` | 475 |
+| branch | `Math.abs(dy) < 6` | 481 |
+| branch | `!chat.$.conversation` | 501 |
+| branch | `pane && pane.paneId !== Stores.SplitView.$.focusedPaneId` | 505 |
+| branch | `!conversationId` | 547 |
+| branch | `didSeedApprovalsRef.current` | 603 |
+| branch | `conversation?.id !== conversationId` | 604 |
+| branch | `!hasNewApproval` | 639 |
+| branch | `pendingAnchorRef.current \|\| hasMoreAfter \|\| conversation?.id !== conversationId \|\| initialScrollConvIdRef.current !== conversationId` | 643 |
+| branch | `!sentinel` | 671 |
+| branch | `!entries[0]?.isIntersecting` | 675 |
+| branch | `!chat.$.hasMoreBefore \|\| chat.$.loadingOlder` | 678 |
+| branch | `!sentinel` | 713 |
+| branch | `!entries[0]?.isIntersecting` | 717 |
+| branch | `!chat.$.hasMoreAfter \|\| chat.$.isStreaming` | 718 |
+| loading | `!pending` | 733 |
+| loading | `!currentFirst \|\| currentFirst === pending.prevFirstId` | 736 |
+| branch | `!conversation?.id` | 745 |
+| branch | `!m` | 749 |
+| branch | `!found \|\| chat.$.conversation?.id !== conversation.id` | 752 |
+| loading | `loading && !conversation` | 783 |
+| branch | `pane && !conversationId && !conversation` | 795 |
+| loading | `!loading && !conversation` | 802 |
+| error | `error` | 805 |
+| branch | `!isPopoutWindow` | 855 |
+| branch | `md` | 856 |
+| branch | `splitViewPanes.length < SPLIT_LIMITS.MAX_PANES` | 869 |
+| branch | `pane && !useMobileShell` | 906 |
+| branch | `!md` | 929 |
+| branch | `!md` | 954 |
+| error | `error` | 980 |
+| branch | `!md && dropZone` | 1008 |
+| branch | `dropZone === z` | 1037 |
+| branch | `nativeScroll && !composerHidden` | 1133 |
 
 ### `modules/chat/widgets/RecentConversationsWidget`
 
@@ -1391,17 +792,17 @@ Required states: `empty`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `recentError && recentConversations.length === 0` | 146 |
-| branch | `!recentInitialized` | 163 |
-| empty | `recentConversations.length === 0` | 174 |
-| branch | `!(e.metaKey \|\| e.ctrlKey \|\| e.button === 1)` | 205 |
-| branch | `!c` | 213 |
-| branch | `!c` | 249 |
-| branch | `active?.closest('[role="menu"]')` | 278 |
-| branch | `recentLoadingMore` | 307 |
-| branch | `recentError && !recentLoadingMore && recentConversations.length > 0` | 322 |
-| overlay | `<Dropdown open>` | 445 |
-| branch | `!open && keepMenuOpen` | 452 |
+| empty | `recentError && recentConversations.length === 0` | 150 |
+| branch | `!recentInitialized` | 167 |
+| empty | `recentConversations.length === 0` | 178 |
+| branch | `!(e.metaKey \|\| e.ctrlKey \|\| e.button === 1)` | 209 |
+| branch | `!c` | 217 |
+| branch | `!c` | 253 |
+| branch | `active?.closest('[role="menu"]')` | 282 |
+| branch | `recentLoadingMore` | 311 |
+| branch | `recentError && !recentLoadingMore && recentConversations.length > 0` | 326 |
+| overlay | `<Dropdown open>` | 449 |
+| branch | `!open && keepMenuOpen` | 456 |
 
 ### `modules/citations/components/CitationCard`
 
@@ -2665,95 +2066,20 @@ Required states: `delayed`, `empty`
 | empty | `attached.length === 0` | 144 |
 | branch | `canUse` | 167 |
 
-### `modules/layouts/app-layout/AppLayout`
-
-Required states: `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `prevXsRef.current === windowMinSize.sm` | 210 |
-| branch | `e.touches.length !== 1` | 250 |
-| branch | `!panel` | 254 |
-| branch | `!s` | 260 |
-| branch | `Math.abs(dx) < 8 && Math.abs(dy) < 8` | 265 |
-| branch | `Math.abs(dy) > Math.abs(dx)` | 266 |
-| branch | `!s \|\| !s.active` | 280 |
-| branch | `!windowMinSize.sm \|\| !isSidebarCollapsed \|\| e.touches.length !== 1` | 294 |
-| branch | `document.querySelector( '[data-slot="layout-drawer"], [data-slot="dialog-content"], [data-slot="sheet-content"], [role="alertdialog"]', )` | 298 |
-| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 316 |
-| branch | `!s` | 323 |
-| branch | `Math.abs(dx) < 10 && Math.abs(dy) < 10` | 328 |
-| branch | `Math.abs(dy) > Math.abs(dx) \|\| dx < 0` | 330 |
-| branch | `!mainContentElement` | 348 |
-| branch | `!window.visualViewport` | 387 |
-| branch | `!window.visualViewport` | 391 |
-| branch | `windowMinSize.sm` | 436 |
-| overlay | `<Sheet open>` | 437 |
-| branch | `!windowMinSize.sm` | 459 |
-| branch | `!isSidebarCollapsed` | 539 |
-
-### `modules/layouts/app-layout/components/Drawer`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| empty | `closeDir === 0 \|\| e.touches.length !== 1` | 107 |
-| branch | `scrollableX && el.scrollWidth > el.clientWidth + 1` | 120 |
-| branch | `!s` | 127 |
-| branch | `Math.abs(dx) < 8 && Math.abs(dy) < 8` | 132 |
-| branch | `Math.abs(dy) > Math.abs(dx)` | 134 |
-| branch | `!el` | 142 |
-| branch | `!s \|\| !s.active \|\| !el` | 152 |
-| branch | `Array.isArray(footer)` | 187 |
-| branch | `showOverlay` | 218 |
-| branch | `title != null` | 268 |
-| branch | `closable` | 278 |
-| branch | `typeof title === 'string'` | 283 |
-| branch | `extra != null` | 298 |
-| empty | `noBodyScrollWrap` | 303 |
-| branch | `footerNode != null` | 306 |
-| branch | `title == null` | 323 |
-
-### `modules/layouts/app-layout/components/HeaderBarContainer`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `!nativeScroll` | 40 |
-| branch | `now - lastToggle < TOGGLE_COOLDOWN_MS` | 53 |
-| branch | `y < 0 \|\| y > maxY` | 64 |
-| branch | `y <= HIDE_THRESHOLD` | 68 |
-| branch | `Math.abs(dy) < DIRECTION_DELTA` | 75 |
-| branch | `nativeScroll && pinned` | 91 |
-
 ### `modules/layouts/app-layout/components/LeftSidebar`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!item` | 169 |
-| branch | `primaryItems.length > 0` | 190 |
-| branch | `navigationItems.length > 0` | 205 |
-| branch | `!isIconOnly` | 227 |
-| branch | `isIconOnly` | 240 |
-| branch | `toolsItems.length > 0` | 243 |
-| branch | `!isIconOnly && bottomWidgets.length > 0` | 263 |
-| branch | `footerWidgets.length > 0` | 278 |
-
-### `modules/layouts/app-layout/components/ResizeHandle`
-
-Required states: `empty`
-
-| kind | condition | line |
-|---|---|---|
-| empty | `!targets.length` | 122 |
-| empty | `grow === 0` | 131 |
-| empty | `!targets.length` | 156 |
-| branch | `currentScreenPos.top === newScreenPos.top && currentScreenPos.left === newScreenPos.left` | 231 |
-| branch | `isHorizontal` | 276 |
+| branch | `!item` | 170 |
+| branch | `primaryItems.length > 0` | 191 |
+| branch | `navigationItems.length > 0` | 212 |
+| branch | `!isIconOnly` | 231 |
+| branch | `isIconOnly` | 244 |
+| branch | `toolsItems.length > 0` | 247 |
+| branch | `!isIconOnly && bottomWidgets.length > 0` | 264 |
+| branch | `footerWidgets.length > 0` | 279 |
 
 ### `modules/layouts/app-layout/components/SidebarToggleButton`
 
@@ -3713,42 +3039,13 @@ Required states: `delayed`, `error`
 | error | `error && !settings` | 38 |
 | loading | `loading && !settings` | 47 |
 
-### `modules/notification/components/NotificationBellWidget`
-
-Required states: `empty`, `open`
-
-| kind | condition | line |
-|---|---|---|
-| branch | `unread > 0` | 32 |
-| empty | `recent.length === 0` | 42 |
-| branch | `!n.read_at` | 58 |
-| branch | `n.body` | 63 |
-| overlay | `<Popover open>` | 91 |
-
-### `modules/notification/components/NotificationToastListener`
+### `modules/notification/kinds`
 
 Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `event.data.action !== 'create'` | 22 |
-| branch | `!hasPermissionNow(Permissions.NotificationsRead)` | 23 |
-| branch | `!id \|\| id === '00000000-0000-0000-0000-000000000000'` | 26 |
-| branch | `!n.interrupt` | 29 |
-
-### `modules/notification/pages/NotificationsPage`
-
-Required states: `delayed`, `empty`, `error`
-
-| kind | condition | line |
-|---|---|---|
-| loading | `loading && list.length === 0` | 68 |
-| error | `error && list.length === 0` | 72 |
-| empty | `list.length === 0` | 80 |
-| branch | `!n.read_at` | 90 |
-| branch | `n.body` | 100 |
-| branch | `!n.read_at` | 110 |
-| branch | `total > perPage` | 135 |
+| branch | `n.body` | 26 |
 
 ### `modules/onboarding/OnboardingPage`
 
@@ -4120,15 +3417,6 @@ Required states: _(branch-only — proven via dynamic coverage)_
 |---|---|---|
 | branch | `saveDisabled && saveDisabledReason` | 50 |
 
-### `modules/settings/components/SettingsPageContainer`
-
-Required states: _(branch-only — proven via dynamic coverage)_
-
-| kind | condition | line |
-|---|---|---|
-| branch | `subtitle` | 41 |
-| branch | `nativeScroll` | 60 |
-
 ### `modules/skill/chat-extension/SkillMenuItem`
 
 Required states: _(branch-only — proven via dynamic coverage)_
@@ -4315,7 +3603,8 @@ Required states: `error`
 | branch | `!value` | 90 |
 | branch | `model` | 96 |
 | error | `error && providers.length === 0` | 117 |
-| branch | `pendingProviderForKey` | 150 |
+| branch | `opt` | 163 |
+| branch | `pendingProviderForKey` | 181 |
 
 ### `modules/user-llm-providers/chat-extension/components/ProviderApiKeyModal`
 
