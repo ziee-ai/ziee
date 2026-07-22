@@ -4,7 +4,6 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useSandboxFlavorsStore } from './stores/sandboxFlavors'
 import './types' // CRITICAL: enable store type declaration merging
 
 const SandboxSettingsPage = lazyWithPreload(() =>
@@ -41,15 +40,12 @@ export default createModule({
       layout: SettingsLayoutDef,
     },
   ],
-  stores: [
-    {
-      // Shared catalog of known sandbox flavors. Consumed by the
-      // MCP user-policy card + the McpServerDrawer's system-stdio
-      // flavor Select. Lazy-loaded on first read.
-      name: 'SandboxFlavors',
-      store: useSandboxFlavorsStore,
-    },
-  ],
+  // SandboxFlavors (the shared flavor catalog consumed by the MCP user-policy
+  // card + McpServerDrawer's stdio flavor Select) is a registerLazyStore proxy —
+  // it self-registers when those MCP settings surfaces import it. Listing it here
+  // loaded sandboxFlavors.js on EVERY route at module registration; omitted so it
+  // loads only where it's actually read.
+  stores: [],
   slots: {
     settingsAdminPages: [
       {

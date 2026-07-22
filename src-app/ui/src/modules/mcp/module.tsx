@@ -3,12 +3,10 @@ import { useOverlayOpen } from '@/core/overlays/overlayVisibility'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
-import { useMcpUserPolicyStore } from './stores/mcpUserPolicy'
 // Deep import (NOT the `@/modules/mcp/stores` barrel): the barrel re-exports
 // mcpServer/systemMcpServer/mcpServerDrawer/mcpComposer too, so importing one
 // hook from it dragged all of them (incl. the 17 KB mcpComposer) into the
 // boot-loaded mcp module chunk.
-import { useMcpToolCallsStore } from './stores/mcpToolCalls'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
@@ -72,23 +70,14 @@ export default createModule({
       layout: SettingsLayoutDef,
     },
   ],
-  stores: [
-    // BOOT-EAGER (always-mounted overlay) — must stay registered.
-    {
-      // Per-server tool-call history (mcp_tool_calls), shown in the
-      // McpServerDrawer "Calls" tab. Refetches live on sync:mcp_tool_call.
-      name: 'McpToolCalls',
-      store: useMcpToolCallsStore,
-    },
-    {
-      // Global MCP user-policy (allowed transports + sandbox flavor
-      // for user-installed stdio). Loaded on first access; admin
-      // edits emit `mcp_user_policy.updated` so the drawer + Add
-      // button + Hub tab re-render without a page reload.
-      name: 'McpUserPolicy',
-      store: useMcpUserPolicyStore,
-    },
-  ],
+  // McpToolCalls (McpServerDrawer "Calls" tab) and McpUserPolicy (read by the
+  // MCP settings drawer/card/Add-button + the Hub MCP tab) are both consumed
+  // ONLY by page-level surfaces — no always-mounted overlay, sidebar, or chat
+  // composer reads them. They're registerLazyStore proxies that self-register
+  // (and subscribe to their sync events) when those pages import them, so
+  // listing them here — which loaded mcpToolCalls.js + mcpUserPolicy.js on EVERY
+  // route at module registration — is intentionally omitted.
+  stores: [],
   components: [
     {
       id: 'group-system-mcp-servers-assignment-drawer',

@@ -4,7 +4,6 @@ import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import { useWebSearchAdminStore } from './stores/webSearchAdmin'
 import './types' // CRITICAL: enable store type declaration merging
 
 const WebSearchSettingsPage = lazyWithPreload(() =>
@@ -44,12 +43,11 @@ export default createModule({
       layout: SettingsLayoutDef,
     },
   ],
-  stores: [
-    {
-      name: 'WebSearchAdmin',
-      store: useWebSearchAdminStore,
-    },
-  ],
+  // WebSearchAdmin is a settings-page store (only /settings/web-search reads it).
+  // It's a registerLazyStore proxy that self-registers when that page imports it,
+  // so listing it here — which loaded webSearchAdmin.js on EVERY route at module
+  // registration (on login) — is intentionally omitted.
+  stores: [],
   slots: {
     settingsAdminPages: [
       {
