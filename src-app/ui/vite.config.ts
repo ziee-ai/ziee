@@ -8,6 +8,7 @@ import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
 import { inlineApiPlugin } from './plugins/vite-plugin-inline-api.js'
 import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
 import { moduleManifestPlugin } from './plugins/vite-plugin-module-manifest.js'
+import { preloadGraphPlugin } from './plugins/vite-plugin-preload-graph.js'
 // @ts-ignore — self-contained JS plugins re-homed under @ziee/gallery (B4).
 import { galleryCoveragePlugin } from '@ziee/gallery/vite/vite-plugin-gallery-coverage.js'
 // @ts-ignore
@@ -42,6 +43,10 @@ export default defineConfig(async () => {
       moduleManifestPlugin({
         srcDir: path.resolve(__dirname, './src'),
       }),
+      // Emit the chunk dependency graph so the runtime can idle-prefetch the
+      // dynamic closure of loaded chunks at LOWEST priority (see
+      // src/core/preload/idleClosurePrefetch.ts).
+      preloadGraphPlugin(),
       // Instrument component/page source FIRST (enforce:'pre') so branch coverage
       // maps to real source lines, before react/oxc transpiles it.
       ...(coverage ? [galleryCoveragePlugin({ srcDir: path.resolve(__dirname, 'src') })] : []),
