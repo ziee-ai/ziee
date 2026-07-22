@@ -269,7 +269,23 @@ export default defineConfig({
     ],
   },
   optimizeDeps: { include: ['streamdown', 'streamdown/dist/*.js'] },
-  build: { outDir: ${JSON.stringify(distDir)}, emptyOutDir: true },
+  build: {
+    outDir: ${JSON.stringify(distDir)},
+    emptyOutDir: true,
+    // Mirror vite.config.ts: name module-boundary chunks after their module so
+    // the 16-smart-loading spec can identify per-module downloads in the prod
+    // e2e build (default naming collapses them all to \`module-<hash>.js\`).
+    rollupOptions: {
+      output: {
+        chunkFileNames: chunkInfo => {
+          const id = chunkInfo.facadeModuleId
+          const m = id && id.match(/[\\\\/]modules[\\\\/](.+?)[\\\\/]module\\.tsx$/)
+          if (m) return \`assets/module.\${m[1].replace(/[\\\\/]/g, '_')}.[hash].js\`
+          return 'assets/[name]-[hash].js'
+        },
+      },
+    },
+  },
 })
 `,
     )

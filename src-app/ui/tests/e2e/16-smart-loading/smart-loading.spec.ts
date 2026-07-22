@@ -17,14 +17,23 @@ import {
  * request, so we can observe exactly which modules a browser downloaded).
  */
 
-/** Names of module.tsx files the browser has requested so far. */
-function trackModuleRequests(page: Page): Set<string> {
-  const seen = new Set<string>()
-  page.on('request', r => {
-    const m = r.url().match(/\/modules\/(?:.*\/)?([a-z0-9_-]+)\/module\.tsx/)
-    if (m) seen.add(m[1])
-  })
-  return seen
+/** Tracks which module chunks the browser has requested. Exposes a `has(name)`
+ *  compatible with the previous Set API. Matches BOTH the dev path
+ *  (`/modules/.../<name>/module.tsx`) and the prod build chunk this repo emits
+ *  (`assets/module.<name>.<hash>.js`, named by rollupOptions.output.chunkFileNames
+ *  in vite.config.ts / global-setup) — the e2e runs a prod build, where module
+ *  sources are bundled to hashed chunks and the dev path is never requested. */
+function trackModuleRequests(page: Page): { has: (name: string) => boolean } {
+  const urls: string[] = []
+  page.on('request', r => urls.push(r.url()))
+  return {
+    has: (name: string) =>
+      urls.some(
+        u =>
+          new RegExp(`/modules/(?:[^?]*/)?${name}/module\\.tsx`).test(u) ||
+          new RegExp(`/module\\.${name}\\.[A-Za-z0-9_-]+\\.js`).test(u),
+      ),
+  }
 }
 
 const CORE = ['app', 'auth', 'config-client', 'router']

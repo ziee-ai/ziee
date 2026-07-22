@@ -130,6 +130,25 @@ export default defineConfig(async () => {
 
   build: {
     outDir: '../../dist/ui',
+    rollupOptions: {
+      output: {
+        // Name each module-boundary chunk after its module (e.g.
+        // `assets/module.chat-<hash>.js`) instead of the default collision-hashed
+        // `module-<hash>.js`. This makes the smart-loader's per-module network
+        // requests identifiable in a prod build (the 16-smart-loading e2e tracks
+        // WHICH module chunks download), and it aids prod debugging. Does not
+        // affect gating: the preload-graph plugin keys off facadeModuleId, not
+        // the filename.
+        chunkFileNames: chunkInfo => {
+          const id = chunkInfo.facadeModuleId
+          const m = id && id.match(/[\\/]modules[\\/](.+?)[\\/]module\.tsx$/)
+          // `.`-separated name so a module name that is a prefix of another
+          // (`user` vs `user-llm-providers`) can't cross-match.
+          if (m) return `assets/module.${m[1].replace(/[\\/]/g, '_')}.[hash].js`
+          return 'assets/[name]-[hash].js'
+        },
+      },
+    },
   },
 
   // NOTE: stripping `console.log` from prod bundles is deferred. Vite 8
