@@ -120,6 +120,15 @@ permission introduced, no `modules/*/permissions.rs` or migration grant in the d
 - **ITEM-7** — verdict: PASS — required, not cosmetic: both comments currently assert the
   opposite of what the code will do, and a stale comment asserting a safety property is
   worse than no comment.
+- **ITEM-9** — verdict: PASS — added in phase 7, audited on the same terms as the other
+  guards. It is purely subtractive (it can only skip a conversion, never alter one), so it
+  cannot introduce corruption, and it closes a case no other guard could reach: ITEM-4
+  looks for a `$` already present in the source, whereas this collision is manufactured by
+  the rewrite. The one risk it carried was performance — the first implementation's
+  `str.slice(0, offset).endsWith('\\)')` copies the whole prefix per match and would have
+  reintroduced the quadratic cost ITEM-6's hoist had just removed; rewritten to two indexed
+  reads with an `offset >= 2` bound (DRIFT-2.2). Covered by TEST-20 and replayed by the
+  TEST-12 idempotence loop.
 - **ITEM-8** — verdict: CONCERN — **found during this audit, not in the original plan.**
   Without it ITEM-1 is a no-op for any message lacking a `[`, and the unit tests cannot
   detect that because they call the normalizer directly. Mitigation: implement the
