@@ -3,6 +3,14 @@ import { runtimeVersionState, type RuntimeVersionState } from './state'
 import type { Actions } from './actions.gen'
 
 const RuntimeVersionDef = defineStore<RuntimeVersionState, Actions>('RuntimeVersion', {
+  // immer: every action mutates the draft (`s.loading = true`), which REQUIRES
+  // the immer middleware (its siblings runtimeConfig/runtimeUpdate set it too).
+  // Without it, store-kit's plain-zustand `set` path handled the draft mutator
+  // differently and blew up ("Cannot set properties of undefined") once
+  // smart-loading made this store create lazily post-login (on `main` the store
+  // was created pre-permission at boot, so loadVersions short-circuited and the
+  // misconfig never fired).
+  immer: true,
   state: runtimeVersionState,
   actions: import.meta.glob('./actions/*.ts'),
   init: ({ on, get, set, actions }) => {
