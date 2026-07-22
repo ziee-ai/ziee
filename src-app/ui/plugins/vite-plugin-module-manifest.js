@@ -100,8 +100,8 @@ function checkPurity(fnNode, file) {
   return { usesPermissions }
 }
 
-/** Extract the manifest fields from one module.tsx source. */
-function extractModule(file, src) {
+/** Extract the manifest fields from one module.tsx source. Exported for tests. */
+export function extractModule(file, src) {
   const ast = parse(src, { sourceType: 'module', plugins: ['typescript', 'jsx'] })
   let obj = null
   for (const node of ast.program.body) {
