@@ -1,4 +1,5 @@
 import { Plug } from 'lucide-react'
+import { useOverlayOpen } from '@/core/overlays/overlayVisibility'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
@@ -10,8 +11,6 @@ import { useMcpUserPolicyStore } from './stores/mcpUserPolicy'
 import { useMcpToolCallsStore } from './stores/mcpToolCalls'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
-import { GroupSystemMcpServersAssignment as GroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/groupSystemMcpServersAssignmentDrawer'
 import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import '@/modules/mcp/project-extension/events/types' // Project↔MCP event declaration merging
@@ -75,7 +74,6 @@ export default createModule({
   ],
   stores: [
     // BOOT-EAGER (always-mounted overlay) — must stay registered.
-    { name: 'GroupSystemMcpServersAssignment', store: useGroupSystemMcpServersAssignmentStore },
     {
       // Per-server tool-call history (mcp_tool_calls), shown in the
       // McpServerDrawer "Calls" tab. Refetches live on sync:mcp_tool_call.
@@ -96,7 +94,7 @@ export default createModule({
       id: 'group-system-mcp-servers-assignment-drawer',
       component: GroupSystemMcpServersAssignmentDrawer,
       shouldMount: () =>
-        useDelayedFalse(() => GroupSystemMcpServersAssignmentStore.isOpen),
+        useDelayedFalse(() => useOverlayOpen('group-mcp-assignment')),
       order: 100,
     },
   ],

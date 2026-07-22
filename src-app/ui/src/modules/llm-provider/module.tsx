@@ -1,4 +1,5 @@
 import { Server } from 'lucide-react'
+import { useOverlayOpen } from '@/core/overlays/overlayVisibility'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { DownloadIndicatorWidget } from '@/modules/llm-provider/components/widgets/DownloadIndicatorWidget'
@@ -14,8 +15,6 @@ import '@/modules/llm-provider/types'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { usePermission } from '@/core/permissions'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
-import { GroupLlmProvidersAssignment as GroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/groupLlmProvidersAssignmentDrawer'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const LlmProviderSettings = lazyWithPreload(() =>
@@ -59,7 +58,6 @@ export default createModule({
   ],
   stores: [
     // BOOT-EAGER (always-mounted overlay) — must stay registered.
-    { name: 'GroupLlmProvidersAssignment', store: useGroupLlmProvidersAssignmentStore },
     {
       name: 'AddLocalLlmModelUploadDrawer',
       store: useAddLocalLlmModelUploadDrawerStore,
@@ -86,7 +84,7 @@ export default createModule({
       id: 'group-llm-providers-assignment-drawer',
       component: GroupLlmProvidersAssignmentDrawer,
       shouldMount: () =>
-        useDelayedFalse(() => GroupLlmProvidersAssignmentStore.isOpen),
+        useDelayedFalse(() => useOverlayOpen('group-llm-assignment')),
       order: 100,
     },
     {

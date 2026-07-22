@@ -1,11 +1,10 @@
 import { BookOpen } from 'lucide-react'
+import { useOverlayOpen } from '@/core/overlays/overlayVisibility'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useGroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
-import { GroupSystemSkillsAssignment as GroupSystemSkillsAssignmentStore } from '@/modules/skill/widgets/groupSystemSkillsAssignmentDrawer'
 import '@/modules/skill/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
 
@@ -42,14 +41,13 @@ export default createModule({
   dependencies: ['router'],
   stores: [
     // BOOT-EAGER (always-mounted overlay) — must stay registered.
-    { name: 'GroupSystemSkillsAssignment', store: useGroupSystemSkillsAssignmentStore },
   ],
   components: [
     {
       id: 'group-system-skills-assignment-drawer',
       component: GroupSystemSkillsAssignmentDrawer,
       shouldMount: () =>
-        useDelayedFalse(() => GroupSystemSkillsAssignmentStore.isOpen),
+        useDelayedFalse(() => useOverlayOpen('group-skill-assignment')),
       order: 100,
     },
   ],

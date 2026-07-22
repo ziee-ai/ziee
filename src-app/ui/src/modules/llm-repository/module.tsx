@@ -1,11 +1,11 @@
 import { CloudDownload } from 'lucide-react'
+import { useOverlayOpen } from '@/core/overlays/overlayVisibility'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import '@/modules/llm-repository/types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
-import { LlmRepositoryDrawer as LlmRepositoryDrawerStore } from '@/modules/llm-repository/stores/llmRepositoryDrawer'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const LlmRepositorySettings = lazyWithPreload(() =>
@@ -47,7 +47,7 @@ export default createModule({
       // GroupLlmProvidersAssignmentDrawer). Without this the drawer's chunk +
       // its `GET /api/llm-repositories` fetch fired on EVERY route (incl. the
       // logged-out login page) for a component that is closed 99% of the time.
-      shouldMount: () => useDelayedFalse(() => LlmRepositoryDrawerStore.open),
+      shouldMount: () => useDelayedFalse(() => useOverlayOpen('llm-repository')),
       order: 100,
     },
   ],

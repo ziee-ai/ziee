@@ -1,11 +1,10 @@
 import { Workflow as WorkflowIcon } from 'lucide-react'
+import { useOverlayOpen } from '@/core/overlays/overlayVisibility'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useGroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
-import { GroupSystemWorkflowsAssignment as GroupSystemWorkflowsAssignmentStore } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
 import '@/modules/workflow/types' // CRITICAL: store declaration merging
 import '@/modules/settings/types/SettingsSlots' // settings slot types
 
@@ -44,14 +43,13 @@ export default createModule({
   dependencies: ['router'],
   stores: [
     // BOOT-EAGER (always-mounted overlay) — must stay registered.
-    { name: 'GroupSystemWorkflowsAssignment', store: useGroupSystemWorkflowsAssignmentStore },
   ],
   components: [
     {
       id: 'group-system-workflows-assignment-drawer',
       component: GroupSystemWorkflowsAssignmentDrawer,
       shouldMount: () =>
-        useDelayedFalse(() => GroupSystemWorkflowsAssignmentStore.isOpen),
+        useDelayedFalse(() => useOverlayOpen('group-workflow-assignment')),
       order: 100,
     },
   ],
