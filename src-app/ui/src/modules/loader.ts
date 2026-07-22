@@ -35,6 +35,14 @@ import { buildLoadContext } from '@/modules/loadContext'
  */
 
 const loaded = new Set<string>()
+// Modules whose body download / registration is CURRENTLY in flight. A name is
+// added to `loaded` synchronously (to dedupe concurrent waves) BEFORE its chunk
+// finishes downloading, so `loaded.has` alone can't tell "settled" from
+// "still-arriving". `inFlight` closes that window: a module is settled (its
+// routes are registered) only when loaded.has(name) && !inFlight.has(name).
+// The router's deep-link fallback uses this to WAIT (render Loading) instead of
+// redirecting while the owning module is still on the wire.
+const inFlight = new Set<string>()
 let coreInitialized = false
 let subscribed = false
 
@@ -43,7 +51,11 @@ async function registerWave(entries: ModuleManifestEntry[]): Promise<void> {
   const fresh = entries.filter(e => !loaded.has(e.name))
   if (fresh.length === 0) return
   // Claim names up-front so concurrent waves don't double-load the same module.
-  fresh.forEach(e => loaded.add(e.name))
+  // Mark them in-flight until their routes/slots are actually registered below.
+  fresh.forEach(e => {
+    loaded.add(e.name)
+    inFlight.add(e.name)
+  })
 
   const ordered = orderByDependencies(fresh)
   const bodies = await Promise.all(
@@ -52,6 +64,7 @@ async function registerWave(entries: ModuleManifestEntry[]): Promise<void> {
         return { e, mod: (await e.load()).default }
       } catch (err) {
         loaded.delete(e.name) // allow a retry on the next wave
+        inFlight.delete(e.name)
         console.error(`[loader] failed to load module "${e.name}"`, err)
         return null
       }
@@ -70,6 +83,8 @@ async function registerWave(entries: ModuleManifestEntry[]): Promise<void> {
     // second fan-out loop (that double-registers routes).
     registerModule(mod)
   }
+  // Routes/slots are now registered — these modules are settled.
+  fresh.forEach(e => inFlight.delete(e.name))
 
   if (!coreInitialized) {
     // First wave: full framework init (registers core EventBus/ModuleSystem
@@ -132,6 +147,25 @@ export async function ensureModuleForPath(pathname: string): Promise<boolean> {
   if (!isEligible(entry, buildLoadContext(pathname))) return false
   await registerWave([entry])
   return true
+}
+
+/**
+ * Deep-link fallback signal: is `pathname` owned by an eligible manifest module
+ * that has NOT yet finished loading? When true, the router must render a loading
+ * state instead of redirecting — the module's routes are on the wire and will
+ * appear on the next render (it arrived before its reactive load wave, e.g. a
+ * hard-reload / bookmark straight onto a lazy-module route).
+ *
+ * Returns false when: no manifest entry owns the path (genuine 404), the user
+ * isn't eligible for the owner (unauthorized — same as if it didn't exist), or
+ * the owner is already settled (loaded AND its routes registered) — in which
+ * case an unmatched path is a real 404 and the fallback should redirect.
+ */
+export function isPathModulePending(pathname: string): boolean {
+  const entry = entryForPath(manifest, pathname)
+  if (!entry) return false
+  if (!isEligible(entry, buildLoadContext(pathname))) return false
+  return !loaded.has(entry.name) || inFlight.has(entry.name)
 }
 
 /** Names of every module registered so far (for prefetch/debug). */
