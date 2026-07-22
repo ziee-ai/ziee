@@ -2,6 +2,7 @@ import { createModule } from '@ziee/framework'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { ProjectFilesDef } from './project-extension/stores/projectFiles'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
+import { useOverlayOpen } from '@/core/overlays/overlayVisibility'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
 // Side-effect import — registers the file knowledge kind into the
@@ -13,7 +14,6 @@ import './project-extension/extension'
 // Augments AppEvents with project.file_attached/detached event types
 // (relocated from projects/events as part of the project↔file inversion).
 import './project-extension/events/types'
-import { FilePreviewDrawer as FilePreviewDrawerStore } from '@/modules/file/stores/filePreviewDrawer'
 
 const FilePreviewDrawer = lazyWithPreload(() =>
   import('./components/FilePreviewDrawer').then(m => ({
@@ -70,8 +70,10 @@ export default createModule({
       // side-by-side right-panel via explicit onClick instead.
       id: 'file-preview-drawer',
       component: FilePreviewDrawer,
-      shouldMount: () =>
-        useDelayedFalse(() => FilePreviewDrawerStore.isOpen),
+      // Read the lightweight open-signal (NOT the drawer store — that would pull
+      // it onto every page at registration), then keep it mounted briefly after
+      // close for the exit animation via useDelayedFalse.
+      shouldMount: () => useDelayedFalse(() => useOverlayOpen('file-preview')),
       order: 50,
     },
   ],
