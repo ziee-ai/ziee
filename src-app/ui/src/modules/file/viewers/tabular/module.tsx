@@ -1,7 +1,12 @@
+import { lazy } from 'react'
 import { FileSpreadsheet } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { CsvBody, TsvBody, XlsxBody } from './body'
-import { DelimitedHeader, XlsxHeader } from './header'
+
+const CsvBody = lazy(() => import('./body').then(m => ({ default: m.CsvBody })))
+const TsvBody = lazy(() => import('./body').then(m => ({ default: m.TsvBody })))
+const XlsxBody = lazy(() => import('./body').then(m => ({ default: m.XlsxBody })))
+const DelimitedHeader = lazy(() => import('./header').then(m => ({ default: m.DelimitedHeader })))
+const XlsxHeader = lazy(() => import('./header').then(m => ({ default: m.XlsxHeader })))
 
 export const viewers: FileViewerModule[] = [
   {

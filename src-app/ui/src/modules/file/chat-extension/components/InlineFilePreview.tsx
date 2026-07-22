@@ -1,5 +1,6 @@
 import { ChevronRight, ChevronDown, File, PanelRight } from 'lucide-react'
 import {
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -262,7 +263,7 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
           </span>
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0 ms-auto">
-          {HeaderActions ? <HeaderActions {...slotProps} /> : null}
+          {HeaderActions ? <Suspense fallback={null}><HeaderActions {...slotProps} /></Suspense> : null}
           {file ? <DownloadButton file={file} /> : null}
           {file ? (
             <Tooltip content="Open in side panel">
@@ -308,7 +309,9 @@ export function InlineFilePreview({ viewer, source, file }: InlineFilePreviewPro
               data-testid="inline-file-preview-body"
               data-body-height={bodyHeightPx}
             >
-              <Body {...slotProps} />
+              <Suspense fallback={null}>
+                <Body {...slotProps} />
+              </Suspense>
             </div>
           ) : (
             <div

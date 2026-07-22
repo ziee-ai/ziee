@@ -1,7 +1,9 @@
+import { lazy } from 'react'
 import { FileText } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { TextBody } from './body'
-import { TextHeader } from './header'
+
+const TextBody = lazy(() => import('./body').then(m => ({ default: m.TextBody })))
+const TextHeader = lazy(() => import('./header').then(m => ({ default: m.TextHeader })))
 
 // Plain text / code extensions. No longer needs to exclude md/csv/etc. —
 // specific viewers register their own extensions and win on equal priority

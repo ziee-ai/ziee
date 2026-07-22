@@ -1,5 +1,5 @@
 import { FileQuestion, Pencil, TriangleAlert } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { Button, Empty, Spin, Text, Title } from '@ziee/kit'
 import type { File as FileEntity } from '@/api-client/types'
 import { getViewer } from '@/modules/file/registry/fileViewerRegistry'
@@ -78,7 +78,7 @@ export function FilePanelHeaderActions({
     <>
       {/* Viewer-specific chrome (toggles / copy / zoom …), when the matched
           viewer declares any. */}
-      {HeaderActions ? <HeaderActions file={file} /> : null}
+      {HeaderActions ? <Suspense fallback={null}><HeaderActions file={file} /></Suspense> : null}
       {/* Export-as (format conversion) for text deliverables — distinct from the
           plain Download of original bytes below. */}
       {editableKind(file) === 'markdown' ? <FileExportMenu file={file} /> : null}
@@ -234,7 +234,7 @@ export function FilePanel({ file, hideHeader = false, initialVersion, showFullPa
             </div>
           )
           : Body
-          ? <Body file={file} />
+          ? <Suspense fallback={<div className="flex items-center justify-center h-full" />}><Body file={file} /></Suspense>
           : (
             <div
               className="flex flex-col items-center justify-center h-full p-6"

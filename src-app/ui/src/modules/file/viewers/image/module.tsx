@@ -1,7 +1,9 @@
+import { lazy } from 'react'
 import { Image } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { ImageBody } from './body'
-import { ImageHeader } from './header'
+
+const ImageBody = lazy(() => import('./body').then(m => ({ default: m.ImageBody })))
+const ImageHeader = lazy(() => import('./header').then(m => ({ default: m.ImageHeader })))
 
 export const viewers: FileViewerModule[] = [
   {

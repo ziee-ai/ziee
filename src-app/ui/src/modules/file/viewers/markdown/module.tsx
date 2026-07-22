@@ -1,7 +1,9 @@
+import { lazy } from 'react'
 import { FileText } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { MarkdownBody } from './body'
-import { MarkdownHeader } from './header'
+
+const MarkdownBody = lazy(() => import('./body').then(m => ({ default: m.MarkdownBody })))
+const MarkdownHeader = lazy(() => import('./header').then(m => ({ default: m.MarkdownHeader })))
 
 export const viewers: FileViewerModule[] = [
   {

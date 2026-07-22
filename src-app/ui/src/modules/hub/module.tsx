@@ -1,8 +1,6 @@
 import { LayoutGrid } from 'lucide-react'
 import { Permissions } from '@/api-client/permissions'
 import { createModule } from '@ziee/framework'
-import { useHubCatalogStore } from '@/modules/hub/stores/hub-catalog-store'
-import { useHubInstalledStore } from '@/modules/hub/stores/hub-installed-store'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/types'
@@ -34,10 +32,10 @@ export default createModule({
   // smart-loading gate (build-lifted into the manifest)
   shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
   dependencies: ['router'],
-  stores: [
-    { name: 'HubCatalog', store: useHubCatalogStore },
-    { name: 'HubInstalled', store: useHubInstalledStore },
-  ],
+  // NOTE: HubCatalog / HubInstalled are page stores (the /hub page). They are
+  // registerLazyStore proxies that self-register when the lazy HubPage imports
+  // them — so they must NOT be listed here, or registering the hub module (on
+  // login, for an eligible user) would pull them onto whatever page you're on.
   routes: [
     {
       path: '/hub/:activeTab?',

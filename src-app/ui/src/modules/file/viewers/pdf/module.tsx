@@ -1,8 +1,10 @@
+import { lazy } from 'react'
 import { FileText } from 'lucide-react'
 import type { FileViewerModule } from '../../types/viewer'
-import { PdfBody } from './body'
-import { PdfHeader } from './header'
-import { PdfJsBody } from './pdfjs-body'
+
+const PdfBody = lazy(() => import('./body').then(m => ({ default: m.PdfBody })))
+const PdfHeader = lazy(() => import('./header').then(m => ({ default: m.PdfHeader })))
+const PdfJsBody = lazy(() => import('./pdfjs-body').then(m => ({ default: m.PdfJsBody })))
 
 // PPTX intentionally not registered. Backend can't convert PPTX to
 // PDF: pandoc doesn't read PowerPoint, and `office2pdf` (the only
