@@ -1,4 +1,4 @@
-import { useEffect, type ComponentType, type ReactNode } from 'react'
+import { Suspense, useEffect, type ComponentType, type ReactNode } from 'react'
 import {
   BrowserRouter,
   Routes,
@@ -126,7 +126,7 @@ export function RouterComponent() {
     })
 
     return Array.from(routesByLayout.entries()).map(
-      ([layoutDef, layoutRoutes]) => {
+      ([layoutDef, layoutRoutes], layoutIdx) => {
         if (!layoutDef) {
           // No layout - render routes directly
           return layoutRoutes.map(route => (
@@ -139,16 +139,21 @@ export function RouterComponent() {
           ))
         }
 
-        // Render layout with nested routes
+        // Render layout with nested routes. The layout `component` may be a
+        // React.lazy ref (layout shells are lazily loaded so referencing a
+        // LayoutDefinition doesn't pull the shell into boot) — wrap in Suspense.
+        // `layoutIdx` keys it because a lazy component has no stable `.name`.
         const LayoutComponent = layoutDef.component
 
         return (
           <Route
-            key={layoutDef.component.name || 'layout'}
+            key={`layout-${layoutIdx}`}
             element={
-              <LayoutComponent>
-                <Outlet />
-              </LayoutComponent>
+              <Suspense fallback={<Loading fullscreen />}>
+                <LayoutComponent>
+                  <Outlet />
+                </LayoutComponent>
+              </Suspense>
             }
           >
             {layoutRoutes.map(route => (
