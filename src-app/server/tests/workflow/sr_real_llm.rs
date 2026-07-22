@@ -374,8 +374,11 @@ async fn real_llm_sr_review_end_to_end_completes() {
     .await;
     let run_id = Uuid::parse_str(run["run_id"].as_str().unwrap()).unwrap();
 
-    // No human gates — the run completes unattended.
-    let final_run = poll_run(&server, &user.token, run_id).await;
+    // No human gates — the run completes unattended. This is the full SR
+    // pipeline (search → expand×N → screen → dedup → fetch → select → extract →
+    // synthesize → review), ~15 sequential LLM steps, so it needs a longer
+    // deadline than the 30s default on a slow local bridge.
+    let final_run = super::poll_run_for(&server, &user.token, run_id, 240).await;
     assert_eq!(final_run["status"], "completed", "real-LLM sr-review completes: {final_run}");
 
     // The real `screen` produced a decision array; the real `synthesize` produced
