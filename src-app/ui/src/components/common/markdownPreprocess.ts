@@ -1,3 +1,5 @@
+import { normalizeMathDelimiters } from '@/components/common/normalizeMathDelimiters'
+
 // Link reference definition:  [id]: url "optional title"   (indented ≤3 spaces)
 //
 // The id may NOT start with `^`: in a GFM document `[^id]:` is always a FOOTNOTE
@@ -15,6 +17,20 @@ const DEF_RE =
 const IMG_RE =
   /!\[([^\]\r\n]*)\]\(\s*(<[^>\r\n]*>|[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g
 
+// A `$$…$$` or `$…$` math span. The bracket-bearing passes below must not reach
+// inside one: `$$ a[1] $$` alongside a `[1]: url` definition would otherwise have
+// its `[1]` rewritten into a link, corrupting the equation.
+//
+// This is an APPROXIMATION of micromark-extension-math's tokenizer, deliberately
+// kept conservative. The `\n(?!\s*\n)` clause is the important part: math can span
+// lines but NOT a blank line, so without it two unrelated `$$` occurrences
+// paragraphs apart would swallow everything between them and silently disable the
+// reference-link and image passes over that whole region. Known remaining
+// divergences from the real parser: a single-`$` span never spans a newline (the
+// real one may), and a `$$$x$$$` run is matched by delimiter text rather than by
+// matched run length.
+const MATH_SPAN_RE = /(\$\$(?:[^\n]|\n(?!\s*\n))*?\$\$|\$[^$\n]*\$)/
+
 const normId = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase()
 
 function isSameOriginImage(url: string): boolean {
@@ -29,7 +45,7 @@ function isSameOriginImage(url: string): boolean {
 
 /**
  * One-pass markdown pre-processing applied before the text reaches Streamdown
- * (which parses block-by-block for streaming). Two fixes, both operating outside
+ * (which parses block-by-block for streaming). Three fixes, all operating outside
  * code spans/fences:
  *
  * 1. **Reference links** — Streamdown resolves `[text][id]` only within a single
@@ -44,8 +60,18 @@ function isSameOriginImage(url: string): boolean {
  *    (opens only on an explicit click; nothing auto-loads), or plain text when
  *    it's a `data:` URI or already wrapped in a link. Same-origin images are
  *    left intact.
+ *
+ * 3. **LaTeX display-math delimiters** — models write display math as `\[ … \]`,
+ *    but remark-math only understands `$`. Markdown eats the `\[` as a character
+ *    escape, so the equation leaks through as raw LaTeX (issue #177).
+ *    `normalizeMathDelimiters` rewrites it into the `$$ … $$` block form KaTeX
+ *    receives. It runs FIRST, and its output is then split back out so passes (1)
+ *    and (2) never reach inside a math span. Inline `\( … \)` is deliberately NOT
+ *    converted — see that module's header.
  */
 export function preprocessMarkdown(md: string): string {
+  // `\[` contains `[`, so the original guard already admits every input the math
+  // pass could act on — no widening needed.
   if (typeof md !== 'string' || md.indexOf('[') === -1) return md
 
   DEF_RE.lastIndex = 0
@@ -66,36 +92,45 @@ export function preprocessMarkdown(md: string): string {
   // capture group keeps the delimiters at ODD indices — rewrite EVEN only.
   const parts = md.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\r\n]+`)/)
   for (let i = 0; i < parts.length; i += 2) {
-    let s = parts[i]
+    // (3) Math delimiters first, so the spans it produces are protected below.
+    // Splitting on math spans keeps the ODD indices (the spans themselves)
+    // untouched — for input with no math this is a 1-element array, so the loop
+    // and the re-join are byte-for-byte identity.
+    const sub = normalizeMathDelimiters(parts[i]).split(MATH_SPAN_RE)
+    for (let j = 0; j < sub.length; j += 2) {
+      let s = sub[j]
 
-    // (2) Blocked images → placeholder. Done before the reference pass so the
-    // rewritten `[🖼 alt](url)` link isn't itself re-touched.
-    s = s.replace(IMG_RE, (whole, alt: string, rawUrl: string, offset: number, str: string) => {
-      let url = rawUrl
-      if (url.startsWith('<') && url.endsWith('>')) url = url.slice(1, -1)
-      if (isSameOriginImage(url)) return whole
-      const label = `🖼 ${alt?.trim() || 'image'}`
-      // `![…]` preceded by `[` is an image-as-link (`[![…](…)](…)`); keep it as
-      // text so we don't create an invalid nested link.
-      const insideLink = offset > 0 && str[offset - 1] === '['
-      return !insideLink && /^https?:\/\//i.test(url) ? `[${label}](${url})` : label
-    })
+      // (2) Blocked images → placeholder. Done before the reference pass so the
+      // rewritten `[🖼 alt](url)` link isn't itself re-touched.
+      s = s.replace(IMG_RE, (whole, alt: string, rawUrl: string, offset: number, str: string) => {
+        let url = rawUrl
+        if (url.startsWith('<') && url.endsWith('>')) url = url.slice(1, -1)
+        if (isSameOriginImage(url)) return whole
+        const label = `🖼 ${alt?.trim() || 'image'}`
+        // `![…]` preceded by `[` is an image-as-link (`[![…](…)](…)`); keep it as
+        // text so we don't create an invalid nested link.
+        const insideLink = offset > 0 && str[offset - 1] === '['
+        return !insideLink && /^https?:\/\//i.test(url) ? `[${label}](${url})` : label
+      })
 
-    // (1) Reference links (only when the doc has definitions).
-    if (defs.size > 0) {
-      // Full + collapsed:  [label][id]  and  [label][]
-      s = s.replace(/(!?)\[([^\]\r\n]+)\]\[([^\]\r\n]*)\]/g, (whole, bang, label, id) => {
-        const d = defs.get(normId(id.trim() === '' ? label : id))
-        return d ? inlineLink(label, d, bang) : whole
-      })
-      // Shortcut:  [label]  (not `[](`, `[][`, `[]:`, or a footnote `[^…]`)
-      s = s.replace(/(!?)\[([^\]\r\n^][^\]\r\n]*)\](?![[(:])/g, (whole, bang, label) => {
-        const d = defs.get(normId(label))
-        return d ? inlineLink(label, d, bang) : whole
-      })
+      // (1) Reference links (only when the doc has definitions).
+      if (defs.size > 0) {
+        // Full + collapsed:  [label][id]  and  [label][]
+        s = s.replace(/(!?)\[([^\]\r\n]+)\]\[([^\]\r\n]*)\]/g, (whole, bang, label, id) => {
+          const d = defs.get(normId(id.trim() === '' ? label : id))
+          return d ? inlineLink(label, d, bang) : whole
+        })
+        // Shortcut:  [label]  (not `[](`, `[][`, `[]:`, or a footnote `[^…]`)
+        s = s.replace(/(!?)\[([^\]\r\n^][^\]\r\n]*)\](?![[(:])/g, (whole, bang, label) => {
+          const d = defs.get(normId(label))
+          return d ? inlineLink(label, d, bang) : whole
+        })
+      }
+
+      sub[j] = s
     }
 
-    parts[i] = s
+    parts[i] = sub.join('')
   }
   return parts.join('')
 }

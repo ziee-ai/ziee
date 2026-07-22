@@ -463,10 +463,84 @@ const toolGroup: DeepBundle = {
   branches: [],
 }
 
+// A COLLAPSED long turn whose bordered cards sit INSIDE the clamp — the issue-183
+// reproduction (collapse-border-overlay). Interleaves
+// thinking → text → tool → text → tool → long answer so that:
+//   - the cards are inside the clamped region, where `overflow-hidden` and
+//     `mask-image` each clip to the border box and together erased the cards'
+//     `ring-1 ring-foreground/10` hairline (painted OUTSIDE their own box);
+//   - one card sits above the mask ramp start (75% of the 384px clamp ≈ 288px)
+//     and one straddles it, so the surface exercises the ramp as well as the
+//     clip rather than only the clip.
+// The turn clears COLLAPSE_CHAR_THRESHOLD (1200) comfortably, so it clamps.
+const COLLAPSED_TOOL_BOXES_ID = 'dee90010-0000-4000-8000-000000000010'
+const COLLAPSED_ANSWER = [
+  'Across the three trials the pooled hazard ratio favours the intervention arm,',
+  'though the confidence intervals overlap enough that the effect should be read',
+  'as suggestive rather than definitive.',
+].join(' ')
+const collapsedToolBoxes: DeepBundle = {
+  conversation: conversation(
+    COLLAPSED_TOOL_BOXES_ID,
+    'Collapsed message — thinking + tool cards inside the clamp',
+  ),
+  messages: [
+    message(`${COLLAPSED_TOOL_BOXES_ID}-m1`, 'user', [
+      {
+        type: 'text',
+        text: 'Search the RAG corpus for the phase 3 readouts and summarise them.',
+      },
+    ]),
+    message(`${COLLAPSED_TOOL_BOXES_ID}-m2`, 'assistant', [
+      {
+        type: 'thinking',
+        thinking:
+          'The user wants a synthesis, not raw hits. I should query the corpus, ' +
+          'then narrow to the phase 3 readouts before summarising.',
+        metadata: null,
+      } as MessageContentData,
+      {
+        type: 'text',
+        text: 'Let me search the corpus for the relevant readouts before I summarise them.',
+      },
+      {
+        type: 'tool_use',
+        id: 'toolu_collapsed_1',
+        name: 'query_rag',
+        server_id: SANDBOX_SERVER,
+        input: { query: 'phase 3 readouts', top_k: 8 },
+      },
+      {
+        // Deliberately ~3 lines: it pushes the SECOND tool card down so it
+        // straddles the mask ramp start (288px = 75% of the 384px clamp). Without
+        // that the fixture only exercises the clip (Mechanism A) and would let a
+        // regression in the ramp behaviour (Mechanism B) pass unnoticed.
+        type: 'text',
+        text:
+          'That returned a broad set spanning both the dose-finding and the ' +
+          'confirmatory programmes, so I am narrowing it to just the confirmatory ' +
+          'phase 3 trials with reported hazard ratios before I synthesise anything.',
+      },
+      {
+        type: 'tool_use',
+        id: 'toolu_collapsed_2',
+        name: 'query_rag',
+        server_id: SANDBOX_SERVER,
+        input: { query: 'confirmatory phase 3 hazard ratio', top_k: 4 },
+      },
+      // A long trailing answer, so the turn overflows the 384px clamp well past
+      // the ramp and the fade cue is clearly visible on the prose.
+      { type: 'text', text: `${COLLAPSED_ANSWER} ${COLLAPSED_ANSWER.repeat(12)}` },
+    ]),
+  ],
+  branches: [],
+}
+
 export const chatDeepById: Record<string, DeepBundle> = {
   [TOOL_RUNNING_ID]: toolRunning,
   [TOOL_FAILED_ID]: toolFailed,
   [TOOL_GROUP_ID]: toolGroup,
+  [COLLAPSED_TOOL_BOXES_ID]: collapsedToolBoxes,
   [ATTACHMENTS_ID]: attachments,
   [ELICITATION_ID]: elicitation,
   [ASKUSER_ID]: askUser,
@@ -478,6 +552,7 @@ export const CHAT_DEEP_CONVERSATION_IDS = {
   toolRunning: TOOL_RUNNING_ID,
   toolFailed: TOOL_FAILED_ID,
   toolGroup: TOOL_GROUP_ID,
+  collapsedToolBoxes: COLLAPSED_TOOL_BOXES_ID,
   attachments: ATTACHMENTS_ID,
   elicitation: ELICITATION_ID,
   askUser: ASKUSER_ID,
