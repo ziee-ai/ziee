@@ -373,7 +373,10 @@ test.describe('Tier 1 — streamdown lock-in (chat assistant markdown rendering)
       'That costs $5 and the rate \\( k \\) is fixed.',
     )
     const bubble = assistantBubble(page)
-    await expect(bubble).toContainText('That costs $5 and the rate (k) is fixed.')
+    // `( k )` keeps the padding the source had inside `\( k \)` — markdown drops
+    // the backslashes but not the spaces, which is precisely "renders as it does
+    // today", the guard's contract.
+    await expect(bubble).toContainText('That costs $5 and the rate ( k ) is fixed.')
     // Nothing became an equation — in particular there is no mangled `5 and …`
     // span and no dangling `k$`.
     expect(await bubble.evaluate(el => el.querySelectorAll('.katex').length)).toBe(0)
