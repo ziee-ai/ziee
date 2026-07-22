@@ -8,7 +8,6 @@ import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
 import { inlineApiPlugin } from './plugins/vite-plugin-inline-api.js'
 import { testidUniquePlugin } from './plugins/vite-plugin-testid-unique.js'
 import { moduleManifestPlugin } from './plugins/vite-plugin-module-manifest.js'
-import { parallelPreloadPlugin } from './plugins/vite-plugin-parallel-preload.js'
 // @ts-ignore — self-contained JS plugins re-homed under @ziee/gallery (B4).
 import { galleryCoveragePlugin } from '@ziee/gallery/vite/vite-plugin-gallery-coverage.js'
 // @ts-ignore
@@ -27,15 +26,8 @@ export default defineConfig(async () => {
   // normal dev/build/test never pays the instrumentation cost.
   const coverage = process.env.GALLERY_COVERAGE === '1'
 
-  // Flatten the lazy-import waterfall: modulepreload each dynamic import's whole
-  // downstream dynamic closure so the lazy subtree fetches in parallel (execution
-  // stays lazy). `resolveDependencies` is wired into build.modulePreload below.
-  const { plugin: parallelPreload, resolveDependencies: parallelPreloadDeps } =
-    parallelPreloadPlugin()
-
   return {
     plugins: [
-      parallelPreload,
       // Inline generated map lookups (dev+prod, enforce:'pre'): Permissions.X →
       // literal, ApiClient.NS.method() → callAsync (the latter activates once
       // apiEndpoints.ts is split out). Keeps these maps call-site-granular so the
@@ -133,12 +125,6 @@ export default defineConfig(async () => {
 
   build: {
     outDir: '../../dist/ui',
-    // Extend each dynamic import's modulepreload set to its full dynamic closure
-    // (vite-plugin-parallel-preload) → the lazy subtree loads in parallel instead
-    // of a serial waterfall; execution stays lazy (preload fetches, doesn't run).
-    modulePreload: {
-      resolveDependencies: parallelPreloadDeps,
-    },
   },
 
   // NOTE: stripping `console.log` from prod bundles is deferred. Vite 8
