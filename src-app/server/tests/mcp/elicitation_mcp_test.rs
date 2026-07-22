@@ -243,6 +243,11 @@ async fn ask_user_accept_returns_the_answer_to_the_model() {
         "__edit_file_lines",
         "__rewrite_file",
         "__convert_document",
+        // background_mcp (agent background tasks) auto-attaches for tool-capable
+        // chats alongside the other always-on built-ins.
+        "__spawn_background",
+        "__check_status",
+        "__collect_result",
     ];
     assert!(
         tools
