@@ -2,7 +2,6 @@ import type {
   ChatExtension,
   ExtensionRegistrationOptions,
   BeforeSendResult,
-  SendBlocker,
   SSEEvent,
   SSEEventTypeRegistry,
   ChatSlotName,
@@ -22,6 +21,31 @@ export class ChatExtensionRegistry {
   private extensionOptions: Map<string, ExtensionRegistrationOptions> =
     new Map()
   private initialized = false
+
+  // Reactive change signal (register / unregister). Consumers that render a
+  // component PER extension (so they never call a hook in a loop) subscribe via
+  // `useChatExtensionList()` and re-render when the set changes, mounting /
+  // unmounting a probe per extension — Rules-of-Hooks-safe at any registration
+  // time. A monotonically increasing version is a stable useSyncExternalStore
+  // snapshot.
+  private changeVersion = 0
+  private changeListeners = new Set<() => void>()
+
+  private notifyExtensionsChanged(): void {
+    this.changeVersion++
+    for (const l of this.changeListeners) l()
+  }
+
+  /** Subscribe to register/unregister (arrow-bound for useSyncExternalStore). */
+  subscribeToExtensions = (onChange: () => void): (() => void) => {
+    this.changeListeners.add(onChange)
+    return () => {
+      this.changeListeners.delete(onChange)
+    }
+  }
+
+  /** Monotonic version bumped on every register/unregister (stable snapshot). */
+  getExtensionsVersion = (): number => this.changeVersion
 
   /**
    * Slot registry: maps slot names to ordered components, built at
@@ -102,6 +126,7 @@ export class ChatExtensionRegistry {
 
     this.extensions.set(extension.name, extension)
     this.extensionOptions.set(extension.name, options)
+    this.notifyExtensionsChanged()
 
     // Seed the PRIMARY pane's chat store with this extension's store instance
     // (split panes seed their OWN via `injectExtensionStores` in each store's
@@ -229,6 +254,7 @@ export class ChatExtensionRegistry {
 
     this.extensions.delete(name)
     this.extensionOptions.delete(name)
+    this.notifyExtensionsChanged()
 
     // Clear this extension's slot entries via the generic slot registry.
     this.slots.unregister(name)
@@ -671,37 +697,8 @@ export class ChatExtensionRegistry {
     }
   }
 
-  /**
-   * Reactive send-blocker aggregator. Returns the list of blockers
-   * currently reported by extensions (file: "uploading", future
-   * extensions could report "awaiting-approval", etc.).
-   *
-   * THIS IS A REACT HOOK — call only from inside a render path
-   * (`ChatInput` does). Iterates the extension list in stable
-   * insertion order and calls each extension's `useSendBlocker`
-   * unconditionally. The set of extensions is fixed at app boot,
-   * so the hook count is stable across renders.
-   *
-   * Returns an empty array when no extension blocks. Callers
-   * typically check `blockers.length > 0` to disable the Send button.
-   */
-  useSendBlockers(): SendBlocker[] {
-    const out: SendBlocker[] = []
-    for (const extension of this.getExtensions()) {
-      if (extension.useSendBlocker) {
-        try {
-          const result = extension.useSendBlocker()
-          if (result) out.push(result)
-        } catch (error) {
-          console.error(
-            `[ChatExtensions] Error in ${extension.name}.useSendBlocker:`,
-            error,
-          )
-        }
-      }
-    }
-    return out
-  }
+  // Send-blocker aggregation moved to `useSendBlocked()` (contributions.tsx) —
+  // a component-per-extension collector, so it no longer calls a hook in a loop.
 
   /**
    * Execute beforeSendMessage hook across all extensions
@@ -1248,42 +1245,6 @@ export class ChatExtensionRegistry {
 // Singleton instance
 export const chatExtensionRegistry = new ChatExtensionRegistry()
 
-/**
- * React hook that aggregates `useConversationMenu` contributions
- * from every enabled extension. Returns combined menu items +
- * stacked overlays, ready to drop into an antd Dropdown's
- * `menu.items` and rendered alongside the trigger.
- *
- * Each extension's `useConversationMenu` is itself a hook, so this
- * call iterates the registered extensions and calls each in
- * priority order. Standard rules-of-hooks apply: the set of
- * extensions implementing this hook must be stable for the
- * lifetime of the component using it (true under the
- * auto-discovery setup; HMR re-registrations re-mount consumers).
- */
-export function useConversationMenuContributions(
-  conversation: import('@/api-client/types').Conversation,
-): {
-  items: import('@ziee/kit').DropdownItem[]
-  overlays: React.ReactNode[]
-  keepMenuOpen: boolean
-} {
-  const items: import('@ziee/kit').DropdownItem[] = []
-  const overlays: React.ReactNode[] = []
-  let keepMenuOpen = false
-  const extensions = chatExtensionRegistry
-    .getExtensions()
-    .filter(ext => ext.useConversationMenu !== undefined)
-  for (const ext of extensions) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const contrib = ext.useConversationMenu!(conversation)
-    if (contrib.items) items.push(...contrib.items)
-    if (contrib.overlays) {
-      overlays.push(
-        <React.Fragment key={ext.name}>{contrib.overlays}</React.Fragment>,
-      )
-    }
-    if (contrib.keepMenuOpen) keepMenuOpen = true
-  }
-  return { items, overlays, keepMenuOpen }
-}
+// Conversation-menu aggregation moved to the `ConversationMenuContributions`
+// component (contributions.tsx) — a component-per-extension collector, so it no
+// longer calls `useConversationMenu` in a loop.

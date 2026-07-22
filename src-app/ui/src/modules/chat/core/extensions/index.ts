@@ -56,7 +56,6 @@ export { defineExtensionStore } from '@ziee/framework/store-kit'
 export {
   ChatExtensionRegistry,
   chatExtensionRegistry,
-  useConversationMenuContributions,
 } from './registry'
 
 // UI components
@@ -64,6 +63,14 @@ export { ExtensionSlot } from './slots'
 
 // SSE event handling
 export { parseSSEEvent, routeSSEEvent } from './events'
+
+// Component-per-extension collectors (replace the former hooks-in-a-loop
+// aggregators — Rules-of-Hooks-safe at any registration time).
+export {
+  useChatExtensionList,
+  useSendBlocked,
+  ConversationMenuContributions,
+} from './contributions'
 
 // Utility helpers
 export {

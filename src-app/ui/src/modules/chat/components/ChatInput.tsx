@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, Popover, Tooltip, message } from '@ziee/kit'
 import { Plus, SendHorizontal as SendIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ExtensionSlot, chatExtensionRegistry } from '@/modules/chat/core/extensions'
+import { ExtensionSlot, useSendBlocked } from '@/modules/chat/core/extensions'
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
 import { EditingMessageBanner } from '@/modules/chat/components/EditingMessageBanner'
 import { Chat } from '@/modules/chat/core/stores/chatBridge'
@@ -19,12 +19,12 @@ interface ChatInputProps {
  * Orchestrates message sending using extension stores
  */
 export function ChatInput(props: ChatInputProps) {
-  // Chat extensions (text input, file/MCP/memory composers, toolbar pills) load
-  // lazily on first chat mount and register ASYNCHRONOUSLY. The real composer
-  // (`ChatInputInner`) calls ONE `useSendBlocker` hook PER registered extension,
-  // so mounting it while extensions are still registering would vary the hook
-  // count between renders (React #310). Gate here — this outer component calls a
-  // single stable hook — and mount the composer only once the set is frozen.
+  // Chat extensions (text input, file/MCP/memory composers, toolbar pills)
+  // register asynchronously on first chat mount. Gate the real composer on
+  // readiness so its extension slots are populated before it paints — otherwise
+  // the toolbar pills flash in a beat after the composer appears. (Hook-count
+  // safety is NOT the reason: send-blocking now runs each extension's hook in its
+  // own probe via `useSendBlocked`, so it's stable regardless of the set.)
   const extensionsReady = useChatExtensionsReady()
   if (!extensionsReady) {
     // Composer-shaped skeleton — matches the card outline + toolbar row so there
@@ -50,9 +50,10 @@ export function ChatInput(props: ChatInputProps) {
 }
 
 /**
- * The real composer — mounted ONLY once chat extensions are registered (see
- * ChatInput), so `chatExtensionRegistry.useSendBlockers()` (one hook per
- * extension) is called with a STABLE hook count.
+ * The real composer. Extensions can block the Send button via `useSendBlocker`;
+ * `useSendBlocked` runs each extension's hook in its OWN probe (no hooks in a
+ * loop), returning both the aggregate `isBlocked` flag and the probe nodes to
+ * render — so a changing extension set never varies this component's hook count.
  */
 function ChatInputInner({
   disabled = false,
@@ -69,8 +70,7 @@ function ChatInputInner({
   // chat-extension uses this to gate Send while uploads are in flight
   // — chat itself stays file-agnostic. Click-time defense lives in the
   // `beforeSendMessage` aggregator (called inside sendMessage).
-  const sendBlockers = chatExtensionRegistry.useSendBlockers()
-  const isBlockedByExtension = sendBlockers.length > 0
+  const [isBlockedByExtension, sendBlockerProbes] = useSendBlocked()
 
   const handleSend = async () => {
     if (sending || isStreaming || disabled || isBlockedByExtension) return
@@ -88,6 +88,9 @@ function ChatInputInner({
 
   return (
     <div className={`w-full relative ${className}`} style={style} data-chat-composer>
+      {/* Send-blocker probes: one per extension, each runs its useSendBlocker in
+          isolation (return null). Mounted here so the aggregate flag stays live. */}
+      {sendBlockerProbes}
 
       <div
         onFocus={() => setFocused(true)}
