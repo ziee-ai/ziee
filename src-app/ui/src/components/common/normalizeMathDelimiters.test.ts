@@ -121,6 +121,16 @@ test('inline body-shape guards leave unsafe cases untouched', () => {
   check('x \\( a \\( b \\) c \\) y', 'x \\( a \\( b \\) c \\) y')
   // a `$` in the body would close the emitted span early
   check('a \\( x $ y \\) b', 'a \\( x $ y \\) b')
+
+  // TWO ADJACENT pairs would emit `$a$$b$`. A math-text closer must be a `$` run
+  // of the SAME length as its opener, so the inner `$$` does not close the first
+  // span and the whole thing collapses into ONE span with the body `a$$b`.
+  // Neither pair is safe alone, so both are skipped.
+  check('x \\( a \\)\\( b \\) y', 'x \\( a \\)\\( b \\) y')
+  check('\\(a\\)\\(b\\)', '\\(a\\)\\(b\\)')
+  // ...but ANY separator between them is enough to make both safe
+  check('x \\(a\\) \\(b\\) y', 'x $a$ $b$ y')
+  check('x \\(a\\), \\(b\\) y', 'x $a$, $b$ y')
 })
 
 // TEST-8 — an indented code block is never touched. `preprocessMarkdown` splits

@@ -255,7 +255,7 @@ function normalizeDisplayMath(md: string): string {
  *
  * Simpler than the display pass in one important way: `$…$` is a TEXT construct,
  * so it needs no newline injection and therefore none of the container /
- * blockquote / list-continuation machinery. It just has to survive six guards,
+ * blockquote / list-continuation machinery. It just has to survive seven guards,
  * every one of which degrades to "leave the text exactly as it renders today".
  *
  * MUST run after `normalizeDisplayMath` — see the module header.
@@ -300,11 +300,25 @@ function normalizeInlineMath(md: string): string {
       const lineHead = str.slice(str.lastIndexOf('\n', offset - 1) + 1, offset)
       if (continuationPrefix(lineHead) === null) return whole
 
+      // Two ADJACENT pairs — `\( a \)\( b \)` with nothing between them — would
+      // emit `$a$$b$`. A math-text closer must be a `$` run of the SAME length as
+      // its opener, so the inner `$$` does not close the first span: the whole
+      // thing parses as ONE span whose body is `a$$b`, which KaTeX then rejects.
+      // Neither pair is safe to convert alone either (each would still abut the
+      // other's literal `\(`/`\)`), so skip both. Rare in real output, and the
+      // paragraph guard below cannot see it — that guard looks for a `$` already
+      // in the source, whereas this collision is created by the rewrite itself.
+      // Indexed rather than sliced on purpose: `str.slice(0, offset)` would copy
+      // the whole prefix on every match, making the pass quadratic again.
+      const after = offset + whole.length
+      const abuts =
+        str.startsWith('\\(', after) ||
+        (offset >= 2 && str[offset - 1] === ')' && str[offset - 2] === '\\')
+      if (abuts) return whole
+
       // The hijack guard — last because it is the only one that scans beyond the
       // match itself.
-      if (anyDollar && paragraphHasLiveDollar(str, offset, offset + whole.length)) {
-        return whole
-      }
+      if (anyDollar && paragraphHasLiveDollar(str, offset, after)) return whole
 
       return `$${inner}$`
     },

@@ -26,6 +26,8 @@ they are additionally replayed by the file's idempotence test (TEST-12).
 - **TEST-18** (tier: e2e) [covers: ITEM-4] file: `src-app/ui/tests/e2e/chat/markdown-rendering.spec.ts` — asserts: the unpaired-`$` guard in the real renderer — a message `That costs $5 and the rate \( k \) is fixed.` renders the literal text `$5` and `(k)` with NO mangled span (`.katex` count === 0), i.e. the hijack does not reach the DOM
 - **TEST-19** (tier: e2e) [covers: ITEM-1, ITEM-7] file: `src-app/ui/tests/e2e/chat/markdown-rendering.spec.ts` — asserts: the existing display-math spec (issue #177) is unregressed — `.katex-display` count === 2 and 2 hidden `<annotation>` elements, run against the now-two-pass normalizer
 
+- **TEST-20** (tier: unit) [covers: ITEM-9] file: `src-app/ui/src/components/common/normalizeMathDelimiters.test.ts` — asserts: two directly adjacent pairs are BOTH skipped — `x \( a \)\( b \) y` and `\(a\)\(b\)` are unchanged (converting would emit `$a$$b$`, which collapses into a single span with the body `a$$b`) — while any separator makes both safe: `x \(a\) \(b\) y` → `x $a$ $b$ y` and `x \(a\), \(b\) y` → `x $a$, $b$ y`
+
 ## Coverage map (every ITEM → ≥1 TEST)
 
 | ITEM | Covered by |
@@ -38,6 +40,7 @@ they are additionally replayed by the file's idempotence test (TEST-12).
 | ITEM-6 structural safety | TEST-9, TEST-10, TEST-12 |
 | ITEM-7 documentation truth | TEST-19 (pins the behavior the rewritten comments describe) |
 | ITEM-8 caller early return | TEST-13, TEST-14, TEST-15 |
+| ITEM-9 adjacent-pair guard | TEST-20 |
 
 ## Notes on tiering
 

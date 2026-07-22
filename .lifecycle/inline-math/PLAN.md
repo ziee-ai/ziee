@@ -58,6 +58,15 @@ Rendered through `micromark` + `micromark-extension-math` with
   every streaming frame; a `(?<!\\)` lookbehind rejects a doubly-escaped `\\(`; an
   unclosed `\( E=` simply fails to match, so streaming partials pass through; the pass is
   idempotent by construction because its output contains no `\(`.
+- **ITEM-9**: Adjacent-pair guard. Added in phase 7 (see DRIFT-2). Two `\( … \)` pairs
+  with nothing between them — `\( a \)\( b \)` — would emit `$a$$b$`. A math-text closer
+  must be a `$` run of the SAME length as its opener, so the inner `$$` does not close
+  the first span and the whole run collapses into ONE span whose body is `a$$b`, which
+  KaTeX rejects. Converting either pair alone is equally unsafe (it would still abut the
+  other's literal delimiter), so skip both. The ITEM-4 paragraph guard cannot cover this:
+  it looks for a `$` already present in the SOURCE, whereas this collision is created by
+  the rewrite itself. Must be index-based, not `slice(0, offset)`, or the pass goes
+  quadratic again.
 - **ITEM-8**: Widen `preprocessMarkdown`'s own early return (`markdownPreprocess.ts:75`).
   It bails when the document contains no `[`, justified by the comment "`\[` contains
   `[`, so the original guard already admits every input the math pass could act on". That
