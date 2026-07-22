@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Pin, PinOff } from 'lucide-react'
 import { Button, message } from '@ziee/kit'
 import { type File as FileEntity } from '@/api-client/types'
@@ -19,26 +19,21 @@ export function DeliverablePinButton({ file }: { file: FileEntity }) {
   const conversation = Chat.conversation
   const convId = conversation?.id
 
-  // Lazy-loaded deliverables are async (store-kit wraps sync returns in Promise).
-  // Read cached reactively; fall back to async load on first render.
-  const [list, setList] = useState<FileEntity[]>(() => {
-    if (!convId) return []
-    return Deliverables.byConversation.get(convId) ?? []
-  })
+  // Reactive RENDER-SCOPE read of the deliverables map → the pin icon shows the
+  // cached state instantly, updates when the async load lands, and flips live on
+  // sync:deliverable (the store refetches into a new Map). Reading this proxy
+  // inside the effect / a useState initializer (as before) called the proxy's
+  // internal hooks OUTSIDE render → React #321 (invalid hook call).
+  const byConversation = Deliverables.byConversation
+  const list: FileEntity[] = (convId ? byConversation.get(convId) : undefined) ?? []
 
+  // Kick the async load once when there's no cached entry yet. `.$` is the
+  // hook-free snapshot read (safe inside an effect); the reactive read above is
+  // what re-renders the button when the load populates the map.
   useEffect(() => {
-    if (!convId) return
-    const cached = Deliverables.byConversation.get(convId)
-    if (cached) {
-      setList(cached)
-      return
+    if (convId && !Deliverables.$.byConversation.get(convId)) {
+      void Deliverables.getForConversation(convId)
     }
-    // First render with no cached data — trigger async load.
-    let cancelled = false
-    void Deliverables.getForConversation(convId).then(result => {
-      if (!cancelled) setList(result)
-    })
-    return () => { cancelled = true }
   }, [convId])
 
   if (!convId || !canEditConversation) return null
