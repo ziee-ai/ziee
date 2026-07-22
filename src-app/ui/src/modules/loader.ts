@@ -124,6 +124,12 @@ export async function loadModules(): Promise<void> {
 export async function ensureModuleForPath(pathname: string): Promise<boolean> {
   const entry = entryForPath(manifest, pathname)
   if (!entry || loaded.has(entry.name)) return false
+  // SECURITY: the route-driven net must NOT bypass the gate — only load a module
+  // the current context is eligible for. Otherwise a user lacking a permission
+  // could force-download an admin module's code just by navigating to its route.
+  // An ineligible target simply stays unresolved (the route falls through the
+  // guard/404), exactly as if the module didn't exist for this user.
+  if (!isEligible(entry, buildLoadContext(pathname))) return false
   await registerWave([entry])
   return true
 }

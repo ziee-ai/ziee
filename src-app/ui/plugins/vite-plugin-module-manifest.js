@@ -163,25 +163,35 @@ export function extractModule(file, src) {
 }
 
 /**
- * @param {{ srcDir: string }} opts — absolute path to `src` (for the `@/`
- *   import-path rewrite the generated `load()` uses).
+ * @param {{ srcDir?: string, roots?: {dir: string, importPrefix: string}[], blocklist?: string[] }} opts
+ *   - `srcDir`: single-root shorthand (web) — absolute path to `src`, `@/` prefix.
+ *   - `roots`: multi-root (desktop) — each `{ dir, importPrefix }` globs
+ *     `<dir>/modules/**​/module.tsx` and rewrites `load()` with `importPrefix`.
+ *     Later roots WIN a name collision (a desktop override of a core module).
+ *   - `blocklist`: module `metadata.name`s to exclude entirely (desktop drops
+ *     `user-profile` / `server-update`).
  */
 export function moduleManifestPlugin(opts) {
-  const srcDir = opts.srcDir
-  const modulesGlob = path.join(srcDir, 'modules/**/module.tsx').replace(/\\/g, '/')
+  const roots = opts.roots ?? [{ dir: opts.srcDir, importPrefix: '@/' }]
+  const blocklist = new Set(opts.blocklist ?? [])
 
   function buildManifestSource() {
-    const files = fg.sync(modulesGlob, { absolute: true })
-    const entries = []
+    const byName = new Map() // name → entry (later roots override)
     let anyPermissions = false
-    for (const file of files) {
-      const src = fs.readFileSync(file, 'utf8')
-      const ex = extractModule(file, src)
-      if (!ex) continue
-      if (ex.usesPermissions) anyPermissions = true
-      const importPath = '@/' + path.relative(srcDir, file).replace(/\\/g, '/')
-      entries.push({ ...ex, importPath })
+    for (const root of roots) {
+      const glob = path.join(root.dir, 'modules/**/module.tsx').replace(/\\/g, '/')
+      for (const file of fg.sync(glob, { absolute: true })) {
+        const src = fs.readFileSync(file, 'utf8')
+        const ex = extractModule(file, src)
+        if (!ex) continue
+        if (blocklist.has(ex.name)) continue
+        if (ex.usesPermissions) anyPermissions = true
+        const importPath =
+          root.importPrefix + path.relative(root.dir, file).replace(/\\/g, '/')
+        byName.set(ex.name, { ...ex, importPath })
+      }
     }
+    const entries = [...byName.values()]
     // deterministic order (by name) — the loader re-sorts by dependencies anyway
     entries.sort((a, b) => a.name.localeCompare(b.name))
 
