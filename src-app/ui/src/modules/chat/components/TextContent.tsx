@@ -5,6 +5,7 @@ import { Stores } from '@ziee/framework/stores'
 import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 import { StreamdownErrorBoundary } from '@/modules/chat/core/utils/StreamdownErrorBoundary'
 import { citationTokenize } from '@/modules/chat/core/utils/citationTokenize'
+import { preprocessMarkdown } from '@/components/common/markdownPreprocess'
 import { streamdownUrlTransform } from '@/modules/chat/core/utils/streamdownUrlTransform'
 import {
   chatMarkdownPlugins,
@@ -45,7 +46,10 @@ export const TextContent = memo(function TextContent({
           components={components}
           urlTransform={streamdownUrlTransform}
         >
-          {citationTokenize(textData.text)}
+          {preprocessMarkdown(
+            // Assistant-only: rewrite bare `[n]` KB citations into chip links.
+            citationTokenize(textData.text),
+          )}
         </Streamdown>
       </StreamdownErrorBoundary>
     </div>
