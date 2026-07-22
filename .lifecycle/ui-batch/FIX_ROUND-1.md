@@ -62,9 +62,51 @@ scratch. Both rounds independently confirmed the same set of clean areas (the
 loader hook, the group→flat menu migration, the in-split adopt path, the desktop
 pop-out).
 
-A third blind round was **not** run: the remaining unverifiable surface is the
-four e2e specs, which cannot execute in this environment (no `docker` group), so
-another static round would re-read the same code without adding evidence. The
-honest gap is execution, not review depth — see TEST_RESULTS.md.
+**New confirmed findings:** 0
+
+(Superseded: a third round DID follow — the second re-audit agent reported after
+this section was written. See FIX_ROUND-2 below.)
+
+---
+
+# FIX_ROUND-2 (round 3 of review)
+
+A second re-audit agent (`reaudit-b`, tests-quality / a11y / responsive /
+maintainability / patterns) reported after round 2 had already been committed,
+and re-verified its findings against the moved tree rather than the stale diff.
+
+## Fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| 11 | **The `<h2>` promotion was a bad trade.** The shell renders the sidebar before `<main>` on every page and this app's titles are `Title level={4}` with effectively no `<h1>`, so three sidebar h2s produced an h2,h2,h2,h4 sequence — a skipped level app-wide — to fix a stranded caption confined to the rail. Neither state is gated (axe runs `wcag2a`/`wcag2aa`, excluding `heading-order`; the gallery never renders the sidebar). | Reverted to `<div>`; the tradeoff and the residual are documented in the component. |
+| 12 | **`ProjectDetailPage`'s reset had zero coverage at any tier** — deleting it left the unit test, the sidebar e2e and every gate green. | Added `14-split-chat/project-new-chat-collapses-split.spec.ts` (TEST-10). Unrun here for the same docker reason as its siblings. |
+| 13 | **Three cross-references still described a mount-time reset** that no longer exists on either page, inviting a future reader to "restore consistency" by hoisting the project reset back to mount — reintroducing the bug. | All three corrected. |
+| 14 | The sidebar spec's justification for seeding was wrong: recent-chat rows are NOT independently styled (they render the kit's `MenuRowButton`), so the control detects CONTAINER-inset drift, not row-style drift. | Comment rewritten to state exactly what the control does and does not catch. |
+| 15 | A no-op `min-w-0` on both model-selector wrappers, contradicted by the sibling branch's own comment; and a stale "36px" figure in the composer spec. | Both removed/corrected. |
+
+## Confirmed, accepted, not changed
+
+- `SOFT_CEILING_PX = 320` restates `max-w-[20rem]`; it is an upper BOUND (not an
+  equality) and its failure message names the ceiling, so a re-tune is a
+  one-line test edit. Deriving it would mean importing app code into the visual
+  specs, which that suite deliberately avoids.
+- TEST-2's light/dark loop asserts only geometry, so the dark run is a
+  duplicate. Kept: it costs ~2s and guards against a future theme-dependent
+  layout token.
+- TEST-5's `opt.scrollW <= opt.clientW` cannot currently fail (the popup is
+  `w-auto` and `SelectItem` has no clipping). Kept as a forward guard; the
+  load-bearing assertion in that test is that the full name is present while the
+  trigger is ellipsized.
+- The mic-overflow limit is documented in code and remains unmeasured — the
+  gallery cannot render MicButton (it self-hides without the voice capability).
+
+## Convergence
+
+Rounds 2 and 3 found defects only in the FIXES and in comment accuracy — no new
+defect in the original three fixes, which both rounds re-examined from scratch.
+`reaudit-b` declared its report final ("the source is being edited under me").
+Remaining open items are all environmental (unrunnable e2e, the pre-existing
+stale registries) rather than review depth.
 
 **New confirmed findings:** 0

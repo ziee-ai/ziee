@@ -14,6 +14,7 @@ reported as passing unless it was executed and observed.
 - **TEST-7**: **NOT RUN** — blocked, see below.
 - **TEST-8**: **NOT RUN** — blocked, see below.
 - **TEST-9**: **NOT RUN** — blocked, see below.
+- **TEST-10**: **NOT RUN** — blocked, see below. (Added in round 3, after an audit found the `ProjectDetailPage` fix had no coverage at any tier.)
 
 `npm run test:unit` (whole suite): 468 pass / 8 fail. All 8 failures are
 pre-existing and unrelated to this diff — see "Pre-existing gate failures".
