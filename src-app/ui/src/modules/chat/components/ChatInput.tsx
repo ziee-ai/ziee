@@ -113,13 +113,28 @@ export function ChatInput({
             <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1 min-w-0" />
           </div>
 
-          {/* Right: model selector + send button. `shrink-0` keeps Send fully
-              visible; the model selector caps its own width internally. */}
-          <div className="flex items-center gap-2 shrink-0">
-            <ExtensionSlot name="toolbar_model" />
+          {/* Right: model selector + send button. `shrink-0` sits on the SEND
+              BUTTON, not on the group: the model selector now sizes to its
+              content (so a long model name shows in full when there's room), and
+              under pressure the NAME is what must give way — never Send. A
+              `shrink-0` on the whole group would instead force the left actions
+              to absorb every pixel and let a long name push Send off the edge.
+
+              `max-w-[60%]` is what keeps a content-sized selector honest. The
+              LEFT group is `flex-1` with a ZERO basis, so it never competes for
+              space: it only receives what the right group leaves over. Without a
+              bound, a long enough model name therefore starves it to ~0 and its
+              `shrink-0` "+" button overflows (measured at 390px — the right group
+              sat at its full 364px and the left group got 2px). Capping the right
+              group against the toolbar ROW — a definite width, so no container
+              query is needed — guarantees the left actions always keep ~40% and
+              makes the model name yield first, which is the intended order. */}
+          <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
+            <ExtensionSlot name="toolbar_model" className="min-w-0" />
             <Button
               data-testid="chat-input-send-btn"
               size="default"
+              className="shrink-0"
               icon={<SendIcon className="-rotate-90" />}
               onClick={handleSend}
               disabled={sending || isStreaming || disabled || isBlockedByExtension}

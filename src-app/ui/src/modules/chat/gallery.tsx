@@ -41,6 +41,57 @@ import {
 const chat = () => useChatStore.getState()
 const tick = (ms = 120) => new Promise(r => setTimeout(r, ms))
 
+/**
+ * Seeded model names for the composer model-picker surfaces. TWO are needed
+ * because the fix has two distinct regimes and one name cannot show both:
+ *
+ *  - LONG    — a realistic long name that still fits inside the trigger's
+ *              `max-w-[20rem]` soft ceiling, so it renders IN FULL with no
+ *              ellipsis. This is the regime the fix is really about; measured at
+ *              ~217px of text, it does NOT truncate even at a 390px viewport
+ *              (the composer's left group has `flex-1` with a 0 basis, so it
+ *              absorbs the pressure long before the model name has to).
+ *  - OVERLONG— a name past the ceiling, which is exactly when truncation SHOULD
+ *              engage. This is the only way to exercise the ellipsis path at a
+ *              real viewport, and it doubles as the proof that the soft ceiling
+ *              bounds a pathological name instead of letting it eat the toolbar.
+ *              (Not contrived — vendor names of this shape are common.)
+ *
+ * `tests/e2e/visual/composer-model-selector.spec.ts` asserts against these exact
+ * strings. They are duplicated there rather than imported, because the visual
+ * specs deliberately stay decoupled from the app module graph (see `_gallery.ts`).
+ */
+const LONG_MODEL_NAME = 'GPT OSS 120B Instruct Turbo'
+const OVERLONG_MODEL_NAME = 'DeepSeek R1 Distill Llama 70B Instruct Turbo Preview'
+const LONG_MODEL_ID = 'gallery-long-model'
+const OVERLONG_MODEL_ID = 'gallery-overlong-model'
+const LONG_MODEL_PROVIDER_ID = 'gallery-long-model-provider'
+
+/**
+ * A held ModelPicker state carrying exactly one enabled model, selected for the
+ * showcase conversation. `holdForever` re-asserts it every 150ms so the
+ * composer's own `loadProviders()` (which refills from the cassette on mount)
+ * cannot replace the seed with the cassette's short-named models.
+ */
+const holdSingleModel = (id: string, name: string) =>
+  holdForever(() =>
+    ModelPicker.store.setState({
+      providers: [
+        {
+          id: LONG_MODEL_PROVIDER_ID,
+          name: 'OpenAI-compatible',
+          provider_type: 'openai',
+          api_key_configured: true,
+          enabled: true,
+          llm_models: [{ id, display_name: name, name, enabled: true }],
+        },
+      ],
+      selectedByConversation: { [SHOWCASE_CONVERSATION_ID]: id },
+      loading: false,
+      error: null,
+    } as never),
+  )
+
 /** Ensure the pinned conversation is loaded before layering transient state. */
 async function whenLoaded(conversationId: string): Promise<void> {
   await chat().loadConversation(conversationId)
@@ -165,6 +216,51 @@ export const gallery: ModuleGallery = {
           // shows literally nothing to select.
           name: 'open-model-select',
           note: 'click the composer model select → the (empty) listbox: 0 options, no "No models" hint (H7)',
+          steps: async d => {
+            await d.click('ullm-model-select')
+            await d.wait(400)
+          },
+        },
+      ],
+    },
+    {
+      // The composer model picker holding a LONG model name. The trigger sizes
+      // to its content, so an ordinary long name ("GPT OSS 120B Instruct") shows
+      // IN FULL when the composer is wide and only ellipsizes under real width
+      // pressure — the fix for a trigger that was pinned at 130px with no working
+      // ellipsis, so a long name was hard-cut into the chevron. Seeded (rather
+      // than enumerated) because the cassette's model names are all short, which
+      // is exactly the case that never reproduced the bug.
+      slug: 'deep-chat-long-model-name',
+      title: 'Conversation — composer with a long model name',
+      conversationId: SHOWCASE_CONVERSATION_ID,
+      note: 'ModelPicker held with one long-named model selected → the composer model-select trigger sizes to content and shows the name IN FULL (no ellipsis)',
+      setup: async () => {
+        await whenLoaded(SHOWCASE_CONVERSATION_ID)
+        holdSingleModel(LONG_MODEL_ID, LONG_MODEL_NAME)
+      },
+    },
+    {
+      // The other half of the model-picker behavior: a name PAST the trigger's
+      // `max-w-[20rem]` soft ceiling. This is the state in which truncation
+      // should engage — the ceiling bounds the trigger so one pathological name
+      // can't swallow the composer toolbar, and the label ellipsizes cleanly
+      // instead of being hard-cut into the chevron (the original defect).
+      slug: 'deep-chat-overlong-model-name',
+      title: 'Conversation — composer with an over-long model name',
+      conversationId: SHOWCASE_CONVERSATION_ID,
+      note: 'ModelPicker held with a model name past the trigger soft ceiling → the trigger caps and the label ellipsizes; the open list still shows the full name',
+      setup: async () => {
+        await whenLoaded(SHOWCASE_CONVERSATION_ID)
+        holdSingleModel(OVERLONG_MODEL_ID, OVERLONG_MODEL_NAME)
+      },
+      interactions: [
+        {
+          // Open the picker so review + the spec can see that a truncated
+          // trigger never leaves the model unreadable — the popup sizes past
+          // the trigger (popupMatchSelectWidth={false}).
+          name: 'open-model-select',
+          note: 'click the composer model select → the open listbox showing the over-long model name in full',
           steps: async d => {
             await d.click('ullm-model-select')
             await d.wait(400)
