@@ -306,11 +306,12 @@ test.describe('composer model selector — long name', () => {
     // `max-w` CEILING on the right group instead of a min-width FLOOR on the left
     // one reserves space unconditionally: the left group is `flex-1` with a zero
     // basis, so it grows into whatever the ceiling leaves spare even when it holds
-    // nothing but the 36px "+" button. Measured at 390px under a 60% ceiling, that
-    // stranded ~90px of empty gutter between "+" and the model name while the name
-    // itself was ellipsized — truncating far earlier than the row required. So
-    // when the name IS under pressure, the space between them must stay of the
-    // order of the toolbar's own gaps.
+    // nothing but the "+" button (38px — a `size-4` icon + `px-2.5` + the kit
+    // Button's 1px transparent border; the floor is `min-w-10`). Measured at
+    // 390px under a 60% ceiling, that stranded ~64px of empty gutter between "+"
+    // and the model name while the name itself was ellipsized — truncating far
+    // earlier than the row required. So when the name IS under pressure, the
+    // space between them must stay of the order of the toolbar's own gaps.
     const gutter = narrow.triggerLeft - narrow.plusRight
     expect(
       gutter,

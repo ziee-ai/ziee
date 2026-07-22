@@ -200,10 +200,11 @@ test('setMode toggles split/tabs; reset clears the layout', () => {
   assert.equal(s().mode, 'split')
 })
 
-// TEST-1 (ui-batch ITEM-7): the `/chat` route's collapse, at the store level.
+// TEST-1 (ui-batch ITEM-7): the new-chat collapse, at the store level.
 //
-// `NewChatPage` calls `reset()` on mount so the standalone new-chat route is a
-// single-pane surface. What actually caused the reported bug is the NEXT step:
+// `NewChatPage` (and `ProjectDetailPage`) call `reset()` from their
+// `conversation.created` handler, just before navigating to the new
+// conversation. What actually caused the reported bug is the NEXT step:
 // with panes still present, `openConversationInWorkspace(new, 'auto')` takes the
 // reducer's "auto while split" branch and REPLACES the focused pane, which is
 // how a freshly created conversation ended up jammed back into the old split.

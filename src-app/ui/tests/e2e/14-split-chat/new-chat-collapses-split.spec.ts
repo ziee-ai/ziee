@@ -19,8 +19,14 @@ import {
  * in `Stores.SplitView` the URL→workspace reconcile ran its "auto while split"
  * branch and REPLACED the focused pane with the newly created conversation. The
  * "New Chat" action is a plain navigate to `/chat`, and `NewChatPage` reset only
- * `Stores.Chat` — never the workspace. The fix resets `Stores.SplitView` on that
- * route, stating the invariant that `/chat` is a single-pane surface.
+ * `Stores.Chat` — never the workspace. The fix resets `Stores.SplitView` from
+ * that page's `conversation.created` handler, immediately before it navigates.
+ *
+ * Note the split therefore survives the CLICK — `/chat` renders `NewChatPage`,
+ * which shows no panes either way — and collapses when the conversation is
+ * actually created. That is deliberate: `/` renders the same page and the router
+ * bounces every unmatched path there, so collapsing at mount would destroy a
+ * split merely because someone clicked the logo.
  *
  * The PAIRED control is `new-chat-adopt.spec.ts`: creating a chat from INSIDE a
  * split pane must still adopt into that pane and keep the split. Without it,

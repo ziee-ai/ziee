@@ -38,14 +38,21 @@ interface Edges {
 /**
  * Seed conversations so the recent-chats list actually renders ROWS.
  *
- * Load-bearing for TEST-7, not decoration: the kit-`Menu` rows (primary
- * actions / navigation / tools) all derive from the same `menuRowClasses()`
- * string inside a `px-2` `<ul>`, so they cannot disagree with each other by
- * construction. The recent-chat rows are the only INDEPENDENTLY styled rows in
- * the rail (their own scroll container + `MenuRowButton`), so they are the only
- * ones whose alignment is a real question. On a freshly provisioned e2e account
- * the widget takes its empty branch and contributes nothing — leaving the
- * "control" comparing three copies of one style to itself.
+ * Load-bearing for TEST-7, not decoration. The kit-`Menu` rows (primary actions
+ * / navigation / tools) all derive from the same `menuRowClasses()` string
+ * inside a `px-2` `<ul>`, so they cannot disagree with each other by
+ * construction; on a freshly provisioned e2e account the recent-chats widget
+ * takes its empty branch, leaving the "control" comparing three copies of one
+ * style to itself.
+ *
+ * Be precise about what the seeded rows add, though: they are NOT independently
+ * styled — they render the kit's own `MenuRowButton`, i.e. the same
+ * `menuRowClasses().button`. What differs is their CONTAINER: the widget's own
+ * `DivScrollY px-2` rather than the Menu's `<ul className="px-2">`. So this
+ * control detects container-inset drift between the two, not row-style drift —
+ * a change to `menuRowClasses().button` padding would move every row together
+ * and stay green. That is a real limit of the control, not a claim to have
+ * eliminated the tautology entirely.
  */
 async function seedConversations(
   page: import('@playwright/test').Page,
@@ -178,8 +185,9 @@ test.describe('App layout — sidebar section title alignment', () => {
     ).toBeGreaterThanOrEqual(2)
     // The kit-Menu rows all derive from one shared class string inside a `px-2`
     // <ul>, so comparing only those would compare a style to itself. At least one
-    // INDEPENDENTLY styled recent-chat row must be in the set for this control to
-    // mean anything.
+    // recent-chat row must be present for this to compare anything across
+    // CONTAINERS (the widget's own scroll box vs the Menu's <ul>) — see the
+    // helper's note on what this control does and does not detect.
     expect(
       recentRowCount,
       'no recent-chat row was measured — the remaining rows all share one kit ' +

@@ -21,34 +21,37 @@ interface SidebarSectionTitleProps {
  * headings form their own vertical scan line down the rail. That is the
  * relationship "Recent chats" already had, now applied consistently.
  *
- * Rendered as a real `<h2>`, not a styled `<div>`, and that is a deliberate
- * mitigation rather than a free win. Removing the kit's stacked padding means
- * the caption is now a SIBLING of the section's `<nav>` instead of living
- * inside it, so the text sits outside every landmark on the page — the kit used
- * to render it within the `<nav aria-label=…>` it names. A heading does not put
- * it back inside that landmark; it gives the stranded text a role, so it is
- * still reachable by heading-key skimming, which is how a rail is actually
- * scanned. It also gives the recent-chats section a name in its error /
- * loading / empty states, where the labelled `<ul>` is not rendered at all and
- * no accessible name would otherwise exist.
+ * Deliberately a `<div>` and NOT a heading, even though the caption is now a
+ * SIBLING of its section's `<nav>` rather than inside it (that sibling
+ * placement is what removes the kit's stacked padding).
  *
- * Tailwind's preflight zeroes heading margin and sets `font-size`/`font-weight`
- * to `inherit`, so the element renders pixel-identically to the previous div.
+ * A heading was tried and reverted. It does make the caption reachable by
+ * heading-key skimming, but this app's page titles are `Title level={4}`
+ * (~15 call sites) and there is effectively no `<h1>`, so putting three `<h2>`s
+ * in the sidebar — which the shell renders BEFORE `<main>` on every page —
+ * produces an h2, h2, h2, h4 sequence with a skipped level, app-wide. Trading a
+ * stranded-caption problem confined to the rail for a broken heading outline on
+ * every page is a bad deal, and fixing it properly means settling the app's
+ * heading hierarchy, which is well outside an alignment fix.
  *
- * Not verified by a gate: the axe pass runs `wcag2a`/`wcag2aa` only (so the
- * best-practice `region` rule is off) and the gallery never renders the
- * sidebar, so this is reasoned from the DOM rather than measured.
+ * Known, deferred consequence: "Navigation" and "Tools" no longer sit inside
+ * the `<nav aria-label=…>` they label, so landmark navigation reaches the menus
+ * without their visible caption. The landmarks are still named by their own
+ * `aria-label`, so no section is unnamed. Neither state is caught by a gate —
+ * the axe pass runs `wcag2a`/`wcag2aa` only (excluding the best-practice
+ * `region` and `heading-order` rules) and the gallery never renders the
+ * sidebar — so both readings here are reasoned from the DOM, not measured.
  */
 export function SidebarSectionTitle({
   children,
   'data-testid': testid,
 }: SidebarSectionTitleProps) {
   return (
-    <h2
+    <div
       data-testid={testid}
       className="px-3 pt-0 pb-1 text-xs font-semibold tracking-wide text-muted-foreground"
     >
       {children}
-    </h2>
+    </div>
   )
 }

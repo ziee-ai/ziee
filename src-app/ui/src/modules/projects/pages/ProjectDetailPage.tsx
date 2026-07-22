@@ -209,12 +209,12 @@ export function ProjectDetailPage() {
         // REPLACES the focused pane, wedging the brand-new project conversation
         // into the old split instead of showing it on its own.
         //
-        // Done HERE rather than on mount (where NewChatPage does it) because the
-        // two pages mean different things. Mounting NewChatPage IS the intent to
-        // start a fresh chat; mounting THIS page only means "look at a project",
-        // and a project page happens to carry an inline composer. Collapsing on
-        // mount would destroy a split — and its persisted workspace — merely
-        // because the user opened a project to read it.
+        // Done on CREATE rather than on mount — the same placement NewChatPage
+        // uses, for the same reason. Mounting is not a reliable signal of
+        // intent: opening a project to read it, or landing on `/` via the
+        // router's unmatched-path bounce, would otherwise destroy an open split
+        // and delete its persisted workspace. Creating a conversation is
+        // unambiguous, and is the only moment the hijack can occur.
         Stores.SplitView.reset()
         navigate(`/projects/${projectId}/chat/${event.data.conversation.id}`)
       },

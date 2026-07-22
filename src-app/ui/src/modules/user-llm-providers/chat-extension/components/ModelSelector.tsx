@@ -116,7 +116,7 @@ export function ModelSelector() {
   // to fit the composer toolbar; the full ErrorState card is for sections.
   if (error && providers.length === 0) {
     return (
-      <div data-testid="model-selector" className="min-w-0">
+      <div data-testid="model-selector">
         <Tooltip content="Couldn't load models. Click to try again.">
           <Button
             variant="ghost"
@@ -124,10 +124,9 @@ export function ModelSelector() {
             onClick={() => void Stores.ModelPicker.loadProviders()}
             loading={loading}
             data-testid="ullm-model-retry"
-            // `max-w-full truncate` is what actually bounds this, NOT the
-            // wrapper's `min-w-0`: the wrapper is a plain block child of a
-            // block, so its min-width is already 0 and setting it changes
-            // nothing. The kit Button is `inline-flex shrink-0
+            // These width classes are what bound this button; a `min-w-0` on the
+            // wrapper would NOT (it is a plain block child of a block, so its
+            // min-width is already 0). The kit Button is `inline-flex shrink-0
             // whitespace-nowrap`, so its shrink-to-fit width floors at
             // min-content (~175px) and `max-w-[200px]` never binds — in a
             // narrow pane it would run underneath the Send button, which paints
@@ -145,7 +144,7 @@ export function ModelSelector() {
   }
 
   return (
-    <div data-testid="model-selector" className="min-w-0">
+    <div data-testid="model-selector">
       <Select
         data-testid="ullm-model-select"
         value={selectedModelId ?? undefined}
