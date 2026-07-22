@@ -197,19 +197,25 @@ export function ProjectDetailPage() {
     // Clear stale chat state from a prior session so the next send
     // takes the auto-create branch (Stores.Chat.conversation === null).
     Stores.Chat.reset()
-    // ...and collapse the split workspace, for the same reason NewChatPage
-    // does. This page's composer creates a conversation and navigates to
-    // `/projects/:id/chat/:cid`, which renders the SAME ConversationPage — so
-    // with a split still open in the store, its URL→workspace reconcile takes
-    // the "auto while split" branch and REPLACES the focused pane, wedging the
-    // brand-new project conversation into the old split instead of showing it
-    // on its own. Starting a chat from a project is a fresh single-pane surface
-    // exactly like starting one from the sidebar.
-    Stores.SplitView.reset()
 
     const unsubscribe = Stores.EventBus.on(
       'conversation.created',
       event => {
+        // Collapse the split workspace before navigating, for the same reason
+        // NewChatPage does: this page's composer creates a conversation and
+        // navigates to `/projects/:id/chat/:cid`, which renders the SAME
+        // ConversationPage — so with a split still open in the store, its
+        // URL→workspace reconcile takes the "auto while split" branch and
+        // REPLACES the focused pane, wedging the brand-new project conversation
+        // into the old split instead of showing it on its own.
+        //
+        // Done HERE rather than on mount (where NewChatPage does it) because the
+        // two pages mean different things. Mounting NewChatPage IS the intent to
+        // start a fresh chat; mounting THIS page only means "look at a project",
+        // and a project page happens to carry an inline composer. Collapsing on
+        // mount would destroy a split — and its persisted workspace — merely
+        // because the user opened a project to read it.
+        Stores.SplitView.reset()
         navigate(`/projects/${projectId}/chat/${event.data.conversation.id}`)
       },
       'ProjectDetailPage',
