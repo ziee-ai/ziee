@@ -28,12 +28,23 @@ import { AppLayout } from '@/modules/layouts/app-layout/appLayout'
 import { HubCatalog } from '@/modules/hub/stores/hub-catalog-store'
 import { Auth } from '@/modules/auth/Auth.store'
 import { ModuleSystem } from '@ziee/framework/stores'
+import { revalidateForPath } from '@/modules/loader'
 
 export function HubPage() {
   const { activeTab: urlActiveTab } = useParams()
   const navigate = useNavigate()
   const { slots } = ModuleSystem
   const { user, permissions } = Auth
+
+  // Load the hub tab sub-modules (gated on `/hub`, so they stay off every other
+  // route). This page consumes their `hubTabs` slots, so it owns triggering the
+  // load: a mount effect fires reliably once the page commits, then the tabs
+  // register and appear reactively (ModuleSystem.slots is a live read).
+  useEffect(() => {
+    revalidateForPath(
+      typeof window !== 'undefined' ? window.location.pathname : '/hub',
+    )
+  }, [])
   // Subscribe to the MCP policy so the MCP tab's shouldRender gate re-evaluates
   // the moment an admin saves a new policy (its presence in visibleTabs deps is
   // the load-bearing piece).

@@ -11,7 +11,7 @@ import {
 import { Button, Result } from '@ziee/kit'
 import { ModuleSystem } from '@ziee/framework/stores'
 import { useRoutesStore } from '@/modules/router/stores/routes-store'
-import { ensureModuleForPath, isPathModulePending } from '@/modules/loader'
+import { ensureModuleForPath, isPathModulePending, revalidateForPath } from '@/modules/loader'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
 import { usePermission } from '@/core/permissions'
@@ -93,7 +93,14 @@ function renderRouteElement(route: RouteConfig<any>) {
 function RouteModuleLoader() {
   const location = useLocation()
   useEffect(() => {
+    // ensureModuleForPath: load the module that OWNS this route (deep-link net).
+    // revalidateForPath: re-evaluate shouldLoad against the new path so
+    // location-scoped modules that own no route load on arrival. NOTE: this
+    // effect is held while a lazy route suspends the transition, so a page whose
+    // OWN content comes from location-scoped modules also calls revalidateForPath
+    // from its own mount effect (see HubPage).
     void ensureModuleForPath(location.pathname)
+    revalidateForPath(location.pathname)
   }, [location.pathname])
   return null
 }

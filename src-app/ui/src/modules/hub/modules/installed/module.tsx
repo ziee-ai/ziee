@@ -23,7 +23,10 @@ export default createModule({
     description: 'Hub tab listing every tracked install visible to the caller',
   },
   // smart-loading gate (build-lifted into the manifest)
-  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
+  shouldLoad: (ctx) =>
+    ctx.isAuthenticated &&
+    ctx.can(Permissions.HubModelsRead) &&
+    (ctx.path === '/hub' || ctx.path.startsWith('/hub/')),
   dependencies: [],
   slots: {
     hubTabs: [

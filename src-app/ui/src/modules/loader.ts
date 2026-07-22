@@ -101,10 +101,12 @@ async function registerWave(entries: ModuleManifestEntry[]): Promise<void> {
   }
 }
 
-/** Evaluate the manifest against the current context and register newly-eligible modules. */
-async function loadEligible(): Promise<void> {
+/** Evaluate the manifest against the current context and register newly-eligible
+ *  modules. `pathname` overrides the location read (the navigation re-eval passes
+ *  the NEW path explicitly, since `window.location` may not have settled yet). */
+async function loadEligible(pathname?: string): Promise<void> {
   const ctx = buildLoadContext(
-    typeof window !== 'undefined' ? window.location.pathname : '/',
+    pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/'),
   )
   await registerWave(manifest.filter(e => isEligible(e, ctx)))
 }
@@ -166,6 +168,18 @@ export function isPathModulePending(pathname: string): boolean {
   if (!entry) return false
   if (!isEligible(entry, buildLoadContext(pathname))) return false
   return !loaded.has(entry.name) || inFlight.has(entry.name)
+}
+
+/**
+ * Navigation hook (smart loading): re-evaluate every module's `shouldLoad`
+ * against the NEW path and register any that just became eligible — so a module
+ * scoped to a location (e.g. the hub sub-modules, gated on `/hub`) loads on
+ * arrival, not at login. Keeps the entry + per-route cost flat as location-scoped
+ * feature areas grow. Modules never unload, so this only ever ADDS; idempotent
+ * and a no-op wave when nothing new qualifies (the common case).
+ */
+export function revalidateForPath(pathname: string): void {
+  void loadEligible(pathname)
 }
 
 /** Names of every module registered so far (for prefetch/debug). */
