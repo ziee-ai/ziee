@@ -57,16 +57,12 @@ export const FILE_ASSETS = {
 export async function attachFileViaUI(page: Page, absoluteFilePath: string): Promise<void> {
   const filename = path.basename(absoluteFilePath)
 
-  // The + dropdown ("Add tools & files", data-testid chat-input-add-btn)
-  // contains the "Attach files or photos" menu item, which wraps an <Upload>
-  // component. Clicking it triggers the native file chooser; we capture it via
-  // Playwright's fileChooser event.
+  // The + dropdown ("Add tools & files", data-testid chat-input-add-btn) is a
+  // Popover that TOGGLES on the trigger: open it with a SINGLE click, then click
+  // the "Attach files or photos" item (an <Upload>) to fire the native file
+  // chooser. (A second trigger click would toggle the Popover CLOSED — the item
+  // then never renders and the filechooser never opens.)
   await byTestId(page, 'chat-input-add-btn').click()
-  // The + dropdown (aria-label "Add tools & files", stable testid
-  // `chat-input-add-btn`) contains the "Attach files or photos" menu item.
-  // Clicking that item triggers the native file chooser; we capture it via
-  // Playwright's fileChooser event.
-  await page.locator('[data-testid="chat-input-add-btn"]').click()
   const [fileChooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     page.getByText('Attach files or photos').click(),
@@ -185,7 +181,11 @@ export async function closeEntirePanel(page: Page): Promise<void> {
  * message-action buttons elsewhere on the page.
  */
 export function panelButton(page: Page, name: string) {
-  return page.locator('[data-testid="chat-right-panel"]').getByRole('button', { name })
+  // `exact` so an action button's name is matched WHOLE — otherwise 'Copy' also
+  // matches the viewer's 'Copy selection' button (strict-mode: 2 elements).
+  return page
+    .locator('[data-testid="chat-right-panel"]')
+    .getByRole('button', { name, exact: true })
 }
 
 /**
