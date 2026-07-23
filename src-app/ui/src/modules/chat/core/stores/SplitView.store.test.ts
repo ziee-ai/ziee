@@ -200,6 +200,48 @@ test('setMode toggles split/tabs; reset clears the layout', () => {
   assert.equal(s().mode, 'split')
 })
 
+// TEST-1 (ui-batch ITEM-7): the new-chat collapse, at the store level.
+//
+// `NewChatPage` (and `ProjectDetailPage`) call `reset()` from their
+// `conversation.created` handler, just before navigating to the new
+// conversation. What actually caused the reported bug is the NEXT step:
+// with panes still present, `openConversationInWorkspace(new, 'auto')` takes the
+// reducer's "auto while split" branch and REPLACES the focused pane, which is
+// how a freshly created conversation ended up jammed back into the old split.
+//
+// The two halves are each already covered in isolation — the case above proves
+// `reset()` clears the fields, and `reconcile.test.ts` covers both reducer
+// branches against hand-built layouts. Neither shows they COMPOSE, which is the
+// entire premise of the fix, so that is what this asserts: drive a real split
+// through the real store, reset, then open — and get `navigate`, not `replace`.
+test('reset() makes a subsequent auto-open a plain navigate, not a pane replace', () => {
+  // A real 2-pane split (the state the bug needed).
+  s().openPane({ conversationId: 'a' })
+  s().openPane({ conversationId: 'b' })
+  assert.equal(s().panes.length, 2, 'precondition: genuinely split')
+
+  // Sanity-check the bug precondition through the REAL store, so the assertion
+  // after the reset is a contrast rather than an isolated fact: while split, an
+  // auto-open hijacks the focused pane instead of navigating.
+  const hijacked = s().openConversationInWorkspace('c', 'auto')
+  assert.equal(hijacked.kind, 'replace', 'while split, auto-open replaces a pane')
+  assert.equal(s().panes.length, 2, 'and the split survives — the reported bug')
+
+  // What NewChatPage now does on mount.
+  s().reset()
+  assert.equal(s().panes.length, 0)
+  assert.equal(s().focusedPaneId, null)
+
+  // The same call now navigates, and resurrects no pane.
+  const outcome = s().openConversationInWorkspace('d', 'auto')
+  assert.equal(
+    outcome.kind,
+    'navigate',
+    'after reset, an auto-open must be a plain single-pane navigate',
+  )
+  assert.equal(s().panes.length, 0, 'no pane is resurrected by the open')
+})
+
 // TEST-117 (ITEM-83 / FB-26): the small-screen pane-manager Drawer open-state is a
 // TRANSIENT store field — `setPaneManagerOpen` toggles it, it defaults closed, and
 // toggling it must NOT perturb any of the fields that get persisted (panes /

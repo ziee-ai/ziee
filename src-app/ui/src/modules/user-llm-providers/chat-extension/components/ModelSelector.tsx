@@ -124,7 +124,17 @@ export function ModelSelector() {
             onClick={() => void Stores.ModelPicker.loadProviders()}
             loading={loading}
             data-testid="ullm-model-retry"
-            className="text-[15px] max-w-[200px] text-destructive"
+            // These width classes are what bound this button; a `min-w-0` on the
+            // wrapper would NOT (it is a plain block child of a block, so its
+            // min-width is already 0). The kit Button is `inline-flex shrink-0
+            // whitespace-nowrap`, so its shrink-to-fit width floors at
+            // min-content (~175px) and `max-w-[200px]` never binds — in a
+            // narrow pane it would run underneath the Send button, which paints
+            // over it and makes the label unreadable. `w-full` opts out of
+            // shrink-to-fit so the button follows its (block) wrapper's width,
+            // `max-w` keeps the old 200px ceiling on a wide composer, and
+            // `truncate` clips rather than overflowing when neither is enough.
+            className="text-[15px] w-full max-w-[200px] truncate text-destructive"
           >
             Models unavailable
           </Button>
@@ -145,7 +155,40 @@ export function ModelSelector() {
         loading={loading && providers.length === 0}
         disabled={sending}
         options={availableModels}
-        className="text-[15px] max-w-[130px] border-0 shadow-none bg-transparent"
+        // Render the SELECTED label as a block-level truncating span. The kit
+        // trigger sets both `line-clamp-1` and `flex` on the value slot, and
+        // Tailwind orders `display` after `line-clamp`, so `display:flex` wins
+        // and `-webkit-line-clamp`'s ellipsis is inert — only its
+        // `overflow:hidden` survives, which HARD-CUT a long name into the
+        // chevron with no "…". A real block container is what makes
+        // `text-overflow: ellipsis` apply (it does not apply to a flex
+        // container), and its `overflow:hidden` gives the span a flex
+        // auto-minimum-size of 0 so it can actually shrink. Same primitive the
+        // kit Menu row uses for its own labels (kit menu.tsx).
+        //
+        // MUST return undefined when nothing is selected: the kit passes this
+        // through as `SelectValue`'s children, and non-null children replace
+        // the placeholder.
+        labelRender={opt =>
+          opt ? <span className="block truncate">{opt.label}</span> : undefined
+        }
+        // No width override — the kit's own `w-full` is what makes this size to
+        // content AND stay shrinkable: the slot wrapper is a flex item whose
+        // base size is the label's max-content (so an ordinary name renders IN
+        // FULL), and under pressure it shrinks and the label ellipsizes.
+        //
+        // Do NOT "fix" this to `w-auto`: a <button> is a form control, so
+        // `width:auto` is SHRINK-TO-FIT rather than fill-available — it ignores
+        // the space actually on offer and simply overflows its container
+        // (measured: a 320px trigger inside a 274px composer). That is why the
+        // kit sets `w-full` in the first place.
+        //
+        // `max-w` is the soft ceiling so one pathological name can't swallow a
+        // wide toolbar. What protects the toolbar's LEFT actions is not a bound
+        // here but the left group's own content-derived minimum in ChatInput —
+        // it never shrinks below its un-shrinkable children, so the deficit
+        // lands on this trigger instead.
+        className="text-[15px] max-w-[20rem] border-0 shadow-none bg-transparent"
       />
       {pendingProviderForKey && (
         <ProviderApiKeyModal
