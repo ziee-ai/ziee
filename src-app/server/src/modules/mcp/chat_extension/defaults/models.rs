@@ -98,11 +98,13 @@ pub struct UserMcpDefaults {
 }
 
 impl UserMcpDefaults {
-    /// Get approval mode as enum
+    /// Get approval mode as enum.
+    ///
+    /// Unparseable stored values fall back to [`ApprovalMode::default()`] (the
+    /// deployment default) — see the type-level docs on [`ApprovalMode`] for why that
+    /// is the single source of truth.
     pub fn get_approval_mode(&self) -> ApprovalMode {
-        self.approval_mode
-            .parse()
-            .unwrap_or(ApprovalMode::ManualApprove)
+        self.approval_mode.parse().unwrap_or_default()
     }
 
     /// Get auto-approved tools as typed Vec
@@ -164,8 +166,15 @@ impl From<UserMcpDefaults> for UserMcpDefaultsResponse {
 /// Request to create/update user MCP defaults
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct UpsertUserMcpDefaultsRequest {
-    /// Approval mode
-    pub approval_mode: ApprovalMode,
+    // Omitting matters more here than anywhere else: the client writes this row as a
+    // SIDE EFFECT of unrelated actions (removing an MCP server chip on a new chat
+    // persists the server list here). Such a write must record the server list only —
+    // a mode pinned by it becomes the fallback for EVERY future conversation of that
+    // user, not just the current one.
+    /// Approval mode. Omit to leave it alone: an existing setting is preserved, and a
+    /// user with no stored defaults gets the server's default.
+    #[serde(default)]
+    pub approval_mode: Option<ApprovalMode>,
 
     /// Auto-approved tools grouped by server
     /// None = preserve existing value in DB; Some(vec) = overwrite with this value
@@ -179,4 +188,71 @@ pub struct UpsertUserMcpDefaultsRequest {
     /// Loop settings for controlling iteration behavior
     #[serde(default)]
     pub loop_settings: LoopSettings,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn defaults_with_mode(raw: &str) -> UserMcpDefaults {
+        UserMcpDefaults {
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            approval_mode: raw.to_string(),
+            auto_approved_tools: serde_json::json!([]),
+            disabled_servers: serde_json::json!([]),
+            loop_settings: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    /// TEST-2 — same parse/fallback contract as the conversation-scoped row. The
+    /// user-defaults mode is the SECOND branch of the approval resolution, so a
+    /// divergent fallback here would reintroduce the disagreement this fix removes.
+    #[test]
+    fn user_defaults_get_approval_mode_parses_or_defaults() {
+        assert_eq!(
+            defaults_with_mode("disabled").get_approval_mode(),
+            ApprovalMode::Disabled
+        );
+        assert_eq!(
+            defaults_with_mode("auto_approve").get_approval_mode(),
+            ApprovalMode::AutoApprove
+        );
+        assert_eq!(
+            defaults_with_mode("manual_approve").get_approval_mode(),
+            ApprovalMode::ManualApprove
+        );
+
+        for junk in ["", "AUTO_APPROVE", "auto-approve", "nonsense"] {
+            assert_eq!(
+                defaults_with_mode(junk).get_approval_mode(),
+                ApprovalMode::default(),
+                "unparseable {junk:?} must fall back to the deployment default",
+            );
+        }
+    }
+
+    /// TEST-7 — absent vs explicit stays distinguishable on the user-defaults write
+    /// path too (the chip-removal clobber path).
+    #[test]
+    fn upsert_defaults_request_distinguishes_absent_from_explicit_approval_mode() {
+        let absent: UpsertUserMcpDefaultsRequest =
+            serde_json::from_value(serde_json::json!({ "disabled_servers": [] }))
+                .expect("approval_mode must be optional");
+        assert_eq!(absent.approval_mode, None);
+
+        for (raw, expected) in [
+            ("disabled", ApprovalMode::Disabled),
+            ("auto_approve", ApprovalMode::AutoApprove),
+            ("manual_approve", ApprovalMode::ManualApprove),
+        ] {
+            let explicit: UpsertUserMcpDefaultsRequest = serde_json::from_value(
+                serde_json::json!({ "approval_mode": raw, "disabled_servers": [] }),
+            )
+            .expect("explicit approval_mode must deserialize");
+            assert_eq!(explicit.approval_mode, Some(expected));
+        }
+    }
 }

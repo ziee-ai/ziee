@@ -9,6 +9,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::common::AppError;
+use crate::modules::mcp::chat_extension::approval::models::ApprovalMode;
 
 use super::models::{McpScope, McpSettings, McpSettingsUpdate};
 
@@ -16,9 +17,20 @@ pub struct McpSettingsRepository {
     pool: PgPool,
 }
 
-/// Default approval mode applied when a scope has no row. Matches the
-/// table's column default.
-const DEFAULT_APPROVAL_MODE: &str = "manual_approve";
+/// Default approval mode applied when a scope has no row.
+///
+/// Derived from [`ApprovalMode::default()`] — the single source of truth (see its
+/// type-level docs). It is a fn rather than a `const` because `to_string()` is not
+/// const-evaluable; the two call sites already build owned `String`s.
+///
+/// This deliberately does NOT track the table's column default
+/// (`202607140180_mcp_schema.sql:56,132`, still `manual_approve` on every branch):
+/// that default is unreachable, because every INSERT in the tree names
+/// `approval_mode` explicitly. Keeping them in sync would need a migration for zero
+/// behavioural difference.
+fn default_approval_mode() -> String {
+    ApprovalMode::default().to_string()
+}
 
 impl McpSettingsRepository {
     pub fn new(pool: PgPool) -> Self {
@@ -101,7 +113,7 @@ impl McpSettingsRepository {
             id: Uuid::nil(),
             scope,
             user_id,
-            approval_mode: DEFAULT_APPROVAL_MODE.to_string(),
+            approval_mode: default_approval_mode(),
             auto_approved_tools: serde_json::json!([]),
             disabled_servers: serde_json::json!([]),
             loop_settings: None,
@@ -128,7 +140,7 @@ impl McpSettingsRepository {
         let approval_mode = update
             .approval_mode
             .or_else(|| existing.as_ref().map(|e| e.approval_mode.clone()))
-            .unwrap_or_else(|| DEFAULT_APPROVAL_MODE.to_string());
+            .unwrap_or_else(default_approval_mode);
         let auto_approved_tools = update
             .auto_approved_tools
             .or_else(|| existing.as_ref().map(|e| e.auto_approved_tools.clone()))
@@ -360,4 +372,23 @@ impl McpSettingsRepository {
 /// `project/repository.rs` which does the same).
 fn chrono_from_ts(ts: time::OffsetDateTime) -> DateTime<Utc> {
     DateTime::from_timestamp(ts.unix_timestamp(), 0).unwrap_or_else(Utc::now)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// TEST-4 — this repository's no-row default and the `ApprovalMode` enum must
+    /// agree. They disagreed before this fix (`"manual_approve"` here vs the chat
+    /// extension's own fallback), which is half of why a conversation could resolve
+    /// one mode on turn 1 and a different one on turn 2.
+    #[test]
+    fn no_row_default_agrees_with_the_approval_mode_enum() {
+        assert_eq!(default_approval_mode(), ApprovalMode::default().to_string());
+        // And it must be a spelling the read path can parse back.
+        assert_eq!(
+            default_approval_mode().parse::<ApprovalMode>().unwrap(),
+            ApprovalMode::default(),
+        );
+    }
 }
