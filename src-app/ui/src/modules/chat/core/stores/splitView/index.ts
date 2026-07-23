@@ -47,9 +47,15 @@ const SplitViewDef = defineStore<SplitViewState, Actions>('SplitView', {
       }, 250)
     }
 
-    const applyWorkspace = (w: PersistedWorkspace) => {
-      void actions.reset()
-      void actions.hydrateWorkspace(w)
+    // Sequence reset → hydrate. These are lazy-loaded (folder-glob) actions, so
+    // each returns a Promise; firing both un-awaited lets `reset` (clear to a
+    // single pane) resolve AFTER `hydrateWorkspace` and wipe the restored split
+    // on a same-tab reload (the store was inline-synchronous before the lazy-store
+    // migration, where ordering was guaranteed). Await reset first to restore that
+    // ordering guarantee.
+    const applyWorkspace = async (w: PersistedWorkspace) => {
+      await actions.reset()
+      await actions.hydrateWorkspace(w)
     }
 
     const hydrateFor = (userId: string | undefined) => {
