@@ -6511,8 +6511,11 @@ export interface UpsertCoreMemoryBlockRequest {
 
 /** Request to create/update MCP settings */
 export interface UpsertMcpSettingsRequest {
-  /** Approval mode */
-  approval_mode: ApprovalMode
+  /**
+   * Approval mode. Omit to leave it alone: an existing setting is preserved, and a
+   *  scope with no stored settings gets the server's default.
+   */
+  approval_mode?: ApprovalMode
   /**
    * Auto-approved tools grouped by server
    *  Format: [{"server_id": "uuid", "tools": ["tool1", "tool2"]}, ...]
@@ -6530,8 +6533,11 @@ export interface UpsertMcpSettingsRequest {
 
 /** Request to create/update user MCP defaults */
 export interface UpsertUserMcpDefaultsRequest {
-  /** Approval mode */
-  approval_mode: ApprovalMode
+  /**
+   * Approval mode. Omit to leave it alone: an existing setting is preserved, and a
+   *  user with no stored defaults gets the server's default.
+   */
+  approval_mode?: ApprovalMode
   /**
    * Auto-approved tools grouped by server
    *  None = preserve existing value in DB; Some(vec) = overwrite with this value
@@ -6640,6 +6646,13 @@ export interface UserListResponse {
 }
 
 export interface UserMcpDefaultsGetResponse {
+  /**
+   * The approval mode applied to any scope with no stored settings — i.e. what a
+   *  brand-new conversation gets. Render this when `defaults` is null; on writes,
+   *  omit `approval_mode` rather than echoing it back (the server re-applies it).
+   */
+  default_approval_mode: ApprovalMode
+  /** The user's stored defaults, or `null` when they have never saved any. */
   defaults?: UserMcpDefaultsResponse
 }
 

@@ -32,6 +32,9 @@ const LOOSE = new Set([
   'Hub.getCatalog',
   'Hub.getCatalogVersion',
   'Hub.getModels',
+  // Carries `default_approval_mode: ApprovalMode` — a string ENUM, which a JSON
+  // import widens to `string`. Same reason as the entries above.
+  'Mcp.getDefaults',
   'McpServer.listAccessible',
   'McpServerSystem.list',
 ])
