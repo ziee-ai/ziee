@@ -5,10 +5,10 @@
 [submodule "sdk"]
 	path = sdk
 	url = https://github.com/ziee-ai/sdk.git
-	# ziee (the "chat" app) pins the SDK to its own dedicated branch `chat`
-	# (CytoAnalyst pins `cyto`). SDK changes made here push to sdk `chat`; when
-	# sdk `main` advances, merge main → `chat` and decide whether to adopt.
-	branch = chat
+	# ziee tracks its deploy-dedicated SDK branch `biognosia-sdk` (cut from `chat`).
+	# SDK changes for ziee PR into `biognosia-sdk`; when `chat` advances, merge
+	# chat → biognosia-sdk to pull them in. (CytoAnalyst pins `cyto`.)
+	branch = biognosia-sdk
 [submodule "agent-kit"]
 	path = agent-kit
 	url = https://github.com/ziee-ai/agent-kit.git
