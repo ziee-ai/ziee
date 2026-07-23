@@ -76,10 +76,19 @@ pub async fn upsert_conversation_settings(
     // None → SQL NULL, so COALESCE picks the preserve/default arm.
     let approval_mode_str: Option<String> = approval_mode.map(|m| m.to_string());
     let default_approval_mode = ApprovalMode::default().to_string();
-    let auto_approved_tools_json = match auto_approved_tools {
-        Some(tools) => serde_json::to_value(tools)
-            .map_err(|e| AppError::internal_error(format!("Failed to serialize auto_approved_tools: {}", e)))?,
-        None => serde_json::Value::Null,
+    // `Option<Value>` — NOT `Value::Null`. Binding `Value::Null` to a jsonb
+    // parameter sends the JSON value `null`, which is NOT SQL NULL, so
+    // `COALESCE($4, …)` took the FIRST arm and overwrote the stored list with
+    // JSON null (which then read back as `[]` via `unwrap_or_default`). That
+    // silently destroyed a user's per-tool allow-list on any save that omitted
+    // the field — the exact "don't touch" contract this COALESCE exists to
+    // provide, and the one the client relies on when it sends the field only
+    // under `updateAutoApproved`. `None` here binds as a real SQL NULL.
+    let auto_approved_tools_json: Option<serde_json::Value> = match auto_approved_tools {
+        Some(tools) => Some(serde_json::to_value(tools).map_err(|e| {
+            AppError::internal_error(format!("Failed to serialize auto_approved_tools: {}", e))
+        })?),
+        None => None,
     };
     let disabled_servers_json = serde_json::to_value(disabled_servers)
         .map_err(|e| AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e)))?;

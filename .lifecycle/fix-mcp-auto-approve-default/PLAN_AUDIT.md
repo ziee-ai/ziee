@@ -137,6 +137,8 @@ phase-3 e2e requirement + phase-8 `npm run check` / `gate:ui` gates apply.
 
 - **ITEM-13** — verdict: PASS — `McpConfigModal.tsx:85` is a pure display fallback feeding the radio at `:401`; it has no write path, so correcting it cannot alter what gets persisted, only what the user is told. Verified that the sibling `ProjectMcpSettingsPanel.tsx:44` fallback is genuinely unreachable (`project_extension/handlers.rs:42` uses `get_or_default`, which always returns a row) and is therefore correctly left alone rather than churned.
 
+- **ITEM-14** — verdict: PASS *(audited in phase 5, when TEST-14 exposed it)* — same statement, same two call sites, same single-row confinement as ITEM-5/6; no migration and no sweep. Verified the failure is real and pre-existing rather than introduced here: TEST-14 stored an allow-list, issued a second PUT omitting the field, and read back `[]`. The `Option<Value>` binding is the standard sqlx encoding for a nullable jsonb parameter and is what the existing `COALESCE` was written assuming. Risk is bounded to callers that pass `None`, which today means "the client did not intend to change approvals" — exactly the case that must preserve.
+
 **No BLOCKED verdicts.** The three CONCERNs (ITEM-3 const→fn, ITEM-7/8 regen,
 ITEM-11 project-PUT scope) are all resolvable in-flight and are carried into
 DECISIONS.md rather than amending the item list.

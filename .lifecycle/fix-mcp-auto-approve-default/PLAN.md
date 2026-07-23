@@ -111,6 +111,18 @@ Hard constraints (user-confirmed):
   is never null there and the `||` arm is unreachable — it inherits the corrected
   default via ITEM-3.)
 
+- **ITEM-14**: *(added in phase 5 — see DRIFT-1)* Fix the SIBLING tri-state field in
+  the same two upserts. `auto_approved_tools`'s "None = preserve existing DB value"
+  contract (`approval/repository.rs:66-70,86`, `defaults/repository.rs:46-50,66`) has
+  never worked: the absent case bound `serde_json::Value::Null`, which encodes as the
+  JSON value `null` — NOT SQL NULL — so `COALESCE($4, <table>.auto_approved_tools)`
+  took the first arm and OVERWROTE the stored list with JSON null (read back as `[]`
+  via `unwrap_or_default`). Any save that omitted the field therefore destroyed the
+  user's per-tool allow-list. Bind `Option<serde_json::Value>` instead so `None` is a
+  real SQL NULL. Same statement, same single row, no migration — and required by the
+  task's hard constraint that a user who auto-approves specific tools must still have
+  that persisted and honored.
+
 ## Files to touch
 
 Backend (`src-app/server/src/modules/mcp/`):
@@ -143,6 +155,11 @@ Frontend (`src-app/ui/src/modules/mcp/`):
 
 Frontend tests:
 - `src-app/ui/tests/e2e/chat/mcp-approval-default-persistence.spec.ts` (new)
+
+Gallery fixture (added in phase 5 — see DRIFT-1.2; a newly-required response field
+broke the recorded cassette's `tsc` check):
+- `src-app/ui/src/dev/gallery/fixtures/recorded/crawl.json`
+- `src-app/ui/scripts/gen-crawl-cassette.mjs` (+ its regenerated `crawl.generated.ts`)
 
 ## Patterns to follow
 
