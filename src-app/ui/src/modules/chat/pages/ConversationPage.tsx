@@ -45,7 +45,7 @@ import { ConversationFindBar } from '@/modules/chat/components/ConversationFindB
 import { ConversationFindContext } from '@/modules/chat/components/ConversationFindContext'
 import { JumpToLatestButton } from '@/modules/chat/components/JumpToLatestButton'
 import { firstMessageId } from '@/modules/chat/core/stores/messageWindow'
-import { pendingApprovalIdsInPane } from '@/modules/chat/core/utils/toolCallPaneScope'
+import { pendingApprovalIdsInPane, paneApprovalScope } from '@/modules/chat/core/utils/toolCallPaneScope'
 import { useChatPaneOrNull } from '@/modules/chat/core/pane/ChatPaneContext'
 import { useIsPopoutWindow } from '@/modules/chat/core/popout/useIsPopoutWindow'
 import { SplitChatView } from '@/modules/chat/components/SplitChatView'
@@ -526,6 +526,13 @@ export function ConversationPane() {
 
   const findContextValue = useMemo(() => ({ activeMatchId }), [activeMatchId])
 
+  // Ids a pending approval can correlate to for THIS pane: message ids + the
+  // tool_use content ids in those messages. An approval that LEADS a turn is
+  // registered before its assistant message exists (so its `message_id` is
+  // unset), but its tool_use content id is always present once rendered — this
+  // scope makes the per-pane scroll-to-approval work in that case.
+  const approvalScope = useMemo(() => paneApprovalScope(messages), [messages])
+
   const jumpToLatest = async () => {
     // If the window is anchored mid-conversation (after an around= jump), the
     // real latest message isn't loaded — `messagesEndRef` is only the bottom of
@@ -619,7 +626,7 @@ export function ConversationPane() {
     // Per-pane (ITEM-48): seed only THIS pane's own already-pending approvals, so a
     // leftover pending approval belonging to another pane's conversation is never
     // treated as this pane's (it's filtered out — its message isn't in `messages`).
-    for (const id of pendingApprovalIdsInPane(toolCalls, messages))
+    for (const id of pendingApprovalIdsInPane(toolCalls, approvalScope))
       scrolledApprovalsRef.current.add(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation, conversationId, messages])
@@ -643,7 +650,7 @@ export function ConversationPane() {
     // Per-pane (ITEM-48): only approvals whose carrying message is in THIS pane's
     // messages count — a pending approval in another pane's conversation must not
     // scroll this pane's list.
-    for (const id of pendingApprovalIdsInPane(toolCalls, messages)) {
+    for (const id of pendingApprovalIdsInPane(toolCalls, approvalScope)) {
       if (!seen.has(id)) {
         seen.add(id)
         hasNewApproval = true

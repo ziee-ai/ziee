@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { toolCallInPane, pendingApprovalIdsInPane } from './toolCallPaneScope.ts'
+import { toolCallInPane, pendingApprovalIdsInPane, paneApprovalScope } from './toolCallPaneScope.ts'
 
 // TEST-72 (ITEM-48): the process-global McpComposer.toolCalls map is scoped to a
 // pane by whether the tool-call's carrying message (`message_id`) is one of the
@@ -46,4 +46,31 @@ test('pendingApprovalIdsInPane: a pending approval in another conversation is ig
   ])
   assert.deepEqual(pendingApprovalIdsInPane(toolCalls, paneA), [])
   assert.deepEqual(pendingApprovalIdsInPane(toolCalls, paneB), [])
+})
+
+test('paneApprovalScope: includes message ids AND their tool_use content ids', () => {
+  const messages = new Map<string, { contents?: Array<{ content_type?: string; content?: unknown }> }>([
+    ['u2', { contents: [{ content_type: 'text', content: { type: 'text', text: 'run it' } }] }],
+    ['a2', { contents: [{ content_type: 'tool_use', content: { type: 'tool_use', id: 'tu_x' } }] }],
+  ])
+  const scope = paneApprovalScope(messages)
+  assert.equal(scope.has('u2'), true)
+  assert.equal(scope.has('a2'), true)
+  assert.equal(scope.has('tu_x'), true, 'the tool_use content id is in scope')
+})
+
+test('pendingApprovalIdsInPane: matches a lead-turn approval whose message_id is unset, via its tool_use_id', () => {
+  // The regression: an approval that LEADS a turn is registered BEFORE its
+  // assistant message exists, so its `message_id` is null. Correlating only by
+  // message_id left it un-scoped → the per-pane scroll-to-approval never fired.
+  // Its tool_use content id ('tu_x' = the map key) IS in the pane once rendered.
+  const scope = paneApprovalScope(
+    new Map<string, { contents?: Array<{ content_type?: string; content?: unknown }> }>([
+      ['a2', { contents: [{ content_type: 'tool_use', content: { type: 'tool_use', id: 'tu_x' } }] }],
+    ]),
+  )
+  const toolCalls = new Map<string, { status: string; message_id?: string | null }>([
+    ['tu_x', { status: 'pending_approval', message_id: null }],
+  ])
+  assert.deepEqual(pendingApprovalIdsInPane(toolCalls, scope), ['tu_x'])
 })

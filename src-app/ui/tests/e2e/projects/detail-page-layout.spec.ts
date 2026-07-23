@@ -72,6 +72,16 @@ test.describe('Projects - detail page layout (Option A)', () => {
   test('renders every section in the expected vertical order', async ({
     page,
   }) => {
+    // The last section, `mcp-defaults`, is an extension-contributed panel
+    // rendered via a `lazy()` + <Suspense> boundary (mcp/project-extension), so
+    // it mounts a tick after the page's own sections. Wait for it before
+    // snapshotting, otherwise the DOM order is read mid-Suspense and the trailing
+    // section is missing (the panel itself is correct — see the `:182`/`:198`
+    // card tests; this is purely a lazy-mount race in this snapshot assertion).
+    await expect(
+      page.locator('[data-test-section="mcp-defaults"]'),
+    ).toBeVisible()
+
     // Sections in DOM order. Playwright's `nth-of-type` doesn't work
     // for sibling sections so we read all and assert the list.
     const sectionIds = await page
