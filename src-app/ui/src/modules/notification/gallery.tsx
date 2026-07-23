@@ -13,6 +13,20 @@ export const gallery: ModuleGallery = {
     'Notification.list': {
       items: [
         {
+          id: 'n0000000-0000-0000-0000-000000000000',
+          title: 'Background research finished',
+          body: 'Your background sub-agent "Competitor landscape" returned — 5 findings ready in the conversation.',
+          kind: 'background_run_result',
+          interrupt: true,
+          created_at: '2026-01-03T10:05:00.000Z',
+          // R2: kind-specific ids ride the `payload` jsonb column.
+          payload: {
+            workflow_run_id: 'w0000000-0000-0000-0000-000000000002',
+            conversation_id: 'c0000000-0000-0000-0000-000000000001',
+          },
+          user_id: USER,
+        },
+        {
           id: 'n0000000-0000-0000-0000-000000000001',
           title: 'Scheduled task completed',
           body: 'Your "Weekly literature scan" run finished — 3 new papers found.',
@@ -47,9 +61,9 @@ export const gallery: ModuleGallery = {
       ],
       page: 1,
       per_page: 20,
-      total: 3,
-      unread: 1,
+      total: 4,
+      unread: 2,
     },
-    'Notification.unreadCount': { unread: 1 },
+    'Notification.unreadCount': { unread: 2 },
   },
 }

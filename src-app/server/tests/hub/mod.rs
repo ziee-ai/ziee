@@ -331,9 +331,13 @@ async fn test_hub_models_sources_have_env_vars_when_auth_needed() {
 
 #[tokio::test]
 async fn test_hub_models_seed_marks_huggingface_sources_as_needing_auth() {
-    // Every seeded HF model declares HUGGINGFACE_API_KEY as
-    // isRequired+isSecret, in place of a model-wide
-    // `auth_required: true` flag.
+    // Seeded HF models declare HUGGINGFACE_API_KEY as an isSecret env var on
+    // their HF source, in place of a model-wide `auth_required: true` flag.
+    // GATED models mark it isRequired+isSecret; a freely-downloadable PUBLIC
+    // mirror (e.g. bge-reranker-v2-m3-gguf) declares the same token as an
+    // OPTIONAL secret (isSecret:true, isRequired:false), which the hub treats
+    // as "no auth needed". Invariant: at least one seeded HF model requires
+    // auth, and no HF source ships without declaring the secret token at all.
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -353,23 +357,54 @@ async fn test_hub_models_seed_marks_huggingface_sources_as_needing_auth() {
     assert_eq!(response.status(), 200);
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
 
+    let mut auth_required_models = 0;
     for model in models.as_array().unwrap() {
         let name = model.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-        let has_hf_source = model
-            .get("sources")
-            .and_then(|s| s.as_array())
-            .map(|srcs| {
-                srcs.iter()
-                    .any(|src| src.get("registryType").and_then(|v| v.as_str()) == Some("huggingface"))
-            })
-            .unwrap_or(false);
-        if has_hf_source {
-            assert!(
-                model_needs_auth_v2(model),
-                "Seed HF model {name} should mark at least one source as requiring a secret env var"
-            );
+        let has_hf_source = model_has_huggingface_source(model);
+        if !has_hf_source {
+            continue;
         }
+        if model_needs_auth_v2(model) {
+            auth_required_models += 1;
+            continue;
+        }
+        // Not gated → must be a public mirror that STILL declares its HF token
+        // as a secret env var (isSecret:true, isRequired:false). A HF source
+        // with no secret token declared at all is a manifest bug.
+        assert!(
+            hf_source_declares_secret_token(model),
+            "Seed HF model {name} declares no secret token on its HF source"
+        );
     }
+    assert!(
+        auth_required_models > 0,
+        "expected at least one seeded HF model to mark auth as required+secret"
+    );
+}
+
+/// True when at least one Hugging Face source on `model` declares an env var
+/// with `isSecret: true` (required or optional). Public mirrors mark their
+/// token optional; gated models mark it required — either way the secret must
+/// be declared, never silently absent.
+fn hf_source_declares_secret_token(model: &serde_json::Value) -> bool {
+    model
+        .get("sources")
+        .and_then(|s| s.as_array())
+        .map(|sources| {
+            sources.iter().any(|src| {
+                src.get("registryType").and_then(|v| v.as_str()) == Some("huggingface")
+                    && src
+                        .get("environmentVariables")
+                        .and_then(|e| e.as_array())
+                        .map(|envs| {
+                            envs.iter().any(|ev| {
+                                ev.get("isSecret").and_then(|v| v.as_bool()) == Some(true)
+                            })
+                        })
+                        .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
 }
 
 // ============================================================================
@@ -2662,19 +2697,37 @@ async fn test_hub_models_source_auth_configured_reflects_repo_credential() {
         .json()
         .await
         .unwrap();
-    let mut hf_count = 0;
+    let mut hf_needs_auth = 0;
     for m in before.as_array().unwrap() {
-        if model_has_huggingface_source(m) {
-            hf_count += 1;
+        if !model_has_huggingface_source(m) {
+            continue;
+        }
+        if model_needs_auth_v2(m) {
+            // Gated HF model (required+secret token): unconfigured while the
+            // repo has no key.
+            hf_needs_auth += 1;
             assert_eq!(
                 m["source_auth_configured"].as_bool(),
                 Some(false),
                 "model {} should be unconfigured while the HF repo is empty",
                 m["name"]
             );
+        } else {
+            // Public HF mirror (e.g. bge-reranker-v2-m3-gguf) declares its
+            // token as an OPTIONAL secret, so the hub treats the source as
+            // already auth-satisfied regardless of whether a key is set.
+            assert_eq!(
+                m["source_auth_configured"].as_bool(),
+                Some(true),
+                "public HF mirror {} should report auth-satisfied even with no key",
+                m["name"]
+            );
         }
     }
-    assert!(hf_count > 0, "expected at least one Hugging Face model in the catalog");
+    assert!(
+        hf_needs_auth > 0,
+        "expected at least one auth-requiring Hugging Face model in the catalog"
+    );
 
     // Configure the Hugging Face repo with a dummy key.
     let repos: serde_json::Value = reqwest::Client::new()

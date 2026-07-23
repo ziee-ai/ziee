@@ -210,7 +210,12 @@ async fn chat_list_returns_all_user_conversations() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body: Value = resp.json().await.unwrap();
-    let convs = body.as_array().expect("array");
+    // GET /conversations returns ConversationListResponse { conversations, total },
+    // not a bare array.
+    let convs = body["conversations"]
+        .as_array()
+        .or_else(|| body.as_array())
+        .expect("conversations array");
     let ids: Vec<&str> = convs.iter().map(|c| c["id"].as_str().unwrap()).collect();
     assert!(ids.contains(&unfiled.as_str()), "unfiled present: {:?}", ids);
     assert!(ids.contains(&in_project.as_str()), "project-bound present: {:?}", ids);

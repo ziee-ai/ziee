@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::common::AppError;
 use crate::common::secret::{decrypt_secret, encrypt_secret, resolve_optional_secret};
 
+use super::chat_extension::ApprovalMode;
 use super::models::{
     EnvVarView, HeaderView, McpServer, McpServerOAuthConfig, SetMcpServerOAuthConfigRequest,
     TransportType, UsageMode,
@@ -547,6 +548,116 @@ impl McpRepository {
 
     pub async fn get_system_server(&self, id: Uuid) -> Result<Option<McpServer>, AppError> {
         get_system_mcp_server(&self.pool, id).await
+    }
+
+    // ── Admin per-(server, tool) approval-mode overrides (ITEM-54 / DEC-112) ──
+    //
+    // Stored as a jsonb map `{ tool_name -> mode }` on the `mcp_servers` row
+    // (`tool_approval_defaults`). Mode vocabulary is the existing `ApprovalMode`
+    // (disabled / auto_approve / manual_approve). Admin-only surface (SYSTEM MCP
+    // servers); the chat approval gate consults these BEFORE the conversation /
+    // user default (override wins).
+
+    /// Fetch the per-tool approval overrides for a SYSTEM server as a
+    /// `tool_name -> mode-string` map. `Ok(None)` when the id is absent OR the
+    /// row is not a system server — the handler maps that to a 404 so a foreign
+    /// / user-owned id never leaks existence.
+    pub async fn get_system_server_tool_approvals(
+        &self,
+        server_id: Uuid,
+    ) -> Result<Option<std::collections::HashMap<String, String>>, AppError> {
+        let row = sqlx::query!(
+            r#"SELECT tool_approval_defaults
+               FROM mcp_servers
+               WHERE id = $1 AND is_system = true"#,
+            server_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(row.map(|r| serde_json::from_value(r.tool_approval_defaults).unwrap_or_default()))
+    }
+
+    /// Set (`Some`) or clear (`None`) the admin approval override for a single
+    /// tool on a SYSTEM server. Returns `Ok(false)` when the id is absent / not
+    /// a system server (→ 404). A `Some` write merges the single key into the
+    /// jsonb map; a `None` write deletes the key (falls back to the default).
+    pub async fn set_system_server_tool_approval(
+        &self,
+        server_id: Uuid,
+        tool_name: &str,
+        mode: Option<ApprovalMode>,
+    ) -> Result<bool, AppError> {
+        let result = match mode {
+            Some(m) => {
+                let mode_str = m.to_string();
+                sqlx::query!(
+                    r#"UPDATE mcp_servers
+                       SET tool_approval_defaults =
+                             tool_approval_defaults || jsonb_build_object($2::text, $3::text),
+                           updated_at = now()
+                       WHERE id = $1 AND is_system = true"#,
+                    server_id,
+                    tool_name,
+                    mode_str
+                )
+                .execute(&self.pool)
+                .await
+            }
+            None => {
+                sqlx::query!(
+                    r#"UPDATE mcp_servers
+                       SET tool_approval_defaults = tool_approval_defaults - $2::text,
+                           updated_at = now()
+                       WHERE id = $1 AND is_system = true"#,
+                    server_id,
+                    tool_name
+                )
+                .execute(&self.pool)
+                .await
+            }
+        }
+        .map_err(AppError::database_error)?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Batch-load admin per-tool overrides for the given servers, parsed into
+    /// `ApprovalMode`. Used by the chat approval gate to consult the admin
+    /// override before the conversation / user default. Rows with no overrides
+    /// (the common case, incl. every built-in + user server) are skipped in SQL.
+    pub async fn get_tool_approval_overrides_for_servers(
+        &self,
+        server_ids: &[Uuid],
+    ) -> Result<
+        std::collections::HashMap<Uuid, std::collections::HashMap<String, ApprovalMode>>,
+        AppError,
+    > {
+        use std::collections::HashMap;
+        if server_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = sqlx::query!(
+            r#"SELECT id, tool_approval_defaults
+               FROM mcp_servers
+               WHERE id = ANY($1) AND tool_approval_defaults <> '{}'::jsonb"#,
+            server_ids
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        let mut out: HashMap<Uuid, HashMap<String, ApprovalMode>> = HashMap::new();
+        for r in rows {
+            let raw: HashMap<String, String> =
+                serde_json::from_value(r.tool_approval_defaults).unwrap_or_default();
+            let parsed: HashMap<String, ApprovalMode> = raw
+                .into_iter()
+                .filter_map(|(k, v)| v.parse::<ApprovalMode>().ok().map(|m| (k, m)))
+                .collect();
+            if !parsed.is_empty() {
+                out.insert(r.id, parsed);
+            }
+        }
+        Ok(out)
     }
 
     pub async fn list_system_servers(

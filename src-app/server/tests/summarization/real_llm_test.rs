@@ -388,6 +388,11 @@ async fn custom_full_summary_prompt_is_sent_to_the_model() {
         &[
             "conversations::create", "conversations::read", "conversations::edit",
             "messages::create", "messages::read",
+            // register_stub_model creates a provider + model AND a group with
+            // model access, so the user needs the create + group-assign perms
+            // (not just llm_models::read).
+            "llm_providers::create", "llm_models::create",
+            "groups::create", "groups::assign_users", "llm_providers::assign_groups",
             "llm_models::read", "summarization::settings::read", "summarization::settings::manage",
         ],
     )

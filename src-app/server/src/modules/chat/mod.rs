@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::ModuleContext;
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleEntry};
 
+pub mod agent_host;
 pub mod core;
 pub mod extensions;
 pub mod stream;

@@ -153,6 +153,7 @@ fn embedded_postgres_paths_derive_when_unset() {
     let emb = config
         .postgresql
         .embedded
+        .as_ref()
         .expect("embedded block present");
     assert_eq!(
         emb.installation_dir.as_deref(),

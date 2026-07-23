@@ -39,7 +39,15 @@ mod assistant_injection_test;
 // New fire-and-forget send + per-user chat-token stream (stub-backed,
 // deterministic) and the `sync:conversation` emit coverage.
 mod chat_stream_test;
+mod agent_core_migration_test;
+mod agent_core_parity_test;
+mod extension_split_test;
 mod sync_emit_test;
+// Auto-title generation: the reasoning-model regression (empty generation must
+// leave the title unset, never the raw first user message) + the non-reasoning
+// cross-model guard.
+mod title_test;
+mod title_audience_test;
 mod ownership_test;
 mod sandbox_real_llm_test;
 mod test_single_assistant_message_architecture;

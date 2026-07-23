@@ -5,6 +5,7 @@ import type {
   SSEElicitationRequiredData,
   SSEStepManifestItem,
 } from '@/api-client/types'
+import type { AgentActivityEntry } from '@/modules/workflow/components/run/activityDescriptors'
 
 /** Per-step output metadata (mirrors backend `OutputMeta`). Content lives on
  *  disk; this is the snapshot blob in `step_outputs_json[step_id]`. Its
@@ -40,6 +41,11 @@ export interface StepProgress {
   itemProgress?: ItemProgress
   /** Live sandbox-step progress tracks (P2), keyed by track id ("" = default). */
   tracks?: Record<string, ProgressTrack>
+  /** Ordered agent ACTIVITY TIMELINE for a `kind:agent` step — accreting rows
+   *  (search/read/draft/gate…) deduped + ordered by `seq`. Fed by the
+   *  `agent_activity` tracks on the StepProgress frame (kept OUT of `tracks`) and
+   *  rehydrated from `step_logs_json["<stepId>::agent_activity"]` on snapshot. */
+  agentActivity?: AgentActivityEntry[]
   outputPreview?: string
   error?: string
   tokensUsed?: number

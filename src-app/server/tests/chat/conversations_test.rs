@@ -257,7 +257,8 @@ async fn test_list_conversations_empty() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
     assert_eq!(conversations.len(), 0);
 }
 
@@ -282,7 +283,8 @@ async fn test_list_conversations_single() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
     assert_eq!(conversations.len(), 1);
     super::helpers::assert_uuid_eq(&conversations[0]["id"], conversation_id, "id");
 }
@@ -312,7 +314,8 @@ async fn test_list_conversations_multiple_ordered_by_created_at() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
     assert_eq!(conversations.len(), 3);
 
     // Should be ordered by created_at DESC (newest first)
@@ -350,7 +353,8 @@ async fn test_list_conversations_pagination() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
     assert_eq!(conversations.len(), 2, "First page should have 2 items");
 
     // Get second page
@@ -362,7 +366,8 @@ async fn test_list_conversations_pagination() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
     assert_eq!(conversations.len(), 2, "Second page should have 2 items");
 }
 
@@ -386,7 +391,8 @@ async fn test_list_conversations_message_count() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
     assert_eq!(conversations.len(), 1);
 
     // New conversation should have message_count = 0
@@ -425,7 +431,8 @@ async fn test_list_conversations_only_shows_own() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
     assert_eq!(conversations.len(), 2, "User1 should only see their own conversations");
 
     // User2 should only see their own 1 conversation
@@ -437,7 +444,8 @@ async fn test_list_conversations_only_shows_own() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
+    let __page: serde_json::Value = response.json().await.unwrap();
+    let conversations = __page["conversations"].as_array().cloned().unwrap_or_default();
     assert_eq!(conversations.len(), 1, "User2 should only see their own conversation");
 }
 

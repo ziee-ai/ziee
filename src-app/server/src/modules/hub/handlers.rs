@@ -1326,6 +1326,24 @@ pub async fn create_system_mcp_server_from_hub(
         }
     }
 
+    // Remove the prior install's `hub_entities` tracking row in THIS tx so the
+    // `track_hub_entity_in_tx` insert below doesn't collide with it on the
+    // `uniq_hub_system_mcp_install` partial unique index (`hub_id` WHERE
+    // `entity_type = 'mcp_server' AND created_by IS NULL`). hub_entities has no
+    // FK cascade to mcp_servers — cleanup is normally the post-commit,
+    // event-driven `CleanupHubEntitiesHandler`, which can't run mid-tx, so
+    // without this in-tx delete every `replace_existing` re-install 409s. The
+    // deferred `system_server_deleted` event still fires that handler after
+    // commit; it's now an idempotent no-op (the row is already gone).
+    if let Some(id) = deleted_id {
+        crate::modules::hub::repository::delete_hub_tracking_in_tx(
+            &mut tx,
+            HubEntityType::McpServer,
+            id,
+        )
+        .await?;
+    }
+
     let server = Repos
         .mcp
         .create_system_server_in_tx(&mut tx, plan.create_request)

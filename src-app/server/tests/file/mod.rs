@@ -1874,9 +1874,15 @@ async fn test_file_content_responses_have_private_bounded_cache_control() {
             .get("cache-control")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
+        // Both bounded directives are acceptable and NEITHER is immutable:
+        // static-ish content (download/thumbnail) uses `private, max-age=3600`
+        // (FILE_CONTENT_CACHE_CONTROL); MUTABLE derivatives (text/preview, which
+        // change when the file is edited via the MCP edit tools) deliberately use
+        // `private, no-cache` (FILE_HEAD_CACHE_CONTROL) to force revalidation and
+        // never serve stale text. Both are private + non-immutable + bounded.
         assert!(
             cache_control.contains("private")
-                && cache_control.contains("max-age")
+                && (cache_control.contains("max-age") || cache_control.contains("no-cache"))
                 && !cache_control.contains("immutable"),
             "{path} must set a private, bounded (non-immutable) Cache-Control (got {cache_control:?})",
         );

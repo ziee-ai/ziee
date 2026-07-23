@@ -21,6 +21,12 @@ pub async fn read_artifact(
     auth: RequirePermissions<(WorkflowsRead,)>,
     AxumPath((run_id, step_id, filename)): AxumPath<(Uuid, String, String)>,
 ) -> ApiResult<Response> {
+    // Fail-fast on path traversal in the untrusted `{step_id}`/`{filename}`
+    // captures BEFORE the run lookup, so a malicious path is rejected (400)
+    // regardless of whether the run id exists (`artifact_host_path` re-checks
+    // as defense-in-depth just before joining).
+    crate::modules::workflow::artifact_io::validate_artifact_path_components(&step_id, &filename)?;
+
     let row = repository::find_run(Repos.pool(), run_id)
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;

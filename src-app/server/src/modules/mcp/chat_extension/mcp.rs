@@ -307,6 +307,16 @@ fn auto_attach_builtin_ids(
         // ANY tool-using conversation. Read-only, scoped to the caller's own
         // conversation; approval-bypassed (see is_builtin_server_id).
         ids.push(crate::modules::tool_result_mcp::tool_result_mcp_server_id());
+        // `background` (ITEM-17 / DEC-33) is always-on for tool-capable models so
+        // the model can offload long, self-contained work to a detached sub-agent
+        // (`spawn_background`) and later `check_status` / `collect_result`. Like
+        // `control` it is auto-attached but NOT approval-bypassed (absent from
+        // `is_builtin_server_id`): the WRITE `spawn_background` LAUNCHES an agent,
+        // so it is forced through approval by the per-tool `is_background` arm in
+        // the approval loop below, while the two reads auto-run. Every run is
+        // owner-scoped, so the `background::use` grant + `find_run_for_owner`
+        // guard the surface.
+        ids.push(crate::modules::background_mcp::background_mcp_server_id());
     }
     ids
 }
@@ -382,7 +392,7 @@ fn resolve_server_and_tool(
 /// real OpenAI `call_…`) round-trip unchanged. ziee owns both sides of the
 /// round-trip (the id it sends back as `tool_call_id` and the tool_result that
 /// references it), so replacing a bad id is safe.
-fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSet<String>) -> String {
+pub(crate) fn resolve_unique_tool_use_id(provider_id: &str, used: &std::collections::HashSet<String>) -> String {
     if provider_id.is_empty() || used.contains(provider_id) {
         format!("call_{}", Uuid::new_v4())
     } else {
@@ -530,6 +540,91 @@ fn unattended_tool_allowed(allow: &serde_json::Value, server_id: &str, tool_name
         .unwrap_or(false)
 }
 
+/// Resolved action for a regular (non-builtin/control/background) MCP tool
+/// under the conversation / user default approval mode. Admin per-(server,
+/// tool) overrides are NOT handled here — they are resolved earlier and with
+/// higher precedence by [`resolve_tool_approval`].
+#[derive(Debug, PartialEq, Eq)]
+enum RegularToolDecision {
+    /// Run the tool without approval.
+    Execute,
+    /// Require explicit approval (pause / unattended-deny downstream).
+    Approve,
+}
+
+/// Decide a regular tool's approval action from the conversation / user
+/// default: an `AutoApprove` conversation Executes; a `ManualApprove`
+/// conversation Executes only a user-auto-approved tool, else Approves.
+/// (`Disabled` conversations deny non-builtin tools before reaching here.)
+fn decide_regular_tool_approval(
+    conversation_mode: &super::approval::models::ApprovalMode,
+    is_auto_approved: bool,
+) -> RegularToolDecision {
+    use super::approval::models::ApprovalMode;
+    match conversation_mode {
+        ApprovalMode::AutoApprove => RegularToolDecision::Execute,
+        ApprovalMode::ManualApprove => {
+            if is_auto_approved {
+                RegularToolDecision::Execute
+            } else {
+                RegularToolDecision::Approve
+            }
+        }
+        // A Disabled conversation never reaches here (denied earlier); default to
+        // requiring approval rather than panicking.
+        ApprovalMode::Disabled => RegularToolDecision::Approve,
+    }
+}
+
+/// Outcome of the per-tool approval classification in the chat loop
+/// ([`resolve_tool_approval`]).
+#[derive(Debug, PartialEq, Eq)]
+enum ToolApprovalOutcome {
+    /// Run the tool without approval.
+    Execute,
+    /// Pause for explicit approval (or unattended-deny downstream).
+    Approve,
+    /// Admin `disabled` override → deny outright (no run, no prompt).
+    Denied,
+}
+
+/// FINDING-1 / ITEM-54 / DEC-112: resolve a tool call's approval outcome with
+/// the admin per-(server, tool) override consulted FIRST — WINNING over the
+/// built-in bypass and the control/background force-approval below it. Every
+/// built-in MCP server is `is_system=true`, so an admin who set
+/// `disabled`/`manual_approve`/`auto_approve` on a built-in tool used to get a
+/// successful GET/PUT while the tool kept auto-running (false assurance); this
+/// makes the override actually take effect.
+///
+/// When there is NO override the historical behavior is reproduced verbatim from
+/// `bypass_needs_approval` — what the built-in/control/background/regular arms
+/// decided (`false` for a privileged built-in, the control/background
+/// force-approval result, or the regular conversation default). Pure so the
+/// "override wins over the built-in bypass" precedence is unit-testable.
+///
+/// DRIFT-1.4: an admin who explicitly sets `auto_approve` on a mutating built-in
+/// (e.g. control's `invoke` / background's `spawn`) is deliberately loosening
+/// their OWN deployment — that footgun is honored, not silently ignored (the
+/// bug this fixes). The absent-override case keeps forcing approval on those.
+fn resolve_tool_approval(
+    admin_override: Option<&super::approval::models::ApprovalMode>,
+    bypass_needs_approval: bool,
+) -> ToolApprovalOutcome {
+    use super::approval::models::ApprovalMode;
+    match admin_override {
+        Some(ApprovalMode::Disabled) => ToolApprovalOutcome::Denied,
+        Some(ApprovalMode::ManualApprove) => ToolApprovalOutcome::Approve,
+        Some(ApprovalMode::AutoApprove) => ToolApprovalOutcome::Execute,
+        None => {
+            if bypass_needs_approval {
+                ToolApprovalOutcome::Approve
+            } else {
+                ToolApprovalOutcome::Execute
+            }
+        }
+    }
+}
+
 /// Privileged built-in servers (files, memory, elicitation, bio, web_search,
 /// lit_search, tool_result). Their tools bypass the MCP approval flow — they're
 /// read-only / save-only / user-prompting and auto-attached, so a
@@ -537,42 +632,57 @@ fn unattended_tool_allowed(allow: &serde_json::Value, server_id: &str, tool_name
 /// `ask_user` call must execute immediately rather than stall behind a
 /// manual-approval prompt the user never opted into (for `ask_user`, the user
 /// answering the form IS the approval).
+/// The deterministic ids of every in-process built-in MCP server that is
+/// approval-bypassed (auto-attached, read-only / trusted). SINGLE SOURCE OF
+/// TRUTH for [`is_builtin_server_id`] and for the chat approval gate's admin
+/// per-tool override batch-load (`chat/agent_host/gate.rs`) so a built-in's
+/// override is actually loaded. Computed once (the `_server_id()` fns are v5
+/// UUID derivations) and cached.
+pub(crate) fn builtin_server_ids() -> &'static [Uuid] {
+    static IDS: std::sync::LazyLock<Vec<Uuid>> = std::sync::LazyLock::new(|| {
+        vec![
+            crate::modules::files_mcp::files_mcp_server_id(),
+            crate::modules::memory_mcp::memory_mcp_server_id(),
+            crate::modules::elicitation_mcp::elicitation_mcp_server_id(),
+            // bio is approval-bypassed (read-only biomedical searches,
+            // auto-attached) but — unlike the three above — it is NOT in the
+            // zero-config edit deny-list (`repository.rs::update_system_mcp_server`),
+            // so admins can still edit its Headers (API keys). Lists are independent.
+            crate::modules::bio_mcp::bio_mcp_server_id(),
+            // web_search is approval-bypassed too (read-only search + page fetch,
+            // auto-attached); fetched content is treated as untrusted data.
+            crate::modules::web_search::web_search_server_id(),
+            // tool_result is approval-bypassed (read-only recall of the caller's
+            // own prior tool results, auto-attached for tool-capable models).
+            crate::modules::tool_result_mcp::tool_result_mcp_server_id(),
+            // lit_search is approval-bypassed (read-only literature search + OA
+            // full-text fetch, auto-attached); results treated as untrusted data.
+            crate::modules::lit_search::lit_search_server_id(),
+            // citations is auto-attached for tool-capable chats; writes operate
+            // ONLY on the caller's own verified library and never invent data
+            // (fabricated DOIs return not_found), so it is approval-bypassed.
+            crate::modules::citations::citations_server_id(),
+            // knowledge_base is approval-bypassed: `search_knowledge` /
+            // `list_knowledge_bases` are read-only retrieval over the caller's own
+            // KBs; results are treated as untrusted data.
+            crate::modules::knowledge_base::knowledge_base_server_id(),
+            // skill_mcp is approval-bypassed: `load_skill` / `read_skill_file` are
+            // read-only reads of skills already installed + available to the caller,
+            // auto-attached for tool-capable chats with ≥1 available skill.
+            crate::modules::skill_mcp::skill_mcp_server_id(),
+            // run_js is approval-bypassed for the script START only — the model's
+            // `run_js` call auto-runs (like the read-only built-ins), while gated
+            // sub-tools called INSIDE the script are individually approved by the
+            // js_tool executor. Execution is intercepted inline (see the run_js
+            // branch in the execute loop), never dispatched over the loopback.
+            crate::modules::js_tool::run_js_mcp_server_id(),
+        ]
+    });
+    &IDS
+}
+
 pub(crate) fn is_builtin_server_id(id: Uuid) -> bool {
-    id == crate::modules::files_mcp::files_mcp_server_id()
-        || id == crate::modules::memory_mcp::memory_mcp_server_id()
-        || id == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
-        // bio is approval-bypassed (read-only biomedical searches, auto-attached)
-        // but — unlike the three above — it is NOT in the zero-config edit
-        // deny-list (`repository.rs::update_system_mcp_server`), so admins can
-        // still edit its Headers (API keys). The two lists are independent.
-        || id == crate::modules::bio_mcp::bio_mcp_server_id()
-        // web_search is approval-bypassed too (read-only search + page fetch,
-        // auto-attached); fetched content is treated as untrusted data.
-        || id == crate::modules::web_search::web_search_server_id()
-        // tool_result is approval-bypassed (read-only recall of the caller's own
-        // prior tool results, auto-attached for tool-capable models).
-        || id == crate::modules::tool_result_mcp::tool_result_mcp_server_id()
-        // lit_search is approval-bypassed (read-only literature search + OA
-        // full-text fetch, auto-attached); results are treated as untrusted data.
-        || id == crate::modules::lit_search::lit_search_server_id()
-        // citations is auto-attached for tool-capable chats; writes operate ONLY
-        // on the caller's own verified library and never invent data (fabricated
-        // DOIs return not_found), so it is approval-bypassed like the others.
-        || id == crate::modules::citations::citations_server_id()
-        // knowledge_base is approval-bypassed: `search_knowledge` /
-        // `list_knowledge_bases` are read-only retrieval over the caller's own
-        // KBs; results are treated as untrusted data.
-        || id == crate::modules::knowledge_base::knowledge_base_server_id()
-        // skill_mcp is approval-bypassed: `load_skill` / `read_skill_file` are
-        // read-only reads of skills already installed + available to the caller,
-        // auto-attached for tool-capable chats with ≥1 available skill.
-        || id == crate::modules::skill_mcp::skill_mcp_server_id()
-        // run_js is approval-bypassed for the script START only — the model's
-        // `run_js` call auto-runs (like the read-only built-ins), while gated
-        // sub-tools called INSIDE the script are individually approved by the
-        // js_tool executor. Execution is intercepted inline (see the run_js
-        // branch in the execute loop), never dispatched over the loopback.
-        || id == crate::modules::js_tool::run_js_mcp_server_id()
+    builtin_server_ids().contains(&id)
 }
 
 ///
@@ -2097,6 +2207,25 @@ impl ChatExtension for McpChatExtension {
                     .collect()
             };
 
+            // files_mcp write/read split (B1): the files_mcp server auto-attaches
+            // whenever the model is tool-capable, but in an EMPTY conversation only
+            // its WRITE tools are useful (author the first file / create→edit in one
+            // turn) — the READ tools (list/read/grep/semantic_search over zero files)
+            // are dropped until files exist. `files_manifest_available` is the same
+            // file-presence signal the manifest injection uses, so the two never
+            // disagree.
+            let tools_to_add = if *server_id == crate::modules::files_mcp::files_mcp_server_id()
+                && !crate::modules::file::available_files::files_manifest_available(
+                    &context.metadata,
+                ) {
+                tools_to_add
+                    .into_iter()
+                    .filter(|t| crate::modules::files_mcp::is_write_tool(&t.name))
+                    .collect()
+            } else {
+                tools_to_add
+            };
+
             // Convert and add tools (using server_id for unique tool naming).
             // `convert_mcp_tool_to_ai_tool` returns None for tools whose
             // composed `<server_id>__<tool_name>` would fail Anthropic's
@@ -2227,10 +2356,25 @@ impl ChatExtension for McpChatExtension {
             );
         }
 
-        // Add tools to ChatRequest
+        // Add tools to ChatRequest.
         if !all_tools.is_empty() {
             tracing::info!("Adding {} tools to ChatRequest", all_tools.len());
-            request.tools = all_tools;
+            // MERGE (don't REPLACE): agent-core appends its core tools (`task_*`, `delegate`)
+            // onto `request.tools` in `core.rs` BEFORE this MCP-collector extension runs. A plain
+            // `request.tools = all_tools` silently DROPPED them — and since built-in MCP servers
+            // always auto-attach (so `all_tools` is never empty), the self-managed task-list and
+            // on-demand delegation were dead in the agent-core chat path whenever any built-in was
+            // attached (i.e. always). Keep the MCP tools AND any request tool not shadowed by an
+            // MCP tool of the same name (the agent-core core tools). MCP tools win on a name clash.
+            let mcp_names: std::collections::HashSet<String> =
+                all_tools.iter().map(|t| t.function.name.clone()).collect();
+            let mut merged = all_tools;
+            for carried in std::mem::take(&mut request.tools) {
+                if !mcp_names.contains(&carried.function.name) {
+                    merged.push(carried);
+                }
+            }
+            request.tools = merged;
 
             // On the first iteration, nudge the model to prefer tools over training knowledge.
             // This is a soft hint — the model can still answer directly if no tool is relevant.
@@ -2627,6 +2771,26 @@ impl ChatExtension for McpChatExtension {
         // (tool_use_id, tool_name, server_id) denied because unattended + not allow-listed.
         let mut tools_denied_unattended: Vec<(String, String, String)> = Vec::new();
 
+        // ITEM-54/DEC-112: admin per-(server, tool) approval-mode overrides.
+        // Batch-loaded once for every server referenced this turn, then
+        // consulted in the loop BEFORE the conversation/user default (override
+        // wins). Absent → existing behavior unchanged. Built-in/user servers with
+        // no admin override contribute nothing (filtered in SQL). Propagated with
+        // `?` (not swallowed): if we can't read the admin policy we don't proceed.
+        let admin_override_server_ids: Vec<uuid::Uuid> = tool_uses
+            .iter()
+            .filter_map(|(_, _, sid, _)| uuid::Uuid::parse_str(sid).ok())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        let admin_tool_overrides = crate::core::Repos
+            .mcp
+            .get_tool_approval_overrides_for_servers(&admin_override_server_ids)
+            .await?;
+        // Tools denied outright by an admin `disabled` per-tool override (no run,
+        // no prompt) — the admin analog of the conversation-Disabled deny path.
+        let mut tools_admin_disabled: Vec<(String, String, String)> = Vec::new();
+
         for (tool_use_id, tool_name, server_id, input) in tool_uses {
             // Privileged built-in servers bypass approval entirely.
             let is_builtin = uuid::Uuid::parse_str(&server_id)
@@ -2651,40 +2815,76 @@ impl ChatExtension for McpChatExtension {
                 .map(|id| id == crate::modules::control_mcp::control_mcp_server_id())
                 .unwrap_or(false);
 
-            let needs_approval = if is_control {
+            // The background server (ITEM-17 / DEC-33) is auto-attached but NOT
+            // approval-bypassed: `check_status` / `collect_result` (owner-scoped
+            // reads) auto-run, but `spawn_background` LAUNCHES a detached agent, so
+            // it ALWAYS requires explicit approval — overriding even AutoApprove
+            // (the security posture, same as control's mutating invoke).
+            let is_background = uuid::Uuid::parse_str(&server_id)
+                .map(|id| id == crate::modules::background_mcp::background_mcp_server_id())
+                .unwrap_or(false);
+
+            // ITEM-54/DEC-112 + FINDING-1: the admin per-(server, tool) approval
+            // override. Consulted FIRST by `resolve_tool_approval` below — it
+            // WINS over the built-in bypass AND the control/background
+            // force-approval, so an admin who sets disabled/manual_approve/
+            // auto_approve on a tool of a SYSTEM MCP server (which includes EVERY
+            // built-in: files/memory/web_search/lit_search/citations/…) actually
+            // takes effect instead of being silently ignored. Absent → the
+            // "bypass" classification below is byte-identical to the prior
+            // behavior (built-in bypass + control/background force-approval kept).
+            let admin_override = uuid::Uuid::parse_str(&server_id)
+                .ok()
+                .and_then(|sid| admin_tool_overrides.get(&sid))
+                .and_then(|m| m.get(&tool_name));
+
+            // The no-override ("bypass") decision, consulted ONLY when there is no
+            // admin override: privileged built-ins run without approval;
+            // control/background force approval on their mutating ops; a regular
+            // tool follows the conversation / user default.
+            let bypass_needs_approval = if is_control {
                 crate::modules::control_mcp::handlers::control_call_needs_approval(
                     &tool_name, &input,
                 )
+            } else if is_background {
+                crate::modules::background_mcp::tools::background_call_needs_approval(&tool_name)
             } else if is_builtin {
                 false
             } else {
-                match approval_mode {
-                    crate::modules::mcp::chat_extension::ApprovalMode::AutoApprove => false,
-                    crate::modules::mcp::chat_extension::ApprovalMode::ManualApprove => {
-                        // Check if this tool is auto-approved using server_id directly
-                        let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
-                            auto_approved_servers
-                                .iter()
-                                .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
-                                || user_auto_approved
-                                    .iter()
-                                    .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
-                        } else {
-                            false
-                        };
-                        tracing::info!(
-                            "Tool '{}' (server={}) auto-approved check: is_auto_approved={}",
-                            tool_name,
-                            server_id,
-                            is_auto_approved
-                        );
-                        !is_auto_approved
-                    }
-                    // Handled by the Disabled-deny branch above.
-                    crate::modules::mcp::chat_extension::ApprovalMode::Disabled => {
-                        unreachable!("Disabled non-builtin tools are denied above")
-                    }
+                // Whether the user auto-approved this (server, tool).
+                let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
+                    auto_approved_servers
+                        .iter()
+                        .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
+                        || user_auto_approved
+                            .iter()
+                            .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
+                } else {
+                    false
+                };
+                matches!(
+                    decide_regular_tool_approval(&approval_mode, is_auto_approved),
+                    RegularToolDecision::Approve
+                )
+            };
+
+            tracing::info!(
+                "Tool '{}' (server={}) approval: override={:?}, bypass_needs_approval={}",
+                tool_name,
+                server_id,
+                admin_override.map(|m| m.to_string()),
+                bypass_needs_approval
+            );
+
+            let needs_approval = match resolve_tool_approval(admin_override, bypass_needs_approval) {
+                ToolApprovalOutcome::Denied => {
+                    // Admin `disabled` override → deny outright (no run, no
+                    // prompt); a synthesized denial is emitted downstream.
+                    tools_admin_disabled.push((tool_use_id, tool_name, server_id));
+                    continue;
                 }
+                ToolApprovalOutcome::Execute => false,
+                ToolApprovalOutcome::Approve => true,
             };
 
             tracing::info!(
@@ -2777,10 +2977,33 @@ impl ChatExtension for McpChatExtension {
 
             // Fan out the per-tool SSE events (keyed off the input list, not the
             // RETURNING order which is not guaranteed to match).
-            for ((tool_use_id, tool_name, server_id_str, input), (_, server_name)) in
+            for ((tool_use_id, tool_name, server_id_str, input), (server_id_opt, server_name)) in
                 tools_needing_approval.iter().zip(resolved.iter())
             {
-                helpers::send_approval_required_event(tx, tool_use_id, tool_name, server_name, server_id_str, input).await?;
+                // ITEM-50 (full-disclosure): the external destination host (from
+                // the already-loaded server row — no new SSRF/host logic) + the
+                // tool's full exact description (best-effort live tools/list), so
+                // the approval card renders a *data-egress* review.
+                let dest_host = (*server_id_opt)
+                    .and_then(|id| accessible_servers.iter().find(|s| s.id == id))
+                    .and_then(crate::modules::mcp::agent_tool_call::resolve_dest_host);
+                let description = crate::modules::mcp::agent_tool_call::resolve_tool_description(
+                    *server_id_opt,
+                    context.user_id,
+                    tool_name,
+                )
+                .await;
+                helpers::send_approval_required_event(
+                    tx,
+                    tool_use_id,
+                    tool_name,
+                    server_name,
+                    server_id_str,
+                    input,
+                    dest_host,
+                    description,
+                )
+                .await?;
             }
 
             // Do NOT pause here. A built-in tool (files/memory) can share the
@@ -2820,6 +3043,30 @@ impl ChatExtension for McpChatExtension {
                 resource_links: None,
                 hidden_content: None,
                 structured_content: None,
+            };
+            tool_results.push(denial.to_message_content());
+        }
+
+        // ITEM-54/DEC-112: tools an admin set to `disabled` per-tool get a
+        // denial tool_result (no run, no prompt) with an admin-specific message,
+        // keeping the tool_use paired without executing or pausing.
+        for (tool_use_id, tool_name, server_id_str) in &tools_admin_disabled {
+            let denial = McpContentData::ToolResult {
+                tool_use_id: tool_use_id.clone(),
+                name: Some(tool_name.clone()),
+                server_id: Some(server_id_str.clone()),
+                content: format!(
+                    "Tool '{tool_name}' is disabled by the administrator; not executed."
+                ),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: Some(serde_json::json!({
+                    "admin_disabled": true,
+                    "tool_name": tool_name,
+                })),
             };
             tool_results.push(denial.to_message_content());
         }
@@ -4294,6 +4541,7 @@ mod builtin_tests {
         let lit = crate::modules::lit_search::lit_search_server_id();
         let citations = crate::modules::citations::citations_server_id();
         let tool_result = crate::modules::tool_result_mcp::tool_result_mcp_server_id();
+        let background = crate::modules::background_mcp::background_mcp_server_id();
 
         // Non-tool-capable model (no model_tools_capable seeded) → NOTHING
         // auto-attaches. ask_user must NOT be sent to a model that can't call
@@ -4306,39 +4554,40 @@ mod builtin_tests {
         assert!(auto_attach_builtin_ids(&m).is_empty());
 
         // Tool-capable model → the always-on built-ins (elicitation `ask_user` +
-        // `tool_result` `get_tool_result`) are attached even with no flags.
-        let always_on = [elicit, tool_result];
+        // `tool_result` `get_tool_result` + `background` spawn/check/collect) are
+        // attached even with no flags.
+        let always_on = [elicit, tool_result, background];
         let mut m = HashMap::new();
         m.insert("model_tools_capable".into(), json!(true));
         let base = auto_attach_builtin_ids(&m);
-        assert_eq!(base.len(), 2);
+        assert_eq!(base.len(), 3);
         assert!(always_on.iter().all(|id| base.contains(id)));
         // The capability flag round-trips as a "true"/"false" string too.
         let mut ms = HashMap::new();
         ms.insert("model_tools_capable".into(), json!("true"));
         let base_s = auto_attach_builtin_ids(&ms);
-        assert_eq!(base_s.len(), 2);
+        assert_eq!(base_s.len(), 3);
         assert!(always_on.iter().all(|id| base_s.contains(id)));
 
-        // The flag-gated built-ins add on top of the always-on pair.
+        // The flag-gated built-ins add on top of the always-on set.
         m.insert("attach_files_mcp".into(), json!("true"));
         let with_files = auto_attach_builtin_ids(&m);
         assert!(with_files.contains(&files) && with_files.contains(&elicit));
-        assert_eq!(with_files.len(), 3);
+        assert_eq!(with_files.len(), 4);
         m.insert("attach_memory_mcp".into(), json!("true"));
         let all = auto_attach_builtin_ids(&m);
         assert!(all.contains(&files) && all.contains(&memory) && all.contains(&elicit));
-        assert_eq!(all.len(), 4);
+        assert_eq!(all.len(), 5);
         // bio attaches on its own flag, on top of the others.
         m.insert("attach_bio_mcp".into(), json!("true"));
         let with_bio = auto_attach_builtin_ids(&m);
         assert!(with_bio.contains(&bio));
-        assert_eq!(with_bio.len(), 5);
+        assert_eq!(with_bio.len(), 6);
         // web_search adds on top when its flag is set.
         m.insert("attach_web_search_mcp".into(), json!("true"));
         let with_web = auto_attach_builtin_ids(&m);
         assert!(with_web.contains(&web));
-        assert_eq!(with_web.len(), 6);
+        assert_eq!(with_web.len(), 7);
         // lit_search adds on top when ITS flag is set.
         m.insert(crate::modules::lit_search::chat_extension::ATTACH_FLAG.into(), json!("true"));
         let with_lit = auto_attach_builtin_ids(&m);
@@ -4350,21 +4599,22 @@ mod builtin_tests {
                 && with_lit.contains(&memory)
                 && with_lit.contains(&elicit)
                 && with_lit.contains(&tool_result)
+                && with_lit.contains(&background)
         );
-        assert_eq!(with_lit.len(), 7);
+        assert_eq!(with_lit.len(), 8);
         // citations adds on top when ITS flag is set (the two mcp.rs edits — the
         // documented silent-failure footgun if forgotten).
         m.insert(crate::modules::citations::chat_extension::ATTACH_FLAG.into(), json!("true"));
         let with_cit = auto_attach_builtin_ids(&m);
         assert!(with_cit.contains(&citations), "citations flag must attach its server id");
         assert!(with_cit.contains(&lit) && with_cit.contains(&web));
-        assert_eq!(with_cit.len(), 8);
-        // A non-"true" flag value is ignored — only the always-on pair remains.
+        assert_eq!(with_cit.len(), 9);
+        // A non-"true" flag value is ignored — only the always-on set remains.
         let mut m2: HashMap<String, serde_json::Value> = HashMap::new();
         m2.insert("model_tools_capable".into(), json!(true));
         m2.insert("attach_files_mcp".into(), json!("false"));
         let only_base = auto_attach_builtin_ids(&m2);
-        assert_eq!(only_base.len(), 2);
+        assert_eq!(only_base.len(), 3);
         assert!(always_on.iter().all(|id| only_base.contains(id)));
     }
 
@@ -4397,6 +4647,44 @@ mod builtin_tests {
             !is_builtin_server_id(control),
             "control must NOT be approval-bypassed"
         );
+    }
+
+    /// background_mcp attach seam (ITEM-17 / DEC-33) + the security-critical
+    /// negative. Background is auto-attached for every tool-capable model (both
+    /// mcp.rs edits present), but is deliberately NOT on the approval-bypass list:
+    /// `spawn_background` LAUNCHES a detached agent → it is forced through approval
+    /// by the per-tool `is_background` arm, while `check_status` / `collect_result`
+    /// auto-run. This is the same posture as `control` (attach ≠ bypass).
+    #[test]
+    fn background_attaches_on_tool_capable_and_gates_spawn_only() {
+        use crate::modules::background_mcp::tools::background_call_needs_approval;
+        let background = crate::modules::background_mcp::background_mcp_server_id();
+
+        // Edit 1 — auto_attach: present for every tool-capable chat, absent for a
+        // non-tool-capable one (mirrors elicitation/tool_result).
+        let mut non_capable: HashMap<String, serde_json::Value> = HashMap::new();
+        assert!(!auto_attach_builtin_ids(&non_capable).contains(&background));
+        non_capable.insert("model_tools_capable".into(), json!(false));
+        assert!(!auto_attach_builtin_ids(&non_capable).contains(&background));
+        let mut capable: HashMap<String, serde_json::Value> = HashMap::new();
+        capable.insert("model_tools_capable".into(), json!(true));
+        assert!(
+            auto_attach_builtin_ids(&capable).contains(&background),
+            "background must attach for a tool-capable model (both mcp.rs edits)"
+        );
+
+        // Edit 2 — approval: the server is NOT approval-bypassed, and the per-tool
+        // classifier gates the WRITE while auto-running the READS.
+        assert!(
+            !is_builtin_server_id(background),
+            "background must NOT be approval-bypassed (spawn_background is a write)"
+        );
+        assert!(
+            background_call_needs_approval("spawn_background"),
+            "spawn_background must require approval"
+        );
+        assert!(!background_call_needs_approval("check_status"));
+        assert!(!background_call_needs_approval("collect_result"));
     }
 
     /// The three life-science built-ins (`bio_mcp`, `lit_search`, `citations`)
@@ -4438,14 +4726,15 @@ mod builtin_tests {
         assert!(ids.contains(&bio), "bio_mcp must attach");
         assert!(ids.contains(&lit), "lit_search must attach");
         assert!(ids.contains(&citations), "citations must attach");
-        // … alongside the always-on pair …
-        assert!(ids.contains(&elicit) && ids.contains(&tool_result));
+        // … alongside the always-on set (elicit + tool_result + background) …
+        let background = crate::modules::background_mcp::background_mcp_server_id();
+        assert!(ids.contains(&elicit) && ids.contains(&tool_result) && ids.contains(&background));
         // … and the un-flagged built-ins stay OFF (no coupling / clobber).
         assert!(!ids.contains(&files));
         assert!(!ids.contains(&memory));
         assert!(!ids.contains(&web));
-        // Exactly the 3 flagged + 2 always-on, no duplicates.
-        assert_eq!(ids.len(), 5, "got {ids:?}");
+        // Exactly the 3 flagged + 3 always-on, no duplicates.
+        assert_eq!(ids.len(), 6, "got {ids:?}");
         let mut deduped = ids.clone();
         deduped.sort();
         deduped.dedup();
@@ -4544,10 +4833,15 @@ mod builtin_tests {
         }
 
         // Execution subsystems are NOT approval-bypassed — they mutate / run code
-        // and must stay behind manual approval even when auto-attached.
+        // and must stay behind manual approval even when auto-attached. `background`
+        // joins them: `spawn_background` LAUNCHES a detached agent, so — like
+        // `control` — the server is deliberately absent from `is_builtin_server_id`
+        // and the WRITE is gated by the per-tool `is_background` approval arm (its
+        // two reads still auto-run via `background_call_needs_approval`).
         let needs_approval = [
             crate::modules::code_sandbox::code_sandbox_server_id(),
             crate::modules::workflow_mcp::workflow_mcp_server_id(),
+            crate::modules::background_mcp::background_mcp_server_id(),
         ];
         for id in needs_approval {
             assert!(
@@ -4707,6 +5001,94 @@ mod approval_loop_tests {
         assert_eq!(
             resolve_unique_tool_use_id("chatcmpl-tool-90d1ec58ce2478f5", &used),
             "chatcmpl-tool-90d1ec58ce2478f5"
+        );
+    }
+}
+
+/// ITEM-54/DEC-112 + FINDING-1: the admin per-(server, tool) approval override is
+/// consulted BEFORE the built-in bypass / control-background force-approval /
+/// conversation default (override wins); absent → unchanged.
+#[cfg(test)]
+mod admin_tool_override_tests {
+    use super::{
+        decide_regular_tool_approval, resolve_tool_approval, RegularToolDecision,
+        ToolApprovalOutcome,
+    };
+    use crate::modules::mcp::chat_extension::approval::models::ApprovalMode;
+
+    // ── FINDING-1: an admin override WINS over the built-in bypass ──
+    // A privileged built-in tool's no-override decision is `false`
+    // (`bypass_needs_approval == false` → it would auto-run). With an admin
+    // override present, `resolve_tool_approval` must apply the override instead
+    // of the built-in bypass — the silent-ignore bug this fixes.
+
+    #[test]
+    fn override_disabled_on_builtin_denies_not_bypass() {
+        // e.g. an admin sets `disabled` on a `background`/`files` tool: the
+        // built-in bypass would auto-run (bypass=false), but the override denies
+        // outright — NOT the bypass.
+        assert_eq!(
+            resolve_tool_approval(Some(&ApprovalMode::Disabled), false),
+            ToolApprovalOutcome::Denied
+        );
+    }
+
+    #[test]
+    fn override_manual_on_builtin_requires_approval_not_bypass() {
+        // A normally-bypassed built-in read becomes approval-required under an
+        // admin `manual_approve` override.
+        assert_eq!(
+            resolve_tool_approval(Some(&ApprovalMode::ManualApprove), false),
+            ToolApprovalOutcome::Approve
+        );
+    }
+
+    #[test]
+    fn override_auto_on_force_approved_tool_executes() {
+        // DRIFT-1.4: control's mutating `invoke` / background's `spawn` force
+        // approval (bypass=true), but an admin `auto_approve` override deliberately
+        // runs it (the admin's own footgun, honored — not the silent ignore).
+        assert_eq!(
+            resolve_tool_approval(Some(&ApprovalMode::AutoApprove), true),
+            ToolApprovalOutcome::Execute
+        );
+    }
+
+    #[test]
+    fn absent_override_preserves_bypass() {
+        // No override + built-in bypass (false) ⇒ Execute (auto-run, unchanged).
+        assert_eq!(
+            resolve_tool_approval(None, false),
+            ToolApprovalOutcome::Execute
+        );
+        // No override + control/background force-approval (true) ⇒ Approve.
+        assert_eq!(
+            resolve_tool_approval(None, true),
+            ToolApprovalOutcome::Approve
+        );
+    }
+
+    // ── Regular (non-builtin) conversation-default decision (no override) ──
+
+    #[test]
+    fn regular_default_auto_conversation_executes() {
+        assert_eq!(
+            decide_regular_tool_approval(&ApprovalMode::AutoApprove, false),
+            RegularToolDecision::Execute
+        );
+    }
+
+    #[test]
+    fn regular_default_manual_conversation() {
+        // ManualApprove + not user-auto-approved ⇒ Approve.
+        assert_eq!(
+            decide_regular_tool_approval(&ApprovalMode::ManualApprove, false),
+            RegularToolDecision::Approve
+        );
+        // ManualApprove + user-auto-approved ⇒ Execute.
+        assert_eq!(
+            decide_regular_tool_approval(&ApprovalMode::ManualApprove, true),
+            RegularToolDecision::Execute
         );
     }
 }

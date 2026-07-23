@@ -17,6 +17,8 @@ import { StepLogExpander } from './StepLogExpander'
 import { StepOutputExpander } from './StepOutputExpander'
 import { WorkflowElicitForm } from './WorkflowElicitForm'
 import { WorkflowRun } from '@/modules/workflow/stores/workflowRun'
+import { AgentActivityTimeline } from './run/AgentActivityTimeline'
+import { describeActivity } from './run/activityDescriptors'
 
 interface WorkflowRunProgressViewProps {
   runId: string
@@ -76,6 +78,15 @@ function TrackWidget({ track }: { track: ProgressTrack }) {
           {k.index != null && k.total != null ? ` (${k.index}/${k.total})` : ''}
         </Text>
       )
+    case 'agent_activity':
+      // Defensive: agent-activity tracks are routed to the dedicated
+      // AgentActivityTimeline by the store and normally never reach here. If one
+      // leaks (e.g. a step with no timeline mounted), render its editorial line.
+      return (
+        <Text type="secondary" className="text-xs">
+          {describeActivity(k)}
+        </Text>
+      )
     default:
       return null
   }
@@ -108,6 +119,14 @@ export function WorkflowRunProgressView({
 
   const terminal = ['completed', 'failed', 'cancelled'].includes(run.status)
   const steps = run.stepOrder.map(id => run.steps[id])
+
+  // A pending human gate on the CURRENT agent step is answered INLINE inside its
+  // activity timeline; suppress the top-level form so it isn't rendered twice.
+  const agentGateStepId =
+    run.pendingElicitation &&
+    steps.find(
+      s => (s.agentActivity?.length ?? 0) > 0 && s.stepId === run.currentStep,
+    )?.stepId
 
   const tone =
     run.status === 'completed'
@@ -177,7 +196,7 @@ export function WorkflowRunProgressView({
 
       {run.error && <Alert data-testid="wf-progress-error-alert" tone="error" title={run.error} />}
 
-      {run.pendingElicitation && (
+      {run.pendingElicitation && !agentGateStepId && (
         <WorkflowElicitForm
           elicitation={run.pendingElicitation}
           submitting={submittingElicit}
@@ -199,6 +218,25 @@ export function WorkflowRunProgressView({
               {s.stepKind && <Tag variant="outline" data-testid={`wf-progress-step-kind-tag-${s.stepId}`} className="text-xs !m-0">{s.stepKind}</Tag>}
             </Space>
             <div className="flex flex-col gap-1 ml-4">
+              {s.agentActivity && s.agentActivity.length > 0 && (
+                <AgentActivityTimeline
+                  stepId={s.stepId}
+                  entries={s.agentActivity}
+                  elicitation={
+                    agentGateStepId === s.stepId
+                      ? run.pendingElicitation
+                      : undefined
+                  }
+                  submitting={submittingElicit}
+                  onSubmitElicitation={response =>
+                    void WorkflowRun.submitElicitation(
+                      runId,
+                      run.pendingElicitation!.elicitation_id,
+                      response,
+                    )
+                  }
+                />
+              )}
               {s.tracks && Object.keys(s.tracks).length > 0 && (
                 <div className="flex flex-col gap-0.5">
                   {Object.values(s.tracks)

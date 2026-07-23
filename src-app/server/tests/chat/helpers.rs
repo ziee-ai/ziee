@@ -702,7 +702,13 @@ pub async fn get_conversation_history(
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    response.json().await.unwrap()
+    // The endpoint is keyset-paginated: it returns
+    // `PaginatedMessages { messages, has_more_before, has_more_after }`. Callers
+    // expect the message array directly, so unwrap the `messages` field.
+    let page: Value = response.json().await.unwrap();
+    page.get("messages")
+        .cloned()
+        .unwrap_or_else(|| panic!("history response missing `messages` array: {page}"))
 }
 
 /// Get a specific message by ID

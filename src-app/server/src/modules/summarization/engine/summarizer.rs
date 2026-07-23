@@ -35,6 +35,8 @@
 //! pure decision logic + transcript assembly + summary-block apply.
 //! Count: 19 tests (decide × 13, build/apply × 6).
 
+use std::sync::LazyLock;
+
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Provider, Role};
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
@@ -55,30 +57,34 @@ const FALLBACK_SUMMARIZE_AFTER_TOKENS: usize = 12000;
 const FALLBACK_KEEP_RECENT_TOKENS: usize = 3000;
 
 /// Default prompt for the FULL-summarize path. Used when
-/// `summarization_admin_settings.full_summary_prompt` is NULL. Exposed as
-/// `pub` so the admin UI can render it as the placeholder.
-pub const DEFAULT_FULL_SUMMARY_PROMPT: &str = r#"Summarize the following conversation into a concise narrative (3-6 sentences) capturing the essential context: who the user is, what they're trying to accomplish, key facts established, and any unresolved threads. Output only the summary text; no preamble.
-
-Conversation:
-{transcript}"#;
+/// `summarization_admin_settings.full_summary_prompt` is NULL. Sourced from the
+/// ONE shared nine-section template (`agent_core::SUMMARY_PROMPT_9_SECTION`, DEC-127)
+/// so the rolling `conversation_summaries` summary and the agent-core `Compactor`
+/// emit the SAME structured format — plus the `{transcript}` placeholder this
+/// path substitutes. Exposed as a fn so the admin UI can render it as the
+/// placeholder without duplicating the prompt text.
+pub static DEFAULT_FULL_SUMMARY_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{body}\n\nConversation:\n{{transcript}}",
+        body = agent_core::SUMMARY_PROMPT_9_SECTION
+    )
+});
 
 /// Default prompt for the INCREMENTAL-refresh path. Used when
-/// `summarization_admin_settings.incremental_summary_prompt` is NULL.
-pub const DEFAULT_INCREMENTAL_SUMMARY_PROMPT: &str = r#"You are maintaining a running summary of an ongoing conversation between a user and an assistant.
-
-An EXISTING summary is below. Additional conversation turns have happened since. Produce an UPDATED summary (3-6 sentences) that:
-- Preserves the essential context from the existing summary.
-- Incorporates relevant new facts, goals, or unresolved threads from the new turns.
-- Drops details from the existing summary that are no longer relevant given the new state.
-- Keeps the same form (concise narrative, no preamble, no bullet lists).
-
-Output only the updated summary text; no preamble, no commentary.
-
-Existing summary:
-{previous_summary}
-
-New conversation turns since the existing summary:
-{new_transcript}"#;
+/// `summarization_admin_settings.incremental_summary_prompt` is NULL. Same shared
+/// nine-section body, framed for an in-place update of an existing summary via the
+/// `{previous_summary}` / `{new_transcript}` placeholders this path substitutes.
+pub static DEFAULT_INCREMENTAL_SUMMARY_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{body}\n\nAn EXISTING summary (already in this nine-section form) is below, followed by \
+         the conversation turns that have happened since. Produce an UPDATED nine-section summary: \
+         fold the new turns into the existing one and drop anything no longer relevant. Keep every \
+         section header; output only the updated summary.\n\n\
+         Existing summary:\n{{previous_summary}}\n\n\
+         New conversation turns since the existing summary:\n{{new_transcript}}",
+        body = agent_core::SUMMARY_PROMPT_9_SECTION
+    )
+});
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, schemars::JsonSchema)]
 pub struct ConversationSummary {
@@ -470,9 +476,9 @@ pub async fn refresh_summary(
                 s.summarize_after_tokens as usize,
                 s.summarizer_keep_recent_tokens as usize,
                 s.full_summary_prompt
-                    .unwrap_or_else(|| DEFAULT_FULL_SUMMARY_PROMPT.to_string()),
+                    .unwrap_or_else(|| DEFAULT_FULL_SUMMARY_PROMPT.clone()),
                 s.incremental_summary_prompt
-                    .unwrap_or_else(|| DEFAULT_INCREMENTAL_SUMMARY_PROMPT.to_string()),
+                    .unwrap_or_else(|| DEFAULT_INCREMENTAL_SUMMARY_PROMPT.clone()),
             ),
             Err(e) => {
                 tracing::warn!(
@@ -481,8 +487,8 @@ pub async fn refresh_summary(
                 (
                     FALLBACK_SUMMARIZE_AFTER_TOKENS,
                     FALLBACK_KEEP_RECENT_TOKENS,
-                    DEFAULT_FULL_SUMMARY_PROMPT.to_string(),
-                    DEFAULT_INCREMENTAL_SUMMARY_PROMPT.to_string(),
+                    DEFAULT_FULL_SUMMARY_PROMPT.clone(),
+                    DEFAULT_INCREMENTAL_SUMMARY_PROMPT.clone(),
                 )
             }
         };
@@ -637,7 +643,10 @@ async fn call_summarization_llm(
             content: vec![ContentBlock::Text { text: prompt }],
         }],
         temperature: Some(0.3),
-        max_tokens: Some(800),
+        // Room for the dense nine-section structured summary (DEC-127) — matches
+        // the agent-core `build_summary_request` cap; the old 800 sized the
+        // retired 3-6 sentence freeform prompt and could truncate a section block.
+        max_tokens: Some(1200),
         ..Default::default()
     };
 
@@ -1331,9 +1340,49 @@ mod tests {
         // render must NOT equal the default-template render for the same input.
         let transcript = "u: q\na: r\n";
         let custom = render_full_prompt("MY OWN PROMPT {transcript}", transcript);
-        let default = render_full_prompt(DEFAULT_FULL_SUMMARY_PROMPT, transcript);
+        let default = render_full_prompt(&DEFAULT_FULL_SUMMARY_PROMPT, transcript);
         assert_ne!(custom, default, "a custom prompt must change the rendered text");
         assert!(custom.contains("MY OWN PROMPT"));
+    }
+
+
+    // ── Unified nine-section default prompt (ITEM-56 / ITEM-60 / DEC-127) ──────
+    // The rolling-summary defaults now source the ONE shared nine-section
+    // template (`agent_core::SUMMARY_PROMPT_9_SECTION`) instead of the old
+    // freeform "3-6 sentence narrative", while keeping their substitution
+    // placeholders so `refresh_summary` still renders them correctly.
+
+    #[test]
+    fn default_prompts_use_the_shared_nine_section_format() {
+        let full = &*DEFAULT_FULL_SUMMARY_PROMPT;
+        for header in [
+            "USER REQUESTS & INTENT",
+            "TASK LIST",
+            "GOVERNANCE SIGNALS",
+            "DURABLE FACTS",
+        ] {
+            assert!(full.contains(header), "full default missing section: {header}");
+        }
+        assert!(full.contains("{transcript}"), "full default keeps its placeholder");
+        // The shared body is literally the single agent-core source of truth.
+        assert!(full.starts_with(agent_core::SUMMARY_PROMPT_9_SECTION));
+
+        let incr = &*DEFAULT_INCREMENTAL_SUMMARY_PROMPT;
+        assert!(incr.contains("TASK LIST"), "incremental default is nine-section");
+        assert!(incr.contains("{previous_summary}"));
+        assert!(incr.contains("{new_transcript}"));
+    }
+
+
+    #[test]
+    fn default_full_prompt_renders_with_a_real_transcript() {
+        // The {transcript} placeholder still substitutes cleanly against the new
+        // nine-section body (no leftover placeholder in the rendered prompt).
+        let rendered =
+            render_full_prompt(&DEFAULT_FULL_SUMMARY_PROMPT, "user: hi\nassistant: yo\n");
+        assert!(rendered.contains("user: hi"));
+        assert!(!rendered.contains("{transcript}"));
+        assert!(rendered.contains("USER REQUESTS & INTENT"));
     }
 
     // ── Non-text message handling (gap 9846f7fe8f6d) ──────────────────────

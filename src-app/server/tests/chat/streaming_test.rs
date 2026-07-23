@@ -255,8 +255,10 @@ async fn test_message_assistant_attribution_persists_and_is_readable() {
     .await;
     assert!(content > 0, "assistant-driven turn should produce content");
 
-    // Find the persisted user message.
-    let messages: Vec<serde_json::Value> = reqwest::Client::new()
+    // Find the persisted user message. The history endpoint is keyset-paginated
+    // (`PaginatedMessages { messages, has_more_before, has_more_after }`), so read
+    // the `messages` array out of the page object.
+    let page: serde_json::Value = reqwest::Client::new()
         .get(server.api_url(&format!("/conversations/{}/messages", conv_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
@@ -265,6 +267,7 @@ async fn test_message_assistant_attribution_persists_and_is_readable() {
         .json()
         .await
         .unwrap();
+    let messages = page["messages"].as_array().expect("messages page array");
     let user_msg_id = messages
         .iter()
         .find(|m| m["role"] == "user")

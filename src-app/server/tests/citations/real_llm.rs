@@ -131,10 +131,18 @@ async fn create_tool_capable_anthropic_model(
         .iter().find(|p| p["name"].as_str() == Some("Anthropic"))
         .expect("Anthropic provider")["id"].as_str().unwrap().to_string();
 
+    // Redirect the Anthropic provider at the local LLM bridge via the shared
+    // seam (ANTHROPIC_BASE_URL / ZIEE_TEST_LLM_BASE_URL). Without it the provider
+    // hits real api.anthropic.com with the placeholder key, the LLM call fails,
+    // and the model never emits a tool call ("no mcpToolStart").
+    let mut provider_payload = json!({ "enabled": true, "api_key": api_key });
+    if let Some(base_url) = crate::chat::helpers::test_provider_base_url("ANTHROPIC_API_KEY") {
+        provider_payload["base_url"] = json!(base_url);
+    }
     let r = reqwest::Client::new()
         .post(server.api_url(&format!("/llm-providers/{provider_id}")))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "enabled": true, "api_key": api_key }))
+        .json(&provider_payload)
         .send().await.unwrap();
     assert!(r.status().is_success(), "configure Anthropic → {}", r.status());
 

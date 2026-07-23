@@ -1,4 +1,11 @@
-import { Calculator, CirclePlay, FlaskConical, Trash2 } from 'lucide-react'
+import {
+  Calculator,
+  CirclePlay,
+  FlaskConical,
+  Pencil,
+  Trash2,
+} from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import {
   Button,
   Descriptions,
@@ -36,6 +43,8 @@ export function WorkflowDetailDrawer() {
   const canExecute = usePermission(Permissions.WorkflowsExecute)
   const canManage = usePermission(Permissions.WorkflowsInstall)
   const canManageSystem = usePermission(Permissions.WorkflowsManageSystem)
+  const canEditDefinition = usePermission(Permissions.WorkflowsManage)
+  const navigate = useNavigate()
 
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [dryRunOpen, setDryRunOpen] = useState(false)
@@ -75,6 +84,10 @@ export function WorkflowDetailDrawer() {
   }
 
   const editable = workflow.scope === 'system' ? canManageSystem : canManage
+  // The visual builder edits a user-scope workflow's definition in place
+  // (gated `workflows::manage`, matching the /edit route). System workflows are
+  // authored elsewhere, so the Edit affordance is user-scope only.
+  const editableDefinition = workflow.scope !== 'system' && canEditDefinition
 
   const handleDelete = async () => {
     try {
@@ -109,11 +122,27 @@ export function WorkflowDetailDrawer() {
         </Space>
       }
       footer={
-        editable ? (
+        editable || editableDefinition ? (
           <>
-            <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="ghost" size="default" icon={<Trash2 />}>
-              Delete
-            </Button>
+            {editableDefinition && (
+              <Button
+                data-testid="wf-detail-edit-btn"
+                onClick={() => {
+                  WorkflowDrawer.close()
+                  navigate(`/settings/workflows/${workflow.id}/edit`)
+                }}
+                variant="outline"
+                size="default"
+                icon={<Pencil />}
+              >
+                Edit
+              </Button>
+            )}
+            {editable && (
+              <Button data-testid="wf-detail-delete-btn" onClick={() => setDeleteDialogOpen(true)} variant="ghost" size="default" icon={<Trash2 />}>
+                Delete
+              </Button>
+            )}
             <Dialog
               data-testid="wf-detail-delete-dialog"
               open={deleteDialogOpen}

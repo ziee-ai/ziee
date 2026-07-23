@@ -7,12 +7,17 @@
 //! See plan §3 (REST surface) + §4.5 (dry-run) + §7 (test fixtures).
 
 
+use std::sync::Arc;
+
 use aide::transform::TransformOperation;
 use axum::extract::{Multipart, Path as AxumPath, Query};
 use axum::http::StatusCode;
 use axum::Json;
+use dashmap::DashMap;
+use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::common::{ApiResult, AppError};
@@ -23,7 +28,9 @@ use crate::modules::permissions::with_permission;
 use crate::modules::sync::{SyncAction, SyncOrigin};
 use crate::modules::workflow::cost;
 use crate::modules::workflow::models::{CreateWorkflow, CreateWorkflowRun, Workflow};
-use crate::modules::workflow::permissions::{WorkflowsExecute, WorkflowsInstall};
+use crate::modules::workflow::permissions::{
+    WorkflowsExecute, WorkflowsInstall, WorkflowsManage, WorkflowsRead,
+};
 use crate::modules::workflow::repository;
 use crate::modules::workflow::test_runner::{
     self, FixtureMode, FixtureResult, TestFixture, TestRunResponse,
@@ -88,11 +95,13 @@ pub async fn validate_workflow(
 
     // Layer 2 + 3 — validate, collecting ALL errors. `is_dev = true` so a
     // dev author's `mock:` fields don't trip the no-mock check at validate
-    // time (validate is a dev affordance). prompt_file resolution uses a
-    // throwaway temp dir — since we don't have the bundle here, any
-    // `prompt_file:` is reported as a (soft) missing-file error; that's
-    // acceptable for the YAML-only validate surface.
-    let tmp = std::env::temp_dir();
+    // time (validate is a dev affordance). FIX-4: prompt_file resolution uses a
+    // guaranteed-nonexistent unique path (never created) instead of the shared
+    // `/tmp` root, so a `WorkflowsInstall` caller can't probe real /tmp
+    // contents. Since we don't have the bundle here, any `prompt_file:` is
+    // reported as a (soft) missing-file error — acceptable for the YAML-only
+    // validate surface.
+    let tmp = std::env::temp_dir().join(format!("ziee-wf-validate-{}", Uuid::new_v4()));
     let raw = validate::validate_collecting(&parsed, &tmp, true);
     // Split findings by severity: errors gate `valid`; warnings (the
     // type-aware ref-check escape hatch for under-specified workflows) are
@@ -340,6 +349,628 @@ pub(crate) async fn install_workflow_from_bytes(
     }
 
     Ok((StatusCode::CREATED, Json(workflow)))
+}
+
+// ============================================================
+// Visual builder: create / edit from a posted WorkflowDef
+// ============================================================
+
+/// Serialize a posted `WorkflowDef` into a one-file (`workflow.yaml`) tar.gz
+/// bundle — the shared body behind the builder's create + edit-in-place paths.
+/// Writes the YAML into a throwaway temp dir (cleaned on every exit path), then
+/// packs it exactly as `workspace-save` packs a sandbox-authored dir, so the
+/// downstream extract→validate→compile→insert core is byte-identical whether the
+/// bundle came from a tarball upload or the builder. `serde_norway` (the repo's
+/// maintained serde_yaml fork, used by `parse_workflow_yaml`) is the serializer.
+pub(crate) async fn def_to_bundle_bytes(
+    def: &validate::WorkflowDef,
+) -> Result<Vec<u8>, AppError> {
+    let yaml = serde_norway::to_string(def).map_err(|e| {
+        AppError::bad_request(
+            "WORKFLOW_SERIALIZE_FAILED",
+            format!("failed to serialize workflow.yaml: {e}"),
+        )
+    })?;
+    let tmp_dir = std::env::temp_dir().join(format!("ziee-wf-def-{}", Uuid::new_v4()));
+    tokio::fs::create_dir_all(&tmp_dir).await.map_err(|e| {
+        AppError::internal_error(format!("failed to stage workflow bundle dir: {e}"))
+    })?;
+    // Build the bytes inside a scope so the temp dir is cleaned on BOTH the ok
+    // and error paths (no RAII guard for a plain PathBuf, so do it explicitly).
+    let result = async {
+        let yaml_path = tmp_dir.join("workflow.yaml");
+        tokio::fs::write(&yaml_path, yaml.as_bytes()).await.map_err(|e| {
+            AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
+        })?;
+        crate::modules::hub::bundle::pack_workspace_dir(&tmp_dir)
+    }
+    .await;
+    let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+    result
+}
+
+/// Body for the builder create endpoint: the posted `WorkflowDef` PLUS an
+/// optional `name` slug override, flattened into ONE JSON object.
+///
+/// The name MUST ride in the body (not a query param): the generated api-client
+/// serializes query params only on GET requests — on a POST every non-path arg
+/// goes into the JSON body — so a `name` query param on this POST route is
+/// physically unreachable from the frontend (the builder's typed name was
+/// silently dropped and every created workflow fell back to the
+/// `imported-workflow` default, colliding on the second save). Flattening the
+/// def keeps the wire shape `{ name?, ...WorkflowDef }` the client already sends.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateWorkflowDefBody {
+    /// Optional slug override; `local.dev.<owner>/<slug>` becomes the row name.
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(flatten)]
+    pub def: validate::WorkflowDef,
+}
+
+/// `POST /api/workflows` — create a user-scope workflow from a posted
+/// `WorkflowDef` (the visual builder's "save new"). Serializes the def to a
+/// one-file bundle and runs the SAME extract→validate→compile→insert core as
+/// tarball import (so validation + IR compilation are identical). Scope is
+/// forced to `user` (never escalates to system through this route).
+pub async fn create_user_workflow(
+    auth: RequirePermissions<(WorkflowsInstall,)>,
+    origin: SyncOrigin,
+    Json(body): Json<CreateWorkflowDefBody>,
+) -> ApiResult<Json<Workflow>> {
+    let CreateWorkflowDefBody {
+        name: name_override,
+        def,
+    } = body;
+    // FIX-2: reject a name collision up front. `install_workflow_from_bytes`'s
+    // re-import path does delete+insert on a matching name+version, which would
+    // silently delete a prior user workflow and orphan its `workflow_runs`.
+    // Editing an existing workflow is the PUT /definition path — the create path
+    // must never overwrite. Mirror the name/version/owner derivation
+    // `install_workflow_from_bytes` performs for a user-scope import.
+    let slug = name_override
+        .clone()
+        .map(|s| sanitize_slug(&s))
+        .unwrap_or_else(|| "imported-workflow".to_string());
+    let name = format!("local.dev.{}/{}", auth.user.id, slug);
+    let version = "0.0.0-dev".to_string();
+    if repository::find_by_name_version_owner(
+        Repos.pool(),
+        &name,
+        Some(&version),
+        Some(auth.user.id),
+    )
+    .await?
+    .is_some()
+    {
+        return Err::<_, (StatusCode, AppError)>(
+            AppError::new(
+                StatusCode::CONFLICT,
+                "WORKFLOW_NAME_EXISTS",
+                format!("a workflow named '{slug}' already exists — choose a different name"),
+            )
+            .into(),
+        );
+    }
+
+    let bytes = def_to_bundle_bytes(&def).await?;
+    let iq = ImportQuery {
+        name: name_override,
+        scope: Some("user".to_string()),
+    };
+    install_workflow_from_bytes(&auth.user, &auth.groups, iq, origin, bytes).await
+}
+
+pub fn create_user_workflow_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsInstall,)>(op)
+        .id("Workflow.create")
+        .tag("Workflows")
+        .summary("Create a user-scope workflow from a WorkflowDef (visual builder)")
+        .description("Serializes the posted WorkflowDef to a workflow.yaml bundle and installs it as a user-scope workflow via the shared validate+compile+insert core. Scope is always 'user'.")
+        .response::<201, Json<Workflow>>()
+        .response_with::<400, (), _>(|r| r.description("Invalid definition"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<409, (), _>(|r| r.description("A workflow with this name already exists"))
+}
+
+/// `PUT /api/workflows/{id}/definition` — replace a user-scope workflow's
+/// steps / inputs from a posted `WorkflowDef`, preserving the workflow id (so
+/// run-history FKs survive). Owner-scoped (403 non-owner, 404 missing),
+/// mirroring `update_user_workflow`.
+///
+/// Concurrency + atomicity: the whole operation is serialized per workflow id by
+/// an IN-PROCESS per-id async mutex (FIX-1 — see `WORKFLOW_DEF_LOCKS`), and the
+/// LIVE bundle at `extracted_path` is only ever mutated by an atomic
+/// same-filesystem rename, so a failed write / measure / compile / swap / DB commit
+/// can never leave the on-disk `workflow.yaml` and the row's sha/size/compiled_ir
+/// describing different defs. (An in-process lock is the RIGHT boundary here: the
+/// bundle it protects lives on NODE-LOCAL disk — `extracted_path` — so cross-node
+/// DB locking would be wrong anyway.)
+/// The flow (disk is the runner's source of truth, so it is swapped FIRST and the
+/// DB metadata follows LAST — FIX-2):
+///   1. Acquire the per-id async mutex guard (held for the whole critical section;
+///      auto-released on drop — success, error, future-drop, OR panic), then
+///      RE-READ the row under it.
+///   2. Best-effort sweep this workflow's own orphaned `.staging-*`/`.old-*`
+///      siblings, RECOVERING the live bundle from a `.old-*` if a prior update
+///      crashed mid-swap (FIX-5 / FIX-2 recovery).
+///   3. Validate FIRST against the existing, still-intact `extracted_path` (so
+///      asset/`prompt_file:` refs resolve and no destructive op precedes a valid
+///      def).
+///   4. Copy the live bundle into a unique sibling staging dir (preserving every
+///      sibling asset — `scripts/`, prompt files, `tests/`) and overwrite ONLY
+///      `workflow.yaml` in the staging copy; measure + compile from staging. Any
+///      failure here removes staging and returns — the live bundle + row untouched.
+///   5. Atomically swap the staging dir into place (move live aside → move staging
+///      in). A swap failure restores the live bundle (checked — FIX-3) and returns
+///      a 500; it NEVER returns 200 on a swap/restore failure (FIX-2).
+///   6. Commit the new metadata via `repository::update_definition` (NOT
+///      delete+insert — that would change the id) LAST. A DB failure here returns a
+///      500 (the on-disk def is already the new source of truth; a retry is safe).
+///   7. The guard drops on every path; the map entry is pruned when no waiter holds it.
+pub async fn update_user_workflow_definition(
+    auth: RequirePermissions<(WorkflowsManage,)>,
+    AxumPath(id): AxumPath<Uuid>,
+    origin: SyncOrigin,
+    Json(def): Json<validate::WorkflowDef>,
+) -> ApiResult<Json<Workflow>> {
+    // FIX-1: serialize concurrent `PUT /definition` on the SAME workflow id via an
+    // IN-PROCESS per-id async mutex. All of re-read → validate → stage → measure →
+    // compile → swap → update_definition runs while the guard is held, so two racers
+    // can't interleave stage/commit/swap and leave the row's metadata describing one
+    // def while on-disk workflow.yaml holds the other. The guard auto-releases on
+    // Drop — success, every early-return / error, future-drop (client disconnect),
+    // OR panic — so it can NEVER leak (unlike the previous pooled-connection Postgres
+    // session advisory lock, whose manual unlock was skipped on future-drop/panic,
+    // deadlocking every later update of this id until process restart). An in-process
+    // lock is also the correct boundary: the bundle it guards lives on node-local
+    // disk (`extracted_path`), so a cross-node DB lock would be wrong anyway.
+    let lock_arc = workflow_def_lock(id);
+    let _def_guard = lock_arc.lock().await;
+
+    // Everything under the guard lives in this block; the guard held above covers all
+    // of its early-returns.
+    let result: ApiResult<Json<Workflow>> = async {
+        // Re-read `existing` AFTER acquiring the lock so we operate on a consistent
+        // snapshot (a racer that just committed is fully applied before we read).
+        let existing = repository::find_by_id(Repos.pool(), id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Workflow"))?;
+        if existing.scope != "user" || existing.owner_user_id != Some(auth.user.id) {
+            return Err::<_, (StatusCode, AppError)>(
+                AppError::forbidden(
+                    "WORKFLOW_FORBIDDEN",
+                    "only the owner may edit a user-scope workflow",
+                )
+                .into(),
+            );
+        }
+
+        let bundle_root = std::path::PathBuf::from(&existing.extracted_path);
+
+        // FIX-5: best-effort sweep of orphaned `.staging-*` / `.old-*` siblings this
+        // workflow left behind on a previous crash. Scoped to this workflow's own
+        // bundle-name prefix; under the per-workflow lock no live op of THIS workflow
+        // can own such a sibling, so any match is a dead orphan. Never fails the update.
+        sweep_orphan_siblings(&bundle_root).await;
+
+        // Step 1: validate FIRST, against the EXISTING (still-intact) bundle root, so
+        // `prompt_file:` / sibling-asset refs still resolve — and, crucially, so NO
+        // filesystem op happens before validation succeeds. On error the live bundle
+        // AND the DB row are left untouched. is_dev=true so a builder-authored def
+        // parses under the same relaxed rules as import.
+        if let Err(e) = validate::validate_for_install(&def, &bundle_root, true) {
+            return Err::<_, (StatusCode, AppError)>(e.into());
+        }
+
+        // Serialize the new workflow.yaml (same serializer `def_to_bundle_bytes`
+        // uses — `serde_norway`). Purely in-memory; the live bundle is untouched.
+        let yaml = serde_norway::to_string(&def).map_err(|e| {
+            AppError::bad_request(
+                "WORKFLOW_SERIALIZE_FAILED",
+                format!("failed to serialize workflow.yaml: {e}"),
+            )
+        })?;
+
+        // Step 2+3: build the new bundle in a UNIQUE SIBLING staging dir — copy the
+        // live bundle (preserving `scripts/`, prompt files, `tests/`), overwrite ONLY
+        // `workflow.yaml` in the copy, then measure + compile from the staging dir.
+        // The live bundle is never mutated here, so ANY failure below just removes
+        // staging and returns with the live bundle + row intact.
+        let staging = sibling_with_suffix(&bundle_root, &format!(".staging-{}", Uuid::new_v4()));
+        let build = async {
+            crate::modules::workflow::runner::copy_dir_recursive(&bundle_root, &staging).await?;
+            let staged_wf = staging.join(&existing.entry_point);
+            tokio::fs::write(&staged_wf, yaml.as_bytes()).await.map_err(|e| {
+                AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
+            })?;
+            // Recompute bundle_sha256 / bundle_size_bytes / file_count from the staged
+            // dir, reusing the install path's derivation (sha256 of the packed tar.gz +
+            // decompressed byte total + regular-file count). Paths are root-relative,
+            // so the metadata is identical whether measured on staging or the final
+            // location.
+            let measure = crate::modules::hub::bundle::pack_workspace_dir_measured(&staging)?;
+            let compiled = crate::modules::workflow::compiled::compile_to_json(&def);
+            Ok::<_, AppError>((measure, compiled))
+        }
+        .await;
+        let (measure, compiled) = match build {
+            Ok(v) => v,
+            Err(e) => {
+                // Pre-swap failure: clean up staging; live bundle + row untouched.
+                let _ = tokio::fs::remove_dir_all(&staging).await;
+                return Err::<_, (StatusCode, AppError)>(e.into());
+            }
+        };
+
+        // FIX-2: swap the DISK bundle FIRST (the runner re-parses on-disk yaml every
+        // run, so disk is the source of truth), THEN commit metadata to the DB LAST.
+        // Same-filesystem (sibling) renames are atomic. Any failure after staging
+        // surfaces a real 500 — we NEVER return 200 unless disk AND DB are both
+        // consistently updated.
+        let old = sibling_with_suffix(&bundle_root, &format!(".old-{}", Uuid::new_v4()));
+        if let Err(e) = tokio::fs::rename(&bundle_root, &old).await {
+            // Couldn't move the live bundle aside — nothing changed on disk or in the DB.
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            tracing::error!(
+                workflow_id = %id,
+                live = %bundle_root.display(),
+                error = %e,
+                "workflow definition update: could not move live bundle aside; no change applied"
+            );
+            return Err::<_, (StatusCode, AppError)>(
+                AppError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "WORKFLOW_UPDATE_SWAP_FAILED",
+                    format!("could not stage the new workflow bundle: {e}"),
+                )
+                .into(),
+            );
+        }
+        if let Err(e) = tokio::fs::rename(&staging, &bundle_root).await {
+            // Live moved to `old` but staging couldn't take its place — restore the
+            // live bundle so `extracted_path` is never left missing.
+            // FIX-3: CHECK the restore; never claim a restore that didn't happen.
+            match tokio::fs::rename(&old, &bundle_root).await {
+                Ok(()) => {
+                    let _ = tokio::fs::remove_dir_all(&staging).await;
+                    tracing::error!(
+                        workflow_id = %id,
+                        live = %bundle_root.display(),
+                        error = %e,
+                        "workflow definition update: could not install the staged bundle; \
+                         restored the previous live bundle. No change applied."
+                    );
+                    return Err::<_, (StatusCode, AppError)>(
+                        AppError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "WORKFLOW_UPDATE_SWAP_FAILED",
+                            format!("could not install the new workflow bundle: {e}"),
+                        )
+                        .into(),
+                    );
+                }
+                Err(re) => {
+                    // Restore ALSO failed — the live bundle is now MISSING at extracted_path.
+                    tracing::error!(
+                        workflow_id = %id,
+                        live = %bundle_root.display(),
+                        old = %old.display(),
+                        swap_error = %e,
+                        restore_error = %re,
+                        "workflow definition update: staged-bundle install FAILED and restore of \
+                         the previous bundle ALSO failed; the live bundle is MISSING at \
+                         extracted_path — recover it from the .old- sibling"
+                    );
+                    return Err::<_, (StatusCode, AppError)>(
+                        AppError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "WORKFLOW_UPDATE_BUNDLE_MISSING",
+                            format!(
+                                "workflow bundle could not be installed or restored; the live \
+                                 bundle is missing (install error: {e}; restore error: {re})"
+                            ),
+                        )
+                        .into(),
+                    );
+                }
+            }
+        }
+        // Swap succeeded: the live bundle now holds the new def. Drop the old copy.
+        let _ = tokio::fs::remove_dir_all(&old).await;
+
+        // Step (last): commit the new metadata (DB). The on-disk def — the runner's
+        // source of truth — is ALREADY the new one, so a DB failure here must NOT
+        // report success: surface a 500 telling the client the bundle was updated on
+        // disk but the metadata write failed (a retry is safe/idempotent — the same
+        // def re-stages to identical bytes and re-commits).
+        let updated = match repository::update_definition(
+            Repos.pool(),
+            id,
+            &existing.extracted_path,
+            &measure.sha256_hex,
+            measure.total_bytes as i64,
+            measure.file_count as i32,
+            compiled,
+        )
+        .await
+        {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::error!(
+                    workflow_id = %id,
+                    error = %e,
+                    "workflow definition update: on-disk bundle was updated but the metadata DB \
+                     write failed; the row still carries the OLD metadata (retry is safe/idempotent)"
+                );
+                return Err::<_, (StatusCode, AppError)>(
+                    AppError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "WORKFLOW_UPDATE_METADATA_FAILED",
+                        format!(
+                            "workflow bundle was updated on disk but the metadata write failed \
+                             (a retry is safe): {e}"
+                        ),
+                    )
+                    .into(),
+                );
+            }
+        };
+
+        crate::modules::workflow::events::emit_user_workflow(
+            SyncAction::Update,
+            id,
+            auth.user.id,
+            origin.0,
+        );
+        Ok((StatusCode::OK, Json(updated)))
+    }
+    .await;
+
+    // FIX-1: release the per-workflow lock (drop the guard) and then deterministically
+    // prune the map entry so `WORKFLOW_DEF_LOCKS` can't grow unbounded (the
+    // shared-concurrency-map rule). Drop our own `Arc` clone FIRST so the only
+    // remaining strong ref is the map's own — then `remove_if` removes the entry iff
+    // `strong_count == 1` (no other waiter still holds it). `remove_if` evaluates the
+    // predicate while holding the DashMap shard lock, and a concurrent acquirer also
+    // takes that shard lock via `entry(..)`, so the check-then-remove can't race a
+    // waiter in: a waiter that already cloned keeps `strong_count >= 2` → entry kept.
+    drop(_def_guard);
+    drop(lock_arc);
+    WORKFLOW_DEF_LOCKS.remove_if(&id, |_, arc| Arc::strong_count(arc) == 1);
+
+    result
+}
+
+/// FIX-1: in-process per-workflow-id async locks serializing `PUT /definition`.
+/// The bundle each guards lives on node-local disk (`extracted_path`), so this
+/// process-local lock — not a cross-node DB lock — is the correct boundary. Each
+/// `Arc<Mutex<()>>` is tiny (~16 B); the map is bounded by the deterministic
+/// `remove_if` prune at the end of `update_user_workflow_definition`. Mirrors the
+/// `CONVERSATION_LOCKS` / `FETCH_LOCKS` keyed-lock pattern in `code_sandbox`.
+static WORKFLOW_DEF_LOCKS: Lazy<DashMap<Uuid, Arc<Mutex<()>>>> = Lazy::new(DashMap::new);
+
+fn workflow_def_lock(id: Uuid) -> Arc<Mutex<()>> {
+    WORKFLOW_DEF_LOCKS
+        .entry(id)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+/// FIX-5 + FIX-2 recovery: reconcile this workflow's orphaned `.staging-*` /
+/// `.old-*` sibling dirs left behind by a previously-crashed update of the workflow
+/// whose bundle is `bundle_root`. SCOPED to that workflow's own bundle-name prefix —
+/// other workflows share the parent (`workflows/`) dir and a concurrent update of one
+/// of THEM may hold a live sibling, which must never be touched. This runs under the
+/// per-workflow in-process lock, so no live op for THIS workflow is running and any
+/// sibling matching this workflow's prefix is a dead orphan. Never returns an error
+/// (a failed prune only logs) — it must not fail the update.
+///
+/// CRITICAL (FIX-2): a `.old-<uuid>` sibling is the ONLY surviving copy of the live
+/// bundle if a prior update crashed BETWEEN the two swap renames (`live→.old` done,
+/// `staging→live` NOT → `bundle_root` is missing and `.old-` holds the real bundle).
+/// There is no boot reconciliation, so the sweep must RECOVER, never destroy: if
+/// `bundle_root` is missing while a `.old-*` survives, PROMOTE the newest `.old-*`
+/// back to `bundle_root` FIRST. Only once `bundle_root` exists (present all along or
+/// just restored) may the remaining `.old-*` / `.staging-*` orphans be removed —
+/// `bundle_root` is never left missing while a `.old-*` exists.
+async fn sweep_orphan_siblings(bundle_root: &std::path::Path) {
+    let (Some(parent), Some(base)) = (bundle_root.parent(), bundle_root.file_name()) else {
+        return;
+    };
+    let base = base.to_string_lossy();
+    let staging_prefix = format!("{base}.staging-");
+    let old_prefix = format!("{base}.old-");
+    let mut rd = match tokio::fs::read_dir(parent).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                parent = %parent.display(),
+                error = %e,
+                "workflow definition update: orphan sweep could not read the workflows dir"
+            );
+            return;
+        }
+    };
+
+    // Collect the matching siblings first (so recovery can consider ALL `.old-*`
+    // before anything is deleted). `.old-*` entries carry their mtime so the newest
+    // (the most-recent interrupted swap) can be picked — the `<uuid>` suffix is random,
+    // not time-ordered.
+    let mut staging_dirs: Vec<std::path::PathBuf> = Vec::new();
+    let mut old_dirs: Vec<(std::path::PathBuf, Option<std::time::SystemTime>)> = Vec::new();
+    loop {
+        match rd.next_entry().await {
+            Ok(Some(entry)) => {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.starts_with(&*staging_prefix) {
+                    staging_dirs.push(entry.path());
+                } else if name.starts_with(&*old_prefix) {
+                    let mtime = entry.metadata().await.ok().and_then(|m| m.modified().ok());
+                    old_dirs.push((entry.path(), mtime));
+                }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "workflow definition update: orphan sweep directory iteration failed"
+                );
+                break;
+            }
+        }
+    }
+
+    // FIX-2: if the live bundle is MISSING but a `.old-*` survives, a prior update
+    // crashed mid-swap and the newest `.old-*` is the sole surviving copy — restore it
+    // BEFORE deleting anything.
+    let live_missing = !tokio::fs::try_exists(bundle_root).await.unwrap_or(false);
+    if live_missing && !old_dirs.is_empty() {
+        // Newest by mtime (`None` sorts oldest, so a dir with a real mtime wins).
+        if let Some(idx) = old_dirs
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, (_, mtime))| *mtime)
+            .map(|(i, _)| i)
+        {
+            let (recovered, _) = old_dirs.remove(idx);
+            match tokio::fs::rename(&recovered, bundle_root).await {
+                Ok(()) => {
+                    tracing::warn!(
+                        recovered = %recovered.display(),
+                        live = %bundle_root.display(),
+                        "workflow definition update: recovered an interrupted update — \
+                         promoted a surviving .old- bundle back to the live path"
+                    );
+                }
+                Err(e) => {
+                    // Restore failed → bundle_root is STILL missing. Do NOT delete any
+                    // `.old-*` (they may hold the only copy). Staging dirs are never the
+                    // live bundle, so they remain safe to prune.
+                    tracing::warn!(
+                        recovered = %recovered.display(),
+                        live = %bundle_root.display(),
+                        error = %e,
+                        "workflow definition update: could not recover interrupted update; \
+                         leaving .old- siblings in place (live bundle still missing)"
+                    );
+                    for path in staging_dirs {
+                        remove_orphan_dir(&path).await;
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    // bundle_root now exists (present all along or just restored). `.staging-*` are
+    // never the live bundle → always safe to prune. For `.old-*`: prune them ONLY when
+    // the live bundle was present all along (they are then confidently stale). If we
+    // just RECOVERED from a missing bundle, PRESERVE any remaining `.old-*` — in that
+    // ambiguous multi-`.old-` state the mtime pick could be wrong, so never risk
+    // deleting the real prior bundle; leave the extras for manual inspection.
+    for path in staging_dirs {
+        remove_orphan_dir(&path).await;
+    }
+    if !live_missing {
+        for (path, _) in old_dirs {
+            remove_orphan_dir(&path).await;
+        }
+    }
+}
+
+/// Best-effort `remove_dir_all` of a single orphan sibling dir, logging either way.
+/// Never fails the caller.
+async fn remove_orphan_dir(path: &std::path::Path) {
+    if let Err(e) = tokio::fs::remove_dir_all(path).await {
+        tracing::warn!(
+            orphan = %path.display(),
+            error = %e,
+            "workflow definition update: could not remove orphan staging/old dir"
+        );
+    } else {
+        tracing::info!(
+            orphan = %path.display(),
+            "workflow definition update: removed orphan staging/old dir"
+        );
+    }
+}
+
+/// Build a UNIQUE sibling path next to `dir` by appending `suffix` to its final
+/// component (e.g. `<extracted_path>.staging-<uuid>`). A sibling shares `dir`'s
+/// parent, so it lives on the SAME filesystem — the guarantee that makes the
+/// atomic-swap renames in `update_user_workflow_definition` atomic.
+fn sibling_with_suffix(dir: &std::path::Path, suffix: &str) -> std::path::PathBuf {
+    let file_name = dir
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let sibling_name = format!("{file_name}{suffix}");
+    match dir.parent() {
+        Some(parent) => parent.join(sibling_name),
+        None => std::path::PathBuf::from(sibling_name),
+    }
+}
+
+pub fn update_user_workflow_definition_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsManage,)>(op)
+        .id("Workflow.updateDefinition")
+        .tag("Workflows")
+        .summary("Replace a user-scope workflow's steps/inputs in place")
+        .description("Re-materializes the workflow bundle from the posted WorkflowDef, preserving the workflow id (run-history FKs survive). Owner-scoped: 403 for a non-owner, 404 for a missing workflow.")
+        .response::<200, Json<Workflow>>()
+        .response_with::<400, (), _>(|r| r.description("Invalid definition"))
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Not the owner"))
+        .response_with::<404, (), _>(|r| r.description("Workflow not found"))
+}
+
+// ============================================================
+// POST /api/workflows/validate-def  (validate a posted WorkflowDef)
+// ============================================================
+
+/// Validate a posted `WorkflowDef` JSON (the builder's live-validation feed) —
+/// the JSON-body twin of `/validate` (which takes workflow.yaml text). Returns
+/// all findings + a dry-run cost estimate as a 200 (validation findings are
+/// structured data, never a hard 4xx). Uses a throwaway temp dir as the bundle
+/// root (same as the YAML `/validate` surface).
+pub async fn validate_workflow_def(
+    _auth: RequirePermissions<(WorkflowsRead,)>,
+    Json(def): Json<validate::WorkflowDef>,
+) -> ApiResult<Json<crate::modules::workflow::models::ValidateDefResponse>> {
+    // FIX-4: a guaranteed-nonexistent unique path (never created) as the bundle
+    // root, so `prompt_file:` resolution can't stat real shared-/tmp contents
+    // (a `WorkflowsRead` caller must not be able to probe path existence).
+    let tmp = std::env::temp_dir().join(format!("ziee-wf-validate-{}", Uuid::new_v4()));
+    let raw = validate::validate_collecting(&def, &tmp, true);
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    for e in raw {
+        match e.severity {
+            validate::Severity::Error => errors.push(e),
+            validate::Severity::Warning => warnings.push(e),
+        }
+    }
+    let cost_estimate = cost::dry_run(&def, &serde_json::Map::new());
+    Ok((
+        StatusCode::OK,
+        Json(crate::modules::workflow::models::ValidateDefResponse {
+            errors,
+            warnings,
+            cost_estimate,
+        }),
+    ))
+}
+
+pub fn validate_workflow_def_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(WorkflowsRead,)>(op)
+        .id("Workflow.validateDef")
+        .tag("Workflows")
+        .summary("Validate a WorkflowDef JSON (no install)")
+        .description("Runs the semantic + security checks + a dry-run cost estimate on a posted WorkflowDef. Findings are returned structured with a 200 (they never hard-fail the request).")
+        .response::<200, Json<crate::modules::workflow::models::ValidateDefResponse>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }
 
 pub fn import_workflow_docs(op: TransformOperation) -> TransformOperation {
@@ -1017,4 +1648,53 @@ pub fn workspace_export_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<200, (), _>(|r| r.description("The workflow bundle (application/gzip)"))
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
         .response_with::<400, (), _>(|r| r.description("Invalid dir or bundle"))
+}
+
+// TEST-4 — `def_to_bundle_bytes` materialize fidelity: a posted `WorkflowDef`
+// serialized to a one-file bundle survives the SAME extract→reparse pipeline the
+// install core runs, byte-for-byte equal (WorkflowDef has no `PartialEq`, so we
+// compare canonical JSON).
+#[cfg(test)]
+mod def_bundle_tests {
+    use super::*;
+    use crate::modules::hub::bundle::{extract_tarball_bytes, BundleKind};
+    use crate::modules::workflow::validate::parse_workflow_yaml;
+
+    const SAMPLE_YAML: &str = r#"inputs:
+  - name: topic
+    required: true
+steps:
+  - id: gen
+    kind: llm
+    prompt: "say something about {{ inputs.topic }}"
+outputs:
+  - name: result
+    from: "{{ gen.output }}"
+"#;
+
+    #[tokio::test]
+    async fn def_to_bundle_bytes_materializes_a_faithful_roundtrip() {
+        let def = parse_workflow_yaml(SAMPLE_YAML).expect("parse sample def");
+        let bytes = def_to_bundle_bytes(&def).await.expect("materialize bundle bytes");
+
+        // Unpack via the real install extract path (not a hand-rolled tar reader).
+        let target = std::env::temp_dir().join(format!("ziee-wf-def-test-{}", Uuid::new_v4()));
+        let extraction = extract_tarball_bytes(&bytes, &target, BundleKind::Workflow)
+            .await
+            .expect("unpack materialized bundle");
+        assert_eq!(extraction.file_count, 1, "one-file (workflow.yaml) bundle");
+
+        let yaml = tokio::fs::read_to_string(extraction.extracted_path.join("workflow.yaml"))
+            .await
+            .expect("read materialized workflow.yaml");
+        let reparsed = parse_workflow_yaml(&yaml).expect("reparse materialized yaml");
+
+        assert_eq!(
+            serde_json::to_value(&def).expect("def to json"),
+            serde_json::to_value(&reparsed).expect("reparsed to json"),
+            "WorkflowDef survives materialize → unpack → reparse unchanged"
+        );
+
+        let _ = tokio::fs::remove_dir_all(&target).await;
+    }
 }

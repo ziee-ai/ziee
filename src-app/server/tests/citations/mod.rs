@@ -815,14 +815,32 @@ async fn test_delete_citation_cascades_project_bibliography_link() {
 // independently under the same conversation scope.
 #[tokio::test]
 async fn memory_and_citations_compose_for_one_user() {
+    if crate::common::memory_setup::skip_if_no_embedding_key("memory_and_citations_compose_for_one_user")
+    {
+        return;
+    }
     let server = TestServer::start().await;
     let user = create_user_with_permissions(
         &server,
         "mem_cit_user",
-        &["citations::use", "citations::manage", "memory::read", "memory::write"],
+        &[
+            "citations::use",
+            "citations::manage",
+            "memory::read",
+            "memory::write",
+            "memory::admin::read",
+            "memory::admin::manage",
+            "llm_providers::read",
+            "llm_providers::edit",
+            "llm_models::create",
+        ],
     )
     .await;
     let conv = Uuid::new_v4().to_string();
+
+    // Memory now defaults OFF: enable it deployment-wide + configure the
+    // embedding model (against the local bridge) before remember/recall.
+    crate::common::memory_setup::enable_semantic_memory(&server, &user.token).await;
 
     // Memory: remember + recall.
     let remember = reqwest::Client::new()
@@ -908,9 +926,11 @@ async fn test_mcp_add_and_remove_with_project_id() {
     .unwrap();
     assert!(add["error"].is_null(), "add_citations with project_id: {add}");
 
-    // The project's reference list contains it.
+    // The project's reference list contains it. The list-by-project endpoint is
+    // `GET /citations?project_id=…` (rest::list_citations) — the
+    // `/projects/{id}/citations` sub-resource is POST-attach / DELETE-detach only.
     let proj_list: Value = client
-        .get(server.api_url(&format!("/projects/{pid}/citations")))
+        .get(server.api_url(&format!("/citations?project_id={pid}")))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -942,7 +962,7 @@ async fn test_mcp_add_and_remove_with_project_id() {
 
     // Detached from the project...
     let after: Value = client
-        .get(server.api_url(&format!("/projects/{pid}/citations")))
+        .get(server.api_url(&format!("/citations?project_id={pid}")))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

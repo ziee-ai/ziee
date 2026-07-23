@@ -1,11 +1,21 @@
 //! Per-turn sandbox version-back.
 //!
-//! A chat extension whose `after_llm_call` fires once the MCP tool loop has
-//! finished (order > MCP's 30 — the registry stops calling `after_llm_call` at
-//! the first extension that returns `Continue`, so this only runs when MCP
-//! returns `Complete` = turn end). It checksum-diffs every provenance-tracked
-//! workspace file and appends a new version of the backing file when its bytes
-//! changed in the sandbox this turn (per-turn coalescing; no-op when unchanged).
+//! A chat extension (order > MCP's 30) that, at TURN END, checksum-diffs every
+//! provenance-tracked workspace file and appends a new version of the backing
+//! file when its bytes changed in the sandbox this turn (per-turn coalescing;
+//! no-op when unchanged).
+//!
+//! `ExtensionRegistry::call_after_llm_call` runs EVERY extension's
+//! `after_llm_call` on EVERY loop round — it captures the first control-flow
+//! decision but does NOT short-circuit (an earlier `Continue` no longer skips
+//! later extensions). So this hook fires once per LLM round, not once per turn,
+//! and must itself detect turn end. The legacy loop reuses ONE assistant message
+//! for the whole turn, so the turn-end signal is the message's LAST content
+//! block: a tool round ends with the just-executed `tool_result` (MCP order 30
+//! appended it → the loop iterates again); the turn-ending round ends with the
+//! model's answer. Reconciling on the tool rounds would commit each intermediate
+//! in-sandbox write as its own version (v2, v3, …) instead of coalescing the
+//! turn's net change into ONE version, so it skips while mid-tool-cycle.
 
 use async_trait::async_trait;
 use axum::response::sse::Event;
@@ -54,6 +64,37 @@ impl ChatExtension for SandboxVersionBackExtension {
         final_message: &Message,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<ExtensionAction, AppError> {
+        // Only reconcile at genuine TURN END. This hook fires once per LLM round
+        // (see the module doc), and the legacy loop reuses ONE assistant message
+        // for the whole turn — so it accumulates every round's `tool_use` blocks,
+        // and "does the message contain a tool_use" is true on EVERY round once a
+        // tool has run. The round-distinguishing signal is the message's LAST
+        // (highest sequence_order) content block: on a tool round the MCP
+        // extension (order 30) runs first and appends the executed `tool_result`
+        // as the newest block, so the loop is mid-tool-cycle and will iterate
+        // again; on the turn-ending round the model produced no new tool call, so
+        // the newest block is its answer (text/thinking). Reconciling on the tool
+        // rounds would commit each intermediate in-sandbox write as its OWN
+        // version — two in-turn writes → v2 AND v3 instead of a single coalesced
+        // v2. Skip while mid-tool-cycle. On a DB read error / empty message, fall
+        // through to reconcile (a no-op if nothing changed; never drop a version).
+        let mid_tool_cycle = match Repos
+            .chat
+            .core
+            .get_message_with_content(final_message.id)
+            .await
+        {
+            Ok(Some(m)) => m
+                .contents
+                .last()
+                .map(|c| c.content_type == "tool_result" || c.content_type == "tool_use")
+                .unwrap_or(false),
+            _ => false,
+        };
+        if mid_tool_cycle {
+            return Ok(ExtensionAction::Complete);
+        }
+
         // Best-effort: a version-back failure must never break the chat turn.
         if let Err(e) = reconcile_workspace_versions(
             context.conversation_id,

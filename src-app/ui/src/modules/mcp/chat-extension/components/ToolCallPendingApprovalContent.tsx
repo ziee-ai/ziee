@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Card, Text } from '@ziee/kit'
-import { Clock, Check, X } from 'lucide-react'
+import { Clock, Check, X, Send } from 'lucide-react'
 import {
   approvalKeyOf,
   type McpToolCall,
@@ -21,6 +21,33 @@ interface ToolCallPendingApprovalContentProps {
  * deployments; mirrors the backend `control_mcp_server_id()`.
  */
 const CONTROL_MCP_SERVER_ID = 'd878787e-aa48-5f16-a31f-673052083f34'
+
+/** Collapse whitespace + cap a string for the one-line egress sentence. The FULL
+ *  args are always shown verbatim in the Arguments block below, so a truncated
+ *  preview here never hides anything from the reviewer. */
+function truncatePreview(s: string, max = 80): string {
+  const t = s.replace(/\s+/g, ' ').trim()
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t
+}
+
+/** Short, human-readable preview of the concrete args the model chose, for the
+ *  "sends «preview» to «host»" data-egress line. Prefers the first primitive
+ *  argument value; falls back to compact JSON. */
+function argPreview(input: unknown): string {
+  if (input === undefined || input === null) return 'a request'
+  if (typeof input === 'string') return truncatePreview(input) || 'a request'
+  if (typeof input !== 'object') return truncatePreview(String(input))
+  const entries = Object.entries(input as Record<string, unknown>)
+  if (entries.length === 0) return 'a request'
+  const firstPrimitive = entries.find(
+    ([, v]) => v !== null && typeof v !== 'object',
+  )
+  if (firstPrimitive) {
+    const [k, v] = firstPrimitive
+    return truncatePreview(`${k}: ${String(v)}`)
+  }
+  return truncatePreview(JSON.stringify(input))
+}
 
 /**
  * ToolCallPendingApprovalContent
@@ -225,17 +252,60 @@ export function ToolCallPendingApprovalContent({
           </Text>
         </div>
 
-        <div className="mt-2">
-          <Text className="text-sm">
-            This tool requires your approval before execution.
-          </Text>
+        <div className="mt-2 flex flex-col gap-2">
+          {/* Data-egress disclosure (ITEM-50): name the CONCRETE destination host
+              so the human reviews WHERE their data goes, not just a verb. Shown
+              only for an EXTERNAL server (dest_host present); a built-in/loopback
+              call has no external destination and falls back to the generic line. */}
+          {toolCall.dest_host ? (
+            <div
+              className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-2"
+              data-testid="approval-dest-host"
+            >
+              <Send className="size-4 shrink-0 mt-0.5 text-warning" />
+              <Text className="text-sm">
+                Sends{' '}
+                <Text strong className="text-sm">
+                  {argPreview(toolCall.input)}
+                </Text>{' '}
+                to{' '}
+                <Text strong className="text-sm break-all">
+                  {toolCall.dest_host}
+                </Text>
+              </Text>
+            </div>
+          ) : (
+            <Text className="text-sm">
+              This tool requires your approval before execution.
+            </Text>
+          )}
 
+          {/* Full, EXACT tool description (never truncated): the description the
+              model was actually given, so a poisoned/misleading one is visible. */}
+          {toolCall.description && (
+            <div>
+              <Text strong className="text-xs">
+                Tool description:
+              </Text>
+              <Text
+                className="text-sm whitespace-pre-wrap block mt-0.5"
+                data-testid="approval-tool-description"
+              >
+                {toolCall.description}
+              </Text>
+            </div>
+          )}
+
+          {/* Concrete args the model chose — shown verbatim (no summarization). */}
           {toolCall.input !== undefined && (
-            <div className="mt-2">
+            <div>
               <Text strong className="text-xs">
                 Arguments:
               </Text>
-              <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs bg-muted">
+              <pre
+                className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs bg-muted"
+                data-testid="approval-tool-args"
+              >
                 {JSON.stringify(toolCall.input, null, 2)}
               </pre>
             </div>

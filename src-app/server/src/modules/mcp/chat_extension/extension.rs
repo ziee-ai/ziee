@@ -198,6 +198,18 @@ pub struct SSEChatStreamMcpApprovalRequiredData {
     pub server_id: String,
     /// Tool input parameters
     pub input: serde_json::Value,
+    /// ITEM-50 (full-disclosure): the EXTERNAL destination host the tool would
+    /// send data to (e.g. `api.example.com`), so the human reviews a
+    /// *data-egress* decision and not just a verb. `None` for built-in /
+    /// loopback / stdio servers, which have no meaningful external destination
+    /// (the card treats a `None` here as a local call).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dest_host: Option<String>,
+    /// ITEM-50 (full-disclosure): the tool's FULL, EXACT advertised description
+    /// (never summarized/truncated — poisoning hides in truncation). Best-effort
+    /// (`None` when the server is unreachable or advertises no description).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// Event data for a `run_js` script's per-call tool approval.

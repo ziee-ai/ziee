@@ -83,9 +83,15 @@ pub async fn subscribe(
     // The pipeline manifest comes from the run's workflow version (immutable
     // per version → replay-safe). Best-effort: an empty manifest just means
     // the FE falls back to building structure from its own workflow copy.
-    let step_manifest = match repository::find_by_id(Repos.pool(), row.workflow_id).await {
-        Ok(Some(wf)) => snapshot_manifest(&wf.compiled_ir_json),
-        _ => Vec::new(),
+    // A generalized background run (`job_kind != 'workflow'`) has a NULL
+    // `workflow_id` and no bundle → no pipeline manifest; the FE renders from its
+    // own structure. Only a classic workflow run resolves a manifest.
+    let step_manifest = match row.workflow_id {
+        Some(wf_id) => match repository::find_by_id(Repos.pool(), wf_id).await {
+            Ok(Some(wf)) => snapshot_manifest(&wf.compiled_ir_json),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
     };
 
     // Snapshot first.

@@ -53,6 +53,17 @@ export interface McpToolCall {
   input?: unknown
   result?: unknown
   error?: string
+  /** ITEM-50 (full-disclosure): the EXTERNAL destination host this tool would
+   *  send data to (e.g. `api.example.com`). Carried on the `mcpApprovalRequired`
+   *  SSE frame so the approval card names the data-egress destination. Undefined
+   *  for a built-in / loopback / stdio server (no external destination — a local
+   *  call) or when restored from a persisted pending-approval row on reload. */
+  dest_host?: string
+  /** ITEM-50 (full-disclosure): the tool's FULL, EXACT advertised description
+   *  (never truncated/summarized — poisoning hides in truncation). Carried on the
+   *  `mcpApprovalRequired` SSE frame so the human reviews the real description the
+   *  model was given. Undefined when the server advertised none / was unreachable. */
+  description?: string
   /** Latest progress notification, while the call is running. */
   progress?: McpToolProgressState
 }

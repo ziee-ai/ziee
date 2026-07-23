@@ -18,6 +18,7 @@ import {
 } from '@ziee/kit'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { McpToolCallsTab } from '@/modules/mcp/components/common/McpToolCallsTab'
+import { McpToolApprovalsTab } from '@/modules/mcp/components/common/McpToolApprovalsTab'
 import { useEffect, useMemo, useState } from 'react'
 import { usePermission } from '@/core/permissions'
 import { type CreateMcpServerRequest, type UpdateMcpServerRequest, type TestMcpConnectionRequest, type McpServer, type EnvVarEntry, type HeaderEntry, type UsageMode, type TransportType } from '@/api-client/types'
@@ -1459,6 +1460,23 @@ export function McpServerDrawer() {
               label: 'Calls',
               children: <McpToolCallsTab serverId={editingServer.id} />,
             },
+            // Per-tool approval overrides are a SYSTEM-server-only admin control
+            // (the backend PUT rejects non-system servers), so the tab is shown
+            // only in edit-system mode.
+            ...(isSystemMode
+              ? [
+                  {
+                    key: 'tool-approvals',
+                    label: 'Tool approvals',
+                    children: (
+                      <McpToolApprovalsTab
+                        serverId={editingServer.id}
+                        canManage={canManage}
+                      />
+                    ),
+                  },
+                ]
+              : []),
           ]}
         />
       ) : (

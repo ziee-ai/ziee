@@ -28,7 +28,8 @@ async fn test_get_conversation_history_empty() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let messages: Vec<serde_json::Value> = response.json().await.unwrap();
+    let page: serde_json::Value = response.json().await.unwrap();
+    let messages = page["messages"].as_array().cloned().unwrap_or_default();
 
     assert_eq!(messages.len(), 0, "New conversation should have no messages");
 }

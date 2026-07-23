@@ -23,6 +23,7 @@ import { SchedulerAdmin } from '@/modules/scheduler/stores/schedulerAdmin'
 interface Form {
   max_active_tasks_per_user: number
   min_interval_seconds: number
+  max_horizon_days: number
   max_consecutive_failures: number
   notification_retention_days: number
 }
@@ -40,6 +41,7 @@ export function SchedulerAdminPage() {
       setF({
         max_active_tasks_per_user: settings.max_active_tasks_per_user,
         min_interval_seconds: settings.min_interval_seconds,
+        max_horizon_days: settings.max_horizon_days,
         max_consecutive_failures: settings.max_consecutive_failures,
         notification_retention_days: settings.notification_retention_days,
       })
@@ -125,6 +127,22 @@ export function SchedulerAdminPage() {
                   disabled={!canManage}
                   onChange={v =>
                     setF({ ...f, min_interval_seconds: Number(v ?? 300) })
+                  }
+                />
+              </Field>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>Self-paced loop horizon (days)</FieldTitle>
+                </FieldContent>
+                <InputNumber
+                  data-testid="scheduler-max-horizon"
+                  aria-label="Self-paced loop horizon (days)"
+                  min={1}
+                  max={365}
+                  value={f.max_horizon_days}
+                  disabled={!canManage}
+                  onChange={v =>
+                    setF({ ...f, max_horizon_days: Number(v ?? 7) })
                   }
                 />
               </Field>

@@ -128,6 +128,11 @@ pub enum SyncEntity {
     AssistantCoreMemory,
     /// Code-sandbox resource-limit settings (singleton).
     CodeSandboxSettings,
+    /// Deployment-wide agent policy settings (singleton): sandbox/approval
+    /// mode, reviewer config, token caps, max steps, fan-out guardrails.
+    /// Notify-only; delivered to holders of `agent::settings::read` — the
+    /// admin UI refetches `GET /api/agent/settings`. `id` is `Uuid::nil()`.
+    AgentAdminSettings,
     /// run_js (js_tool) resource-limit settings (singleton, admin-scoped).
     JsToolSettings,
     /// Code-sandbox rootfs version list changed (install/evict/delete).

@@ -60,14 +60,22 @@ impl ChatExtension for MemoryExtension {
         &self,
         context: &mut StreamContext,
         request: &mut ChatRequest,
-        _send_request: &SendMessageRequest,
+        send_request: &SendMessageRequest,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
-        let assistant_id = context
-            .metadata
-            .get("assistant_id")
-            .and_then(|v| v.as_str())
-            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+        // The selected assistant rides on the send request (the same
+        // authoritative source the assistant extension uses to inject its
+        // system prompt) — `context.metadata` is NOT stamped with it on the
+        // chat streaming path, so reading only metadata missed core-memory
+        // injection entirely. Fall back to metadata for paths that DO stamp it
+        // there (e.g. the agent-core host).
+        let assistant_id = send_request.assistant_id.or_else(|| {
+            context
+                .metadata
+                .get("assistant_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        });
 
         // Summarizer moved to the `summarization` chat-extension
         // (order 24 — runs BEFORE this extension at order 25, so the

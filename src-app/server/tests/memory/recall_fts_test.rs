@@ -40,11 +40,18 @@ async fn create_memory(server: &crate::common::TestServer, token: &str, content:
 #[tokio::test]
 async fn test_fts_recall_returns_seeded_memories() {
     let server = crate::common::TestServer::start().await;
-    // Admin (wildcard) can PUT admin-settings; also a Users member → memory perms.
+    // Enabling FTS via PUT /memory/admin-settings requires memory::admin::manage
+    // (see handlers::update_admin_settings); the user also needs memory::read /
+    // memory::write to create + recall its own memories in the same test.
     let admin = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "fts_recall_admin",
-        &["memory::read", "memory::write"],
+        &[
+            "memory::read",
+            "memory::write",
+            "memory::admin::read",
+            "memory::admin::manage",
+        ],
     )
     .await;
     enable_fts_memory(&server, &admin.token).await;

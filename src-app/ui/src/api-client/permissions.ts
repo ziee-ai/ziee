@@ -4,6 +4,8 @@
 // enumerates the object).
 
 export enum Permissions {
+  AgentSettingsManage = 'agent::settings::manage',
+  AgentSettingsRead = 'agent::settings::read',
   AssistantsCreate = 'assistants::create',
   AssistantsDelete = 'assistants::delete',
   AssistantsEdit = 'assistants::edit',
@@ -14,6 +16,7 @@ export enum Permissions {
   AssistantsTemplateRead = 'assistant_templates::read',
   AuthProvidersManage = 'auth_providers::manage',
   AuthProvidersRead = 'auth_providers::read',
+  BackgroundUse = 'background::use',
   BranchesCreate = 'branches::create',
   BranchesSwitch = 'branches::switch',
   CitationsManage = 'citations::manage',

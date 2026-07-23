@@ -33,7 +33,43 @@ pub struct RecordedRequest {
     /// structure — e.g. that a continuation (had_tool_result) request doesn't end
     /// with a stray `user` turn re-inlining the upload after the tool round-trip.
     pub roles: Vec<String>,
+    /// The request's `max_tokens` (or `max_completion_tokens`, whichever the
+    /// param policy selected). Lets the title tests assert the budget that
+    /// actually reached the wire.
+    pub max_tokens: Option<u64>,
+    /// True when this was the title extension's generation call — see
+    /// [`TITLE_PROMPT_PREFIX`].
+    pub is_title_request: bool,
 }
+
+/// The fixed preamble of the title extension's prompt
+/// (`chat/extensions/title/title.rs::build_title_request`). The title call is
+/// tool-less and otherwise indistinguishable from a normal generation, so the
+/// stub keys off this to answer it with a recognizable beacon.
+pub const TITLE_PROMPT_PREFIX: &str = "Generate a concise, descriptive title";
+
+/// The title the stub returns for a title-generation call. A test asserts the
+/// stored title equals this — proving an AI-generated title was used, and NOT
+/// the raw first user message.
+pub const STUB_TITLE: &str = "Stub Generated Title";
+
+/// Put this token in the ORIGINAL user message to make the stub answer EVERY
+/// title call with an EMPTY completion (no text, `finish_reason: "stop"`).
+///
+/// This reproduces the production failure: `openai/gpt-oss-120b` spent its whole
+/// token budget on `reasoning_content` and emitted no answer text. The title
+/// prompt quotes the user's FIRST message verbatim, so the token reaches the
+/// stub on every title call for that conversation.
+pub const STUB_TITLE_EMPTY: &str = "STUB_TITLE=empty";
+
+/// Like [`STUB_TITLE_EMPTY`], but only the FIRST title call comes back empty;
+/// later ones return [`STUB_TITLE`].
+///
+/// Models the TRANSIENT failure — which is the case the retry exists for. Note
+/// the permanent variant cannot show a successful retry: the title prompt always
+/// quotes the conversation's FIRST user message, so the token is still present
+/// on the retry.
+pub const STUB_TITLE_EMPTY_ONCE: &str = "STUB_TITLE=empty_once";
 
 impl RecordedRequest {
 
@@ -184,9 +220,22 @@ async fn chat_completions(State(s): State<StubState>, body: axum::body::Bytes) -
         })
         .unwrap_or_default();
 
-    let had_tool_result = messages
+    // "This turn already produced a tool result" = a `role:"tool"` message appears
+    // AFTER the last user message (i.e. we are on a continuation iteration of the
+    // CURRENT turn). Scanning the whole history would wrongly report `true` on the
+    // FIRST iteration of a LATER turn whose PRIOR turns used tools — making the
+    // stub skip the new turn's tool call (breaks every multi-turn tool test).
+    let last_user_idx = messages
         .iter()
-        .any(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"));
+        .rposition(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"));
+    let had_tool_result = {
+        let tail = match last_user_idx {
+            Some(i) => &messages[i + 1..],
+            None => &messages[..],
+        };
+        tail.iter()
+            .any(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"))
+    };
 
     // System-block text (manifest detection + file-id parse). Concatenate every
     // system message's text.
@@ -223,13 +272,56 @@ async fn chat_completions(State(s): State<StubState>, body: axum::body::Bytes) -
         })
         .collect();
 
+    let is_title_request = last_user.starts_with(TITLE_PROMPT_PREFIX);
+    let max_tokens = v
+        .get("max_tokens")
+        .or_else(|| v.get("max_completion_tokens"))
+        .and_then(|v| v.as_u64());
+
+    // Title calls seen BEFORE this one (the push below has not happened yet) —
+    // drives the `empty_once` transient-failure mode.
+    let prior_title_requests = s
+        .requests
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r.is_title_request)
+        .count();
+
     s.requests.lock().unwrap().push(RecordedRequest {
         tool_names: tool_names.clone(),
         had_tool_result,
         has_manifest,
         all_text,
         roles,
+        max_tokens,
+        is_title_request,
     });
+
+    // The title extension's call: answer with a beacon (or, when the test asked
+    // for it, an EMPTY completion) instead of routing through the STUB_PLAN
+    // dispatch — the title prompt quotes the user's message verbatim, so it
+    // would otherwise match the conversation's own plan token.
+    if is_title_request {
+        // Exact token match — a `contains` check would let the "empty" arm also
+        // swallow "empty_once". The title prompt embeds the user's message in
+        // QUOTES, so a token at end-of-message arrives as `empty"` — strip the
+        // quoting before matching.
+        let mode = parse_token(&last_user, "STUB_TITLE=")
+            .and_then(|t| t.split_whitespace().next().map(String::from))
+            .map(|t| t.trim_matches(['"', '\'']).to_string())
+            .unwrap_or_default();
+        let text = match mode.as_str() {
+            "empty" => None,
+            "empty_once" if prior_title_requests == 0 => None,
+            _ => Some(STUB_TITLE.to_string()),
+        };
+        return if streaming {
+            stream_response(&model, text, None)
+        } else {
+            json_response(&model, text, None)
+        };
+    }
 
     // Build the scripted turn: (text, optional tool call (name, args json)).
     let (text, tool_call) = script(&plan, had_tool_result, &tool_names, &system_text, &last_user, messages);
@@ -277,6 +369,50 @@ fn script(
             }
             let echoed = last_tool_result_text(messages);
             (Some(format!("Matches: {echoed}")), None)
+        }
+        // files_mcp `read_file` BY NAME (`STUB_NAME`) — reads back a file the model
+        // authored earlier in the conversation. Pairs with `create_file` for the
+        // author-then-read-back flow.
+        "read_named" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "read_file"))
+            {
+                // A filename is a single token — take only the first word after
+                // `STUB_NAME=` (the test appends trailing prose, and `parse_token`
+                // otherwise runs to end-of-line; read_file needs an EXACT name).
+                let name = parse_token(last_user, "STUB_NAME=")
+                    .and_then(|v| v.split_whitespace().next().map(str::to_string))
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored.md".into());
+                return (None, Some((wire.to_string(), json!({ "name": name }))));
+            }
+            let echoed = last_tool_result_text(messages);
+            (Some(format!("You wrote: {echoed}")), None)
+        }
+        // files_mcp `create_file` — author a NEW file. Drives the "author the
+        // first file from an EMPTY conversation" flow (B1): the files_mcp WRITE
+        // tools attach even with no files present. `STUB_FILE` / `STUB_CONTENT`
+        // set the filename + body.
+        "create_file" => {
+            if let (false, Some(wire)) =
+                (had_tool_result, resolve_wire_name(tool_names, "create_file"))
+            {
+                let filename = parse_token(last_user, "STUB_FILE=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored.md".into());
+                let content = parse_token(last_user, "STUB_CONTENT=")
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| "authored content".into());
+                return (
+                    None,
+                    Some((
+                        wire.to_string(),
+                        json!({ "filename": filename, "content": content }),
+                    )),
+                );
+            }
+            // Continuation: confirm creation (the test asserts "Created the file").
+            (Some("Created the file.".into()), None)
         }
         "remember" => {
             if let (false, Some(wire)) =
@@ -470,7 +606,12 @@ fn script(
             if let (false, Some(wire)) =
                 (had_tool_result, resolve_wire_name(tool_names, "get_tool_result"))
             {
-                if let Some(id) = parse_token(last_user, "STUB_TOOLUSE=") {
+                // A tool_use_id is a single token — take only the first word after
+                // `STUB_TOOLUSE=` (the test appends trailing prose; `parse_token`
+                // otherwise runs to end-of-line and the id would never match).
+                if let Some(id) = parse_token(last_user, "STUB_TOOLUSE=")
+                    .and_then(|v| v.split_whitespace().next().map(str::to_string))
+                {
                     return (None, Some((wire.to_string(), json!({ "tool_use_id": id }))));
                 }
                 return (Some("No tool_use_id provided to recall.".into()), None);

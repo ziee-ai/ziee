@@ -17,6 +17,7 @@ import {
   useClosePane,
   useOpenConversationInWorkspace,
 } from '@/modules/chat/core/pane/useOpenConversation'
+import { useNavigateAwayOnDelete } from '@/modules/chat/core/pane/useNavigateAwayOnDelete'
 import {
   dragKind,
   readConversationDragId,
@@ -72,6 +73,11 @@ export default function ConversationPage() {
   // split is open.
   const focusedConvId =
     panes.find((p) => p.paneId === focusedPaneId)?.conversationId ?? null
+
+  // The conversation in the URL was deleted → leave for the start page (#168).
+  // Self-guards on split panes, so it's a no-op whenever the workspace→URL effect
+  // below owns the recovery.
+  useNavigateAwayOnDelete(conversationId)
 
   // URL → workspace reconcile (ITEM-25). The URL is a *view into* the workspace
   // (the focused pane). When it changes to a conversation NOT already shown by

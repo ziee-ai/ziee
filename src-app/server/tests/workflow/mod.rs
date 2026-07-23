@@ -27,6 +27,9 @@ use crate::hub::mock_release_server::spawn_mock_hub;
 
 
 mod access_and_durability;
+mod builder_agent_activity_test;
+mod builder_crud_test;
+mod builder_validate_def_test;
 mod elicit;
 mod elicit_data_seeding;
 mod install_from_hub;
@@ -52,6 +55,8 @@ mod validate_and_dry_run;
 mod conversation_elicit;
 mod test_endpoint;
 mod diamond_dag;
+mod agent_step_test;
+mod agent_step_resume_test;
 mod group_widget_endpoints;
 
 /// Reverse-DNS name of the fixture workflow the mock catalog serves.
@@ -444,7 +449,14 @@ pub async fn count_files_for_run(
 /// Poll GET /workflow-runs/{run_id} until terminal (completed / failed /
 /// cancelled) or timeout. Returns the final run JSON.
 pub async fn poll_run(server: &TestServer, token: &str, run_id: Uuid) -> Json {
-    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    poll_run_for(server, token, run_id, 30).await
+}
+
+/// Like [`poll_run`] but with a caller-chosen deadline (seconds). Use for the
+/// long multi-step real-LLM workflows (e.g. the systematic-review pipeline) that
+/// legitimately need more than the 30s default on a slow local bridge.
+pub async fn poll_run_for(server: &TestServer, token: &str, run_id: Uuid, secs: u64) -> Json {
+    let deadline = std::time::Instant::now() + Duration::from_secs(secs);
     loop {
         let run: Json = reqwest::Client::new()
             .get(server.api_url(&format!("/workflow-runs/{run_id}")))

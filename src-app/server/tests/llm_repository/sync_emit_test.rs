@@ -191,6 +191,9 @@ async fn group_derived_read_perm_puts_user_in_llm_repository_audience() {
             "groups::create",
             "groups::assign_users",
             "llm_repositories::create",
+            // Needed to GRANT llm_repositories::read to the group below — the
+            // groups endpoint forbids granting a permission you don't hold.
+            "llm_repositories::read",
         ],
     )
     .await;

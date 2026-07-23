@@ -385,6 +385,29 @@ pub async fn extract_tarball_bytes(
 /// policy) and enforces the same file-count / size caps. Entries are written
 /// with paths relative to `root`, in a deterministic (sorted) order.
 pub fn pack_workspace_dir(root: &Path) -> Result<Vec<u8>, AppError> {
+    Ok(pack_workspace_dir_measured(root)?.bytes)
+}
+
+/// Metadata derived when packing a workspace dir — the same three values the
+/// install path (`extract_tarball_bytes`) records on the `workflows` row:
+/// the sha256 of the packed tar.gz, the decompressed byte total, and the
+/// regular-file count.
+#[derive(Debug, Clone)]
+pub struct PackMeasure {
+    pub bytes: Vec<u8>,
+    pub sha256_hex: String,
+    pub total_bytes: u64,
+    pub file_count: u32,
+}
+
+/// Like [`pack_workspace_dir`], but also returns the derived bundle metadata
+/// (sha256 of the packed bytes, decompressed byte total, regular-file count)
+/// so an in-place edit can recompute the `bundle_*` columns WITHOUT
+/// re-extracting the dir. Uses the identical derivation primitives as the
+/// install path (`extract_tarball_bytes`): `hex_sha256` over the tar.gz bytes,
+/// the decompressed `total_bytes`, and the `file_count` counted by
+/// `append_dir_to_tar`.
+pub fn pack_workspace_dir_measured(root: &Path) -> Result<PackMeasure, AppError> {
     if !root.is_dir() {
         return Err(AppError::bad_request(
             "WORKFLOW_WORKSPACE_NOT_DIR",
@@ -411,7 +434,13 @@ pub fn pack_workspace_dir(root: &Path) -> Result<Vec<u8>, AppError> {
     let bytes = enc
         .finish()
         .map_err(|e| AppError::internal_with_id(e))?;
-    Ok(bytes)
+    let sha256_hex = hex_sha256(&bytes);
+    Ok(PackMeasure {
+        bytes,
+        sha256_hex,
+        total_bytes,
+        file_count,
+    })
 }
 
 /// Recursively append the regular files under `cur` to `builder`, with paths

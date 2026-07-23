@@ -20,6 +20,12 @@ const AdminWorkflowsPage = lazyWithPreload(() =>
   })),
 )
 
+const WorkflowBuilderPage = lazyWithPreload(() =>
+  import('./components/builder/WorkflowBuilderPage').then(m => ({
+    default: m.WorkflowBuilderPage,
+  })),
+)
+
 const GroupSystemWorkflowsWidget = lazyWithPreload(() =>
   import('./widgets/GroupSystemWorkflowsWidget').then(m => ({
     default: m.GroupSystemWorkflowsWidget,
@@ -61,6 +67,22 @@ export default createModule({
       element: WorkflowsList,
       requiresAuth: true,
       permission: Permissions.WorkflowsRead,
+      layout: SettingsLayoutDef,
+    },
+    {
+      // Create a new user-scope workflow (visual builder).
+      path: '/settings/workflows/builder',
+      element: WorkflowBuilderPage,
+      requiresAuth: true,
+      permission: Permissions.WorkflowsInstall,
+      layout: SettingsLayoutDef,
+    },
+    {
+      // Edit an existing workflow's definition in place (id preserved).
+      path: '/settings/workflows/:id/edit',
+      element: WorkflowBuilderPage,
+      requiresAuth: true,
+      permission: Permissions.WorkflowsManage,
       layout: SettingsLayoutDef,
     },
     {

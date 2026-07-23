@@ -48,10 +48,18 @@ async fn configure_provider(server: &TestServer, token: &str, display_name: &str
         .unwrap_or_else(|| panic!("provider {display_name} not found"))
         .clone();
     let provider_id = provider["id"].as_str().unwrap().to_string();
+    // Redirect at a local embeddings bridge (per-provider `<PROVIDER>_BASE_URL`
+    // or the global `ZIEE_TEST_LLM_BASE_URL`) — same seam memory's Tier-5 helper
+    // uses. Without it the provider points at the real Google endpoint and the
+    // probe embed fails (INVALID_EMBEDDING_MODEL).
+    let mut provider_payload = json!({ "api_key": api_key, "enabled": true });
+    if let Some(base_url) = crate::chat::helpers::test_provider_base_url(env_var) {
+        provider_payload["base_url"] = json!(base_url);
+    }
     let res = reqwest::Client::new()
         .post(server.api_url(&format!("/llm-providers/{provider_id}")))
         .header("Authorization", format!("Bearer {token}"))
-        .json(&json!({ "api_key": api_key, "enabled": true }))
+        .json(&provider_payload)
         .send()
         .await
         .expect("POST provider");

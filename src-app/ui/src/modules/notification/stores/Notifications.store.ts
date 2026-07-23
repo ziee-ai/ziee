@@ -33,6 +33,11 @@ export const Notifications = createNotificationsStore({
 
 export const useNotificationsStore = Notifications.store
 
+// Reactive proxy view (what the removed global `Stores.Notifications` resolved
+// to) — for app pages that read fields / call actions reactively, e.g. the agent
+// inbox page. The bare `Notifications` handle exposes no reactive fields.
+export const NotificationsView = createStoreProxy(Notifications.store)
+
 // SEAM: inject into the SDK notification widgets (replaces the old global
 // Stores.Notifications). `createNotificationsStore` returns the defineStore
 // HANDLE (no reactive fields), but the widgets read `.items`/`.unread`

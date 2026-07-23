@@ -169,6 +169,14 @@ pub fn check_typed_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
                 let serialized = arguments.to_string();
                 check_body(&format!("{}.arguments", s.id), &serialized, &mut out);
             }
+            StepConfig::Agent { prompt, system, .. } => {
+                if let Some(p) = prompt {
+                    check_body(&format!("{}.prompt", s.id), p, &mut out);
+                }
+                if let Some(sys) = system {
+                    check_body(&format!("{}.system", s.id), sys, &mut out);
+                }
+            }
         }
         if let Some(msg) = &s.message {
             check_body(&format!("{}.message", s.id), msg, &mut out);

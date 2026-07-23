@@ -249,8 +249,21 @@ async fn test_recall_requires_memory_enabled() {
         &["memory::read", "memory::write"],
     )
     .await;
-    // memory_admin_settings.enabled is FALSE by default — recall must
-    // refuse with MEMORY_DISABLED error code.
+    // memory_admin_settings.enabled seeds TRUE (memory on by default), so to
+    // exercise the MEMORY_DISABLED guard we must first turn it OFF. Do it
+    // directly on the singleton row (the admin PUT needs a manage grant this
+    // read/write user lacks; the DB write is the deterministic equivalent).
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE memory_admin_settings SET enabled = false WHERE id = 1")
+        .execute(&pool)
+        .await
+        .expect("disable memory");
+
+    // With memory disabled, recall must refuse with the MEMORY_DISABLED error.
     let res = jsonrpc_call(
         &server,
         &user.token,
@@ -264,6 +277,13 @@ async fn test_recall_requires_memory_enabled() {
     assert!(
         body["error"].is_object(),
         "recall must error when memory disabled; got: {body}"
+    );
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("disabled"),
+        "recall's disabled-error must be the MEMORY_DISABLED guard; got: {body}"
     );
 }
 

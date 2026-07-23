@@ -218,6 +218,10 @@ sigstore = { version = "0.14", default-features = false, features = ["bundle", "
 # AI providers (local package)
 ai-providers = { path = "./ai-providers" }
 
+# Shared agent loop primitive (loop + six ports + compaction/fan-out/reviewer).
+# Hosted app-side by the workflow `kind: agent` step (this wiring) + chat.
+agent-core = { path = "../agent-core" }
+
 # MCP client
 rmcp = { version = "1.4", features = ["client", "transport-child-process"] }
 # E5: full JSON-Schema validation of elicit submissions. default-features off

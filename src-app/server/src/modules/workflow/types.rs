@@ -102,6 +102,78 @@ pub struct WorkflowRunListResponse {
     pub runs: Vec<WorkflowRunSummary>,
 }
 
+/// Compact BACKGROUND-run summary (ITEM-8) — one detached sub-agent /
+/// sandbox-exec run (`job_kind <> 'workflow'`) projected WITHOUT the heavy JSONB
+/// blobs the full `WorkflowRun` carries (step outputs / logs / artifacts /
+/// `final_output_json`). The full result is read separately via `collect_result`;
+/// this row only tells the FE's "your background tasks" list what/when/state +
+/// whether a result is ready. Backs `GET /api/background/runs`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct BackgroundRunSummary {
+    pub id: Uuid,
+    /// Background-run discriminator (`subagent` / `sandbox_exec`); never
+    /// `workflow` (the list filters those out).
+    pub job_kind: String,
+    pub status: String,
+    pub conversation_id: Option<Uuid>,
+    pub model_id: Option<Uuid>,
+    /// Short human label derived from the run's spec (the sub-agent `task`),
+    /// capped at 200 chars; `None` when the spec carried no task text.
+    pub label: Option<String>,
+    /// True when a `final_output_json` is present (a result can be collected).
+    pub has_result: bool,
+    /// Terminal error text for a failed run (else `None`).
+    pub error_message: Option<String>,
+    pub total_tokens: i64,
+    pub created_at: DateTime<Utc>,
+    /// Last transition time — the effective "finished_at" for a terminal run.
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Paginated response for `GET /api/background/runs` (mirrors
+/// `McpToolCallListResponse`).
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct BackgroundRunListResponse {
+    pub runs: Vec<BackgroundRunSummary>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+    pub total_pages: i64,
+}
+
+/// Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /
+/// sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`
+/// result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and
+/// adds the collected result, so the FE can render a completed run's output without a
+/// second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.
+/// The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still
+/// excluded — a background run has none, and a classic `workflow`-kind run is served
+/// by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct BackgroundRunDetail {
+    pub id: Uuid,
+    /// Background-run discriminator (`subagent` / `sandbox_exec`); never
+    /// `workflow` (the detail 404s on those).
+    pub job_kind: String,
+    pub status: String,
+    pub conversation_id: Option<Uuid>,
+    pub model_id: Option<Uuid>,
+    /// Short human label derived from the run's spec (the sub-agent `task`),
+    /// capped at 200 chars; `None` when the spec carried no task text.
+    pub label: Option<String>,
+    /// True when a `final_output_json` is present (a result was collected).
+    pub has_result: bool,
+    /// The full result body of a completed run (`None` until a result exists).
+    /// This is the field the compact [`BackgroundRunSummary`] deliberately omits.
+    pub final_output_json: Option<serde_json::Value>,
+    /// Terminal error text for a failed run (else `None`).
+    pub error_message: Option<String>,
+    pub total_tokens: i64,
+    pub created_at: DateTime<Utc>,
+    /// Last transition time — the effective "finished_at" for a terminal run.
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct ElicitationResponseRequest {
     pub response: serde_json::Value,
@@ -154,6 +226,7 @@ pub enum StepKindTag {
     Sandbox,
     Elicit,
     Tool,
+    Agent,
 }
 
 impl StepKindTag {
@@ -167,6 +240,7 @@ impl StepKindTag {
             StepKindTag::Sandbox => "sandbox",
             StepKindTag::Elicit => "elicit",
             StepKindTag::Tool => "tool",
+            StepKindTag::Agent => "agent",
         }
     }
 }

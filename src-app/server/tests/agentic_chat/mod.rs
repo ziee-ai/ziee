@@ -1018,7 +1018,9 @@ async fn model_recalls_prior_result_via_get_tool_result() {
         .await
         .unwrap();
     let mut tool_use_id: Option<String> = None;
-    for m in msgs.as_array().unwrap() {
+    // `GET /conversations/{id}/messages` returns a `PaginatedMessages` object
+    // ({ messages, has_more_before, has_more_after }), not a bare array.
+    for m in msgs["messages"].as_array().unwrap() {
         for c in m["contents"].as_array().into_iter().flatten() {
             if c["content_type"] == "tool_result" {
                 if let Some(id) = c["content"]["tool_use_id"].as_str() {
@@ -1403,10 +1405,15 @@ async fn files_mcp_and_memory_combine_in_one_conversation() {
         "STUB_PLAN=remember The launch is scheduled for Q3.",
     )
     .await;
-    assert_eq!(
-        stub.requests_with_tool("remember"),
-        1,
-        "memory remember must fire exactly once in turn 2; requests={:?}",
+    // `requests_with_tool` counts requests that ADVERTISE the tool, not
+    // invocations — and the memory extension attaches `remember` on EVERY
+    // tool-capable turn (the inline self-save nudge), so it is advertised on
+    // turn 1's read_file turns too. The authoritative proof that remember
+    // actually FIRED (exactly once, in turn 2) is the persisted
+    // conversation-scoped `user_memories` row asserted below.
+    assert!(
+        stub.requests_with_tool("remember") >= 1,
+        "the memory remember tool must be attached in turn 2; requests={:?}",
         stub.requests()
     );
     assert!(
@@ -1804,9 +1811,13 @@ async fn files_mcp_tool_call_is_recorded_as_built_in() {
     let uid = Uuid::parse_str(&user.user_id).unwrap();
     let mut found: Option<(bool, String, String)> = None;
     for _ in 0..40 {
+        // The built-in files server is registered in `mcp_servers` with
+        // name='files' (display_name 'Files') — see files_mcp::repository::
+        // upsert_builtin_server. The journal row records that server row name,
+        // NOT the module name "files_mcp".
         let row = sqlx::query_as::<_, (bool, String, String)>(
             "SELECT is_built_in, server_name, tool_name FROM mcp_tool_calls \
-             WHERE user_id = $1 AND server_name = 'files_mcp' \
+             WHERE user_id = $1 AND server_name = 'files' \
              ORDER BY created_at DESC LIMIT 1",
         )
         .bind(uid)
@@ -1824,10 +1835,85 @@ async fn files_mcp_tool_call_is_recorded_as_built_in() {
     let (is_built_in, server_name, tool_name) =
         found.expect("a files_mcp tool-call row must be recorded");
     assert!(is_built_in, "files_mcp is a built-in server → is_built_in=true");
-    assert_eq!(server_name, "files_mcp");
+    assert_eq!(server_name, "files");
     assert!(
         tool_name.ends_with("read_file") || tool_name == "read_file",
         "recorded tool should be read_file, got {tool_name}"
     );
 }
 
+
+/// B2: the chat AGENT-CORE path enforces the conversation's `disabled_servers` at
+/// CALL time (`enforce_conversation_disabled = true`). Disabling the files_mcp
+/// `read_file` TOOL in the conversation does NOT remove it from the attached set
+/// (there is no attach-time filter for `disabled_servers` — it is enforced only in
+/// `call_mcp_tool`), so the model still calls it — and the call must be REFUSED,
+/// not executed. Proves the ON path honors the user's disable at call time (the
+/// DEC-17 non-enforcement was a security gap). Runs flag ON.
+#[tokio::test]
+async fn chat_agent_core_enforces_conversation_disabled_server_at_call_time() {
+    let _flag = crate::common::AgentCoreFlag::on();
+    let server = TestServer::start().await;
+    let stub = StubChat::start().await;
+    let user = power_user(&server, "b2_disabled").await;
+    let model_id = crate::common::stub_chat::register_stub_model(
+        &server,
+        &user.token,
+        &user.user_id,
+        &stub.base_url,
+        true,
+        None,
+    )
+    .await;
+
+    // A file so files_mcp READ tools attach (manifest_available = files present).
+    let project_id = create_project(&server, &user, "b2-proj").await;
+    let file_id = upload_text(&server, &user, "notes.txt", "B2_SECRET_MARKER content").await;
+    attach_file_to_project(&server, &user, &project_id, &file_id).await;
+    let (conv_id, branch_id) = create_conversation(&server, &user, &model_id).await;
+    attach_conversation_to_project(&server, &user, &project_id, &conv_id).await;
+
+    // Disable the files_mcp `read_file` TOOL in THIS conversation.
+    let files_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, b"files.ziee.internal");
+    let resp = reqwest::Client::new()
+        .put(server.api_url(&format!("/conversations/{conv_id}/mcp-settings")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "approval_mode": "auto_approve",
+            "auto_approved_tools": [],
+            "disabled_servers": [{ "server_id": files_id, "tools": ["read_file"] }],
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "set conversation disabled_servers");
+
+    // The model calls read_file → must be refused at call time.
+    let body = send_and_collect(
+        &server,
+        &user,
+        &conv_id,
+        &branch_id,
+        &model_id,
+        "STUB_PLAN=read_first_file read it",
+    )
+    .await;
+
+    // read_file WAS attached (there is no attach-time filter for disabled_servers),
+    // so the refusal below is a CALL-time enforcement, not attach filtering.
+    assert!(
+        stub.requests_with_tool("read_file") >= 1,
+        "read_file must be ATTACHED so the refusal is call-time enforcement; requests={:?}",
+        stub.requests()
+    );
+    // The disabled tool must NOT return the file content ...
+    assert!(
+        !body.contains("B2_SECRET_MARKER"),
+        "a disabled tool must NOT return the file content; body={body}"
+    );
+    // ... and the tool result must surface the 'disabled in this conversation' refusal.
+    assert!(
+        body.to_lowercase().contains("disabled"),
+        "the tool result must carry the disabled-in-conversation refusal; body={body}"
+    );
+}

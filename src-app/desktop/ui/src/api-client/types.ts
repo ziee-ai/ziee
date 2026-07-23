@@ -10,8 +10,61 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
-import { ApiEndpoints } from './apiEndpoints'
-import type { ApiEndpoint, ApiEndpointUrl } from './apiEndpoints'
+/** The category of one `AgentActivity` entry. */
+export type AgentActivityKind = 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'gate' | 'compaction'
+
+/** Lifecycle status of one `AgentActivity` entry. */
+export type AgentActivityStatus = 'running' | 'ok' | 'error'
+
+/**
+ * Deployment-wide agent policy (singleton row, `id = true`).
+ *
+ *  `reviewer_model_id` / `reviewer_policy` are intentionally nullable: NULL
+ *  means "fall back to the run's own model / the compiled-in reviewer
+ *  prompt" (zero-config). The token caps + step/fan-out limits are the
+ *  runtime-tunable knobs an operator adjusts per workload (DEC-6).
+ */
+export interface AgentAdminSettings {
+  default_max_steps: number
+  default_sandbox_mode: string
+  /**
+   * On-demand `delegate` enable switch (ITEM-2 / DEC-2). Default false. When
+   *  true, the TOP-LEVEL hosts (workflow `kind: agent` step + the agent-core
+   *  chat path behind `ZIEE_CHAT_AGENT_CORE`) set `ToolScope.allow_delegate`,
+   *  so agent-core offers the core `delegate` tool. Children / fan-out stay
+   *  false (`fanout.rs` caps `max_depth = 1`); a plain bool like
+   *  `reviewer_enabled` (no bounds).
+   */
+  delegate_enabled: boolean
+  /**
+   * Max children accepted in ONE `delegate` call (DEC-1); over-cap truncates
+   *  with an explicit "capped at N" note. Threaded into the crate's
+   *  `SubagentLimits.max_children_per_call`.
+   */
+  fan_out_max_children_per_call: number
+  fan_out_max_depth: number
+  fan_out_max_threads: number
+  /**
+   * Goal-seeking evaluator model (ITEM-24 / DEC-61). NULL ⇒ fall back to the
+   *  goal-seeking run's OWN model (mirrors `reviewer_model_id`). Resolved under
+   *  the run owner's RBAC at evaluation time.
+   */
+  goal_eval_model_id?: string
+  /**
+   * Max turns a goal-seeking loop may fire before stopping 'incomplete'
+   *  (ITEM-24 / DEC-62). Default 10, range 1..=50; the `max_horizon_days`
+   *  backstop is the other ceiling.
+   */
+  goal_seek_max_turns: number
+  per_run_token_cap: number
+  per_step_token_cap: number
+  reviewer_enabled: boolean
+  reviewer_model_id?: string
+  reviewer_policy?: string
+  reviewer_risk_thresholds: unknown
+  unattended_approval_policy: string
+  updated_at: string
+}
 
 export interface AllSettingsResponse {
   settings: SettingItem[]
@@ -38,6 +91,13 @@ export interface AppendVersionRequest {
 
 /** Approval mode for conversation MCP settings */
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
+
+export interface ArtifactDecl {
+  description?: string
+  glob?: string
+  mime_type?: string
+  path?: string
+}
 
 export interface AssignProviderToGroupRequest {
   group_id: string
@@ -289,6 +349,101 @@ export interface BackendStatusResponse {
   ready: boolean
   running: boolean
   version: string
+}
+
+/** Cancel-run acknowledgement. */
+export interface BackgroundRunCancelAck {
+  run_id: string
+  /**
+   * `"cancelled"` when the run was flipped; `"already_terminal"` on the benign
+   *  race where the run reached terminal between the ownership check and the CAS.
+   */
+  status: string
+}
+
+/**
+ * Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /
+ *  sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`
+ *  result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and
+ *  adds the collected result, so the FE can render a completed run's output without a
+ *  second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.
+ *  The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still
+ *  excluded — a background run has none, and a classic `workflow`-kind run is served
+ *  by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).
+ */
+export interface BackgroundRunDetail {
+  conversation_id?: string
+  created_at: string
+  /** Terminal error text for a failed run (else `None`). */
+  error_message?: string
+  /**
+   * The full result body of a completed run (`None` until a result exists).
+   *  This is the field the compact [`BackgroundRunSummary`] deliberately omits.
+   */
+  final_output_json?: unknown
+  /** True when a `final_output_json` is present (a result was collected). */
+  has_result: boolean
+  id: string
+  /**
+   * Background-run discriminator (`subagent` / `sandbox_exec`); never
+   *  `workflow` (the detail 404s on those).
+   */
+  job_kind: string
+  /**
+   * Short human label derived from the run's spec (the sub-agent `task`),
+   *  capped at 200 chars; `None` when the spec carried no task text.
+   */
+  label?: string
+  model_id?: string
+  status: string
+  total_tokens: number
+  /** Last transition time — the effective "finished_at" for a terminal run. */
+  updated_at: string
+}
+
+/**
+ * Paginated response for `GET /api/background/runs` (mirrors
+ *  `McpToolCallListResponse`).
+ */
+export interface BackgroundRunListResponse {
+  page: number
+  per_page: number
+  runs: BackgroundRunSummary[]
+  total: number
+  total_pages: number
+}
+
+/**
+ * Compact BACKGROUND-run summary (ITEM-8) — one detached sub-agent /
+ *  sandbox-exec run (`job_kind <> 'workflow'`) projected WITHOUT the heavy JSONB
+ *  blobs the full `WorkflowRun` carries (step outputs / logs / artifacts /
+ *  `final_output_json`). The full result is read separately via `collect_result`;
+ *  this row only tells the FE's "your background tasks" list what/when/state +
+ *  whether a result is ready. Backs `GET /api/background/runs`.
+ */
+export interface BackgroundRunSummary {
+  conversation_id?: string
+  created_at: string
+  /** Terminal error text for a failed run (else `None`). */
+  error_message?: string
+  /** True when a `final_output_json` is present (a result can be collected). */
+  has_result: boolean
+  id: string
+  /**
+   * Background-run discriminator (`subagent` / `sandbox_exec`); never
+   *  `workflow` (the list filters those out).
+   */
+  job_kind: string
+  /**
+   * Short human label derived from the run's spec (the sub-agent `task`),
+   *  capped at 200 chars; `None` when the spec carried no task text.
+   */
+  label?: string
+  model_id?: string
+  status: string
+  total_tokens: number
+  /** Last transition time — the effective "finished_at" for a terminal run. */
+  updated_at: string
 }
 
 /** The per-item batch report returned by import / verify. */
@@ -563,6 +718,16 @@ export interface CodeSandboxResourceLimits {
   vm_idle_evict_secs: number
   /** Per-VM concurrent `execute_command` cap (macOS + WSL2). */
   vm_max_concurrent_execs: number
+}
+
+/** Request body for `POST /conversations/{id}/compact` (ITEM-61 / DEC-137). */
+export interface CompactConversationRequest {
+  /**
+   * Optional focus hint steering what the compaction should preserve. Advisory
+   *  today (the rolling summary is regenerated from the full active-branch
+   *  history); reserved for a future focus-aware summarizer.
+   */
+  focus?: string
 }
 
 /** A non-secret config field a provider needs — drives the generic admin UI. */
@@ -1086,6 +1251,19 @@ export interface CreateProjectRequest {
   name?: string
 }
 
+/**
+ * Enqueue-a-steering-note request body
+ *  (`POST /api/background/runs/{run_id}/notes`). The note is capped + trimmed by
+ *  the handler before it reaches the durable queue.
+ */
+export interface CreateRunNote {
+  /**
+   * The steering note the running agent should pick up on its next turn
+   *  (non-empty; capped at 4000 characters by the handler).
+   */
+  note: string
+}
+
 /** Create-task request body. */
 export interface CreateScheduledTask {
   /**
@@ -1094,6 +1272,20 @@ export interface CreateScheduledTask {
    */
   allowed_unattended_tools?: AllowedTool[]
   assistant_id?: string
+  /**
+   * ITEM-22 / DEC-46: bind a prompt-kind task to an EXISTING conversation (the
+   *  "schedule/loop THIS chat" affordance) so its firings append to that chat
+   *  instead of a fresh per-task conversation. Ownership is verified at create
+   *  time (a foreign id → 404); `None` keeps the create-a-conversation default.
+   */
+  bound_conversation_id?: string
+  /**
+   * ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+   *  A non-blank value makes this a goal-seeking task and (validated in the
+   *  handler) requires `schedule_kind = 'self_paced'` + `target_kind = 'prompt'`.
+   *  `None`/blank ⇒ an ordinary task.
+   */
+  completion_condition?: string
   cron_expr?: string
   inputs_json?: unknown
   model_id: string
@@ -1139,6 +1331,37 @@ export interface CreateUserRequest {
   password: string
   permissions?: string[]
   username: string
+}
+
+/**
+ * Body for the builder create endpoint: the posted `WorkflowDef` PLUS an
+ *  optional `name` slug override, flattened into ONE JSON object.
+ *
+ *  The name MUST ride in the body (not a query param): the generated api-client
+ *  serializes query params only on GET requests — on a POST every non-path arg
+ *  goes into the JSON body — so a `name` query param on this POST route is
+ *  physically unreachable from the frontend (the builder's typed name was
+ *  silently dropped and every created workflow fell back to the
+ *  `imported-workflow` default, colliding on the second save). Flattening the
+ *  def keeps the wire shape `{ name?, ...WorkflowDef }` the client already sends.
+ */
+export interface CreateWorkflowDefBody {
+  $schema?: string
+  expose_logs?: ExposeLogs
+  inputs?: InputDef[]
+  /**
+   * Workflow-declared wall-clock cap in seconds. `None` → the engine default
+   *  (`RUN_WALL_CLOCK`). `Some(0)` → UNBOUNDED (no wall-clock — for long runs on
+   *  a user-owned machine). The effective value is live-adjustable per run via
+   *  `PUT /workflow-runs/{id}/timeout`. The per-run token + output-byte caps stay
+   *  as the resource backstops regardless.
+   */
+  max_runtime_secs?: number
+  /** Optional slug override; `local.dev.<owner>/<slug>` becomes the row name. */
+  name?: string
+  outputs?: OutputDef[]
+  sandbox?: SandboxDecl
+  steps?: StepDef[]
 }
 
 export interface CreateWorkflowFromHubRequest {
@@ -1657,6 +1880,10 @@ export interface ExportResponse {
   format: string
   output: string
 }
+
+export type ExposeLogs = 'always' | 'on_error' | 'never'
+
+export type ExposeMode = 'full' | 'preview' | 'artifact' | 'path' | 'hidden'
 
 /**
  * File entity — the **head view** of a versioned file. The per-version columns
@@ -2527,6 +2754,13 @@ export interface IndexingSummary {
   total: number
 }
 
+export interface InputDef {
+  description?: string
+  default?: unknown
+  name: string
+  required?: boolean
+}
+
 export interface InstallTaskState {
   arch: string
   artifact_id?: string
@@ -2734,6 +2968,20 @@ export interface ListAuditLogQuery {
   limit?: number
 }
 
+/** Query params for `GET /api/background/runs`. */
+export interface ListBackgroundRunsQuery {
+  /** Filter to a single background job kind (`subagent` / `sandbox_exec`). */
+  kind?: string
+  page?: number
+  /** Page size; clamped to `1..=500` server-side (default 50). */
+  per_page?: number
+  /**
+   * Filter to a single run status (`pending` / `running` / `waiting` /
+   *  `resumable` / `completed` / `failed` / `cancelled`).
+   */
+  status?: string
+}
+
 /** `?project_id=` filter for listing. */
 export interface ListCitationsQuery {
   project_id?: string
@@ -2818,6 +3066,16 @@ export interface ListSystemServersQuery {
   per_page?: number
   search?: string
   status?: string
+}
+
+/**
+ * Query params for `GET /api/scheduled-tasks` (ITEM-23/DEC-47). An optional
+ *  `conversation_id` filters to the tasks BOUND to that conversation (the in-chat
+ *  "attached loops/schedules" list); omitting it returns all of the user's tasks
+ *  (back-compat).
+ */
+export interface ListTasksParams {
+  conversation_id?: string
 }
 
 /** Query params for the tool-call history list. */
@@ -3034,6 +3292,8 @@ export interface LlmRepositoryWithHealthWarning {
   updated_at: string
   url: string
 }
+
+export type LogCapture = 'off' | 'stderr' | 'full'
 
 export interface LoginRequest {
   password: string
@@ -4156,6 +4416,8 @@ export interface NotificationPage {
   unread: number
 }
 
+export type OnError = 'fail' | 'skip' | 'retry'
+
 /**
  * Per-user onboarding progress. Step ids use the composite
  *  "{guide_id}/{step_id}" key format. Replaces the two columns that
@@ -4172,6 +4434,16 @@ export interface OperatingSystemInfo {
   name: string
   version: string
 }
+
+export interface OutputDef {
+  description?: string
+  expose?: ExposeMode
+  from: string
+  mime_type?: string
+  name: string
+}
+
+export type OutputFormat = 'text' | 'json'
 
 /**
  * A page of messages from the active branch, chronological ascending. Cursors
@@ -4361,6 +4633,14 @@ export type ProgressKind = {
   index?: number | null
   name: string
   total?: number | null
+} | {
+  title: string
+  type: 'agent_activity'
+  detail?: string | null
+  kind: AgentActivityKind
+  seq: number
+  status: AgentActivityStatus
+  tool?: string | null
 }
 
 /**
@@ -4868,6 +5148,25 @@ export interface RunActionAck {
 }
 
 /**
+ * One durable STEERING NOTE queued against a running background run (ITEM-25 /
+ *  Group F). A user posts a note to a RUNNING background run (a detached
+ *  `JobKind::SubAgent` turn); the detached agent-core loop consumes pending notes
+ *  at its next iteration boundary and appends them to the transcript so the model
+ *  reads them on the next turn. `consumed_at` is NULL while pending, stamped when
+ *  the loop consumes it. Rows live in `background_run_notes`, FK'd to the run
+ *  (ON DELETE CASCADE) — deleting the run deletes its notes.
+ */
+export interface RunNote {
+  /** NULL while pending; set to the consume time once the loop reads it. */
+  consumed_at?: string
+  created_at: string
+  id: string
+  /** The steering text the running agent should pick up next turn. */
+  note: string
+  run_id: string
+}
+
+/**
  * A page of run history (ITEM-41) — the paged envelope the runs panel consumes.
  *  Mirrors `mcp/tool_calls`' page shape.
  */
@@ -5000,6 +5299,9 @@ export type SSEChatStreamEvent = {
   content: ChatStreamChunk
   complete: SSEChatStreamCompleteData
   error: SSEChatStreamErrorData
+  taskListChanged: SSEChatStreamTaskListChangedData
+  subAgentActivity: SSEChatStreamSubAgentActivityData
+  historyReplaced: SSEChatStreamHistoryReplacedData
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
@@ -5010,8 +5312,42 @@ export type SSEChatStreamEvent = {
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
+/**
+ * Data for the `historyReplaced` SSE event (ITEM-61 / DEC-137). Emitted when the
+ *  conversation's context is COMPACTED — either the agent loop's automatic
+ *  compaction (`AgentEvent::HistoryReplaced`, forwarded by `event_sink.rs`) or the
+ *  manual `POST /conversations/{id}/compact` affordance — so the chat timeline
+ *  renders a "context compacted" marker in place. Compaction is OUTBOUND-ONLY (the
+ *  stored `message_contents` are never rewritten/deleted; only the rolling
+ *  `conversation_summaries` row is upserted), so this is a display signal, not a
+ *  data mutation. Routed via `publish_raw_event` (the raw side-channel).
+ */
+export interface SSEChatStreamHistoryReplacedData {
+  /** The conversation whose context was compacted. */
+  conversation_id: string
+  /**
+   * How many leading transcript messages were folded into the rolling summary
+   *  (0 when the manual endpoint summarized without a loop-relative index).
+   */
+  summary_upto: number
+}
+
 /** Event data for MCP tool approval required */
 export interface SSEChatStreamMcpApprovalRequiredData {
+  /**
+   * ITEM-50 (full-disclosure): the tool's FULL, EXACT advertised description
+   *  (never summarized/truncated — poisoning hides in truncation). Best-effort
+   *  (`None` when the server is unreachable or advertises no description).
+   */
+  description?: string
+  /**
+   * ITEM-50 (full-disclosure): the EXTERNAL destination host the tool would
+   *  send data to (e.g. `api.example.com`), so the human reviews a
+   *  *data-egress* decision and not just a verb. `None` for built-in /
+   *  loopback / stdio servers, which have no meaningful external destination
+   *  (the card treats a `None` here as a local call).
+   */
+  dest_host?: string
   /** Tool input parameters */
   input: unknown
   /** MCP server requesting tool execution (display name) */
@@ -5120,6 +5456,40 @@ export interface SSEChatStreamStartedData {
   conversation_id: string
   /** User message ID (None if resuming with tool approvals or regenerating) */
   user_message_id?: string
+}
+
+/**
+ * Data for the `subAgentActivity` SSE event (ITEM-4 / DEC-65). Emitted live
+ *  during the turn when a `delegate` fan-out spawns its children (all
+ *  running/pending) and again as each child settles (completed/failed),
+ *  carrying the FULL current child list (idempotent last-wins snapshot, like
+ *  `taskListChanged`) so the timeline `SubAgentActivityCard` re-renders in
+ *  place. Delivered via `publish_raw_event` (the raw/ephemeral side-channel,
+ *  not the replay-buffered generation frames). `run_id` is the PARENT agent
+ *  run; the chat FE attaches it to the in-flight assistant message.
+ */
+export interface SSEChatStreamSubAgentActivityData {
+  /** The full current sub-agent list (idempotent snapshot; not a delta). */
+  children: SubAgentActivityChildDto[]
+  /** The parent agent run whose fan-out this is. */
+  run_id: string
+}
+
+/**
+ * Data for the `taskListChanged` SSE event (ITEM-36 / DEC-56). Emitted live
+ *  during the turn each time the agent's `task_*` core tools mutate the durable
+ *  list, carrying the FULL current list (small) so a surface — the chat
+ *  `TaskListChecklist` — re-renders in place without a refetch. Mirrors the
+ *  `mcpToolProgress` live side-channel event (routed via `publish_raw_event`,
+ *  not the replay-buffered generation frames). The `run_id` keys the run-scoped
+ *  surfaces; the chat FE additionally attaches it to the in-flight assistant
+ *  message it is currently streaming.
+ */
+export interface SSEChatStreamTaskListChangedData {
+  /** The full current task list (idempotent snapshot; not a delta). */
+  items: TaskListItemDto[]
+  /** The agent run whose task list changed. */
+  run_id: string
 }
 
 /** Data for the TitleUpdated SSE event */
@@ -5444,6 +5814,10 @@ export type SSEWorkflowRunEvent = {
  */
 export type SandboxAvailability = 'ready' | 'disabled_in_config' | 'host_unsupported' | 'cloud_imds_refused' | 'workspace_init_failed' | 'pool_missing' | 'not_initialized'
 
+export interface SandboxDecl {
+  flavor: string
+}
+
 /**
  * REST response for the MCP-server form's sandbox flavor picker:
  *  the selectable rootfs flavors plus the host command allowlist.
@@ -5482,6 +5856,15 @@ export interface ScheduledTask {
   allowed_unattended_tools: unknown
   assistant_id?: string
   bound_conversation_id?: string
+  /**
+   * ITEM-24 / DEC-61/62/63: the goal-seeking "done when…" completion condition.
+   *  When set (on a `self_paced` prompt task), each fired turn's result is judged
+   *  by an isolated cheap-model evaluator against this natural-language condition;
+   *  'done' self-stops the loop, 'not_done' re-arms another turn until
+   *  `goal_seek_max_turns` / the `max_horizon_days` backstop → stop 'incomplete'.
+   *  NULL ⇒ an ordinary (non-goal-seeking) task.
+   */
+  completion_condition?: string
   consecutive_failures: number
   created_at: string
   cron_expr?: string
@@ -5547,6 +5930,12 @@ export interface ScheduledTaskRun {
 export interface SchedulerAdminSettings {
   max_active_tasks_per_user: number
   max_consecutive_failures: number
+  /**
+   * ITEM-21 / DEC-45: the absolute self-paced backstop (days). A self-paced
+   *  task's model-proposed delay is clamped to at most this, and the task
+   *  self-stops `max_horizon_days` after creation. Default 7, range 1..=365.
+   */
+  max_horizon_days: number
   min_interval_seconds: number
   notification_retention_days: number
   updated_at: string
@@ -5625,6 +6014,22 @@ export interface ServerGroupsRequest {
   group_ids: string[]
 }
 
+/** GET response: the server's advertised tools, each with its effective mode. */
+export interface ServerToolApprovalsResponse {
+  /** Fallback applied to any tool without an explicit override. */
+  server_default_mode: ApprovalMode
+  server_id: string
+  /** Advertised tools (∪ any override-keyed tool not in the advertised set). */
+  tools: ToolApprovalEntry[]
+  /**
+   * True when the live `tools/list` probe failed — `tools` then lists only
+   *  tools that already carry an override (the advertised set is unknown).
+   */
+  tools_unreachable: boolean
+  /** Human reason when `tools_unreachable`. */
+  unreachable_reason?: string
+}
+
 /** Deployment-wide JWT session settings (singleton row). Returned by GET. */
 export interface SessionSettings {
   /** Access-token TTL in hours (1..=8760). */
@@ -5689,6 +6094,23 @@ export interface SetTimeoutRequest {
   timeout_secs: number
 }
 
+/** PUT body: the override to set, or `null`/omitted to CLEAR it. */
+export interface SetToolApprovalRequest {
+  /**
+   * `null` or omitted clears the override (the tool falls back to the server
+   *  default). Otherwise sets the per-tool override to this mode.
+   */
+  mode?: ApprovalMode
+}
+
+/** PUT response: the tool's effective mode after the change. */
+export interface SetToolApprovalResponse {
+  effective_mode: ApprovalMode
+  has_override: boolean
+  server_id: string
+  tool_name: string
+}
+
 export interface SettingItem {
   key: string
   value: string
@@ -5719,6 +6141,14 @@ export interface SetupAdminRequest {
 export interface SetupStatusResponse {
   needs_setup: boolean
 }
+
+/**
+ * Severity of a validation finding. Errors BLOCK install; warnings are
+ *  surfaced (e.g. via the `/validate` endpoint's `warnings` array) but do
+ *  NOT fail install — they preserve the Phase-1 escape hatch for
+ *  under-specified workflows (plan §4.1 pattern (b)).
+ */
+export type Severity = 'error' | 'warning'
 
 export interface SimpleResponse {
   message: string
@@ -5828,6 +6258,48 @@ export interface SnapshotDto {
 
 export type StartInstanceRequest = any
 
+export type StepDef = {
+  kind: 'llm'
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  tools?: string[]
+} | {
+  for_each: string
+  item_var: string
+  kind: 'llm_map'
+  max_parallel?: number
+  max_retries?: number
+  on_error?: OnError
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  tools?: string[]
+} | {
+  kind: 'sandbox'
+  run: string
+  stdin?: string | null
+  timeout_ms?: number
+} | {
+  data?: unknown
+  kind: 'elicit'
+  schema: unknown
+  timeout_ms?: number
+} | {
+  arguments?: unknown
+  kind: 'tool'
+  server: string
+  tool: string
+} | {
+  kind: 'agent'
+  max_steps?: number
+  output_format?: OutputFormat
+  prompt?: string | null
+  prompt_file?: string | null
+  servers?: string[]
+  system?: string | null
+}
+
 /** Stream error information */
 export interface StreamError {
   code?: string
@@ -5837,6 +6309,29 @@ export interface StreamError {
 export interface StylesResponse {
   styles: string[]
 }
+
+/**
+ * One delegated sub-agent on the wire (ITEM-4 / DEC-65) — the server-side DTO
+ *  mirror of `agent_core::SubAgentChild`. `id` is the child's run id; `label`
+ *  the friendly per-child descriptor (its objective / role). A thin DTO (with a
+ *  `From<agent_core::SubAgentChild>`) rather than putting the agent-core type on
+ *  the wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.
+ *  Fields are snake_case to match the FE `SubAgentChildVM` (`agentActivity.ts`).
+ */
+export interface SubAgentActivityChildDto {
+  id: string
+  label: string
+  status: SubAgentActivityChildStatus
+}
+
+/**
+ * The live status of one delegated sub-agent on the wire (Group A / ITEM-4 /
+ *  DEC-65). A thin server-side mirror of `agent_core::SubAgentChildStatus`
+ *  (kept separate so it can `#[derive(schemars::JsonSchema)]` and keep the
+ *  crate boundary clean). Snake-case so the FE `SubAgentChildStatus` union
+ *  (`agentActivity.ts`) consumes it unchanged.
+ */
+export type SubAgentActivityChildStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 export interface SuccessResponse {
   message: string
@@ -5937,7 +6432,7 @@ export interface SyncConnectedData {
  *  entities' audiences aligned with the read-permission gating their
  *  refetch endpoint enforces.
  */
-export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'voice_settings' | 'voice_runtime_version' | 'voice_model' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
+export type SyncEntity = 'project' | 'memory' | 'memory_settings' | 'assistant' | 'mcp_server' | 'profile' | 'api_key' | 'web_search_user_key' | 'lit_search_user_key' | 'conversation' | 'file' | 'mcp_tool_call' | 'file_index_state' | 'knowledge_base' | 'knowledge_base_document' | 'mcp_defaults' | 'deliverable' | 'llm_provider' | 'llm_model' | 'group' | 'user' | 'assistant_template' | 'mcp_server_system' | 'llm_repository' | 'runtime_version' | 'runtime_settings' | 'memory_admin_settings' | 'file_rag_admin_settings' | 'assistant_core_memory' | 'code_sandbox_settings' | 'agent_admin_settings' | 'js_tool_settings' | 'code_sandbox_rootfs_version' | 'hub_settings' | 'auth_provider' | 'summarization_admin_settings' | 'session_settings' | 'web_search_settings' | 'lit_search_settings' | 'voice_settings' | 'voice_runtime_version' | 'voice_model' | 'mcp_user_policy' | 'scheduler_admin_settings' | 'bibliography_entry' | 'scheduled_task' | 'notification' | 'user_llm_provider' | 'user_mcp_server' | 'session' | 'skill' | 'skill_system' | 'workflow' | 'workflow_system' | 'workflow_run' | 'onboarding'
 
 /** The change notification pushed to clients. Notify-and-refetch only. */
 export interface SyncEvent {
@@ -5951,6 +6446,32 @@ export type SyncSseEvent = {
 } | {
   sync: SyncEvent
 }
+
+/**
+ * One agent task-list item on the wire (ITEM-36 / DEC-54) — the server-side DTO
+ *  mirror of `agent_core::TaskItem`. `content` is the imperative form
+ *  ("Run tests"); `active_form` the present-continuous form ("Running tests")
+ *  the FE emphasises while the item is `in_progress`. A thin DTO (with a
+ *  `From<agent_core::TaskItem>`) rather than putting the agent-core type on the
+ *  wire keeps the crates decoupled and lets it carry `schemars::JsonSchema`.
+ *  Fields are snake_case to match the FE `TaskItemVM` (`agentActivity.ts`).
+ */
+export interface TaskListItemDto {
+  active_form: string
+  content: string
+  id: string
+  status: TaskListItemStatus
+}
+
+/**
+ * The lifecycle status of one agent task-list item on the wire (ITEM-36 /
+ *  DEC-54). A thin server-side mirror of `agent_core::TaskStatus` — kept
+ *  separate so it can `#[derive(schemars::JsonSchema)]` (agent-core's enum
+ *  deliberately does not depend on schemars) and so the crate boundary stays
+ *  clean. Snake-case on the wire so `in_progress` reaches the FE
+ *  `TaskItemStatus` union (`pending | in_progress | completed`) unchanged.
+ */
+export type TaskListItemStatus = 'pending' | 'in_progress' | 'completed'
 
 export type TaskStatus = 'running' | 'completed' | 'failed'
 
@@ -6123,6 +6644,18 @@ export interface ToolApprovalDecision {
   tool_use_id: string
 }
 
+/** One advertised tool + its effective admin approval mode. */
+export interface ToolApprovalEntry {
+  /** Advertised tool description (absent for override-only / unreachable tools). */
+  description?: string
+  /** Effective admin mode = per-tool override ?? the server default. */
+  effective_mode: ApprovalMode
+  /** True when an explicit per-tool override is set (vs the server default). */
+  has_override: boolean
+  /** Advertised tool name. */
+  tool_name: string
+}
+
 export type ToolContent = any
 
 /** Identifies a specific tool on a specific server */
@@ -6195,6 +6728,40 @@ export interface UnattendedToolGrant {
 /** Unread-count response. */
 export interface UnreadCount {
   unread: number
+}
+
+/**
+ * Partial-update request for the singleton. Every field optional (COALESCE
+ *  PATCH); the two nullable columns use the `Option<Option<T>>` tri-state:
+ *    missing  → `None`         → leave the column alone
+ *    `null`   → `Some(None)`   → clear the column back to its default
+ *    value    → `Some(Some(v))`→ set the column
+ */
+export interface UpdateAgentAdminSettingsRequest {
+  default_max_steps?: number
+  default_sandbox_mode?: string
+  /**
+   * On-demand `delegate` enable switch (ITEM-2 / DEC-2). Plain bool (no
+   *  bounds), COALESCE-patched like `reviewer_enabled`.
+   */
+  delegate_enabled?: boolean
+  fan_out_max_children_per_call?: number
+  fan_out_max_depth?: number
+  fan_out_max_threads?: number
+  /**
+   * Goal-seeking evaluator model (DEC-61) — tri-state (null ⇒ clear back to
+   *  "use the run's own model").
+   */
+  goal_eval_model_id?: string
+  /** Max goal-seeking turns (DEC-62), 1..=50. */
+  goal_seek_max_turns?: number
+  per_run_token_cap?: number
+  per_step_token_cap?: number
+  reviewer_enabled?: boolean
+  reviewer_model_id?: string
+  reviewer_policy?: string
+  reviewer_risk_thresholds?: unknown
+  unattended_approval_policy?: string
 }
 
 /** Request structure for updating an existing assistant */
@@ -6590,6 +7157,7 @@ export interface UpdateScheduledTask {
 export interface UpdateSchedulerAdminSettings {
   max_active_tasks_per_user: number
   max_consecutive_failures: number
+  max_horizon_days: number
   min_interval_seconds: number
   notification_retention_days: number
 }
@@ -6933,6 +7501,17 @@ export interface UserProvidersQuery {
   offset?: number
 }
 
+/**
+ * Response of `POST /api/workflows/validate-def` — structured validation
+ *  findings (split by severity) plus a dry-run cost estimate for a posted
+ *  `WorkflowDef`. Returned with a 200 even when `errors` is non-empty.
+ */
+export interface ValidateDefResponse {
+  cost_estimate: DryRunResult
+  errors: ValidationError[]
+  warnings: ValidationError[]
+}
+
 export interface ValidateErrorEntry {
   code: string
   /**
@@ -6976,6 +7555,23 @@ export interface ValidateWorkflowResponse {
   steps: number
   valid: boolean
   warnings: ValidateErrorEntry2[]
+}
+
+export interface ValidationError {
+  code: string
+  layer: string
+  /**
+   * Optional step id / output name / inputs.foo path for FE
+   *  rendering.
+   */
+  location?: string
+  message: string
+  /**
+   * `Error` (blocks install) or `Warning` (surfaced, non-blocking).
+   *  Defaults to `Error` for all existing call sites; only the
+   *  type-aware ref checker (`ref_check.rs`) emits warnings.
+   */
+  severity?: Severity
 }
 
 /**
@@ -7249,6 +7845,23 @@ export interface Workflow {
   version?: string
 }
 
+export interface WorkflowDef {
+  $schema?: string
+  expose_logs?: ExposeLogs
+  inputs?: InputDef[]
+  /**
+   * Workflow-declared wall-clock cap in seconds. `None` → the engine default
+   *  (`RUN_WALL_CLOCK`). `Some(0)` → UNBOUNDED (no wall-clock — for long runs on
+   *  a user-owned machine). The effective value is live-adjustable per run via
+   *  `PUT /workflow-runs/{id}/timeout`. The per-run token + output-byte caps stay
+   *  as the resource backstops regardless.
+   */
+  max_runtime_secs?: number
+  outputs?: OutputDef[]
+  sandbox?: SandboxDecl
+  steps?: StepDef[]
+}
+
 export interface WorkflowFromHubResponse {
   hub_tracking: HubEntity
   workflow: Workflow
@@ -7290,6 +7903,13 @@ export interface WorkflowRun {
   final_output_json?: unknown
   id: string
   inputs_json: unknown
+  /**
+   * Orthogonal background-run discriminator (raw DB text; parse with
+   *  [`JobKind::from_db_str`]). `'workflow'` for the classic YAML-DAG run.
+   *  Kept as `String` (not the enum) so an unknown value from a newer server
+   *  round-trips without a deserialization failure — same posture as `status`.
+   */
+  job_kind: string
   model_id?: string
   pending_elicitation_json?: unknown
   run_kind: string
@@ -7308,7 +7928,12 @@ export interface WorkflowRun {
   total_tokens: number
   updated_at: string
   user_id: string
-  workflow_id: string
+  /**
+   * NULL for a generalized background run (`job_kind != 'workflow'`) — a
+   *  sub-agent turn / sandbox exec has no backing `workflows` bundle
+   *  (ITEM-14 / DEC-22). Always set for a classic `workflow`-kind run.
+   */
+  workflow_id?: string
 }
 
 export interface WorkflowRunListResponse {
@@ -7390,8 +8015,787 @@ export interface WorkspaceSaveRequest {
   scope?: string
 }
 
+// =============================================================================
+// PERMISSIONS
+// =============================================================================
+
+export enum Permissions {
+  AgentSettingsManage = 'agent::settings::manage',
+  AgentSettingsRead = 'agent::settings::read',
+  AssistantsCreate = 'assistants::create',
+  AssistantsDelete = 'assistants::delete',
+  AssistantsEdit = 'assistants::edit',
+  AssistantsRead = 'assistants::read',
+  AssistantsTemplateCreate = 'assistant_templates::create',
+  AssistantsTemplateDelete = 'assistant_templates::delete',
+  AssistantsTemplateEdit = 'assistant_templates::edit',
+  AssistantsTemplateRead = 'assistant_templates::read',
+  AuthProvidersManage = 'auth_providers::manage',
+  AuthProvidersRead = 'auth_providers::read',
+  BackgroundUse = 'background::use',
+  BranchesCreate = 'branches::create',
+  BranchesSwitch = 'branches::switch',
+  CitationsManage = 'citations::manage',
+  CitationsUse = 'citations::use',
+  CodeSandboxEnvironmentsManage = 'code_sandbox::environments::manage',
+  CodeSandboxEnvironmentsRead = 'code_sandbox::environments::read',
+  CodeSandboxResourceLimitsManage = 'code_sandbox::resource_limits::manage',
+  CodeSandboxResourceLimitsRead = 'code_sandbox::resource_limits::read',
+  ConversationsCreate = 'conversations::create',
+  ConversationsDelete = 'conversations::delete',
+  ConversationsEdit = 'conversations::edit',
+  ConversationsRead = 'conversations::read',
+  CoreMemoryRead = 'memory::core::read',
+  CoreMemoryWrite = 'memory::core::write',
+  FileRagAdminManage = 'file_rag::admin::manage',
+  FileRagAdminRead = 'file_rag::admin::read',
+  FilesDelete = 'files::delete',
+  FilesDownload = 'files::download',
+  FilesGenerateToken = 'files::generate_token',
+  FilesPreview = 'files::preview',
+  FilesRead = 'files::read',
+  FilesUpload = 'files::upload',
+  GroupsAssignUsers = 'groups::assign_users',
+  GroupsCreate = 'groups::create',
+  GroupsDelete = 'groups::delete',
+  GroupsEdit = 'groups::edit',
+  GroupsRead = 'groups::read',
+  HardwareMonitor = 'hardware::monitor',
+  HardwareRead = 'hardware::read',
+  HostMountManage = 'host_mount::manage',
+  HostMountRead = 'host_mount::read',
+  HubAssistantsCreate = 'hub::assistants::create',
+  HubAssistantsRead = 'hub::assistants::read',
+  HubAssistantsRefresh = 'hub::assistants::refresh',
+  HubAssistantsVersionRead = 'hub::assistants::read_version',
+  HubCatalogManage = 'hub::catalog::manage',
+  HubCatalogRead = 'hub::catalog::read',
+  HubMcpServersCreate = 'hub::mcp_servers::create',
+  HubMCPServersRead = 'hub::mcp_servers::read',
+  HubMCPServersRefresh = 'hub::mcp_servers::refresh',
+  HubMCPServersVersionRead = 'hub::mcp_servers::read_version',
+  HubModelsCreate = 'hub::models::download',
+  HubModelsRead = 'hub::models::read',
+  HubModelsRefresh = 'hub::models::refresh',
+  HubModelsVersionRead = 'hub::models::read_version',
+  JsToolSettingsManage = 'js_tool::settings::manage',
+  JsToolSettingsRead = 'js_tool::settings::read',
+  KnowledgeBaseManage = 'knowledge_base::manage',
+  KnowledgeBaseUse = 'knowledge_base::use',
+  LitSearchAdminManage = 'lit_search::admin::manage',
+  LitSearchAdminRead = 'lit_search::admin::read',
+  LitSearchUse = 'lit_search::use',
+  LlmModelsCreate = 'llm_models::create',
+  LlmModelsDelete = 'llm_models::delete',
+  LlmModelsDownloadsCancel = 'llm_models::downloads_cancel',
+  LlmModelsDownloadsDelete = 'llm_models::downloads_delete',
+  LlmModelsDownloadsRead = 'llm_models::downloads_read',
+  LlmModelsEdit = 'llm_models::edit',
+  LlmModelsRead = 'llm_models::read',
+  LlmProvidersAssignGroups = 'llm_providers::assign_groups',
+  LlmProvidersCreate = 'llm_providers::create',
+  LlmProvidersDelete = 'llm_providers::delete',
+  LlmProvidersEdit = 'llm_providers::edit',
+  LlmProvidersRead = 'llm_providers::read',
+  LlmRepositoriesCreate = 'llm_repositories::create',
+  LlmRepositoriesDelete = 'llm_repositories::delete',
+  LlmRepositoriesEdit = 'llm_repositories::edit',
+  LlmRepositoriesRead = 'llm_repositories::read',
+  LocalRuntimeLogs = 'llm_local_runtime::logs',
+  LocalRuntimeManage = 'llm_local_runtime::manage',
+  LocalRuntimeRead = 'llm_local_runtime::read',
+  McpServersAdminCreate = 'mcp_servers_admin::create',
+  McpServersAdminDelete = 'mcp_servers_admin::delete',
+  McpServersAdminEdit = 'mcp_servers_admin::edit',
+  McpServersAdminRead = 'mcp_servers_admin::read',
+  McpServersCreate = 'mcp_servers::create',
+  McpServersDelete = 'mcp_servers::delete',
+  McpServersEdit = 'mcp_servers::edit',
+  McpServersRead = 'mcp_servers::read',
+  McpUserPolicyEdit = 'mcp_user_policy::edit',
+  MemoryAdminManage = 'memory::admin::manage',
+  MemoryAdminRead = 'memory::admin::read',
+  MemoryRead = 'memory::read',
+  MemoryWrite = 'memory::write',
+  MessagesCreate = 'messages::create',
+  MessagesDelete = 'messages::delete',
+  MessagesRead = 'messages::read',
+  NotificationsRead = 'notifications::read',
+  ProfileEdit = 'profile::edit',
+  ProfileRead = 'profile::read',
+  ProjectsCreate = 'projects::create',
+  ProjectsDelete = 'projects::delete',
+  ProjectsEdit = 'projects::edit',
+  ProjectsRead = 'projects::read',
+  RemoteAccessManage = 'remote_access::manage',
+  RemoteAccessRead = 'remote_access::read',
+  RuntimeSettingsManage = 'llm_local_runtime::settings_manage',
+  RuntimeSettingsRead = 'llm_local_runtime::settings_read',
+  RuntimeVersionCreate = 'llm_local_runtime::create',
+  RuntimeVersionDelete = 'llm_local_runtime::delete',
+  RuntimeVersionRead = 'llm_local_runtime::versions_read',
+  RuntimeVersionUpdate = 'llm_local_runtime::update',
+  SchedulerAdminManage = 'scheduler::admin::manage',
+  SchedulerAdminRead = 'scheduler::admin::read',
+  SchedulerUse = 'scheduler::use',
+  ServerUpdateRead = 'server_update::read',
+  SessionSettingsManage = 'auth::session_settings::manage',
+  SessionSettingsRead = 'auth::session_settings::read',
+  SkillsAssignToGroups = 'skills::assign_to_groups',
+  SkillsInstall = 'skills::install',
+  SkillsManageSystem = 'skills::manage_system',
+  SkillsRead = 'skills::read',
+  SummarizationSettingsManage = 'summarization::settings::manage',
+  SummarizationSettingsRead = 'summarization::settings::read',
+  UserLlmProvidersRead = 'user_llm_providers::read',
+  UsersCreate = 'users::create',
+  UsersDelete = 'users::delete',
+  UsersEdit = 'users::edit',
+  UsersRead = 'users::read',
+  UsersResetPassword = 'users::reset_password',
+  UsersToggleStatus = 'users::toggle_status',
+  VoiceAdminManage = 'voice::admin::manage',
+  VoiceAdminRead = 'voice::admin::read',
+  VoiceTranscribe = 'voice::transcribe',
+  WebSearchAdminManage = 'web_search::admin::manage',
+  WebSearchAdminRead = 'web_search::admin::read',
+  WebSearchUse = 'web_search::use',
+  WorkflowsAssignToGroups = 'workflows::assign_to_groups',
+  WorkflowsExecute = 'workflows::execute',
+  WorkflowsInstall = 'workflows::install',
+  WorkflowsManage = 'workflows::manage',
+  WorkflowsManageSystem = 'workflows::manage_system',
+  WorkflowsRead = 'workflows::read'
+}
+
+export const PermissionDescriptions: Record<string, string> = {
+  AgentSettingsManage: 'Update the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).',
+  AgentSettingsRead: 'Read the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).',
+  AssistantsCreate: 'Create user assistants',
+  AssistantsDelete: 'Delete user assistants',
+  AssistantsEdit: 'Edit user assistants',
+  AssistantsRead: 'Read user assistants',
+  AssistantsTemplateCreate: 'Create system-wide template assistants',
+  AssistantsTemplateDelete: 'Delete system-wide template assistants',
+  AssistantsTemplateEdit: 'Edit system-wide template assistants',
+  AssistantsTemplateRead: 'Read system-wide template assistants',
+  AuthProvidersManage: 'Create, update, delete, enable/disable, and test auth providers.',
+  AuthProvidersRead: 'List configured auth providers and view their (masked) config.',
+  BackgroundUse: 'Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.',
+  BranchesCreate: 'Create message branches for edit/regenerate',
+  BranchesSwitch: 'Switch between conversation branches',
+  CitationsManage: 'Create, import, verify, remove, and organize citations + CSL styles.',
+  CitationsUse: 'Use the citation tools and read your bibliography library.',
+  CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
+  CodeSandboxEnvironmentsRead: 'List rootfs versions and watch install progress.',
+  CodeSandboxResourceLimitsManage: 'Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.',
+  CodeSandboxResourceLimitsRead: 'Read the sandbox resource limits configuration.',
+  ConversationsCreate: 'Create new chat conversations',
+  ConversationsDelete: 'Delete chat conversations',
+  ConversationsEdit: 'Edit conversation titles and metadata',
+  ConversationsRead: 'View chat conversations',
+  CoreMemoryRead: 'Read own assistant core memory blocks.',
+  CoreMemoryWrite: 'Upsert / delete own assistant core memory blocks.',
+  FileRagAdminManage: 'Update Document-RAG admin settings, trigger re-embed and backfill.',
+  FileRagAdminRead: 'Read Document-RAG admin settings (embedding model, tuning).',
+  FilesDelete: 'Delete files',
+  FilesDownload: 'Download file content',
+  FilesGenerateToken: 'Generate download tokens',
+  FilesPreview: 'View file thumbnails and previews',
+  FilesRead: 'View file metadata and list files',
+  FilesUpload: 'Upload new files',
+  GroupsAssignUsers: 'Assign users to groups and remove users from groups',
+  GroupsCreate: 'Create new groups',
+  GroupsDelete: 'Delete non-system groups',
+  GroupsEdit: 'Edit existing group information and permissions',
+  GroupsRead: 'View groups and group information',
+  HardwareMonitor: 'Monitor real-time hardware usage',
+  HardwareRead: 'View hardware information',
+  HostMountManage: 'Configure host-folder mounts on projects/conversations and the host-mount policy.',
+  HostMountRead: 'Read host-folder mount configuration and policy.',
+  HubAssistantsCreate: 'Create assistants from hub',
+  HubAssistantsRead: 'View hub assistants',
+  HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
+  HubAssistantsVersionRead: 'View hub assistants version information',
+  HubCatalogManage: 'Refresh + activate hub catalog versions',
+  HubCatalogRead: 'View hub catalog versions + pending updates',
+  HubMcpServersCreate: 'Create MCP servers from hub',
+  HubMCPServersRead: 'View hub MCP servers',
+  HubMCPServersRefresh: 'Refresh hub MCP servers from GitHub',
+  HubMCPServersVersionRead: 'View hub MCP servers version information',
+  HubModelsCreate: 'Download models from hub',
+  HubModelsRead: 'View hub models',
+  HubModelsRefresh: 'Refresh hub models from GitHub',
+  HubModelsVersionRead: 'View hub models version information',
+  JsToolSettingsManage: 'Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.',
+  JsToolSettingsRead: 'Read the run_js (js_tool) resource-limits configuration.',
+  KnowledgeBaseManage: 'Create, rename, delete knowledge bases and manage their documents.',
+  KnowledgeBaseUse: 'Search your knowledge bases and attach them to conversations/projects.',
+  LitSearchAdminManage: 'Update literature search settings, active sources, and source API keys.',
+  LitSearchAdminRead: 'Read literature search settings (enable, active sources, caps).',
+  LitSearchUse: 'Use the literature search + screening tools.',
+  LlmModelsCreate: 'Create new LLM models',
+  LlmModelsDelete: 'Delete LLM models',
+  LlmModelsDownloadsCancel: 'Cancel active downloads',
+  LlmModelsDownloadsDelete: 'Delete download instances',
+  LlmModelsDownloadsRead: 'Read download instances',
+  LlmModelsEdit: 'Edit existing LLM models',
+  LlmModelsRead: 'Read LLM models',
+  LlmProvidersAssignGroups: 'Assign LLM providers to user groups',
+  LlmProvidersCreate: 'Create new LLM provider configurations',
+  LlmProvidersDelete: 'Delete non-built-in LLM providers',
+  LlmProvidersEdit: 'Edit existing LLM provider information and settings',
+  LlmProvidersRead: 'View LLM providers and list available providers',
+  LlmRepositoriesCreate: 'Create new LLM repositories',
+  LlmRepositoriesDelete: 'Delete non-built-in LLM repositories',
+  LlmRepositoriesEdit: 'Edit existing LLM repository information and authentication',
+  LlmRepositoriesRead: 'View LLM repositories and list repositories',
+  LocalRuntimeLogs: 'View runtime instance logs',
+  LocalRuntimeManage: 'Start, stop, and restart local LLM runtime instances',
+  LocalRuntimeRead: 'View local LLM runtime instances and their status',
+  McpServersAdminCreate: 'Create system MCP servers',
+  McpServersAdminDelete: 'Delete system MCP servers',
+  McpServersAdminEdit: 'Edit system MCP servers and manage group assignments',
+  McpServersAdminRead: 'View system MCP servers',
+  McpServersCreate: 'Create MCP servers',
+  McpServersDelete: 'Delete MCP servers',
+  McpServersEdit: 'Edit MCP servers',
+  McpServersRead: 'View MCP servers',
+  McpUserPolicyEdit: 'Edit MCP user policy (allowed transports + sandbox flavor)',
+  MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
+  MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
+  MemoryRead: 'List and read own memories.',
+  MemoryWrite: 'Create, edit, and delete own memories.',
+  MessagesCreate: 'Send messages in conversations',
+  MessagesDelete: 'Delete messages from conversations',
+  MessagesRead: 'Read messages in conversations',
+  NotificationsRead: 'Read and manage your own notifications.',
+  ProfileEdit: 'Edit own profile information',
+  ProfileRead: 'View own profile information',
+  ProjectsCreate: 'Create chat projects',
+  ProjectsDelete: 'Delete chat projects',
+  ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
+  ProjectsRead: 'Read chat projects',
+  RemoteAccessManage: 'Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.',
+  RemoteAccessRead: 'Read remote-access settings, tunnel status, and current public URL.',
+  RuntimeSettingsManage: 'Modify runtime singleton settings (idle/auto-start/drain)',
+  RuntimeSettingsRead: 'Read runtime singleton settings (idle/auto-start/drain)',
+  RuntimeVersionCreate: 'Download and register new runtime versions',
+  RuntimeVersionDelete: 'Delete runtime versions',
+  RuntimeVersionRead: 'View runtime versions and check for updates',
+  RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  SchedulerAdminManage: 'Change deployment-wide scheduler settings.',
+  SchedulerAdminRead: 'View deployment-wide scheduler settings.',
+  SchedulerUse: 'Create, run, test, and manage your own scheduled/recurring tasks.',
+  ServerUpdateRead: 'View the cached server update-availability status.',
+  SessionSettingsManage: 'Update session settings (access-token TTL + max session length).',
+  SessionSettingsRead: 'Read session settings (access-token TTL + max session length).',
+  SkillsAssignToGroups: 'Manage group assignments for system-scope skills',
+  SkillsInstall: 'Install user-scope skills (from hub or local import)',
+  SkillsManageSystem: 'Install / edit / delete system-scope skills (admin)',
+  SkillsRead: 'View installed skills',
+  SummarizationSettingsManage: 'Update deployment-wide summarization settings (enable, model, thresholds, prompts).',
+  SummarizationSettingsRead: 'Read deployment-wide summarization settings (model + thresholds + prompt overrides).',
+  UserLlmProvidersRead: 'View available LLM providers and models',
+  UsersCreate: 'Create new user accounts',
+  UsersDelete: 'Delete user accounts',
+  UsersEdit: 'Edit existing user information',
+  UsersRead: 'View user information and list users',
+  UsersResetPassword: 'Reset user passwords',
+  UsersToggleStatus: 'Enable or disable user accounts',
+  VoiceAdminManage: 'Update voice settings, manage whisper runtime versions and models, and control the instance.',
+  VoiceAdminRead: 'Read voice dictation settings, runtime versions, model and instance state.',
+  VoiceTranscribe: 'Record audio and transcribe it into the chat composer.',
+  WebSearchAdminManage: 'Update web search settings, provider chain, and provider API keys.',
+  WebSearchAdminRead: 'Read web search settings (enable, provider chain, caps).',
+  WebSearchUse: 'Use the web search + page-fetch tools.',
+  WorkflowsAssignToGroups: 'Manage group assignments for system-scope workflows',
+  WorkflowsExecute: 'Kick off a workflow run',
+  WorkflowsInstall: 'Install user-scope workflows',
+  WorkflowsManage: 'Edit / delete own user-scope workflows',
+  WorkflowsManageSystem: 'Install / edit / delete system-scope workflows (admin)',
+  WorkflowsRead: 'View installed workflows'
+}
+
+// =============================================================================
+// API ENDPOINTS
+// =============================================================================
+
+// API endpoint definitions
+export const ApiEndpoints = {
+  'AgentAdmin.get': 'GET /api/agent/settings',
+  'AgentAdmin.update': 'PUT /api/agent/settings',
+  'App.getSetupStatus': 'GET /api/app/setup/status',
+  'App.setupAdmin': 'POST /api/app/setup/admin',
+  'Assistant.create': 'POST /api/assistants',
+  'Assistant.delete': 'DELETE /api/assistants/{id}',
+  'Assistant.get': 'GET /api/assistants/{id}',
+  'Assistant.getDefault': 'GET /api/assistants/default',
+  'Assistant.list': 'GET /api/assistants',
+  'Assistant.update': 'PUT /api/assistants/{id}',
+  'AssistantTemplate.create': 'POST /api/assistant-templates',
+  'AssistantTemplate.delete': 'DELETE /api/assistant-templates/{id}',
+  'AssistantTemplate.get': 'GET /api/assistant-templates/{id}',
+  'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
+  'AssistantTemplate.list': 'GET /api/assistant-templates',
+  'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.changePassword': 'POST /api/auth/password',
+  'Auth.getConfig': 'GET /api/auth/config',
+  'Auth.getSessionSettings': 'GET /api/auth/session-settings',
+  'Auth.linkAccount': 'POST /api/auth/link-account',
+  'Auth.listProviders': 'GET /api/auth/providers',
+  'Auth.login': 'POST /api/auth/login',
+  'Auth.loginPasswordOnly': 'POST /api/auth/login-password-only',
+  'Auth.logout': 'POST /api/auth/logout',
+  'Auth.magicLinkExchange': 'POST /api/auth/magic-link/exchange',
+  'Auth.magicLinkIssue': 'POST /api/auth/magic-link/issue',
+  'Auth.me': 'GET /api/auth/me',
+  'Auth.refresh': 'POST /api/auth/refresh',
+  'Auth.register': 'POST /api/auth/register',
+  'Auth.updateProfile': 'POST /api/auth/profile',
+  'Auth.updateSessionSettings': 'PUT /api/auth/session-settings',
+  'AuthProviders.create': 'POST /api/admin/auth-providers',
+  'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
+  'AuthProviders.list': 'GET /api/admin/auth-providers',
+  'AuthProviders.test': 'POST /api/admin/auth-providers/{id}/test',
+  'AuthProviders.testConfig': 'POST /api/admin/auth-providers/test-config',
+  'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
+  'Background.cancelRun': 'POST /api/background/runs/{run_id}/cancel',
+  'Background.getRun': 'GET /api/background/runs/{run_id}',
+  'Background.listRunNotes': 'GET /api/background/runs/{run_id}/notes',
+  'Background.listRuns': 'GET /api/background/runs',
+  'Background.postRunNote': 'POST /api/background/runs/{run_id}/notes',
+  'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
+  'Branch.create': 'POST /api/conversations/{id}/branches',
+  'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
+  'Branch.list': 'GET /api/conversations/{id}/branches',
+  'Chat.exportConversation': 'GET /api/conversations/{id}/export',
+  'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'ChatStream.setSubscription': 'PUT /api/chat/stream/subscription',
+  'ChatStream.subscribe': 'GET /api/chat/stream',
+  'Citations.attachToProject': 'POST /api/projects/{project_id}/citations',
+  'Citations.delete': 'DELETE /api/citations/{id}',
+  'Citations.detachFromProject': 'DELETE /api/projects/{project_id}/citations/{entry_id}',
+  'Citations.export': 'GET /api/citations/export',
+  'Citations.import': 'POST /api/citations/import',
+  'Citations.list': 'GET /api/citations',
+  'Citations.listStyles': 'GET /api/citations/styles',
+  'Citations.reverify': 'POST /api/citations/reverify',
+  'Citations.verify': 'POST /api/citations/verify',
+  'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
+  'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
+  'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
+  'CodeSandbox.listFlavors': 'GET /api/code-sandbox/flavors',
+  'CodeSandbox.listRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
+  'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
+  'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
+  'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
+  'Conversation.compact': 'POST /api/conversations/{id}/compact',
+  'Conversation.create': 'POST /api/conversations',
+  'Conversation.delete': 'DELETE /api/conversations/{id}',
+  'Conversation.get': 'GET /api/conversations/{id}',
+  'Conversation.getMcpSettings': 'GET /api/conversations/{id}/mcp-settings',
+  'Conversation.getMemoryMode': 'GET /api/conversations/{id}/memory-mode',
+  'Conversation.getSummarizationMode': 'GET /api/conversations/{id}/summarization-mode',
+  'Conversation.list': 'GET /api/conversations',
+  'Conversation.setMemoryMode': 'PUT /api/conversations/{id}/memory-mode',
+  'Conversation.setSummarizationMode': 'PUT /api/conversations/{id}/summarization-mode',
+  'Conversation.update': 'PUT /api/conversations/{id}',
+  'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
+  'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
+  'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
+  'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
+  'DesktopBackend.status': 'GET /api/desktop/backend/status',
+  'DesktopSettings.delete': 'DELETE /api/desktop/settings/{key}',
+  'DesktopSettings.get': 'GET /api/desktop/settings/{key}',
+  'DesktopSettings.getAll': 'GET /api/desktop/settings',
+  'DesktopSettings.set': 'PUT /api/desktop/settings/{key}',
+  'File.appendVersion': 'POST /api/files/{file_id}/versions',
+  'File.delete': 'DELETE /api/files/{file_id}',
+  'File.download': 'GET /api/files/{file_id}/download',
+  'File.downloadVersion': 'GET /api/files/{file_id}/versions/{version}/download',
+  'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
+  'File.export': 'GET /api/files/{file_id}/export',
+  'File.generateDownloadToken': 'POST /api/files/{file_id}/download-token',
+  'File.get': 'GET /api/files/{file_id}',
+  'File.getHeadVersion': 'GET /api/files/{file_id}/head',
+  'File.getPreview': 'GET /api/files/{file_id}/preview',
+  'File.getRaw': 'GET /api/files/{file_id}/raw',
+  'File.getTextContent': 'GET /api/files/{file_id}/text',
+  'File.getTextRects': 'GET /api/files/{file_id}/text-rects',
+  'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
+  'File.getVersion': 'GET /api/files/{file_id}/versions/{version}',
+  'File.list': 'GET /api/files',
+  'File.listDeliverables': 'GET /api/conversations/{id}/deliverables',
+  'File.listVersions': 'GET /api/files/{file_id}/versions',
+  'File.pinDeliverable': 'POST /api/conversations/{id}/deliverables/{file_id}',
+  'File.previewVersion': 'GET /api/files/{file_id}/versions/{version}/preview',
+  'File.restore': 'POST /api/files/{file_id}/restore',
+  'File.textVersion': 'GET /api/files/{file_id}/versions/{version}/text',
+  'File.unpinDeliverable': 'DELETE /api/conversations/{id}/deliverables/{file_id}',
+  'File.upload': 'POST /api/files/upload',
+  'FileRagAdmin.backfill': 'POST /api/file-rag/backfill',
+  'FileRagAdmin.get': 'GET /api/file-rag/admin-settings',
+  'FileRagAdmin.reembed': 'POST /api/file-rag/admin-settings/reembed',
+  'FileRagAdmin.update': 'PUT /api/file-rag/admin-settings',
+  'Group.getProviders': 'GET /api/groups/{group_id}/providers',
+  'Group.getSystemServers': 'GET /api/groups/{group_id}/system-servers',
+  'Group.getSystemSkills': 'GET /api/groups/{group_id}/system-skills',
+  'Group.getSystemWorkflows': 'GET /api/groups/{group_id}/system-workflows',
+  'Group.updateProviders': 'PUT /api/groups/{group_id}/providers',
+  'Group.updateSystemServers': 'PUT /api/groups/{group_id}/system-servers',
+  'Group.updateSystemSkills': 'PUT /api/groups/{group_id}/system-skills',
+  'Group.updateSystemWorkflows': 'PUT /api/groups/{group_id}/system-workflows',
+  'Hardware.info': 'GET /api/hardware',
+  'Hardware.stream': 'GET /api/hardware/usage-stream',
+  'Health.check': 'GET /api/health',
+  'HostMount.getConversationMounts': 'GET /api/host-mounts/conversation/{conversation_id}',
+  'HostMount.getPolicy': 'GET /api/host-mounts/policy',
+  'HostMount.getProjectMounts': 'GET /api/host-mounts/project/{project_id}',
+  'HostMount.putConversationMounts': 'PUT /api/host-mounts/conversation/{conversation_id}',
+  'HostMount.putProjectMounts': 'PUT /api/host-mounts/project/{project_id}',
+  'HostMount.updatePolicy': 'PUT /api/host-mounts/policy',
+  'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
+  'Hub.createAssistantTemplateFromHub': 'POST /api/hub/assistant-templates/create',
+  'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
+  'Hub.createModelFromHub': 'POST /api/hub/models/download',
+  'Hub.createSkillFromHub': 'POST /api/skills/install-from-hub',
+  'Hub.createSystemMcpServerFromHub': 'POST /api/hub/mcp-servers/create-system',
+  'Hub.createSystemSkillFromHub': 'POST /api/skills/system/install-from-hub',
+  'Hub.createSystemWorkflowFromHub': 'POST /api/workflows/system/install-from-hub',
+  'Hub.createWorkflowFromHub': 'POST /api/workflows/install-from-hub',
+  'Hub.getAssistants': 'GET /api/hub/assistants',
+  'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
+  'Hub.getCatalog': 'GET /api/hub/index',
+  'Hub.getCatalogVersion': 'GET /api/hub/version',
+  'Hub.getInstalled': 'GET /api/hub/installed',
+  'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
+  'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
+  'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
+  'Hub.getManifest': 'GET /api/hub/manifest/{id}',
+  'Hub.getModels': 'GET /api/hub/models',
+  'Hub.getModelsVersion': 'GET /api/hub/models/version',
+  'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
+  'Hub.refreshCatalog': 'POST /api/hub/refresh',
+  'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
+  'Hub.refreshModels': 'POST /api/hub/models/refresh',
+  'JsTool.getSettings': 'GET /api/js-tool/settings',
+  'JsTool.updateSettings': 'PUT /api/js-tool/settings',
+  'KnowledgeBase.attachConversation': 'PUT /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.attachDocuments': 'POST /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.attachProject': 'PUT /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.create': 'POST /api/knowledge-bases',
+  'KnowledgeBase.delete': 'DELETE /api/knowledge-bases/{id}',
+  'KnowledgeBase.detachConversation': 'DELETE /api/conversations/{cid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.detachProject': 'DELETE /api/projects/{pid}/knowledge-bases/{kb_id}',
+  'KnowledgeBase.get': 'GET /api/knowledge-bases/{id}',
+  'KnowledgeBase.list': 'GET /api/knowledge-bases',
+  'KnowledgeBase.listConversation': 'GET /api/conversations/{cid}/knowledge-bases',
+  'KnowledgeBase.listDocuments': 'GET /api/knowledge-bases/{id}/documents',
+  'KnowledgeBase.listProject': 'GET /api/projects/{pid}/knowledge-bases',
+  'KnowledgeBase.reindexDocument': 'POST /api/knowledge-bases/{id}/documents/{file_id}/reindex',
+  'KnowledgeBase.removeDocument': 'DELETE /api/knowledge-bases/{id}/documents/{file_id}',
+  'KnowledgeBase.retrievalInfo': 'GET /api/knowledge-base/retrieval-info',
+  'KnowledgeBase.search': 'POST /api/knowledge-bases/{id}/search',
+  'KnowledgeBase.update': 'PUT /api/knowledge-bases/{id}',
+  'KnowledgeBase.usage': 'GET /api/knowledge-bases/{id}/usage',
+  'LitSearch.deleteUserKey': 'DELETE /api/lit-search/user-keys/{connector}',
+  'LitSearch.getConnectors': 'GET /api/lit-search/connectors',
+  'LitSearch.getSettings': 'GET /api/lit-search/settings',
+  'LitSearch.listUserKeys': 'GET /api/lit-search/user-keys',
+  'LitSearch.saveUserKey': 'PUT /api/lit-search/user-keys/{connector}',
+  'LitSearch.updateConnector': 'PUT /api/lit-search/connectors/{connector}',
+  'LitSearch.updateSettings': 'PUT /api/lit-search/settings',
+  'LlmModel.cancelDownload': 'POST /api/llm-models/downloads/{download_id}/cancel',
+  'LlmModel.create': 'POST /api/llm-models',
+  'LlmModel.delete': 'DELETE /api/llm-models/{model_id}',
+  'LlmModel.deleteDownload': 'DELETE /api/llm-models/downloads/{download_id}',
+  'LlmModel.disable': 'POST /api/llm-models/{model_id}/disable',
+  'LlmModel.download': 'POST /api/llm-models/download',
+  'LlmModel.enable': 'POST /api/llm-models/{model_id}/enable',
+  'LlmModel.get': 'GET /api/llm-models/{model_id}',
+  'LlmModel.getDownload': 'GET /api/llm-models/downloads/{download_id}',
+  'LlmModel.list': 'GET /api/llm-models',
+  'LlmModel.listDownloads': 'GET /api/llm-models/downloads',
+  'LlmModel.listRepositoryFiles': 'GET /api/llm-models/repository-files',
+  'LlmModel.subscribeDownloadProgress': 'GET /api/llm-models/downloads/subscribe',
+  'LlmModel.update': 'POST /api/llm-models/{model_id}',
+  'LlmModel.upload': 'POST /api/llm-models/upload',
+  'LlmModel.validate': 'POST /api/llm-models/{model_id}/validate',
+  'LlmProvider.assignGroup': 'POST /api/llm-providers/{provider_id}/groups',
+  'LlmProvider.create': 'POST /api/llm-providers',
+  'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
+  'LlmProvider.deleteUserApiKey': 'DELETE /api/user-llm-providers/api-keys/{provider_id}',
+  'LlmProvider.discoverModels': 'GET /api/llm-providers/{provider_id}/discover-models',
+  'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
+  'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
+  'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
+  'LlmProvider.list': 'GET /api/llm-providers',
+  'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
+  'LlmProvider.refreshModels': 'POST /api/llm-providers/{provider_id}/refresh-models',
+  'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
+  'LlmProvider.rotateProxyToken': 'POST /api/llm-providers/{provider_id}/rotate-proxy-token',
+  'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
+  'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
+  'LlmRepository.create': 'POST /api/llm-repositories',
+  'LlmRepository.delete': 'DELETE /api/llm-repositories/{repository_id}',
+  'LlmRepository.get': 'GET /api/llm-repositories/{repository_id}',
+  'LlmRepository.list': 'GET /api/llm-repositories',
+  'LlmRepository.test': 'POST /api/llm-repositories/test',
+  'LlmRepository.testById': 'POST /api/llm-repositories/{repository_id}/test',
+  'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
+  'LocalLlmProxy.chatCompletions': 'POST /api/local-llm/v1/chat/completions',
+  'LocalLlmProxy.embeddings': 'POST /api/local-llm/v1/embeddings',
+  'LocalLlmProxy.listModels': 'GET /api/local-llm/v1/models',
+  'LocalLlmProxy.rerank': 'POST /api/local-llm/v1/rerank',
+  'LocalRuntime.clearFailed': 'POST /api/local-runtime/models/{model_id}/clear-failed',
+  'LocalRuntime.detectGpu': 'GET /api/local-runtime/detect-gpu',
+  'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
+  'LocalRuntime.getLogs': 'GET /api/local-runtime/models/{model_id}/logs',
+  'LocalRuntime.getProviderInstances': 'GET /api/local-runtime/providers/{provider_id}/instances',
+  'LocalRuntime.getRuntimeSettings': 'GET /api/local-runtime/settings',
+  'LocalRuntime.getStatus': 'GET /api/local-runtime/models/{model_id}/status',
+  'LocalRuntime.healthCheck': 'GET /api/local-runtime/models/{model_id}/health',
+  'LocalRuntime.restartModel': 'POST /api/local-runtime/models/{model_id}/restart',
+  'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
+  'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
+  'LocalRuntime.streamLogs': 'GET /api/local-runtime/models/{model_id}/logs/stream',
+  'LocalRuntime.swapModelVersion': 'POST /api/local-runtime/models/{model_id}/runtime-version',
+  'LocalRuntime.updateRuntimeSettings': 'PUT /api/local-runtime/settings',
+  'Mcp.getDefaults': 'GET /api/mcp/defaults',
+  'Mcp.respondToElicitation': 'POST /api/mcp/elicitation/{elicitation_id}/respond',
+  'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
+  'McpServer.create': 'POST /api/mcp/servers',
+  'McpServer.delete': 'DELETE /api/mcp/servers/{id}',
+  'McpServer.deleteOAuthConfig': 'DELETE /api/mcp/servers/{id}/oauth',
+  'McpServer.get': 'GET /api/mcp/servers/{id}',
+  'McpServer.getOAuthConfig': 'GET /api/mcp/servers/{id}/oauth',
+  'McpServer.listAccessible': 'GET /api/mcp/servers',
+  'McpServer.setOAuthConfig': 'PUT /api/mcp/servers/{id}/oauth',
+  'McpServer.testConnection': 'POST /api/mcp/servers/test-connection',
+  'McpServer.update': 'PUT /api/mcp/servers/{id}',
+  'McpServerRuntime.callTool': 'POST /api/mcp/servers/{id}/tools/{name}/call',
+  'McpServerRuntime.disconnect': 'DELETE /api/mcp/servers/{id}/disconnect',
+  'McpServerRuntime.getPrompt': 'POST /api/mcp/servers/{id}/prompts/get',
+  'McpServerRuntime.listPrompts': 'GET /api/mcp/servers/{id}/prompts',
+  'McpServerRuntime.listResources': 'GET /api/mcp/servers/{id}/resources',
+  'McpServerRuntime.listTools': 'GET /api/mcp/servers/{id}/tools',
+  'McpServerRuntime.ping': 'POST /api/mcp/servers/{id}/ping',
+  'McpServerRuntime.readResource': 'POST /api/mcp/servers/{id}/resources/read',
+  'McpServerSystem.assignServerToGroups': 'POST /api/mcp/system-servers/{id}/groups',
+  'McpServerSystem.create': 'POST /api/mcp/system-servers',
+  'McpServerSystem.delete': 'DELETE /api/mcp/system-servers/{id}',
+  'McpServerSystem.get': 'GET /api/mcp/system-servers/{id}',
+  'McpServerSystem.getServerGroups': 'GET /api/mcp/system-servers/{id}/groups',
+  'McpServerSystem.list': 'GET /api/mcp/system-servers',
+  'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
+  'McpServerSystem.testConnection': 'POST /api/mcp/system-servers/test-connection',
+  'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpServerToolApprovals.get': 'GET /api/mcp/servers/{id}/tool-approvals',
+  'McpServerToolApprovals.set': 'PUT /api/mcp/servers/{id}/tool-approvals/{tool}',
+  'McpToolCall.get': 'GET /api/mcp/tool-calls/{id}',
+  'McpToolCall.list': 'GET /api/mcp/tool-calls',
+  'McpUserPolicy.get': 'GET /api/mcp/user-policy',
+  'McpUserPolicy.update': 'PUT /api/mcp/user-policy',
+  'Memory.create': 'POST /api/memories',
+  'Memory.delete': 'DELETE /api/memories/{id}',
+  'Memory.deleteAll': 'DELETE /api/memories/all',
+  'Memory.get': 'GET /api/memories/{id}',
+  'Memory.list': 'GET /api/memories',
+  'Memory.update': 'PATCH /api/memories/{id}',
+  'MemoryAdmin.ftsRebuild': 'POST /api/memory/admin/fts/rebuild',
+  'MemoryAdmin.ftsRebuildStatus': 'GET /api/memory/admin/fts/rebuild/status',
+  'MemoryAdmin.get': 'GET /api/memory/admin-settings',
+  'MemoryAdmin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
+  'MemoryAdmin.reembed': 'POST /api/memory/admin-settings/reembed',
+  'MemoryAdmin.update': 'PUT /api/memory/admin-settings',
+  'MemoryAudit.list': 'GET /api/memory/audit-log',
+  'MemorySettings.get': 'GET /api/memory/settings',
+  'MemorySettings.update': 'PUT /api/memory/settings',
+  'MemoryTest.extract': 'POST /api/_test/memory/extract',
+  'Message.delete': 'DELETE /api/messages/{id}',
+  'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
+  'Message.get': 'GET /api/messages/{id}',
+  'Message.getAssistant': 'GET /api/messages/{id}/assistant',
+  'Message.getHistory': 'GET /api/conversations/{id}/messages',
+  'Message.getMcpServers': 'GET /api/messages/{id}/mcp-servers',
+  'Message.searchInConversation': 'GET /api/conversations/{id}/messages/search',
+  'Message.send': 'POST /api/conversations/{id}/messages',
+  'Message.stopGeneration': 'POST /api/conversations/{conversation_id}/messages/{assistant_message_id}/stop',
+  'Notification.delete': 'DELETE /api/notifications/{id}',
+  'Notification.get': 'GET /api/notifications/{id}',
+  'Notification.kinds': 'GET /api/notifications/kinds',
+  'Notification.list': 'GET /api/notifications',
+  'Notification.markAllRead': 'POST /api/notifications/read-all',
+  'Notification.markRead': 'POST /api/notifications/{id}/read',
+  'Notification.unreadCount': 'GET /api/notifications/unread-count',
+  'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
+  'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Onboarding.getProgress': 'GET /api/onboarding/progress',
+  'Project.attachConversation': 'POST /api/projects/{id}/conversations/{conversation_id}',
+  'Project.attachFile': 'POST /api/projects/{id}/files',
+  'Project.create': 'POST /api/projects',
+  'Project.delete': 'DELETE /api/projects/{id}',
+  'Project.detachConversation': 'DELETE /api/projects/{id}/conversations/{conversation_id}',
+  'Project.detachFile': 'DELETE /api/projects/{id}/files/{file_id}',
+  'Project.duplicate': 'POST /api/projects/{id}/duplicate',
+  'Project.forConversation': 'GET /api/projects/by-conversation/{conversation_id}',
+  'Project.get': 'GET /api/projects/{id}',
+  'Project.getMcpSettings': 'GET /api/projects/{id}/mcp-settings',
+  'Project.list': 'GET /api/projects',
+  'Project.listConversations': 'GET /api/projects/{id}/conversations',
+  'Project.listFiles': 'GET /api/projects/{id}/files',
+  'Project.update': 'PUT /api/projects/{id}',
+  'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
+  'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
+  'RemoteAccess.getSettings': 'GET /api/remote-access/settings',
+  'RemoteAccess.getStatus': 'GET /api/remote-access/status',
+  'RemoteAccess.setAdminPassword': 'POST /api/remote-access/admin-password',
+  'RemoteAccess.startTunnel': 'POST /api/remote-access/tunnel/start',
+  'RemoteAccess.stopTunnel': 'POST /api/remote-access/tunnel/stop',
+  'RemoteAccess.updateSettings': 'PUT /api/remote-access/settings',
+  'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
+  'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
+  'RuntimeVersion.get': 'GET /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.getDownload': 'GET /api/local-runtime/versions/downloads/{key}',
+  'RuntimeVersion.list': 'GET /api/local-runtime/versions',
+  'RuntimeVersion.listDownloads': 'GET /api/local-runtime/versions/downloads',
+  'RuntimeVersion.setDefault': 'POST /api/local-runtime/versions/{version_id}/set-default',
+  'RuntimeVersion.subscribeDownloadEvents': 'GET /api/local-runtime/versions/downloads/{key}/events',
+  'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
+  'RuntimeVersion.usage': 'GET /api/local-runtime/version-usage',
+  'ScheduledTask.continueRun': 'POST /api/scheduled-tasks/runs/{run_id}/continue',
+  'ScheduledTask.continueSeries': 'POST /api/scheduled-tasks/{id}/continue-series',
+  'ScheduledTask.create': 'POST /api/scheduled-tasks',
+  'ScheduledTask.delete': 'DELETE /api/scheduled-tasks/{id}',
+  'ScheduledTask.get': 'GET /api/scheduled-tasks/{id}',
+  'ScheduledTask.list': 'GET /api/scheduled-tasks',
+  'ScheduledTask.listRuns': 'GET /api/scheduled-tasks/{id}/runs',
+  'ScheduledTask.runNow': 'POST /api/scheduled-tasks/{id}/run-now',
+  'ScheduledTask.testFire': 'POST /api/scheduled-tasks/test-fire',
+  'ScheduledTask.update': 'PUT /api/scheduled-tasks/{id}',
+  'SchedulerAdminSettings.get': 'GET /api/scheduler/admin-settings',
+  'SchedulerAdminSettings.update': 'PUT /api/scheduler/admin-settings',
+  'ServerUpdate.getStatus': 'GET /api/server-update/status',
+  'Skill.delete': 'DELETE /api/skills/{id}',
+  'Skill.get': 'GET /api/skills/{id}',
+  'Skill.getBody': 'GET /api/skills/{id}/body',
+  'Skill.hideInConversation': 'POST /api/skills/{id}/hide-in-conversation',
+  'Skill.import': 'POST /api/skills/import',
+  'Skill.list': 'GET /api/skills',
+  'Skill.listAvailable': 'GET /api/skills/available',
+  'Skill.unhideInConversation': 'DELETE /api/skills/{id}/hide-in-conversation/{conversation_id}',
+  'Skill.update': 'PUT /api/skills/{id}',
+  'Skill.validate': 'POST /api/skills/validate',
+  'SkillSystem.delete': 'DELETE /api/skills/system/{id}',
+  'SkillSystem.get': 'GET /api/skills/system/{id}',
+  'SkillSystem.getGroups': 'GET /api/skills/system/{id}/groups',
+  'SkillSystem.list': 'GET /api/skills/system',
+  'SkillSystem.removeFromGroup': 'DELETE /api/skills/system/{id}/groups/{group_id}',
+  'SkillSystem.setGroups': 'POST /api/skills/system/{id}/groups',
+  'SkillSystem.update': 'PUT /api/skills/system/{id}',
+  'Summarization.getConversationSummary': 'GET /api/conversations/{id}/summary',
+  'SummarizationAdmin.get': 'GET /api/summarization/settings',
+  'SummarizationAdmin.update': 'PUT /api/summarization/settings',
+  'SummarizationTest.refresh': 'POST /api/_test/summarization/refresh',
+  'Sync.subscribe': 'GET /api/sync/subscribe',
+  'Updater.check': 'POST /api/desktop/updater/check',
+  'Updater.download': 'POST /api/desktop/updater/download',
+  'Updater.install': 'POST /api/desktop/updater/install',
+  'Updater.status': 'GET /api/desktop/updater/status',
+  'User.create': 'POST /api/users',
+  'User.delete': 'DELETE /api/users/{user_id}',
+  'User.get': 'GET /api/users/{user_id}',
+  'User.list': 'GET /api/users',
+  'User.resetPassword': 'POST /api/users/reset-password',
+  'User.toggleActive': 'POST /api/users/{user_id}/toggle-active',
+  'User.update': 'POST /api/users/{user_id}',
+  'UserGroup.assignUser': 'POST /api/groups/assign',
+  'UserGroup.create': 'POST /api/groups',
+  'UserGroup.delete': 'DELETE /api/groups/{group_id}',
+  'UserGroup.get': 'GET /api/groups/{group_id}',
+  'UserGroup.getMembers': 'GET /api/groups/{group_id}/members',
+  'UserGroup.list': 'GET /api/groups',
+  'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
+  'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Users.changeOwnPassword': 'POST /api/users/me/password',
+  'Voice.activateModel': 'POST /api/voice/models/{id}/activate',
+  'Voice.cancelModelDownload': 'POST /api/voice/models/downloads/{key}/cancel',
+  'Voice.capability': 'GET /api/voice/capability',
+  'Voice.checkVersionUpdates': 'GET /api/voice/versions/check-updates',
+  'Voice.deleteModel': 'DELETE /api/voice/models/{id}',
+  'Voice.deleteVersion': 'DELETE /api/voice/versions/{id}',
+  'Voice.downloadModel': 'POST /api/voice/models/download',
+  'Voice.downloadVersion': 'POST /api/voice/versions/download',
+  'Voice.getInstance': 'GET /api/voice/instance',
+  'Voice.getInstanceLogs': 'GET /api/voice/instance/logs',
+  'Voice.getModelDownload': 'GET /api/voice/models/downloads/{key}',
+  'Voice.getModelStatus': 'GET /api/voice/model/status',
+  'Voice.getSettings': 'GET /api/voice/settings',
+  'Voice.getVersion': 'GET /api/voice/versions/{id}',
+  'Voice.getVersionDownload': 'GET /api/voice/versions/downloads/{key}',
+  'Voice.listModelCatalog': 'GET /api/voice/models/catalog',
+  'Voice.listModelDownloads': 'GET /api/voice/models/downloads',
+  'Voice.listModels': 'GET /api/voice/models',
+  'Voice.listVersionDownloads': 'GET /api/voice/versions/downloads',
+  'Voice.listVersions': 'GET /api/voice/versions',
+  'Voice.restartInstance': 'POST /api/voice/instance/restart',
+  'Voice.setDefaultVersion': 'POST /api/voice/versions/{id}/set-default',
+  'Voice.stopInstance': 'POST /api/voice/instance/stop',
+  'Voice.streamInstanceLogs': 'GET /api/voice/instance/logs/stream',
+  'Voice.subscribeModelDownloadEvents': 'GET /api/voice/models/downloads/{key}/events',
+  'Voice.subscribeVersionDownloadEvents': 'GET /api/voice/versions/downloads/{key}/events',
+  'Voice.syncVersionCache': 'POST /api/voice/versions/sync-cache',
+  'Voice.transcribe': 'POST /api/voice/transcribe',
+  'Voice.transcribeStream': 'POST /api/voice/transcribe/stream',
+  'Voice.updateSettings': 'PUT /api/voice/settings',
+  'Voice.uploadModel': 'POST /api/voice/models/upload',
+  'WebSearch.deleteUserKey': 'DELETE /api/web-search/user-keys/{provider}',
+  'WebSearch.getProviders': 'GET /api/web-search/providers',
+  'WebSearch.getSettings': 'GET /api/web-search/settings',
+  'WebSearch.listUserKeys': 'GET /api/web-search/user-keys',
+  'WebSearch.saveUserKey': 'PUT /api/web-search/user-keys/{provider}',
+  'WebSearch.updateProvider': 'PUT /api/web-search/providers/{provider}',
+  'WebSearch.updateSettings': 'PUT /api/web-search/settings',
+  'Workflow.cancelRun': 'POST /api/workflow-runs/{run_id}/cancel',
+  'Workflow.create': 'POST /api/workflows',
+  'Workflow.delete': 'DELETE /api/workflows/{id}',
+  'Workflow.deleteRun': 'DELETE /api/workflow-runs/{run_id}',
+  'Workflow.deleteSystem': 'DELETE /api/workflows/system/{id}',
+  'Workflow.dryRun': 'POST /api/workflows/{id}/dry-run',
+  'Workflow.get': 'GET /api/workflows/{id}',
+  'Workflow.getDefinition': 'GET /api/workflows/{id}/definition',
+  'Workflow.getRun': 'GET /api/workflow-runs/{run_id}',
+  'Workflow.getSystem': 'GET /api/workflows/system/{id}',
+  'Workflow.import': 'POST /api/workflows/import',
+  'Workflow.importSystem': 'POST /api/workflows/system/import',
+  'Workflow.list': 'GET /api/workflows',
+  'Workflow.listRuns': 'GET /api/workflows/{id}/runs',
+  'Workflow.listSystem': 'GET /api/workflows/system',
+  'Workflow.readArtifact': 'GET /api/workflow-runs/{run_id}/artifact/{step_id}/{filename}',
+  'Workflow.readLog': 'GET /api/workflow-runs/{run_id}/logs/{step_id}/{kind}',
+  'Workflow.readOutput': 'GET /api/workflow-runs/{run_id}/output/{step_id}',
+  'Workflow.run': 'POST /api/workflows/{id}/run',
+  'Workflow.setRunTimeout': 'PUT /api/workflow-runs/{run_id}/timeout',
+  'Workflow.submitElicit': 'POST /api/workflow-runs/{run_id}/elicit/{elicitation_id}',
+  'Workflow.subscribeRunEvents': 'GET /api/workflow-runs/{run_id}/events',
+  'Workflow.test': 'POST /api/workflows/{id}/test',
+  'Workflow.update': 'PUT /api/workflows/{id}',
+  'Workflow.updateDefinition': 'PUT /api/workflows/{id}/definition',
+  'Workflow.validate': 'POST /api/workflows/validate',
+  'Workflow.validateDef': 'POST /api/workflows/validate-def',
+  'Workflow.workspaceExport': 'GET /api/workflows/workspace-export',
+  'Workflow.workspaceSave': 'POST /api/workflows/workspace-save',
+  'WorkflowSystem.getGroups': 'GET /api/workflows/system/{id}/groups',
+  'WorkflowSystem.removeFromGroup': 'DELETE /api/workflows/system/{id}/groups/{group_id}',
+  'WorkflowSystem.setGroups': 'POST /api/workflows/system/{id}/groups'
+} as const
+
 // API endpoint parameters
 export type ApiEndpointParameters = {
+  'AgentAdmin.get': void
+  'AgentAdmin.update': UpdateAgentAdminSettingsRequest
   'App.getSetupStatus': void
   'App.setupAdmin': SetupAdminRequest
   'Assistant.create': CreateAssistantRequest
@@ -7427,6 +8831,11 @@ export type ApiEndpointParameters = {
   'AuthProviders.test': { id: string }
   'AuthProviders.testConfig': CreateAuthProviderRequest
   'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
+  'Background.cancelRun': { run_id: string }
+  'Background.getRun': { run_id: string }
+  'Background.listRunNotes': { run_id: string }
+  'Background.listRuns': { kind?: string; page?: number; per_page?: number; status?: string }
+  'Background.postRunNote': { run_id: string } & CreateRunNote
   'Branch.activate': { id: string; branch_id: string }
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
@@ -7452,6 +8861,7 @@ export type ApiEndpointParameters = {
   'CodeSandbox.setRootfsPin': SetPinRequest
   'CodeSandbox.subscribeRootfsInstallProgress': void
   'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
+  'Conversation.compact': { id: string } & CompactConversationRequest
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
@@ -7652,6 +9062,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.testConnection': TestMcpConnectionRequest
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'McpServerToolApprovals.get': { id: string }
+  'McpServerToolApprovals.set': { id: string; tool: string } & SetToolApprovalRequest
   'McpToolCall.get': { id: string }
   'McpToolCall.list': { conversation_id?: string; is_built_in?: boolean; page?: number; per_page?: number; server_id?: string }
   'McpUserPolicy.get': void
@@ -7729,7 +9141,7 @@ export type ApiEndpointParameters = {
   'ScheduledTask.create': CreateScheduledTask
   'ScheduledTask.delete': { id: string }
   'ScheduledTask.get': { id: string }
-  'ScheduledTask.list': void
+  'ScheduledTask.list': { conversation_id?: string }
   'ScheduledTask.listRuns': { id: string } & PaginationQuery
   'ScheduledTask.runNow': { id: string }
   'ScheduledTask.testFire': TestFireRequest
@@ -7818,11 +9230,13 @@ export type ApiEndpointParameters = {
   'WebSearch.updateProvider': { provider: string } & UpdateProviderRequest
   'WebSearch.updateSettings': UpdateWebSearchSettingsRequest
   'Workflow.cancelRun': { run_id: string }
+  'Workflow.create': CreateWorkflowDefBody
   'Workflow.delete': { id: string }
   'Workflow.deleteRun': { run_id: string }
   'Workflow.deleteSystem': { id: string }
   'Workflow.dryRun': { id: string } & DryRunRequest
   'Workflow.get': { id: string }
+  'Workflow.getDefinition': { id: string }
   'Workflow.getRun': { run_id: string }
   'Workflow.getSystem': { id: string }
   'Workflow.import': { name?: string; scope?: string } & FormData
@@ -7839,7 +9253,9 @@ export type ApiEndpointParameters = {
   'Workflow.subscribeRunEvents': { run_id: string }
   'Workflow.test': { id: string } & TestWorkflowRequest
   'Workflow.update': { id: string } & UpdateWorkflow
+  'Workflow.updateDefinition': { id: string } & WorkflowDef
   'Workflow.validate': ValidateWorkflowRequest
+  'Workflow.validateDef': WorkflowDef
   'Workflow.workspaceExport': { conversation_id: string; dir: string }
   'Workflow.workspaceSave': WorkspaceSaveRequest
   'WorkflowSystem.getGroups': { id: string }
@@ -7849,6 +9265,8 @@ export type ApiEndpointParameters = {
 
 // API endpoint responses
 export type ApiEndpointResponses = {
+  'AgentAdmin.get': AgentAdminSettings
+  'AgentAdmin.update': AgentAdminSettings
   'App.getSetupStatus': SetupStatusResponse
   'App.setupAdmin': AuthResponse
   'Assistant.create': Assistant
@@ -7884,6 +9302,11 @@ export type ApiEndpointResponses = {
   'AuthProviders.test': TestProviderResponse
   'AuthProviders.testConfig': TestProviderResponse
   'AuthProviders.update': AuthProviderResponse
+  'Background.cancelRun': BackgroundRunCancelAck
+  'Background.getRun': BackgroundRunDetail
+  'Background.listRunNotes': RunNote[]
+  'Background.listRuns': BackgroundRunListResponse
+  'Background.postRunNote': RunNote
   'Branch.activate': void
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
@@ -7909,6 +9332,7 @@ export type ApiEndpointResponses = {
   'CodeSandbox.setRootfsPin': SetPinResponse
   'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent
   'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
+  'Conversation.compact': unknown
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation
@@ -8109,6 +9533,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.testConnection': TestMcpConnectionResponse
   'McpServerSystem.update': McpServer
+  'McpServerToolApprovals.get': ServerToolApprovalsResponse
+  'McpServerToolApprovals.set': SetToolApprovalResponse
   'McpToolCall.get': McpToolCall
   'McpToolCall.list': McpToolCallListResponse
   'McpUserPolicy.get': McpUserPolicy
@@ -8275,11 +9701,13 @@ export type ApiEndpointResponses = {
   'WebSearch.updateProvider': ProviderCatalogResponse
   'WebSearch.updateSettings': WebSearchSettings
   'Workflow.cancelRun': RunActionAck
+  'Workflow.create': Workflow
   'Workflow.delete': void
   'Workflow.deleteRun': void
   'Workflow.deleteSystem': void
   'Workflow.dryRun': DryRunResult
   'Workflow.get': Workflow
+  'Workflow.getDefinition': WorkflowDef
   'Workflow.getRun': WorkflowRun
   'Workflow.getSystem': Workflow
   'Workflow.import': Workflow
@@ -8296,7 +9724,9 @@ export type ApiEndpointResponses = {
   'Workflow.subscribeRunEvents': SSEWorkflowRunEvent
   'Workflow.test': TestRunResponse
   'Workflow.update': Workflow
+  'Workflow.updateDefinition': Workflow
   'Workflow.validate': ValidateWorkflowResponse
+  'Workflow.validateDef': ValidateDefResponse
   'Workflow.workspaceExport': void
   'Workflow.workspaceSave': Workflow
   'WorkflowSystem.getGroups': string[]
@@ -8305,8 +9735,15 @@ export type ApiEndpointResponses = {
 }
 
 // Type helpers
-// `ApiEndpoint`, `ApiEndpointUrl`, `getEndpointKey` moved to `./apiEndpoints`
-// (imported above) so the `ApiEndpoints` value stays out of this eager module.
+export type ApiEndpoint = keyof typeof ApiEndpoints
+export type ApiEndpointUrl = (typeof ApiEndpoints)[ApiEndpoint]
+
+// Extract endpoint key from URL pattern
+export function getEndpointKey(url: string): ApiEndpoint | undefined {
+  const entries = Object.entries(ApiEndpoints) as [ApiEndpoint, string][]
+  const found = entries.find(([_key, value]) => value === url)
+  return found ? found[0] : undefined
+}
 
 // Get parameter type for endpoint
 export type GetParameterType<K extends ApiEndpoint> = ApiEndpointParameters[K]

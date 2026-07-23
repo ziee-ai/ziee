@@ -123,11 +123,18 @@ pub async fn configure_builtin_provider(
         .unwrap_or_else(|| panic!("provider {name} not preinstalled"))
         .clone();
     let provider_id = provider["id"].as_str().unwrap();
+    // Redirect at a local LLM bridge (`<PROVIDER>_BASE_URL` / the global
+    // `ZIEE_TEST_LLM_BASE_URL`) via the shared seam — without it the provider
+    // points at the real Groq endpoint and the placeholder key 401s.
+    let mut payload = json!({ "api_key": key, "enabled": true });
+    if let Some(base_url) = crate::chat::helpers::test_provider_base_url(key_var) {
+        payload["base_url"] = json!(base_url);
+    }
     // Provider-update is POST (see `llm_provider/routes.rs`), not PUT.
     let res = reqwest::Client::new()
         .post(server.api_url(&format!("/llm-providers/{provider_id}")))
         .header("Authorization", format!("Bearer {token}"))
-        .json(&json!({ "api_key": key, "enabled": true }))
+        .json(&payload)
         .send()
         .await
         .unwrap();

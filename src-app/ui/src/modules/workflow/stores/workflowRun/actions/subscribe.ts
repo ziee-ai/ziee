@@ -4,6 +4,8 @@ import type {
 } from '@/api-client/types'
 import type { WorkflowRunGet, WorkflowRunSet } from '../state'
 import { blankView, ensureStep, seedManifest, subscriptions } from '../state'
+import { mergeAgentActivity, mergeAgentActivityBatch } from '../agentActivity'
+import type { AgentActivityEntry } from '@/modules/workflow/components/run/activityDescriptors'
 import { subscribeRunProgress } from '@/modules/workflow/sse/runProgressClient'
 
 export default (set: WorkflowRunSet, _get: WorkflowRunGet) => {
@@ -47,6 +49,28 @@ export default (set: WorkflowRunSet, _get: WorkflowRunGet) => {
             const s = ensureStep(v, stepId)
             s.artifacts = list
           }
+          // Rehydrate the agent ACTIVITY TIMELINE from durable per-step
+          // history so reopening a completed/resumed run replays every row.
+          // Persisted as `step_logs_json["<stepId>::agent_activity"]` → an
+          // array of `agent_activity` payloads. Array-merge (dedupe by seq).
+          const logs = (d.step_logs_json ?? {}) as Record<string, unknown>
+          const AGENT_SUFFIX = '::agent_activity'
+          for (const [key, value] of Object.entries(logs)) {
+            if (!key.endsWith(AGENT_SUFFIX) || !Array.isArray(value)) continue
+            const stepId = key.slice(0, -AGENT_SUFFIX.length)
+            // Guard the empty derived stepId: a key that is EXACTLY
+            // "::agent_activity" would otherwise materialize a phantom
+            // `ensureStep(v, '')` step. Skip it (and any array with no
+            // well-formed entries).
+            if (!stepId) continue
+            const wellFormed = (value as AgentActivityEntry[]).filter(
+              raw => raw && typeof raw === 'object' && typeof raw.seq === 'number',
+            )
+            if (wellFormed.length === 0) continue
+            const s = ensureStep(v, stepId)
+            if (!s.agentActivity) s.agentActivity = []
+            mergeAgentActivityBatch(s.agentActivity, wellFormed)
+          }
           draft.runs[runId] = v
         })
       },
@@ -88,6 +112,14 @@ export default (set: WorkflowRunSet, _get: WorkflowRunGet) => {
           if (!s.tracks) s.tracks = {}
           for (const t of d.tracks) {
             const id = t.id ?? ''
+            // Agent-activity tracks feed the dedicated ACTIVITY TIMELINE, not
+            // the generic track map — and the `done`-delete path must NOT
+            // apply (a completed activity row stays visible in history).
+            if (t.kind.type === 'agent_activity') {
+              if (!s.agentActivity) s.agentActivity = []
+              mergeAgentActivity(s.agentActivity, t.kind)
+              continue
+            }
             if (t.done) delete s.tracks[id]
             else s.tracks[id] = t
           }

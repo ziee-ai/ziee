@@ -1095,13 +1095,17 @@ async fn test_concurrent_set_default_assistant_leaves_exactly_one() {
     assert_eq!(defaults, 1, "exactly one default after concurrent set-default; got {defaults}");
 }
 
-// audit id all-3163117848bc — the `enabled = true` filter in get_assistant /
-// list_assistants (repository.rs) was untested: a disabled (enabled=false)
-// assistant must be hidden from the per-id GET (404) and from the user's list,
-// even though the row still exists. We flip `enabled` directly in the DB (the
-// disabled state) and assert the read paths filter it out.
+// audit id all-3163117848bc — the `enabled = true` filter in
+// get_assistant_for_user (repository.rs) hides a disabled (enabled=false)
+// assistant from the per-id GET (404), even though the row still exists. The
+// owner's MANAGEMENT list, by contrast, deliberately RETURNS disabled
+// assistants (commit "fix(assistant): show disabled assistants in the user's
+// settings list") so the user can see + re-enable them (the UI renders an
+// "Inactive" tag) — filtering them out made a soft-disabled assistant vanish
+// from settings. We flip `enabled` directly in the DB and assert both halves:
+// GET-by-id 404s, but the list still surfaces the row.
 #[tokio::test]
-async fn test_disabled_assistant_is_filtered_from_get_and_list() {
+async fn test_disabled_assistant_hidden_from_get_but_shown_in_management_list() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -1149,7 +1153,9 @@ async fn test_disabled_assistant_is_filtered_from_get_and_list() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND, "disabled assistant must not be readable by id");
 
-    // …and it's absent from the user's list.
+    // …but it IS still present in the owner's management list (shown with
+    // enabled=false so the settings UI can render an "Inactive" tag and offer
+    // re-enable), NOT filtered out — the deliberate product behavior.
     let resp = reqwest::Client::new()
         .get(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
@@ -1161,9 +1167,14 @@ async fn test_disabled_assistant_is_filtered_from_get_and_list() {
     let arr = body.as_array().cloned().unwrap_or_else(|| {
         body["assistants"].as_array().cloned().expect("assistants array")
     });
-    assert!(
-        !arr.iter().any(|a| a["id"] == json!(assistant_id)),
-        "disabled assistant must be filtered out of the list"
+    let listed = arr
+        .iter()
+        .find(|a| a["id"] == json!(assistant_id))
+        .expect("disabled assistant must remain in the owner's management list");
+    assert_eq!(
+        listed["enabled"],
+        json!(false),
+        "the disabled assistant is surfaced with enabled=false (Inactive)"
     );
 }
 

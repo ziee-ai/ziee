@@ -11,10 +11,12 @@ import type {
   DryRunResult,
   SSEElicitationRequiredData,
   TestRunResponse,
+  ValidateDefResponse,
   Workflow,
 } from '@/api-client/types'
 import type { ModuleGallery } from '@/dev/gallery/support'
 import { holdPatch, lazyBound, lazyNamed, lazyProps } from '@/dev/gallery/support'
+import type { BuilderDef } from './stores/WorkflowBuilder.store'
 import { workflowCassette } from '@/dev/gallery/fixtures/workflow'
 import { llmGroupsList } from '@/dev/gallery/fixtures/llm-providers'
 import { GroupSystemWorkflowsAssignment } from '@/modules/workflow/widgets/groupSystemWorkflowsAssignmentDrawer'
@@ -224,6 +226,193 @@ const arrayEmptySurface = lazy(async () => {
   }
 })
 
+// ── Builder + agent-timeline fixtures (ITEM-7/9) ────────────────────────────
+
+/** A representative, fully-populated agent step: a plain-language task, two
+ *  selected capabilities, Balanced effort (max_steps 30), Text output, and a
+ *  system directive — the centrepiece the friendly agent form renders. */
+const agentStepFixture = {
+  id: 'agent_1',
+  kind: 'agent',
+  description: 'Research the topic',
+  depends_on: [],
+  prompt:
+    'Find the three most-cited papers on CRISPR base editing published since 2023 and summarise their key findings in plain language for a non-specialist.',
+  system: 'You are a meticulous research assistant. Cite every claim with a DOI.',
+  servers: ['literature_search', 'web_search'],
+  max_steps: 30,
+  output_format: 'text',
+}
+
+/** A representative 4-step workflow (agent → llm → elicit → sandbox) so the
+ *  populated builder shows real-data master/detail layout. */
+const builderFourStepDef = {
+  inputs: [
+    { name: 'topic', description: 'The research topic', required: true },
+    {
+      name: 'since_year',
+      description: 'Earliest publication year',
+      required: false,
+      default: 2023,
+    },
+  ],
+  steps: [
+    agentStepFixture,
+    {
+      id: 'summarize',
+      kind: 'llm',
+      description: 'Summarise the findings',
+      depends_on: ['agent_1'],
+      prompt: 'Summarise the key points from {{ agent_1.output }} in five bullets.',
+      output_format: 'text',
+      tools: [],
+    },
+    {
+      id: 'review',
+      kind: 'elicit',
+      description: 'Human review',
+      depends_on: ['summarize'],
+      message: 'Does this summary look right before we export it?',
+      schema: {
+        type: 'object',
+        properties: { approved: { type: 'boolean', title: 'Approved' } },
+      },
+      timeout_ms: 300_000,
+    },
+    {
+      id: 'export',
+      kind: 'sandbox',
+      description: 'Export to PDF',
+      depends_on: ['review'],
+      run: 'pandoc summary.md -o digest.pdf',
+      stdin: null,
+      timeout_ms: 30_000,
+    },
+  ],
+} as unknown as BuilderDef
+
+/** A clean validation (no errors) with a cost estimate — the populated-builder
+ *  happy path. */
+const cleanValidation: ValidateDefResponse = {
+  errors: [],
+  warnings: [],
+  cost_estimate: cannedDryRunResult,
+}
+
+/** A validation with ≥1 error + ≥1 warning + a cost estimate — the panel's
+ *  error/warning/cost branches all lit. */
+const errorValidation: ValidateDefResponse = {
+  errors: [
+    {
+      code: 'unresolved_reference',
+      layer: 'graph',
+      location: 'summarize',
+      message:
+        'Step "Summarise the findings" references {{ agent_1.output }}, but the agent step produces no named output — give the agent a Structured output or reference its text result.',
+    },
+  ],
+  warnings: [
+    {
+      code: 'long_prompt',
+      layer: 'lint',
+      location: 'agent_1',
+      message:
+        'This task prompt is long; consider splitting it into two steps for clearer run progress.',
+    },
+  ],
+  cost_estimate: cannedDryRunResult,
+}
+
+/** The friendly agent form (ITEM-9), populated — a wrapper instantiates the
+ *  per-instance builder store with the agent step seeded as its initial state
+ *  (no network), then renders the real form with a store + step prop. */
+const agentFormSurface = lazy(async () => {
+  const { WorkflowBuilderStoreDef } = await import(
+    '@/modules/workflow/stores/WorkflowBuilder.store'
+  )
+  const { AgentStepForm } = await import(
+    '@/modules/workflow/components/builder/AgentStepForm'
+  )
+  return {
+    default: () => {
+      const store = WorkflowBuilderStoreDef.use({
+        def: { inputs: [], steps: [agentStepFixture] } as unknown as BuilderDef,
+        selectedStepId: 'agent_1',
+      })
+      return (
+        <div className="max-w-xl p-4">
+          <AgentStepForm store={store} step={agentStepFixture as any} />
+        </div>
+      )
+    },
+  }
+})
+
+/** The populated builder (ITEM-7): step-list master + config-panel detail +
+ *  inputs editor + validation panel, driven by a store seeded with the 4-step
+ *  def and the agent step selected — so the detail column shows the agent form. */
+const populatedBuilderSurface = lazy(async () => {
+  const { WorkflowBuilderStoreDef } = await import(
+    '@/modules/workflow/stores/WorkflowBuilder.store'
+  )
+  const { StepList } = await import(
+    '@/modules/workflow/components/builder/StepList'
+  )
+  const { StepConfigPanel } = await import(
+    '@/modules/workflow/components/builder/StepConfigPanel'
+  )
+  const { WorkflowInputsEditor } = await import(
+    '@/modules/workflow/components/builder/WorkflowInputsEditor'
+  )
+  const { BuilderValidationPanel } = await import(
+    '@/modules/workflow/components/builder/BuilderValidationPanel'
+  )
+  return {
+    default: () => {
+      const store = WorkflowBuilderStoreDef.use({
+        name: 'CRISPR literature digest',
+        def: builderFourStepDef,
+        selectedStepId: 'agent_1',
+        validation: cleanValidation,
+      })
+      return (
+        <div className="flex flex-col gap-4 p-4">
+          <WorkflowInputsEditor store={store} />
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="md:w-80 shrink-0">
+              <StepList store={store} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <StepConfigPanel store={store} />
+            </div>
+          </div>
+          <BuilderValidationPanel store={store} />
+        </div>
+      )
+    },
+  }
+})
+
+/** The builder validation panel with ≥1 error + ≥1 warning + a cost estimate. */
+const validationErrorSurface = lazy(async () => {
+  const { WorkflowBuilderStoreDef } = await import(
+    '@/modules/workflow/stores/WorkflowBuilder.store'
+  )
+  const { BuilderValidationPanel } = await import(
+    '@/modules/workflow/components/builder/BuilderValidationPanel'
+  )
+  return {
+    default: () => {
+      const store = WorkflowBuilderStoreDef.use({ validation: errorValidation })
+      return (
+        <div className="max-w-2xl p-4">
+          <BuilderValidationPanel store={store} />
+        </div>
+      )
+    },
+  }
+})
+
 export const gallery: ModuleGallery = {
   cassette: workflowCassette,
   overlays: [
@@ -241,9 +430,12 @@ export const gallery: ModuleGallery = {
       slug: 'overlay-workflow-detail-drawer',
       surface: 'modules/workflow/components/WorkflowDetailDrawer',
       title: 'Workflow detail (drawer)',
+      // Wrapped in a MemoryRouter (dev-only) because the drawer's "Edit"
+      // affordance calls useNavigate, which throws in the router-less gallery
+      // overlay host. The real app always renders it inside the app Router.
       component: lazyNamed(
-        () => import('@/modules/workflow/components/WorkflowDetailDrawer'),
-        'WorkflowDetailDrawer',
+        () => import('@/dev/gallery/fixtures/routedOverlays'),
+        'WorkflowDetailDrawerRouted',
       ),
       open: () => WorkflowDrawer.open(workflowFixture as any),
     },
@@ -500,6 +692,210 @@ export const gallery: ModuleGallery = {
       path: '/',
       initialPath: '/',
       component: arrayEmptySurface,
+    },
+    // ── Builder — friendly agent form (ITEM-9), populated. ──────────────────────
+    {
+      slug: 'seeded-wf-builder-agent-form',
+      title: 'Workflow builder — agent task form',
+      note: 'populated AgentStepForm: instructions + 2 capabilities + Balanced effort + Text output + read-back',
+      path: '/',
+      initialPath: '/',
+      fullHeight: true,
+      component: agentFormSurface,
+    },
+    // ── Builder — empty (create mode). Real WorkflowBuilderPage, no def. ────────
+    {
+      slug: 'seeded-wf-builder-empty',
+      title: 'Workflow builder — new (empty)',
+      note: 'WorkflowBuilderPage create mode (no :id) → initEmpty → empty step list + inputs',
+      path: '/settings/workflows/builder',
+      initialPath: '/settings/workflows/builder',
+      fullHeight: true,
+      component: lazyNamed(
+        () =>
+          import('@/modules/workflow/components/builder/WorkflowBuilderPage'),
+        'WorkflowBuilderPage',
+      ),
+    },
+    // ── Builder — populated (4-step workflow incl. an agent step). ─────────────
+    {
+      slug: 'seeded-wf-builder-populated',
+      title: 'Workflow builder — populated (4 steps)',
+      note: 'step-list + config-panel + inputs + validation, seeded with agent→llm→elicit→sandbox; agent step selected',
+      path: '/',
+      initialPath: '/',
+      fullHeight: true,
+      component: populatedBuilderSurface,
+    },
+    // ── Builder — validation panel with errors + warnings + cost. ──────────────
+    {
+      slug: 'seeded-wf-builder-validation-error',
+      title: 'Workflow builder — validation errors',
+      note: 'ValidateDefResponse with 1 error + 1 warning + a cost estimate → all panel branches',
+      path: '/',
+      initialPath: '/',
+      fullHeight: true,
+      component: validationErrorSurface,
+    },
+    // ── Run — agent activity timeline, RUNNING (last row status:running). ──────
+    {
+      slug: 'seeded-wf-run-agent-running',
+      title: 'Agent run timeline — running',
+      note: 'agent step with an accreting activity timeline; the last row is status:running',
+      path: '/',
+      initialPath: '/',
+      fullHeight: true,
+      component: lazyProps(
+        () => import('@/modules/workflow/components/WorkflowRunProgressView'),
+        'WorkflowRunProgressView',
+        { runId: 'run-agent-running' },
+      ),
+      setup: async () => {
+        const { useWorkflowRunStore } = await import(
+          '@/modules/workflow/stores/workflowRun'
+        )
+        await holdPatch(() =>
+          useWorkflowRunStore.setState({
+            runs: {
+              'run-agent-running': {
+                runId: 'run-agent-running',
+                status: 'running',
+                totalTokens: 3420,
+                connected: true,
+                currentStep: 'agent_1',
+                stepOrder: ['agent_1'],
+                steps: {
+                  agent_1: {
+                    stepId: 'agent_1',
+                    stepKind: 'agent',
+                    status: 'running',
+                    description: 'Research the topic',
+                    agentActivity: [
+                      { type: 'agent_activity', seq: 1, kind: 'tool_call', tool: 'literature_search', title: 'Searching the literature', detail: 'query: CRISPR base editing, 2023–2025', status: 'ok' },
+                      { type: 'agent_activity', seq: 2, kind: 'tool_result', tool: 'literature_search', title: 'Found 24 papers', status: 'ok' },
+                      { type: 'agent_activity', seq: 3, kind: 'tool_call', tool: 'fetch_paper_fulltext', title: 'Reading the 3 most-cited papers', status: 'ok' },
+                      { type: 'agent_activity', seq: 4, kind: 'thinking', title: 'Comparing the key findings', status: 'ok' },
+                      { type: 'agent_activity', seq: 5, kind: 'message', title: 'Drafting a plain-language summary', status: 'running' },
+                    ],
+                  },
+                },
+              },
+            },
+          } as any),
+        )
+      },
+    },
+    // ── Run — agent timeline with a PENDING GATE (inline elicitation form). ────
+    {
+      slug: 'seeded-wf-run-agent-gate',
+      title: 'Agent run timeline — gate open',
+      note: 'agent step paused on a human gate → inline WorkflowElicitForm anchored to the gate row',
+      path: '/',
+      initialPath: '/',
+      fullHeight: true,
+      component: lazyProps(
+        () => import('@/modules/workflow/components/WorkflowRunProgressView'),
+        'WorkflowRunProgressView',
+        { runId: 'run-agent-gate' },
+      ),
+      setup: async () => {
+        const { useWorkflowRunStore } = await import(
+          '@/modules/workflow/stores/workflowRun'
+        )
+        await holdPatch(() =>
+          useWorkflowRunStore.setState({
+            runs: {
+              'run-agent-gate': {
+                runId: 'run-agent-gate',
+                status: 'waiting',
+                totalTokens: 5120,
+                connected: true,
+                currentStep: 'agent_1',
+                pendingElicitation: {
+                  elicitation_id: 'elicit-agent-1',
+                  run_id: 'run-agent-gate',
+                  step_id: 'agent_1',
+                  message: 'I found two candidate review protocols. Which should I follow?',
+                  deadline_at: new Date(Date.now() + 600_000).toISOString(),
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      choice: { type: 'string', title: 'Which protocol should I use?' },
+                    },
+                    required: ['choice'],
+                  },
+                },
+                stepOrder: ['agent_1'],
+                steps: {
+                  agent_1: {
+                    stepId: 'agent_1',
+                    stepKind: 'agent',
+                    status: 'running',
+                    description: 'Research the topic',
+                    agentActivity: [
+                      { type: 'agent_activity', seq: 1, kind: 'tool_call', tool: 'literature_search', title: 'Searching the literature', status: 'ok' },
+                      { type: 'agent_activity', seq: 2, kind: 'tool_result', tool: 'literature_search', title: 'Found 24 papers', status: 'ok' },
+                      { type: 'agent_activity', seq: 3, kind: 'gate', title: 'Waiting for your input', detail: 'The assistant paused to ask which review protocol to follow.', status: 'running' },
+                    ],
+                  },
+                },
+              },
+            },
+          } as any),
+        )
+      },
+    },
+    // ── Run — agent timeline, COMPLETED (all activity ok, step done). ──────────
+    {
+      slug: 'seeded-wf-run-agent-completed',
+      title: 'Agent run timeline — completed',
+      note: 'agent step with all activity status:ok and the step completed → output + log expanders',
+      path: '/',
+      initialPath: '/',
+      fullHeight: true,
+      component: lazyProps(
+        () => import('@/modules/workflow/components/WorkflowRunProgressView'),
+        'WorkflowRunProgressView',
+        { runId: 'run-agent-done' },
+      ),
+      setup: async () => {
+        const { useWorkflowRunStore } = await import(
+          '@/modules/workflow/stores/workflowRun'
+        )
+        await holdPatch(() =>
+          useWorkflowRunStore.setState({
+            runs: {
+              'run-agent-done': {
+                runId: 'run-agent-done',
+                status: 'completed',
+                totalTokens: 6890,
+                connected: true,
+                stepOrder: ['agent_1'],
+                steps: {
+                  agent_1: {
+                    stepId: 'agent_1',
+                    stepKind: 'agent',
+                    status: 'completed',
+                    description: 'Research the topic',
+                    tokensUsed: 6890,
+                    msElapsed: 48200,
+                    hasOutput: true,
+                    outputPreview:
+                      'Three papers stand out: Anzalone et al. (2023) on prime-editing efficiency, …',
+                    agentActivity: [
+                      { type: 'agent_activity', seq: 1, kind: 'tool_call', tool: 'literature_search', title: 'Searching the literature', status: 'ok' },
+                      { type: 'agent_activity', seq: 2, kind: 'tool_result', tool: 'literature_search', title: 'Found 24 papers', status: 'ok' },
+                      { type: 'agent_activity', seq: 3, kind: 'tool_call', tool: 'fetch_paper_fulltext', title: 'Read the 3 most-cited papers', status: 'ok' },
+                      { type: 'agent_activity', seq: 4, kind: 'thinking', title: 'Compared the key findings', status: 'ok' },
+                      { type: 'agent_activity', seq: 5, kind: 'message', title: 'Wrote the plain-language summary', status: 'ok' },
+                    ],
+                  },
+                },
+              },
+            },
+          } as any),
+        )
+      },
     },
   ],
 }
