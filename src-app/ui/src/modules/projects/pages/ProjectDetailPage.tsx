@@ -201,6 +201,21 @@ export function ProjectDetailPage() {
     const unsubscribe = Stores.EventBus.on(
       'conversation.created',
       event => {
+        // Collapse the split workspace before navigating, for the same reason
+        // NewChatPage does: this page's composer creates a conversation and
+        // navigates to `/projects/:id/chat/:cid`, which renders the SAME
+        // ConversationPage — so with a split still open in the store, its
+        // URL→workspace reconcile takes the "auto while split" branch and
+        // REPLACES the focused pane, wedging the brand-new project conversation
+        // into the old split instead of showing it on its own.
+        //
+        // Done on CREATE rather than on mount — the same placement NewChatPage
+        // uses, for the same reason. Mounting is not a reliable signal of
+        // intent: opening a project to read it, or landing on `/` via the
+        // router's unmatched-path bounce, would otherwise destroy an open split
+        // and delete its persisted workspace. Creating a conversation is
+        // unambiguous, and is the only moment the hijack can occur.
+        Stores.SplitView.reset()
         navigate(`/projects/${projectId}/chat/${event.data.conversation.id}`)
       },
       'ProjectDetailPage',

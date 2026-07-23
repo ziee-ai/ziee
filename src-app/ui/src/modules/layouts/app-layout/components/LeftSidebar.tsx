@@ -5,6 +5,7 @@ import { Menu, Separator } from '@ziee/kit'
 import type { MenuItem } from '@ziee/kit'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { SidebarHeaderSpacer } from '@/modules/layouts/app-layout/components/SidebarHeaderSpacer'
+import { SidebarSectionTitle } from '@/components/common/SidebarSectionTitle'
 import { Stores } from '@ziee/framework/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { evaluatePermission } from '@/core/permissions'
@@ -200,23 +201,26 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
         />
       )}
 
-      {/* Navigation — section header rendered as a Menu item group so
-          kit Menu handles the group title + token-based typography. */}
+      {/* Navigation — the caption is a SIBLING of the Menu, not a kit Menu item
+          group. A group title's inset is this Menu's `px-2` PLUS the kit's own
+          hardcoded group-title `px-3` (= 20px), which pushed it 8px right of the
+          "Recent chats" caption below. Rendering the shared SidebarSectionTitle
+          alongside a FLAT menu removes that stacked padding at the source rather
+          than overriding the kit, and puts all three captions on one edge.
+          (`sortedNavigation` is already flat — the group only ever existed to
+          draw this title.) */}
       {navigationItems.length > 0 && (
         <div className="mt-2">
+          <SidebarSectionTitle data-testid="layout-sidebar-nav-title">
+            Navigation
+          </SidebarSectionTitle>
           <Menu
             mode="vertical"
             aria-label="Primary navigation"
             data-testid="layout-sidebar-nav-menu"
             selectedKey={navSel.exact}
             ancestorKeys={ancestorList(navSel.ancestor)}
-            items={[
-              {
-                type: 'group',
-                label: 'Navigation',
-                children: navigationItems,
-              },
-            ]}
+            items={navigationItems}
             onSelect={handleNavMenuClick}
             className="px-2"
           />
@@ -242,19 +246,16 @@ export function LeftSidebar({ rootStyle, rootClassName }: LeftSidebarProps = {})
       {/* Tools — same shape as Navigation. */}
       {toolsItems.length > 0 && (
         <div className="mt-2">
+          <SidebarSectionTitle data-testid="layout-sidebar-tools-title">
+            Tools
+          </SidebarSectionTitle>
           <Menu
             mode="vertical"
             aria-label="Tools navigation"
             data-testid="layout-sidebar-tools-menu"
             selectedKey={toolsSel.exact}
             ancestorKeys={ancestorList(toolsSel.ancestor)}
-            items={[
-              {
-                type: 'group',
-                label: 'Tools',
-                children: toolsItems,
-              },
-            ]}
+            items={toolsItems}
             onSelect={handleToolsMenuClick}
             className="px-2"
           />
