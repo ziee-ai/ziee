@@ -78,9 +78,28 @@ export function ChatInput({
         {/* Toolbar — the left (secondary) group yields space first so the right
             send group is never clipped on narrow widths (chat panel or mobile). */}
         <div className="flex justify-between items-center gap-2 px-2 pt-1 pb-2">
-          {/* Left: + dropdown + other toolbar actions. `min-w-0 flex-1` lets the
-              keyboard-tips text truncate instead of pushing Send off the edge. */}
-          <div className="flex items-center gap-1 min-w-0 flex-1">
+          {/* Left: + dropdown + other toolbar actions. `min-w-10` (40px) floors
+              the group at the "+" button it must always show (38px: a `size-4`
+              icon + `px-2.5` + the kit Button's 1px transparent border).
+
+              A plain `min-w-0` was the bug: this group's basis is 0, so it never
+              competes for space and only receives what the right group leaves
+              over — a long model name squeezed it to ~2px and its `shrink-0` "+"
+              button overflowed. Dropping the override entirely does NOT work
+              either (measured: Send pushed 150px outside the composer): a flex
+              container's min-content sums its children's MIN-CONTENT sizes, and
+              `min-width:0` on the keyboard-tips only permits it to be shrunk
+              during layout — it does not reduce that contribution, so the
+              group floored at the full `nowrap` width of the tips text.
+
+              KNOWN LIMIT: this floor covers the always-present "+" only. With
+              the voice extension enabled, MicButton adds another `shrink-0`
+              38px button into `toolbar_actions`, so at extreme narrowness it can
+              still overflow. Protecting it would need a floor that knows which
+              extensions are registered; the durable fix is for the tips element
+              to contribute 0 (e.g. `w-0 flex-1`), which lives in the keyboard
+              extension and is out of scope here. */}
+          <div className="flex items-center gap-1 min-w-10 flex-1">
             {/* Tooltip anchors to the wrapper span (a distinct DOM node), not
                 the Popover-trigger button — two triggers on ONE node thrash and
                 flicker. The button suppresses its own aria-label auto-tooltip via
@@ -113,13 +132,27 @@ export function ChatInput({
             <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1 min-w-0" />
           </div>
 
-          {/* Right: model selector + send button. `shrink-0` keeps Send fully
-              visible; the model selector caps its own width internally. */}
-          <div className="flex items-center gap-2 shrink-0">
-            <ExtensionSlot name="toolbar_model" />
+          {/* Right: model selector + send button. `shrink-0` sits on the SEND
+              BUTTON, not on the group: the model selector now sizes to its
+              content (so a long model name shows in full when there's room), and
+              under pressure the NAME is what must give way — never Send. A
+              `shrink-0` on the whole group would instead force the left actions
+              to absorb every pixel and let a long name push Send off the edge.
+
+              The left group's protection is a min-width FLOOR on that group (see
+              above), deliberately not a `max-w` ceiling here. A ceiling reserves
+              space unconditionally: the left group is `flex-1` with a zero basis,
+              so it grows into whatever the ceiling leaves over even when it holds
+              nothing but the 36px "+" button — which truncated the model name
+              ~90px earlier than the row actually required and left a hole in the
+              middle of the toolbar. A floor gives the left group exactly what it
+              needs and hands the model name everything else. */}
+          <div className="flex items-center gap-2 min-w-0">
+            <ExtensionSlot name="toolbar_model" className="min-w-0" />
             <Button
               data-testid="chat-input-send-btn"
               size="default"
+              className="shrink-0"
               icon={<SendIcon className="-rotate-90" />}
               onClick={handleSend}
               disabled={sending || isStreaming || disabled || isBlockedByExtension}
