@@ -514,7 +514,7 @@ export const McpComposer = defineStore('McpComposer', {
         // modal — there is no turn-1 auto-persist here, so the omit-on-unset rule
         // that the conversation/user-defaults writes use doesn't apply). Still
         // source the value from the SERVER default rather than a literal.
-        approval_mode: config.approvalMode || get().serverDefaultApprovalMode,
+        approval_mode: config.approvalMode || state.serverDefaultApprovalMode,
         auto_approved_tools: config.autoApprovedTools || [],
         disabled_servers: disabledServers,
         loop_settings: config.loopSettings,

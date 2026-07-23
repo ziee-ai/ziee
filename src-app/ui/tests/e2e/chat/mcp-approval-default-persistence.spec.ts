@@ -25,6 +25,9 @@ import { createConversationWithModel, goToNewChatPage } from './helpers/chat-hel
  * property — the client no longer decides — on both.
  */
 
+/** The model this spec creates and picks. Only used to get a conversation minted. */
+const MODEL_DISPLAY_NAME = 'Approval Default Model'
+
 test.describe('MCP approval default — persistence across turns', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
@@ -36,7 +39,10 @@ test.describe('MCP approval default — persistence across turns', () => {
     const token = await getAdminToken(page)
     const providerId = await createProviderViaAPI(apiURL, token, 'OpenAI', 'openai')
     await assignProviderToAdministratorsGroup(apiURL, token, providerId)
-    await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
+    // Display name pinned explicitly so the model picker below matches a value
+    // this spec controls, rather than the helper's default (which an env
+    // override like ZIEE_TEST_LLM_MODEL can change out from under it).
+    await createModelViaAPI(apiURL, token, providerId, undefined, MODEL_DISPLAY_NAME, 'openai')
   })
 
   // ── TEST-20: the literal reported repro ────────────────────────────────────
@@ -60,7 +66,7 @@ test.describe('MCP approval default — persistence across turns', () => {
     const conversationId = await createConversationWithModel(
       page,
       baseURL,
-      'gpt-4',
+      MODEL_DISPLAY_NAME,
       'first message that does not use any tool',
     )
 
