@@ -3,6 +3,8 @@
 // where used (the permission picker) instead of on every page.
 
 export const PermissionDescriptions: Record<string, string> = {
+  AgentSettingsManage: 'Update the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).',
+  AgentSettingsRead: 'Read the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).',
   AssistantsCreate: 'Create user assistants',
   AssistantsDelete: 'Delete user assistants',
   AssistantsEdit: 'Edit user assistants',
@@ -13,6 +15,7 @@ export const PermissionDescriptions: Record<string, string> = {
   AssistantsTemplateRead: 'Read system-wide template assistants',
   AuthProvidersManage: 'Create, update, delete, enable/disable, and test auth providers.',
   AuthProvidersRead: 'List configured auth providers and view their (masked) config.',
+  BackgroundUse: 'Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.',
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
   CitationsManage: 'Create, import, verify, remove, and organize citations + CSL styles.',
