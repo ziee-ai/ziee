@@ -53,20 +53,42 @@ pub async fn get_conversation_settings(
 ///
 /// Writes into the unified `mcp_settings` table — sets `conversation_id`
 /// and leaves `project_id` NULL (CHECK constraint enforces exactly one).
-/// `auto_approved_tools`: None = preserve existing DB value; Some(tools) = overwrite.
+///
+/// Two tri-state fields, same contract, resolved by `COALESCE` INSIDE this one
+/// statement (never a second statement, never a sweep over other rows):
+/// - `approval_mode`: None = preserve the existing row's value, or apply
+///   [`ApprovalMode::default()`] when inserting; Some(mode) = set it explicitly.
+/// - `auto_approved_tools`: None = preserve existing DB value; Some(tools) = overwrite.
+///
+/// The `approval_mode` None-case is what lets the client's initial per-conversation
+/// auto-persist snapshot `disabled_servers` WITHOUT pinning an approval mode the user
+/// never chose — the bug where a conversation auto-approved on turn 1 and then
+/// prompted on turn 2. Only the single `conversation_id` row is ever touched.
 pub async fn upsert_conversation_settings(
     pool: &PgPool,
     conversation_id: Uuid,
     user_id: Uuid,
-    approval_mode: ApprovalMode,
+    approval_mode: Option<ApprovalMode>,
     auto_approved_tools: Option<&[AutoApprovedServer]>,
     disabled_servers: &[DisabledServer],
     loop_settings: &LoopSettings,
 ) -> Result<ConversationMcpSettings, AppError> {
-    let auto_approved_tools_json = match auto_approved_tools {
-        Some(tools) => serde_json::to_value(tools)
-            .map_err(|e| AppError::internal_error(format!("Failed to serialize auto_approved_tools: {}", e)))?,
-        None => serde_json::Value::Null,
+    // None → SQL NULL, so COALESCE picks the preserve/default arm.
+    let approval_mode_str: Option<String> = approval_mode.map(|m| m.to_string());
+    let default_approval_mode = ApprovalMode::default().to_string();
+    // `Option<Value>` — NOT `Value::Null`. Binding `Value::Null` to a jsonb
+    // parameter sends the JSON value `null`, which is NOT SQL NULL, so
+    // `COALESCE($4, …)` took the FIRST arm and overwrote the stored list with
+    // JSON null (which then read back as `[]` via `unwrap_or_default`). That
+    // silently destroyed a user's per-tool allow-list on any save that omitted
+    // the field — the exact "don't touch" contract this COALESCE exists to
+    // provide, and the one the client relies on when it sends the field only
+    // under `updateAutoApproved`. `None` here binds as a real SQL NULL.
+    let auto_approved_tools_json: Option<serde_json::Value> = match auto_approved_tools {
+        Some(tools) => Some(serde_json::to_value(tools).map_err(|e| {
+            AppError::internal_error(format!("Failed to serialize auto_approved_tools: {}", e))
+        })?),
+        None => None,
     };
     let disabled_servers_json = serde_json::to_value(disabled_servers)
         .map_err(|e| AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e)))?;
@@ -79,10 +101,10 @@ pub async fn upsert_conversation_settings(
         INSERT INTO mcp_settings (
             conversation_id, user_id, approval_mode, auto_approved_tools, disabled_servers, loop_settings
         )
-        VALUES ($1, $2, $3, COALESCE($4, '[]'::jsonb), $5, $6)
+        VALUES ($1, $2, COALESCE($3, $7), COALESCE($4, '[]'::jsonb), $5, $6)
         ON CONFLICT (conversation_id)
         DO UPDATE SET
-            approval_mode = EXCLUDED.approval_mode,
+            approval_mode = COALESCE($3, mcp_settings.approval_mode),
             auto_approved_tools = COALESCE($4, mcp_settings.auto_approved_tools),
             disabled_servers = EXCLUDED.disabled_servers,
             loop_settings = EXCLUDED.loop_settings,
@@ -96,10 +118,11 @@ pub async fn upsert_conversation_settings(
         "#,
         conversation_id,
         user_id,
-        approval_mode.to_string(),
+        approval_mode_str,
         auto_approved_tools_json,
         disabled_servers_json,
-        loop_settings_json
+        loop_settings_json,
+        default_approval_mode
     )
     .fetch_one(pool)
     .await?;

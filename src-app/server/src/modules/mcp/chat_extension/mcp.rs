@@ -585,6 +585,52 @@ fn unattended_tool_allowed(allow: &serde_json::Value, server_id: &str, tool_name
         .unwrap_or(false)
 }
 
+/// Resolve the approval mode + auto-approved tool list that govern this turn.
+///
+/// Three-branch precedence, most-specific first:
+/// 1. **conversation settings** — used verbatim, including their (possibly empty)
+///    auto-approved list. An explicit per-conversation choice always wins.
+/// 2. **user defaults** — the mode + list the user configured at
+///    `/api/mcp/defaults`, so a fresh conversation inherits their preference.
+/// 3. **neither** — [`ApprovalMode::default()`], the deployment default (see the
+///    type-level docs on `ApprovalMode`), with an empty list.
+///
+/// Extracted from `after_llm_call` as a pure function so the precedence is directly
+/// testable: branch 3 is what the whole "auto-approved on turn 1, prompts on turn 2"
+/// bug turned on, and branch 1 vs 3 is exactly the transition the client's turn-1
+/// auto-persist used to force.
+///
+/// The result feeds BOTH the MCP tool gate below and `execute_run_js_call`, so the
+/// `run_js` inner-tool gate resolves identically rather than diverging.
+fn resolve_approval(
+    settings: Option<&super::approval::models::ConversationMcpSettings>,
+    user_defaults: Option<&super::defaults::models::UserMcpDefaults>,
+) -> (
+    crate::modules::mcp::chat_extension::ApprovalMode,
+    Vec<super::approval::models::AutoApprovedServer>,
+) {
+    if let Some(settings) = settings {
+        // Conversation-specific settings exist — use them verbatim.
+        let servers: Vec<super::approval::models::AutoApprovedServer> =
+            serde_json::from_value(settings.auto_approved_tools.clone()).unwrap_or_default();
+        (settings.get_approval_mode(), servers)
+    } else if let Some(defaults) = user_defaults {
+        // No conversation override — inherit the user's defaults so the
+        // approval_mode they configured in `/api/mcp/defaults` actually
+        // takes effect for fresh conversations.
+        (
+            defaults.get_approval_mode(),
+            defaults.get_auto_approved_tools(),
+        )
+    } else {
+        // No conversation override AND no user defaults: the deployment default.
+        (
+            crate::modules::mcp::chat_extension::ApprovalMode::default(),
+            Vec::new(),
+        )
+    }
+}
+
 /// Privileged built-in servers (files, memory, elicitation, bio, web_search,
 /// lit_search, tool_result). Their tools bypass the MCP approval flow — they're
 /// read-only / save-only / user-prompting and auto-attached, so a
@@ -2588,20 +2634,8 @@ impl ChatExtension for McpChatExtension {
             .map(|d| d.get_auto_approved_tools())
             .unwrap_or_default();
 
-        let (approval_mode, auto_approved_servers) = if let Some(ref settings) = settings {
-            // Conversation-specific settings exist — use them verbatim.
-            let servers: Vec<super::approval::models::AutoApprovedServer> =
-                serde_json::from_value(settings.auto_approved_tools.clone()).unwrap_or_default();
-            (settings.get_approval_mode(), servers)
-        } else if let Some(ref defaults) = user_defaults {
-            // No conversation override — inherit the user's defaults so the
-            // approval_mode they configured in `/api/mcp/defaults` actually
-            // takes effect for fresh conversations.
-            (defaults.get_approval_mode(), defaults.get_auto_approved_tools())
-        } else {
-            // No conversation override AND no user defaults: be conservative.
-            (crate::modules::mcp::chat_extension::ApprovalMode::ManualApprove, Vec::new())
-        };
+        let (approval_mode, auto_approved_servers) =
+            resolve_approval(settings.as_ref(), user_defaults.as_ref());
 
         tracing::info!(
             "MCP extension: {} tools, approval_mode={}, auto_approved_servers={}",
@@ -3777,14 +3811,140 @@ impl ChatExtension for McpChatExtension {
 mod tests {
     use super::{
         build_artifact_download_url, claim_outcome, file_download_origin,
-        replace_or_collect_tool_results, saved_artifact_hidden_content_guidance,
-        tool_system_guidance, ClaimOutcome,
+        replace_or_collect_tool_results, resolve_approval,
+        saved_artifact_hidden_content_guidance, tool_system_guidance, ClaimOutcome,
     };
     use crate::core::config::CodeSandboxConfig;
     use uuid::Uuid;
 
     fn tool(name: &str) -> ai_providers::Tool {
         ai_providers::Tool::function(name.to_string(), String::new(), serde_json::json!({}))
+    }
+
+    // ── fix-mcp-auto-approve-default ─────────────────────────────────────────
+    // TEST-5: the three-branch approval precedence. Branch 3 (no row anywhere) is
+    // what the live bug hinged on — it is the ONLY branch that produced
+    // auto-approve on a deploy build, so the moment the client wrote a
+    // conversation row, resolution jumped to branch 1 and started prompting.
+
+    use super::super::approval::models::{
+        ApprovalMode, AutoApprovedServer, ConversationMcpSettings,
+    };
+    use super::super::defaults::models::UserMcpDefaults;
+    use chrono::Utc;
+
+    fn conv_settings(mode: &str, auto: serde_json::Value) -> ConversationMcpSettings {
+        ConversationMcpSettings {
+            id: Uuid::nil(),
+            conversation_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            approval_mode: mode.to_string(),
+            auto_approved_tools: auto,
+            disabled_servers: serde_json::json!([]),
+            loop_settings: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn user_defaults(mode: &str, auto: serde_json::Value) -> UserMcpDefaults {
+        UserMcpDefaults {
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            approval_mode: mode.to_string(),
+            auto_approved_tools: auto,
+            disabled_servers: serde_json::json!([]),
+            loop_settings: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn auto_list(server: Uuid, tool: &str) -> serde_json::Value {
+        serde_json::json!([{ "server_id": server, "tools": [tool] }])
+    }
+
+    fn tool_names(servers: &[AutoApprovedServer]) -> Vec<String> {
+        servers.iter().flat_map(|s| s.tools.clone()).collect()
+    }
+
+    /// Branch 1: a conversation row wins outright — its mode AND its list — even
+    /// when user defaults say something else.
+    #[test]
+    fn resolve_approval_prefers_conversation_settings_over_user_defaults() {
+        let sid = Uuid::from_u128(1);
+        let (mode, servers) = resolve_approval(
+            Some(&conv_settings("manual_approve", auto_list(sid, "conv_tool"))),
+            Some(&user_defaults("auto_approve", auto_list(sid, "default_tool"))),
+        );
+        assert_eq!(mode, ApprovalMode::ManualApprove);
+        assert_eq!(tool_names(&servers), vec!["conv_tool".to_string()]);
+
+        // ...and in the other direction, so this isn't just "manual always wins".
+        let (mode, _) = resolve_approval(
+            Some(&conv_settings("auto_approve", serde_json::json!([]))),
+            Some(&user_defaults("manual_approve", serde_json::json!([]))),
+        );
+        assert_eq!(mode, ApprovalMode::AutoApprove);
+    }
+
+    /// Branch 1 edge: a conversation row with an EMPTY auto-approved list must not
+    /// silently fall through to the user's list — that would auto-run a tool the
+    /// conversation deliberately un-approved.
+    #[test]
+    fn resolve_approval_conversation_empty_list_does_not_inherit_user_list() {
+        let sid = Uuid::from_u128(2);
+        let (mode, servers) = resolve_approval(
+            Some(&conv_settings("manual_approve", serde_json::json!([]))),
+            Some(&user_defaults("manual_approve", auto_list(sid, "default_tool"))),
+        );
+        assert_eq!(mode, ApprovalMode::ManualApprove);
+        assert!(
+            servers.is_empty(),
+            "conversation scope must not inherit the user default allow-list",
+        );
+    }
+
+    /// Branch 2: no conversation row → the user's configured defaults apply.
+    #[test]
+    fn resolve_approval_falls_back_to_user_defaults() {
+        let sid = Uuid::from_u128(3);
+        let (mode, servers) = resolve_approval(
+            None,
+            Some(&user_defaults("auto_approve", auto_list(sid, "default_tool"))),
+        );
+        assert_eq!(mode, ApprovalMode::AutoApprove);
+        assert_eq!(tool_names(&servers), vec!["default_tool".to_string()]);
+    }
+
+    /// Branch 3: nothing stored anywhere → the DEPLOYMENT default, with an empty
+    /// list. Asserted against `ApprovalMode::default()` rather than a literal, so
+    /// this same test holds on deploy-schedule (where the default is AutoApprove).
+    #[test]
+    fn resolve_approval_with_nothing_stored_uses_the_deployment_default() {
+        let (mode, servers) = resolve_approval(None, None);
+        assert_eq!(mode, ApprovalMode::default());
+        assert!(servers.is_empty());
+    }
+
+    /// The regression itself, at resolution level: turn 1 (no row) and turn 2
+    /// (a row the client wrote WITHOUT an explicit user choice, so it carries the
+    /// server default) must resolve to the SAME mode. Before the fix the client
+    /// pinned `manual_approve` here regardless of the deployment default, and these
+    /// two diverged.
+    #[test]
+    fn resolve_approval_is_stable_across_the_turn_1_auto_persist() {
+        let (turn_1, _) = resolve_approval(None, None);
+        let persisted = conv_settings(
+            &ApprovalMode::default().to_string(),
+            serde_json::json!([]),
+        );
+        let (turn_2, _) = resolve_approval(Some(&persisted), None);
+        assert_eq!(
+            turn_1, turn_2,
+            "a conversation must not change approval behaviour just because the \
+             client persisted the server default after the first message",
+        );
     }
 
     // ── fix-duplicate-tool-result ────────────────────────────────────────────

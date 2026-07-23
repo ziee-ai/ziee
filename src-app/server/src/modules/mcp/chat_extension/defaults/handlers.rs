@@ -14,6 +14,7 @@ use crate::{
 };
 
 use super::{models, repository};
+use crate::modules::mcp::chat_extension::approval::models::ApprovalMode;
 
 // =====================================================
 // Request/Response Types
@@ -21,7 +22,21 @@ use super::{models, repository};
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct UserMcpDefaultsGetResponse {
+    /// The user's stored defaults, or `null` when they have never saved any.
     pub defaults: Option<models::UserMcpDefaultsResponse>,
+
+    // Exposed because `defaults` being `null` left the client with no way to learn
+    // this, so it hardcoded `manual_approve`, showed that in the config modal, and
+    // then PERSISTED it on the first send — silently overriding a deployment
+    // configured to auto-approve.
+    //
+    // Deliberately a sibling scalar rather than a synthesized `defaults` object: the
+    // latter would have to fabricate an id/user_id/timestamps and would change the
+    // meaning of `defaults == null` that clients already branch on.
+    /// The approval mode applied to any scope with no stored settings — i.e. what a
+    /// brand-new conversation gets. Render this when `defaults` is null; on writes,
+    /// omit `approval_mode` rather than echoing it back (the server re-applies it).
+    pub default_approval_mode: ApprovalMode,
 }
 
 // =====================================================
@@ -37,7 +52,13 @@ pub async fn get_mcp_defaults(
         .await?
         .map(models::UserMcpDefaultsResponse::from);
 
-    Ok((StatusCode::OK, Json(UserMcpDefaultsGetResponse { defaults })))
+    Ok((
+        StatusCode::OK,
+        Json(UserMcpDefaultsGetResponse {
+            defaults,
+            default_approval_mode: ApprovalMode::default(),
+        }),
+    ))
 }
 
 pub fn get_mcp_defaults_docs(op: TransformOperation) -> TransformOperation {

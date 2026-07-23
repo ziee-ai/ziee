@@ -7,6 +7,34 @@ use uuid::Uuid;
 
 use crate::modules::mcp::chat_extension::defaults::models::LoopSettings;
 
+// ── The `#[default]` variant below is THE deployment default ────────────────────
+//
+// NOTE: this block is a plain comment, NOT a doc comment, on purpose — doc comments
+// on an OpenAPI-exposed type flow through to `ui/src/api-client/types.ts` as JSDoc,
+// and this is internal backend guidance, not client-facing API documentation.
+//
+// `ApprovalMode::default()` is the SINGLE SOURCE OF TRUTH for "what approval mode
+// applies when nothing has been stored yet". Every no-row / unparseable fallback in
+// the MCP module derives from it:
+//
+//   - `ConversationMcpSettings::get_approval_mode` / `UserMcpDefaults::get_approval_mode`
+//     (`.unwrap_or_default()`)
+//   - the no-settings-and-no-user-defaults branch of `mcp.rs::resolve_approval`
+//   - `mcp/settings/repository.rs::default_approval_mode()`, which feeds
+//     `get_or_default` and the settings upsert
+//   - the insert-side `COALESCE` in `approval/repository.rs::upsert_conversation_settings`
+//     and `defaults/repository.rs::upsert_user_defaults`
+//
+// It is therefore the ONE line that intentionally differs between branches:
+// `ManualApprove` on `main`/`khoi`, `AutoApprove` on `deploy-schedule` (where the
+// deployment runs its org MCP tools without a per-call prompt). Adding a new
+// fallback? Route it through here — never spell a mode inline. Five disagreeing
+// copies of this value are exactly why a conversation could auto-approve on turn 1
+// and then prompt on turn 2.
+//
+// The DB column default (`202607140180_mcp_schema.sql:56,132`) is deliberately NOT
+// kept in sync: it is unreachable, because every INSERT in the tree names
+// `approval_mode` explicitly.
 /// Approval mode for conversation MCP settings
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -115,11 +143,15 @@ pub struct ConversationMcpSettings {
 }
 
 impl ConversationMcpSettings {
-    /// Get approval mode as enum
+    /// Get approval mode as enum.
+    ///
+    /// A stored value that doesn't parse falls back to [`ApprovalMode::default()`]
+    /// (the deployment default) rather than a hardcoded variant — see the type-level
+    /// docs on [`ApprovalMode`]. In practice unreachable: every writer goes through
+    /// `ApprovalMode::to_string()`, so the column only ever holds one of the three
+    /// known spellings.
     pub fn get_approval_mode(&self) -> ApprovalMode {
-        self.approval_mode
-            .parse()
-            .unwrap_or(ApprovalMode::ManualApprove)
+        self.approval_mode.parse().unwrap_or_default()
     }
 
     /// Get auto-approved tools as typed Vec
@@ -214,8 +246,18 @@ pub struct ToolUseApproval {
 /// Request to create/update MCP settings
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct UpsertMcpSettingsRequest {
-    /// Approval mode
-    pub approval_mode: ApprovalMode,
+    // Omitting this is what the client's initial per-conversation auto-persist does:
+    // that write exists to snapshot `disabled_servers`, and must not silently pin an
+    // approval mode the user never chose (the "auto-approved on turn 1, prompts on
+    // turn 2" bug). Same tri-state contract as `auto_approved_tools` below.
+    //
+    // `#[serde(default)]` on an `Option` yields `None`, NOT
+    // `Some(ApprovalMode::default())` — absent stays distinguishable from explicit,
+    // which is what the repository's `COALESCE` needs.
+    /// Approval mode. Omit to leave it alone: an existing setting is preserved, and a
+    /// scope with no stored settings gets the server's default.
+    #[serde(default)]
+    pub approval_mode: Option<ApprovalMode>,
 
     /// Auto-approved tools grouped by server
     /// Format: [{"server_id": "uuid", "tools": ["tool1", "tool2"]}, ...]
@@ -245,4 +287,95 @@ pub struct ToolApprovalDecision {
     /// Optional note
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings_with_mode(raw: &str) -> ConversationMcpSettings {
+        ConversationMcpSettings {
+            id: Uuid::nil(),
+            conversation_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            approval_mode: raw.to_string(),
+            auto_approved_tools: serde_json::json!([]),
+            disabled_servers: serde_json::json!([]),
+            loop_settings: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    /// TEST-1 — a stored mode parses back to itself, and anything unparseable falls
+    /// back to the branch's compiled default rather than a hardcoded variant.
+    #[test]
+    fn conversation_get_approval_mode_parses_or_defaults() {
+        assert_eq!(
+            settings_with_mode("disabled").get_approval_mode(),
+            ApprovalMode::Disabled
+        );
+        assert_eq!(
+            settings_with_mode("auto_approve").get_approval_mode(),
+            ApprovalMode::AutoApprove
+        );
+        assert_eq!(
+            settings_with_mode("manual_approve").get_approval_mode(),
+            ApprovalMode::ManualApprove
+        );
+
+        // Asserted against ApprovalMode::default(), NOT a literal — this same test
+        // must hold on deploy-schedule, where the default is AutoApprove.
+        for junk in ["", "AUTO_APPROVE", "auto-approve", "nonsense"] {
+            assert_eq!(
+                settings_with_mode(junk).get_approval_mode(),
+                ApprovalMode::default(),
+                "unparseable {junk:?} must fall back to the deployment default",
+            );
+        }
+    }
+
+    /// TEST-3 — the enum default and its DB string spelling can never drift apart.
+    /// `settings/repository.rs::default_approval_mode()` and both upserts' insert-side
+    /// COALESCE stringify the default and store it; the read path parses it back. If
+    /// `Display` and `FromStr` disagreed for the default variant, a freshly-inserted
+    /// row would read back as a DIFFERENT mode than the one just written.
+    #[test]
+    fn default_approval_mode_round_trips_through_its_db_spelling() {
+        let stored = ApprovalMode::default().to_string();
+        assert_eq!(
+            stored.parse::<ApprovalMode>().expect("default must parse"),
+            ApprovalMode::default(),
+        );
+        // And the round-trip holds via the real read path, not just FromStr.
+        assert_eq!(
+            settings_with_mode(&stored).get_approval_mode(),
+            ApprovalMode::default(),
+        );
+    }
+
+    /// TEST-6 — absent must stay distinguishable from explicit. This is the property
+    /// the repository COALESCE relies on: `#[serde(default)]` on an `Option` yields
+    /// `None`, not `Some(ApprovalMode::default())`. If this ever regressed to the
+    /// latter, an un-customized client save would start pinning a mode again and the
+    /// original bug would return.
+    #[test]
+    fn upsert_request_distinguishes_absent_from_explicit_approval_mode() {
+        let absent: UpsertMcpSettingsRequest =
+            serde_json::from_value(serde_json::json!({ "disabled_servers": [] }))
+                .expect("approval_mode must be optional");
+        assert_eq!(absent.approval_mode, None);
+
+        for (raw, expected) in [
+            ("disabled", ApprovalMode::Disabled),
+            ("auto_approve", ApprovalMode::AutoApprove),
+            ("manual_approve", ApprovalMode::ManualApprove),
+        ] {
+            let explicit: UpsertMcpSettingsRequest = serde_json::from_value(
+                serde_json::json!({ "approval_mode": raw, "disabled_servers": [] }),
+            )
+            .expect("explicit approval_mode must deserialize");
+            assert_eq!(explicit.approval_mode, Some(expected));
+        }
+    }
 }
