@@ -120,6 +120,16 @@ permission introduced, no `modules/*/permissions.rs` or migration grant in the d
 - **ITEM-7** — verdict: PASS — required, not cosmetic: both comments currently assert the
   opposite of what the code will do, and a stale comment asserting a safety property is
   worse than no comment.
+- **ITEM-10** — verdict: PASS — this is the only change in the whole feature that makes
+  the guard *less* restrictive, so it is the one place the degrade-don't-corrupt contract
+  could actually be weakened. It is not weakened: the two unsafe shapes (match inside an
+  existing span; unpaired single `$` in the paragraph) still block, and the newly-allowed
+  cases were each confirmed against the installed micromark before the code changed —
+  paired `$$…$$` + inline, unpaired `$$` + inline, mid-paragraph display + inline, and
+  paired singles + inline all tokenize correctly. TEST-11 is the load-bearing regression:
+  a `\( … \)` inside a display body is still skipped, now because it is detected as inside
+  a `$$…$$` span rather than because any `$` was present. Cost is a slightly larger guard
+  (two small pure helpers, both unit-covered).
 - **ITEM-9** — verdict: PASS — added in phase 7, audited on the same terms as the other
   guards. It is purely subtractive (it can only skip a conversion, never alter one), so it
   cannot introduce corruption, and it closes a case no other guard could reach: ITEM-4

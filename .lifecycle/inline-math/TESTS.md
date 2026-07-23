@@ -28,6 +28,8 @@ they are additionally replayed by the file's idempotence test (TEST-12).
 
 - **TEST-20** (tier: unit) [covers: ITEM-9] file: `src-app/ui/src/components/common/normalizeMathDelimiters.test.ts` — asserts: two directly adjacent pairs are BOTH skipped — `x \( a \)\( b \) y` and `\(a\)\(b\)` are unchanged (converting would emit `$a$$b$`, which collapses into a single span with the body `a$$b`) — while any separator makes both safe: `x \(a\) \(b\) y` → `x $a$ $b$ y` and `x \(a\), \(b\) y` → `x $a$, $b$ y`
 
+- **TEST-21** (tier: unit) [covers: ITEM-10] file: `src-app/ui/src/components/common/normalizeMathDelimiters.test.ts` — asserts: a `$$` run in the paragraph no longer blocks inline conversion — the mid-paragraph display shape `The energy is \[ E=mc^2 \] where \( m \) is mass.` now yields BOTH the `$$` block and `$m$`; a paired `$$ x $$`, an unpaired `$$`, and a pair of singles that resolve into their own span all permit conversion — while TEST-5's unpaired-single and inside-a-span cases still block, and TEST-11's `\( \)` inside a display body is still skipped (it is now detected as being inside a `$$…$$` span)
+
 ## Coverage map (every ITEM → ≥1 TEST)
 
 | ITEM | Covered by |
@@ -41,6 +43,7 @@ they are additionally replayed by the file's idempotence test (TEST-12).
 | ITEM-7 documentation truth | TEST-19 (pins the behavior the rewritten comments describe) |
 | ITEM-8 caller early return | TEST-13, TEST-14, TEST-15 |
 | ITEM-9 adjacent-pair guard | TEST-20 |
+| ITEM-10 run-length dollar guard | TEST-21, TEST-5, TEST-11 |
 
 ## Notes on tiering
 

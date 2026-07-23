@@ -37,10 +37,18 @@
 //                                     by a dangling literal "E$ here".
 //
 // The display pass is immune (a `$$` run cannot pair with a lone `$`); the inline
-// pass is not. `paragraphHasLiveDollar` below is the guard, and it is the reason
-// this pass runs SECOND — by then the display pass has emitted its `$$` fences,
-// which the same guard sees, so a `\(` sitting inside a display body is left
-// alone instead of being rewritten into KaTeX-unparseable `$$\na $b$ c\n$$`.
+// pass is not. `paragraphBlocksInlineMath` below is the guard, and it is the
+// reason this pass runs SECOND — by then the display pass has emitted its `$$`
+// fences, so a `\(` sitting INSIDE a display body is recognised as already being
+// in a math span and left alone, rather than rewritten into KaTeX-unparseable
+// `$$\na $b$ c\n$$`.
+//
+// The guard pairs `$` runs BY LENGTH, the way micromark does, instead of merely
+// counting them. That distinction is what lets a display block and inline math
+// coexist in one paragraph: the display pass emits `$$` with single newlines (so
+// the block stays inside its list item / blockquote), which leaves it in the SAME
+// blank-line-delimited paragraph as the prose around it — and a `$$` run can
+// never close the single `$` we emit.
 
 // Display delimiters only. The lookbehind guards the OPENER, rejecting a
 // doubly-escaped `\\[` (a literal backslash the model escaped). The closer is
@@ -122,21 +130,98 @@ function paragraphEnd(str: string, from: number): number {
 }
 
 /**
- * Is there a live `$` elsewhere in this match's paragraph? If so, emitting a `$`
- * delimiter here could pair with it instead of with our own closer — the one way
- * this rewrite can genuinely corrupt output (see the module header).
- *
- * The test is "ANY live `$`", not "an ODD number of them": micromark pairs
- * left-to-right, so `$5 and $10 for \( E \)` has an even count and still hijacks.
- * Any-`$` is the only rule that provably cannot change how pre-existing `$`
- * tokens pair. It costs under-conversion in a paragraph that mixes `$` math with
- * `\( … \)` — a degrade, which is the contract every guard here follows.
+ * Maximal runs of LIVE `$` in `s`, as `{at, len}`. Run LENGTH is the unit that
+ * matters: micromark's math-text closes a span only with a run of the SAME
+ * length as its opener, so `$` and `$$` are different delimiters entirely.
  */
-function paragraphHasLiveDollar(str: string, start: number, end: number): boolean {
-  return (
-    hasLiveDollar(str.slice(paragraphStart(str, start), start)) ||
-    hasLiveDollar(str.slice(end, paragraphEnd(str, end)))
-  )
+function dollarRuns(s: string): Array<{ at: number; len: number }> {
+  const runs: Array<{ at: number; len: number }> = []
+  let i = 0
+  while (i < s.length) {
+    if (s[i] !== '$') {
+      i++
+      continue
+    }
+    let slashes = 0
+    while (i - slashes - 1 >= 0 && s[i - slashes - 1] === '\\') slashes++
+    if (slashes % 2 === 1) {
+      // `\$` — escaped, never a delimiter.
+      i++
+      continue
+    }
+    const at = i
+    while (i < s.length && s[i] === '$') i++
+    runs.push({ at, len: i - at })
+  }
+  return runs
+}
+
+/**
+ * Pair the runs the way micromark does — left to right, each opener closed by
+ * the next run of EQUAL length — and report the spans plus the runs that never
+ * found a partner.
+ */
+function pairDollarRuns(runs: Array<{ at: number; len: number }>) {
+  const spans: Array<{ start: number; end: number }> = []
+  const unpaired: Array<{ at: number; len: number }> = []
+  let i = 0
+  while (i < runs.length) {
+    let j = i + 1
+    while (j < runs.length && runs[j].len !== runs[i].len) j++
+    if (j < runs.length) {
+      spans.push({ start: runs[i].at, end: runs[j].at + runs[j].len })
+      i = j + 1
+    } else {
+      unpaired.push(runs[i])
+      i++
+    }
+  }
+  return { spans, unpaired }
+}
+
+/**
+ * Would emitting a `$ … $` span at `[start, end)` collide with the `$` already in
+ * this match's paragraph? This is the one way the rewrite can genuinely corrupt
+ * output (see the module header), so it is the guard that decides.
+ *
+ * Two — and only two — situations are unsafe, both verified against the
+ * installed micromark rather than assumed:
+ *
+ * 1. **The match sits inside an existing span.** `see $a \( b \) c$ end` — the
+ *    injected delimiter lands in the middle of someone else's math and breaks it.
+ *
+ * 2. **An UNPAIRED single `$` is loose in the paragraph.** `cost $5 and \( E \)`
+ *    → `cost $5 and $E$`, which micromark tokenizes as math `5 and ` plus a
+ *    dangling literal `E$`. That is the hijack.
+ *
+ * Everything else is safe, and saying so is the point of pairing by run length
+ * rather than counting dollars. In particular a `$$` run — paired or not —
+ * CANNOT close the single `$` we emit, so a display block sitting in the same
+ * paragraph no longer suppresses inline math. That matters because the display
+ * pass deliberately emits `$$` with single newlines (so the block stays inside
+ * its list item / blockquote), which leaves it in the SAME paragraph as any
+ * following prose: `The energy is \[ E=mc^2 \] where \( m \) is mass.` used to
+ * lose its `\( m \)` to this guard, and now keeps it.
+ *
+ * An already-PAIRED run of singles is likewise safe: pairing is left-to-right, so
+ * runs we add after a resolved span cannot change how that span resolved.
+ */
+function paragraphBlocksInlineMath(str: string, start: number, end: number): boolean {
+  const from = paragraphStart(str, start)
+  const runs = dollarRuns(str.slice(from, paragraphEnd(str, end)))
+  if (runs.length === 0) return false
+
+  const { spans, unpaired } = pairDollarRuns(runs)
+  const relStart = start - from
+  const relEnd = end - from
+
+  // (1) inside someone else's span — the match carries no `$` of its own, so it
+  // is wholly inside or wholly outside; an overlap test settles it either way.
+  if (spans.some(s => s.start < relEnd && s.end > relStart)) return true
+
+  // (2) a lone `$` can pair with the delimiter we are about to inject. A loose
+  // `$$`+ run cannot, so it does not block.
+  return unpaired.some(r => r.len === 1)
 }
 
 // Leading indent, blockquote markers, then an optional list marker. Used to
@@ -318,7 +403,7 @@ function normalizeInlineMath(md: string): string {
 
       // The hijack guard — last because it is the only one that scans beyond the
       // match itself.
-      if (anyDollar && paragraphHasLiveDollar(str, offset, after)) return whole
+      if (anyDollar && paragraphBlocksInlineMath(str, offset, after)) return whole
 
       return `$${inner}$`
     },

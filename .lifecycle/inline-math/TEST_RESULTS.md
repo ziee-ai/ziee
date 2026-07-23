@@ -25,19 +25,38 @@ src/components/common/markdownPreprocess.test.ts` → `# pass 27 / # fail 0`.
 - **TEST-13**: PASS
 - **TEST-14**: PASS
 - **TEST-20**: PASS
+- **TEST-21**: PASS
 
 ## E2E (Playwright, `--workers=1`, real backend + real browser)
 
 Two runs; each of the five e2e TEST-IDs passed with a real assertion against the DOM.
 
-- **TEST-15**: PASS — `renders \( … \) as inline math, not a display block` (both runs)
-- **TEST-16**: PASS — `converts inline \( … \) in prose but skips regex alternation` (both runs)
-- **TEST-17**: PASS — `leaves \[ … \] and \( … \) inside a code block literal` (run B)
-- **TEST-18**: PASS — `an unpaired $ in the paragraph suppresses inline conversion` (run B)
-- **TEST-19**: PASS — `renders \[ … \] display math (issue #177)`, `.katex-display` === 2 (run A)
+- **TEST-15**: PASS — `renders \( … \) as inline math, not a display block`
+- **TEST-16**: PASS — `converts inline \( … \) in prose but skips regex alternation`
+- **TEST-17**: PASS — `leaves \[ … \] and \( … \) inside a code block literal`
+- **TEST-18**: PASS — `an unpaired $ in the paragraph suppresses inline conversion`
+- **TEST-19**: PASS — `renders \[ … \] display math (issue #177)`, `.katex-display` === 2
 
-**Run A** (full spec, 18 tests): 10 passed / 8 failed.
-**Run B** (math subset after fixing the TEST-18 assertion, 6 tests): 4 passed / 2 failed.
+**Final run** (full spec, 18 tests, after the ITEM-10 guard change): **17 passed / 1
+failed** in 22.0m. The single failure is `renders fenced code with Shiki highlighting`.
+
+Earlier runs were much noisier (10/18, then 4/6) and I first wrote those failures off as
+"the per-test backend spawn degraded late in a long run". **That was wrong**, and the
+correction matters more than the original claim: the Playwright error-context showed the
+browser had landed on **MinIO's console page**, not the app. The e2e port-manager
+allocates worker 0 `vite 9000 / backend 9100` (`tests/fixtures/port-manager.ts:303`), and
+this host runs a MinIO container publishing `9000-9001` — so the preview server's port was
+already taken and every affected spec timed out waiting for a login field that was never
+going to appear. Re-running with the harness's own escape hatch:
+
+```bash
+ZIEE_E2E_BASE_VITE_PORT=9600 ZIEE_E2E_BASE_BACKEND_PORT=9700 \
+  npx playwright test tests/e2e/chat/markdown-rendering.spec.ts --workers=1
+```
+
+took the suite from 10/18 to 17/18 — mermaid, GFM table, both display-math specs and all
+three footnote specs went green, none of which had anything to do with this diff. Anyone
+running e2e on this box needs those two vars.
 
 **One real defect this surfaced, in the TEST-18 assertion (not the code).** Run A's
 TEST-18 failed with `Expected "…the rate (k) is fixed." / Received "…the rate ( k ) is
@@ -47,17 +66,63 @@ drops the backslashes and keeps the spaces, so `( k )` IS "renders as it does to
 Assertion corrected; TEST-18 passes in run B. Worth stating plainly because a
 `.katex === 0` check alone would have passed while the text assertion was wrong.
 
-**Every other e2e failure across both runs is infrastructure, never a content assertion**,
-and each is proven so by the failure mode:
+**The one remaining failure is not this diff.** `renders fenced code with Shiki
+highlighting` fails on:
 
-| Spec | Failure | Why it is not this diff |
-|---|---|---|
-| mermaid / GFM table / Shiki highlighting | assertion timeout on the code-block locator | The spec's own `FIXME` at line 145 documents this exactly: vite cold-start + streamdown 2's dynamic import of the hashed Shiki chunk 504s when the run *starts* with a code-block render. Pre-existing and annotated in the file before this branch. |
-| footnotes ×3, code-block-literal (run A) | `TimeoutError … waiting for [data-testid="app-setup-username-input"]` at `auth-helpers.ts:103` | The login/setup page never loaded — the per-test backend spawn degraded late in a 27-minute run. Content-independent; the same spec passed in run B. |
-| `$$…$$` math, `\[ … \]` display (run B) | the identical `app-setup-username-input` timeout | Position-dependent, not content-dependent: both PASSED in run A as tests #4 and #5, and failed in run B only as tests #1 and #2. |
+```
+Locator: …[data-streamdown="code-block"][data-language="rust"] … pre span[style*="color"]
+Expected: visible — element(s) not found
+```
 
-Taken together every spec in the file passed in at least one run except the
-mermaid/table/Shiki trio, whose failure mode is the one the file already documents.
+i.e. the code block renders but Shiki's per-token `style="color:…"` spans never arrive.
+That is exactly the condition the spec's own `FIXME` at line 145 documents — vite
+cold-start racing streamdown 2's dynamic import of its hashed Shiki chunk
+(`[[streamdown-v2-unbundled-plugins]]`) — it is a syntax-highlighting concern with no
+connection to math delimiters, and this diff touches no code-block path. It reproduces on
+the branch base.
+
+## Live container verification (real model, real browser)
+
+Not a lifecycle-required tier — run because a string transform passing unit tests can
+still be wrong about what a real model emits and what the real renderer does with it.
+
+**Stack** (`ziee-inline-check`, isolated from the host's existing deployment on :8080):
+postgres + the `ziee-web:local` API + an nginx SPA image built from THIS branch via
+`deploy/runtime/web.Dockerfile`, seeded with `deploy/seed/*.sql` (admin, the Free Models
+provider, GPT-OSS 120B, BioGnosia MCP), provider repointed at the host's LiteLLM.
+Published on :8098.
+
+**Round 1 — real model output.** Asked GPT-OSS 120B for the mass-energy equivalence. It
+emitted, unprompted, exactly the shape Flavor B exists for — bare single symbols:
+
+```
+\[
+E = m c^{2},
+\]
+
+and in this formula \(E\) denotes the energy, \(m\) the rest mass, and \(c\) the …
+```
+
+Rendered: 4 `.katex` = 1 display + 3 inline; TeX annotations `E = m c^{2},`, `E`, `m`, `c`;
+no `\(` anywhere in the DOM. Note `\(E\)` / `\(m\)` / `\(c\)` carry no `=`, no `^`, no
+LaTeX command — a content-gated Flavor A would have missed all three.
+
+**Round 1 also exposed a real defect** (→ ITEM-10, DRIFT-3). The user-message bubble, one
+run-on paragraph containing `\[ … \]`, rendered its `\( c \)` as literal `( c )`: the
+display pass had emitted `$$` into that same paragraph and the coarse dollar-guard
+suppressed every inline span there. Found by LOOKING at the render, not by a test.
+
+**Round 2 — after tightening the guard to pair `$` runs by length.** Deterministic probe
+through the same pipeline (user bubble, single paragraph):
+
+```
+Check: the energy is \[ E = mc^2 \] where \( m \) is the rest mass and \( c \) is …
+```
+
+→ 3 `.katex` = **1 display + 2 inline**, TeX `["E = mc^2","m","c"]` — the display block and
+BOTH inline spans, from one paragraph. The assistant's reply in the same run rendered 7
+`.katex` (2 display + 5 inline), including inline math inside bullet-list items and
+`3.00\times10^{8}\,\text{m/s}`.
 
 ## Frontend gate lines
 

@@ -58,6 +58,15 @@ Rendered through `micromark` + `micromark-extension-math` with
   every streaming frame; a `(?<!\\)` lookbehind rejects a doubly-escaped `\\(`; an
   unclosed `\( E=` simply fails to match, so streaming partials pass through; the pass is
   idempotent by construction because its output contains no `\(`.
+- **ITEM-10**: Tighten ITEM-4's guard to pair `$` runs BY LENGTH instead of counting
+  them. Added after live container verification (see DRIFT-3). The coarse "any live `$`
+  blocks" rule also blocked on `$$`, and because the display pass deliberately emits its
+  fences with SINGLE newlines (to keep the block inside its list item / blockquote), a
+  converted display block stays in the SAME blank-line-delimited paragraph as the prose
+  around it — so `The energy is \[ E=mc^2 \] where \( m \) is mass.` silently lost its
+  `\( m \)`. Verified against micromark that a `$$` run can never close the single `$` we
+  emit, so only two shapes are genuinely unsafe: the match sitting INSIDE an existing
+  span, or an UNPAIRED single `$` loose in the paragraph. Everything else converts.
 - **ITEM-9**: Adjacent-pair guard. Added in phase 7 (see DRIFT-2). Two `\( … \)` pairs
   with nothing between them — `\( a \)\( b \)` — would emit `$a$$b$`. A math-text closer
   must be a `$` run of the SAME length as its opener, so the inner `$$` does not close

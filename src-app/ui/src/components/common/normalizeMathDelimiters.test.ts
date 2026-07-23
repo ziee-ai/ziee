@@ -82,24 +82,46 @@ test('BRE signals in the body skip conversion', () => {
   check('opt \\(a\\?\\) x', 'opt \\(a\\?\\) x')
 })
 
-// TEST-5 — THE hijack guard. Injecting a `$` into a paragraph that already holds
-// a live `$` lets the two pair up: `cost $5 and $E$ here` tokenizes as math
-// "5 and " plus a dangling literal `E$ here`. That is real corruption, so the
-// whole match is left alone. A `$…$` span crosses a plain newline, so the guard
-// is paragraph-scoped, not line-scoped.
-test('an unpaired $ in the paragraph blocks conversion', () => {
+// TEST-5 — THE hijack guard. An UNPAIRED single `$` in the paragraph can pair
+// with the delimiter we emit: `cost $5 and $E$ here` tokenizes as math "5 and "
+// plus a dangling literal `E$ here`. That is real corruption, so the match is
+// left alone. A `$…$` span crosses a plain newline, so the guard is
+// paragraph-scoped, not line-scoped.
+test('an unpaired single $ in the paragraph blocks conversion', () => {
   check('cost $5 and \\( E=mc^2 \\) here', 'cost $5 and \\( E=mc^2 \\) here')
   check(
     'cost $5 line one\nand \\( E=mc^2 \\) here',
     'cost $5 line one\nand \\( E=mc^2 \\) here',
   )
-  // a `$` AFTER the match blocks it just the same
+  // a lone `$` AFTER the match blocks it just the same
   check('\\( E=mc^2 \\) then cost $5', '\\( E=mc^2 \\) then cost $5')
-  // converting inside an existing `$…$` span would break that span
+  // ...and converting INSIDE an existing span would break that span
   check('see $a \\( b \\) c$ end', 'see $a \\( b \\) c$ end')
-  // an even count still hijacks — micromark pairs left-to-right — so the rule is
-  // "any live `$`", not "an odd number of them"
-  check('$5 and $10 for \\( E \\)', '$5 and $10 for \\( E \\)')
+})
+
+// TEST-5b — but the guard pairs runs BY LENGTH rather than counting dollars, so
+// it only blocks on the two shapes that are genuinely unsafe. A `$$` run can
+// never close the single `$` we emit (verified against micromark), so a display
+// block in the same paragraph does NOT suppress inline math — which matters
+// because the display pass emits `$$` with single newlines, deliberately keeping
+// the block inside its container and therefore inside the same paragraph.
+test('a $$ run in the paragraph does not block inline conversion', () => {
+  // the shape the display pass produces, mid-paragraph
+  check(
+    'The energy is \n$$\nE = mc^2\n$$\n where \\( m \\) is mass.',
+    'The energy is \n$$\nE = mc^2\n$$\n where $m$ is mass.',
+  )
+  // ...which is exactly what `\[ … \]` + `\( … \)` in one sentence now yields
+  check(
+    'The energy is \\[ E=mc^2 \\] where \\( m \\) is mass.',
+    'The energy is \n$$\nE=mc^2\n$$\n where $m$ is mass.',
+  )
+  // a paired `$$…$$` inline, and an UNPAIRED `$$` — neither can hijack a `$`
+  check('energy $$ x $$ and \\( E \\) here', 'energy $$ x $$ and $E$ here')
+  check('$$ x and \\( E \\) here', '$$ x and $E$ here')
+  // two singles that PAIR resolve into their own span; pairing is left-to-right,
+  // so a span we add after them cannot change how they resolved
+  check('$5 and $10 for \\( E \\)', '$5 and $10 for $E$')
 })
 
 // TEST-6 — ...but the guard is PARAGRAPH-scoped and escape-aware, so it does not
