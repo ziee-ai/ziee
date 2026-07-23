@@ -61,18 +61,22 @@ function isSameOriginImage(url: string): boolean {
  *    it's a `data:` URI or already wrapped in a link. Same-origin images are
  *    left intact.
  *
- * 3. **LaTeX display-math delimiters** — models write display math as `\[ … \]`,
- *    but remark-math only understands `$`. Markdown eats the `\[` as a character
- *    escape, so the equation leaks through as raw LaTeX (issue #177).
- *    `normalizeMathDelimiters` rewrites it into the `$$ … $$` block form KaTeX
- *    receives. It runs FIRST, and its output is then split back out so passes (1)
- *    and (2) never reach inside a math span. Inline `\( … \)` is deliberately NOT
- *    converted — see that module's header.
+ * 3. **LaTeX math delimiters** — models write math with LaTeX's own delimiters,
+ *    but remark-math only understands `$`. Markdown eats the `\[` / `\(` as a
+ *    character escape, so the equation leaks through as raw LaTeX (issue #177).
+ *    `normalizeMathDelimiters` rewrites display `\[ … \]` into the `$$ … $$`
+ *    block form and inline `\( … \)` into `$ … $`. It runs FIRST, and its output
+ *    is then split back out so passes (1) and (2) never reach inside a math span.
+ *    Running it here — inside the code-fence/inline-code split — is what keeps a
+ *    real `sed 's/\(foo\)/bar/'` in a code block literal.
  */
 export function preprocessMarkdown(md: string): string {
-  // `\[` contains `[`, so the original guard already admits every input the math
-  // pass could act on — no widening needed.
-  if (typeof md !== 'string' || md.indexOf('[') === -1) return md
+  // The reference/image passes need a `[`, but the math pass does NOT: `\[`
+  // contains one, `\(` does not. Without the second clause a message whose only
+  // markup is inline math — `Energy \( E = mc^2 \) is nice.` — returns here
+  // untouched and the math pass never runs at all.
+  if (typeof md !== 'string') return md
+  if (md.indexOf('[') === -1 && md.indexOf('\\(') === -1) return md
 
   DEF_RE.lastIndex = 0
   const defs = new Map<string, { url: string; title?: string }>()

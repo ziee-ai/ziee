@@ -60,6 +60,26 @@ test('the returned label is trimmed', () => {
   )
 })
 
+// TEST-27 — the preview rung is the user's RAW first message, so it carries the
+// LaTeX they typed. No list surface renders markdown, so the label must already
+// be the plain-text reading. Both rungs go through it: a legacy `title` that was
+// persisted as the raw message needs the same treatment.
+test('math delimiters are resolved in both the title and the preview rungs', () => {
+  assert.equal(
+    conversationDisplayLabel({
+      first_message_preview: 'Check: the energy is \\[ E = mc^2 \\] where \\( m \\) ...',
+    }),
+    'Check: the energy is E = mc^2 where m ...',
+  )
+  assert.equal(
+    conversationDisplayLabel({ title: 'Deriving \\( \\lambda \\) decay' }),
+    'Deriving \\lambda decay',
+  )
+  // ...and a label whose ONLY content was a delimiter pair still resolves rather
+  // than collapsing to the placeholder
+  assert.equal(conversationDisplayLabel({ title: '\\( x \\)' }), 'x')
+})
+
 test('a missing/undefined conversation yields the placeholder', () => {
   assert.equal(conversationDisplayLabel(undefined), UNTITLED_CONVERSATION_LABEL)
   assert.equal(conversationDisplayLabel(null), UNTITLED_CONVERSATION_LABEL)

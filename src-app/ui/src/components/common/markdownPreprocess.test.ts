@@ -36,10 +36,14 @@ test('still inlines a reference link with a title', () => {
   assert.match(preprocessMarkdown(md), /\[it\]\(https:\/\/example\.test "Title"\)/)
 })
 
-// TEST-6 — `preprocessMarkdown` is shared by EVERY markdown surface (both chat
-// renderers, the file viewer, the skill drawer, workflow step output), so the
-// math pass added here must be provably additive: identical output for input
-// that contains no math, and no bracket-rewriting reach into a math span.
+// TEST-6 — `preprocessMarkdown` is shared by every markdown surface that renders
+// model output: both chat renderers (`modules/chat/components/TextContent.tsx`,
+// `modules/chat/extensions/text/components/TextContent.tsx`) and the file viewer
+// (`modules/file/viewers/markdown/body.tsx`). Those three are the complete call
+// set — the skill drawer and workflow step output do NOT route through it.
+//
+// Being shared, the math pass must be provably additive: identical output for
+// input that contains no math, and no bracket-rewriting reach into a math span.
 
 test('math delimiters are never rewritten inside code', () => {
   // fenced block — the `\[` must survive as literal text for the code renderer
@@ -78,17 +82,29 @@ test('math spans are protected from the reference-link pass', () => {
   )
 })
 
-test('display math outside code is converted, inline is left alone', () => {
+test('display and inline math outside code are both converted', () => {
   assert.equal(
     preprocessMarkdown('Given \\[ E = mc^2 \\] we conclude.'),
     'Given \n$$\nE = mc^2\n$$\n we conclude.',
   )
-  // inline `\( … \)` is byte-identical to POSIX BRE grouping, so it passes
-  // through untouched — converting it would mangle sed/grep prose
-  assert.equal(preprocessMarkdown('inline \\( x^2 \\) here'), 'inline \\( x^2 \\) here')
+  assert.equal(preprocessMarkdown('inline \\( x^2 \\) here'), 'inline $x^2$ here')
+  // the reference-link pass and the inline math pass coexist in one document
   assert.equal(
     preprocessMarkdown("[docs] and sed -e 's/\\(foo\\)/bar/'\n\n[docs]: http://x"),
-    "[docs](http://x) and sed -e 's/\\(foo\\)/bar/'\n\n[docs]: http://x",
+    "[docs](http://x) and sed -e 's/$foo$/bar/'\n\n[docs]: http://x",
+  )
+})
+
+// TEST-14 — code protection, proved at the level that actually provides it. The
+// guards inside `normalizeMathDelimiters` do NOT protect code; the split in
+// `preprocessMarkdown` does. So the claim "a real sed command in a code block is
+// safe" can only be tested here.
+test('inline math converts in prose while identical code stays literal', () => {
+  assert.equal(
+    preprocessMarkdown(
+      "Use \\( E=mc^2 \\) inline.\n\n```sh\nsed -e 's/\\(foo\\)/bar/'\n```\n\nand `\\(foo\\)` too.",
+    ),
+    "Use $E=mc^2$ inline.\n\n```sh\nsed -e 's/\\(foo\\)/bar/'\n```\n\nand `\\(foo\\)` too.",
   )
 })
 
@@ -139,11 +155,19 @@ test('non-math input is unchanged by the math pass', () => {
   assert.equal(preprocessMarkdown('![alt](/local/img.png)'), '![alt](/local/img.png)')
 })
 
-test('the early return still short-circuits delimiter-free input', () => {
+// TEST-13 — the early return must admit inline math. `\[` contains a `[` but
+// `\(` does NOT, so a bracket-only guard silently makes the whole inline-math
+// feature a no-op for the most common real input — a sentence whose only markup
+// is an equation. Every test that calls `normalizeMathDelimiters` directly
+// bypasses this guard, so this is the only place the regression can be caught.
+test('the early return short-circuits delimiter-free input but admits inline math', () => {
   const plain = 'plain prose with no brackets at all'
   assert.equal(preprocessMarkdown(plain), plain)
   assert.equal(preprocessMarkdown(''), '')
-  // a string with `\(` and no `[` short-circuits, which is correct now that
-  // inline is passthrough — `\[` always contains `[`, so nothing is missed
-  assert.equal(preprocessMarkdown('energy \\( E \\) here'), 'energy \\( E \\) here')
+  // no `[` anywhere in this document — it must still reach the math pass
+  assert.equal(preprocessMarkdown('energy \\( E \\) here'), 'energy $E$ here')
+  assert.equal(
+    preprocessMarkdown('Energy \\( E = mc^2 \\) is nice.'),
+    'Energy $E = mc^2$ is nice.',
+  )
 })
