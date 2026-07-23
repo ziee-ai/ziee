@@ -7,5 +7,10 @@ src-app/ui/src/components/common/markdownPreprocess.ts	1	120	correctness,api-fri
 src-app/ui/src/components/common/normalizeMathDelimiters.test.ts	1	160	tests-quality,test-reality,correctness,maintainability
 src-app/ui/src/components/common/normalizeMathDelimiters.test.ts	150	300	tests-quality,test-reality,correctness,perf,error-handling
 src-app/ui/src/components/common/markdownPreprocess.test.ts	1	200	tests-quality,test-reality,correctness,modularity,maintainability
+src-app/ui/src/components/common/mathPlainText.ts	1	80	correctness,security,a11y,maintainability,patterns-conformance,modularity,api-friendliness,state-management,perf
+src-app/ui/src/components/common/mathPlainText.test.ts	1	80	tests-quality,test-reality,correctness,maintainability
+src-app/ui/src/modules/chat/core/utils/conversationDisplayLabel.ts	1	60	correctness,api-contract,a11y,maintainability,modularity
+src-app/ui/src/modules/chat/core/utils/conversationDisplayLabel.test.ts	1	100	tests-quality,test-reality,correctness,a11y
+src-app/ui/src/modules/chat/components/TitleEditor.tsx	1	200	correctness,a11y,precedent-fidelity,maintainability,i18n-copy
 src-app/ui/tests/e2e/chat/markdown-rendering.spec.ts	1	290	tests-quality,test-reality,patterns-conformance,i18n-copy
 src-app/ui/tests/e2e/chat/markdown-rendering.spec.ts	285	430	tests-quality,test-reality,correctness,a11y,security,precedent-fidelity

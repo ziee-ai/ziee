@@ -26,6 +26,12 @@ src/components/common/markdownPreprocess.test.ts` → `# pass 27 / # fail 0`.
 - **TEST-14**: PASS
 - **TEST-20**: PASS
 - **TEST-21**: PASS
+- **TEST-22**: PASS
+- **TEST-23**: PASS
+- **TEST-24**: PASS
+- **TEST-25**: PASS
+- **TEST-26**: PASS
+- **TEST-27**: PASS
 
 ## E2E (Playwright, `--workers=1`, real backend + real browser)
 
@@ -123,6 +129,27 @@ Check: the energy is \[ E = mc^2 \] where \( m \) is the rest mass and \( c \) i
 BOTH inline spans, from one paragraph. The assistant's reply in the same run rendered 7
 `.katex` (2 display + 5 inline), including inline math inside bullet-list items and
 `3.00\times10^{8}\,\text{m/s}`.
+
+**Round 3 — conversation titles (ITEM-11).** The stored title for the round-2 conversation
+is literally `Check: the energy is \[ E = mc^2 \] where \( m \) ...`, so it is a real
+fixture rather than a synthetic one. After the fix, read straight out of the DOM:
+
+```
+SIDEBAR rows : ["Check: the energy is E = mc^2 where m ...", …]
+HEADER       : ["Check: the energy is E = mc^2 where m ...", …]
+stray delimiters anywhere on the page: none
+```
+
+## Full frontend unit suite
+
+`npm run test:unit` (whole workspace, not just the math files): **464 passed / 10 failed**.
+
+All 10 failures are `ERR_MODULE_NOT_FOUND` — **zero assertion failures**, and none in a
+file this branch touches. Eight are tests importing a module that no longer exists
+(`Auth.store`, `ChatHistory.store`, `runTimeline`, `ScheduledTasks.store`, four
+`VoiceModel*.store`) — left behind by other in-flight work that moved those modules; two
+are the `@ziee/framework/src/store-kit` resolution gap recorded in DRIFT-1.5. Verified
+pre-existing by the stash-and-rerun method.
 
 ## Frontend gate lines
 
