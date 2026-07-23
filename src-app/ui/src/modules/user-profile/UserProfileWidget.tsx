@@ -117,7 +117,28 @@ export function UserProfileWidget() {
     },
   ]
 
-  const item = (
+  // The sidebar identifies the PERSON, not the login handle. `||` (not `??`):
+  // `display_name` can be absent, JSON null, OR a blank string — self-service
+  // edits normalize blanks to NULL, but the admin create/update path stores
+  // what it is given, so `'   '` is reachable. `??` would keep it and render a
+  // nameless row. One const so the visible label, its aria-label/title, and the
+  // collapsed tooltip can't diverge.
+  const label = user.display_name?.trim() || user.username
+
+  // role=button so the dropdown's injected aria-expanded/aria-haspopup are
+  // valid on this trigger (a bare <div> doesn't support them → axe
+  // aria-allowed-attr). tabIndex keeps it keyboard-reachable.
+  const trigger = (
+    <div data-testid="user-profile-widget" role="button" tabIndex={0}>
+      <SidebarItem
+        icon={<User />}
+        label={label}
+        collapsed={isSidebarCollapsed}
+      />
+    </div>
+  )
+
+  return (
     <Dropdown
       data-testid="userprofile-menu-dropdown"
       items={items}
@@ -127,26 +148,20 @@ export function UserProfileWidget() {
       // right at the sidebar's left edge (Base UI's default align collision).
       collisionAvoidance={{ align: 'shift' }}
     >
-      {/* role=button so Radix's injected aria-expanded/aria-haspopup are valid
-          on this dropdown trigger (a bare <div> doesn't support them → axe
-          aria-allowed-attr). tabIndex keeps it keyboard-reachable. */}
-      <div data-testid="user-profile-widget" role="button" tabIndex={0}>
-        <SidebarItem
-          icon={<User />}
-          label={user.username}
-          collapsed={isSidebarCollapsed}
-        />
-      </div>
+      {/* Collapsed, the label span is width-0, so the tooltip is the only thing
+          naming the user — it has to actually open. The kit Tooltip must sit
+          INSIDE the trigger (it forwards a parent trigger's injected props onto
+          its child via Slot). Wrapping it AROUND <Dropdown> silently dropped
+          them, because Dropdown destructures a fixed prop list with no
+          rest-spread and never forwards unknown props to the DOM — which is why
+          this tooltip previously never appeared on hover. */}
+      {isSidebarCollapsed ? (
+        <Tooltip content={label} side="right">
+          {trigger}
+        </Tooltip>
+      ) : (
+        trigger
+      )}
     </Dropdown>
   )
-
-  if (isSidebarCollapsed) {
-    return (
-      <Tooltip content={user.username} side="right">
-        {item}
-      </Tooltip>
-    )
-  }
-
-  return item
 }
