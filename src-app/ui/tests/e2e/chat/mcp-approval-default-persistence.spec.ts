@@ -45,9 +45,9 @@ test.describe('MCP approval default — persistence across turns', () => {
     await createModelViaAPI(apiURL, token, providerId, undefined, MODEL_DISPLAY_NAME, 'openai')
   })
 
-  // ── TEST-20: the literal reported repro ────────────────────────────────────
+  // ── TEST-20: the reported repro ────────────────────────────────────────────
 
-  test('a first message does not pin an approval mode the server did not choose', async ({
+  test('a settings write on a fresh conversation does not pin a mode the server did not choose', async ({
     page,
     testInfra,
   }) => {
@@ -55,6 +55,11 @@ test.describe('MCP approval default — persistence across turns', () => {
     const token = await getAdminToken(page)
 
     const serverDefault = await getServerDefaultApprovalMode(page, apiURL, token)
+
+    // An accessible, enabled MCP server. Required, not incidental: with none, the
+    // MCP chat extension never attaches and none of its hooks run at all.
+    // (Verified: without this, no /mcp-settings request is ever made.)
+    await createSystemServer(page, apiURL, token, `Default Turn1 ${Date.now()}`)
 
     // Precondition: no user defaults row, so the conversation's mode can only
     // come from the server default. Without this the test could pass by
@@ -70,15 +75,28 @@ test.describe('MCP approval default — persistence across turns', () => {
       'first message that does not use any tool',
     )
 
-    // The client's onMessageSent auto-persist is fire-and-forget; wait for the
-    // row rather than racing it.
+    // Then force the client's settings WRITE deterministically, by opening and
+    // closing the MCP config modal — its close handler calls the same
+    // `saveConversationConfig` the turn-1 auto-persist does (see
+    // mcp-config-modal.spec.ts, which pins that a PUT fires on close).
+    //
+    // Why not rely on the auto-persist itself: `onMessageSent` only writes when
+    // the pane has no config for the new id yet, and whether `onConversationLoad`
+    // has already seeded one is a hook-ordering race. The bug is not about WHICH
+    // hook writes — it is that a write carrying no user choice used to pin
+    // `manual_approve` regardless of the deployment's default. This drives that
+    // exact write every time.
+    await openMcpConfigModal(page)
+    await byTestId(page, 'mcp-config-close-btn').click()
+    await expect(byTestId(page, 'mcp-config-modal')).not.toBeVisible({ timeout: 10000 })
+
     const settings = await waitForConversationMcpSettings(page, apiURL, token, conversationId)
 
     expect(
       settings.approval_mode,
-      `the turn-1 auto-persist must not override the server default ` +
-        `(${serverDefault}); a later turn reads THIS row, which is why the ` +
-        `conversation used to start prompting from message 2 on`,
+      `a client settings write that carries no user choice must not override the ` +
+        `server default (${serverDefault}); every later turn reads THIS row, which ` +
+        `is why the conversation used to start prompting from message 2 on`,
     ).toBe(serverDefault)
   })
 
@@ -139,9 +157,7 @@ test.describe('MCP approval default — persistence across turns', () => {
     await createSystemServer(page, apiURL, token, `Default Modal ${Date.now()}`)
 
     await goToNewChatPage(page, baseURL)
-    await byTestId(page, 'chat-input-add-btn').first().click()
-    await byTestId(page, 'chat-mcp-menu-item').first().click()
-    await expect(byTestId(page, 'mcp-config-modal')).toBeVisible({ timeout: 10000 })
+    await openMcpConfigModal(page)
 
     // Assert the rendered DOM, not the store: only a real render proves the user
     // is not being shown "Manual" on an auto-approving deployment.
@@ -165,6 +181,17 @@ const APPROVAL_MODE_LABEL: Record<string, string> = {
 }
 
 type Page = import('@playwright/test').Page
+
+/**
+ * Open the MCP config modal via its only real UI path: toolbar "+" → the MCP
+ * menu item. Requires ≥1 enabled MCP server (McpMenuItem hides itself otherwise).
+ * Mirrors the helper in mcp-config-modal.spec.ts.
+ */
+async function openMcpConfigModal(page: Page): Promise<void> {
+  await byTestId(page, 'chat-input-add-btn').first().click()
+  await byTestId(page, 'chat-mcp-menu-item').first().click()
+  await expect(byTestId(page, 'mcp-config-modal')).toBeVisible({ timeout: 10000 })
+}
 
 async function getAdminToken(page: Page): Promise<string> {
   const authData = await page.evaluate(() => localStorage.getItem('auth-storage'))
