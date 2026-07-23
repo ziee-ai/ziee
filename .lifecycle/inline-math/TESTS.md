@@ -30,6 +30,13 @@ they are additionally replayed by the file's idempotence test (TEST-12).
 
 - **TEST-21** (tier: unit) [covers: ITEM-10] file: `src-app/ui/src/components/common/normalizeMathDelimiters.test.ts` — asserts: a `$$` run in the paragraph no longer blocks inline conversion — the mid-paragraph display shape `The energy is \[ E=mc^2 \] where \( m \) is mass.` now yields BOTH the `$$` block and `$m$`; a paired `$$ x $$`, an unpaired `$$`, and a pair of singles that resolve into their own span all permit conversion — while TEST-5's unpaired-single and inside-a-span cases still block, and TEST-11's `\( \)` inside a display body is still skipped (it is now detected as being inside a `$$…$$` span)
 
+- **TEST-22** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/components/common/mathPlainText.test.ts` — asserts: the reported string `Check: the energy is \[ E = mc^2 \] where \( m \) ...` reads as `Check: the energy is E = mc^2 where m ...`; both inline and display pairs resolve to their trimmed content
+- **TEST-23** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/components/common/mathPlainText.test.ts` — asserts: a label is one line — newlines in a `first_message_preview` and the padding left by unwrapping a display block collapse to single spaces
+- **TEST-24** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/components/common/mathPlainText.test.ts` — asserts: a leftover escape unescapes rather than leaking a backslash (`truncated \( m` → `truncated ( m`), which is what keeps a 50-char-truncated title readable when the cut orphans an opener
+- **TEST-25** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/components/common/mathPlainText.test.ts` — asserts: a backslash-free label is returned byte-for-byte, whitespace included — the no-op path that keeps every existing title unchanged
+- **TEST-26** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/components/common/mathPlainText.test.ts` — asserts: structural safety — a doubly-escaped opener is not a delimiter, an over-cap body is not a pair, and the transform is idempotent
+- **TEST-27** (tier: unit) [covers: ITEM-11] file: `src-app/ui/src/modules/chat/core/utils/conversationDisplayLabel.test.ts` — asserts: at the integration point — BOTH the `title` rung (legacy raw-message titles) and the `first_message_preview` rung resolve their delimiters, and a label whose only content was a pair resolves instead of collapsing to the placeholder
+
 ## Coverage map (every ITEM → ≥1 TEST)
 
 | ITEM | Covered by |
@@ -44,6 +51,7 @@ they are additionally replayed by the file's idempotence test (TEST-12).
 | ITEM-8 caller early return | TEST-13, TEST-14, TEST-15 |
 | ITEM-9 adjacent-pair guard | TEST-20 |
 | ITEM-10 run-length dollar guard | TEST-21, TEST-5, TEST-11 |
+| ITEM-11 titles / list labels | TEST-22, TEST-23, TEST-24, TEST-25, TEST-26, TEST-27 |
 
 ## Notes on tiering
 

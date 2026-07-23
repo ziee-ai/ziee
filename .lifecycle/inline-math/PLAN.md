@@ -58,6 +58,19 @@ Rendered through `micromark` + `micromark-extension-math` with
   every streaming frame; a `(?<!\\)` lookbehind rejects a doubly-escaped `\\(`; an
   unclosed `\( E=` simply fails to match, so streaming partials pass through; the pass is
   idempotent by construction because its output contains no `\(`.
+- **ITEM-11**: Resolve math delimiters in conversation TITLES and list labels. Reported
+  from the live container: the header and sidebar showed
+  `Check: the energy is \[ E = mc^2 \] where \( m \) ...` verbatim. Titles are plain
+  `string`s that never reach Streamdown — they feed a sidebar row, a header, a tooltip, an
+  `aria-label` and a search predicate — so rendering KaTeX there is the wrong tool (several
+  consumers cannot hold a React node, and a display block does not belong in a 32px row).
+  Add a `mathToPlainText` helper giving the plain-text READING of the math, consistent with
+  what the body renders: a balanced pair resolves to its content (`\( m \)` → `m`), and any
+  leftover escaped bracket/paren unescapes to that character — which is what keeps a
+  50-char-truncated title readable when the cut orphans an opener. Apply it in
+  `conversationDisplayLabel` (every list surface) and in `TitleEditor`'s display text (the
+  header, which deliberately bypasses that helper). The edit INPUT keeps the raw stored
+  title.
 - **ITEM-10**: Tighten ITEM-4's guard to pair `$` runs BY LENGTH instead of counting
   them. Added after live container verification (see DRIFT-3). The coarse "any live `$`
   blocks" rule also blocked on `$$`, and because the display pass deliberately emits its

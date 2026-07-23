@@ -120,6 +120,17 @@ permission introduced, no `modules/*/permissions.rs` or migration grant in the d
 - **ITEM-7** — verdict: PASS — required, not cosmetic: both comments currently assert the
   opposite of what the code will do, and a stale comment asserting a safety property is
   worse than no comment.
+- **ITEM-11** — verdict: PASS — a separate, additive module (`mathPlainText.ts`) plus two
+  call sites; it cannot affect the message-body pipeline, which is where all the risk in
+  this feature lives. The design question was render-KaTeX vs plain-text, and plain-text is
+  forced by the consumers: `conversationDisplayLabel` returns `string` and is used for an
+  `aria-label` (`ConversationCard.tsx:116`) and two search predicates
+  (`PaneManagerDrawer.tsx:122`, `ConversationPickerPane.tsx:48`), none of which can hold a
+  node — and stripping makes the search match what the user actually sees. Behavior for a
+  backslash-free label is byte-identical (early return), so the existing
+  `conversationDisplayLabel` suite passes unchanged. Note it also cleans up legacy rows
+  whose `title` column holds a raw truncated first message, which is how the defect was
+  observed.
 - **ITEM-10** — verdict: PASS — this is the only change in the whole feature that makes
   the guard *less* restrictive, so it is the one place the degrade-don't-corrupt contract
   could actually be weakened. It is not weakened: the two unsafe shapes (match inside an
