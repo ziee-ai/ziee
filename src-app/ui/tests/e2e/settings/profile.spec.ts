@@ -147,9 +147,12 @@ test.describe('Settings - Profile (self-service)', () => {
     await byTestId(page, 'profile-save-button').click()
     await expect(successToast(page)).toBeVisible()
 
-    // The sidebar widget renders the username — refreshCurrentUser should
-    // update it without a reload. Assert on text content (not visibility:
-    // a collapsed sidebar renders the label with opacity 0).
+    // The sidebar widget renders display_name, falling back to the username —
+    // and this user has none (createTestUser sends no display_name, and
+    // POST /api/users stores it verbatim without defaulting), so the fallback
+    // is what shows. refreshCurrentUser should update it without a reload.
+    // Assert on text content (not visibility: a collapsed sidebar renders the
+    // label with opacity 0).
     await expect(byTestId(page, 'user-profile-widget')).toContainText(
       newUsername,
     )
