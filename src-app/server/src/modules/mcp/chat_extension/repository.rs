@@ -31,12 +31,14 @@ impl McpChatRepository {
     }
 
     /// Upsert MCP settings for a conversation
+    /// `approval_mode`: None = preserve existing DB value (or apply the server
+    /// default on insert); Some(mode) = set it explicitly
     /// `auto_approved_tools`: None = preserve existing DB value; Some(tools) = overwrite
     pub async fn upsert_conversation_settings(
         &self,
         conversation_id: Uuid,
         user_id: Uuid,
-        approval_mode: ApprovalMode,
+        approval_mode: Option<ApprovalMode>,
         auto_approved_tools: Option<&[AutoApprovedServer]>,
         disabled_servers: &[DisabledServer],
         loop_settings: &LoopSettings,

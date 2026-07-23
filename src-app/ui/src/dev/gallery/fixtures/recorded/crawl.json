@@ -2455,7 +2455,9 @@
     "created_at": "2026-07-05T20:15:33.458227Z",
     "updated_at": "2026-07-05T20:15:33.458227Z"
   },
-  "Mcp.getDefaults": {},
+  "Mcp.getDefaults": {
+    "default_approval_mode": "manual_approve"
+  },
   "McpServer.listAccessible": {
     "servers": [
       {

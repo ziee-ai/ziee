@@ -1092,7 +1092,10 @@ const mcpExtension: ChatExtension = createExtension({
         const config = {
           selectedServers,
           disabledServers: [],
-          approvalMode: 'manual_approve' as const,
+          // No stored settings yet → the SERVER's default, not a client literal.
+          // Hardcoding manual here misreported (and, via the first save, then
+          // PERSISTED) the wrong mode on an auto-approving deployment.
+          approvalMode: mcpStore.serverDefaultApprovalMode,
           autoApprovedTools: [],
           loopSettings: undefined,  // Use defaults
         }
@@ -1111,7 +1114,9 @@ const mcpExtension: ChatExtension = createExtension({
       const config = {
         selectedServers,
         disabledServers: [],
-        approvalMode: 'manual_approve' as const,
+        // Settings fetch failed → still use the SERVER's default rather than a
+        // client literal (same reason as the no-settings branch above).
+        approvalMode: mcpStore.serverDefaultApprovalMode,
         autoApprovedTools: [],
         loopSettings: undefined,  // Use defaults
       }

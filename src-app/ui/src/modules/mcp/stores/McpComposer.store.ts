@@ -10,6 +10,12 @@ import {
   getApprovalDecisionsFrom,
   clearApprovalDecisionsIn,
 } from '@/modules/mcp/stores/approvalRouting'
+import {
+  FALLBACK_APPROVAL_MODE,
+  approvalModePayload,
+  blankMcpConfig,
+  type ApprovalModeValue,
+} from '@/modules/mcp/stores/approvalDefaults'
 
 // Enable Map support in Immer
 enableMapSet()
@@ -77,7 +83,7 @@ interface ConversationMcpConfig {
   /** Disabled servers (persisted to backend) - allows all servers by default */
   disabledServers?: DisabledServer[]
   /** Approval mode from conversation_mcp_settings */
-  approvalMode?: 'disabled' | 'auto_approve' | 'manual_approve'
+  approvalMode?: ApprovalModeValue
   /** Auto-approved tools grouped by server */
   autoApprovedTools?: AutoApprovedServer[]
   /** Loop settings for controlling iteration behavior */
@@ -160,6 +166,17 @@ export const McpComposer = defineStore('McpComposer', {
     selectedServers: new Map<string, ServerSelection>(),
     userDefaults: null as UserMcpDefaultsResponse | null,
     userDefaultsLoaded: false,
+    /**
+     * The SERVER's approval mode for any scope with no stored row — i.e. what a
+     * brand-new conversation actually gets. Reported by `GET /api/mcp/defaults`
+     * as `default_approval_mode`; the client must never assume it.
+     *
+     * Seeded with the safe restrictive fallback until that fetch resolves (see
+     * `approvalDefaults.ts`). It is used for DISPLAY and for seeding blank configs
+     * — never sent on a write (writes omit the field so the server stays
+     * authoritative).
+     */
+    serverDefaultApprovalMode: FALLBACK_APPROVAL_MODE as ApprovalModeValue,
     configModalVisible: false,
     elicitationRequests: new Map<string, ElicitationRequestState>(),
   },
@@ -313,14 +330,19 @@ export const McpComposer = defineStore('McpComposer', {
           const config = state.conversationConfigs.get(configKey)!
           state.selectedServers = new Map(config.selectedServers)
         } else if (!conversationId) {
-          // New conversation without pending config - create one with user defaults if available
+          // New conversation without pending config - create one with user defaults if available.
+          // With no saved defaults the approval mode comes from the SERVER's default,
+          // never a client-side literal (that hardcode is what used to get persisted
+          // on the first send and downgrade an auto-approving deployment).
           const defaults = state.userDefaults
           const pendingConfig: ConversationMcpConfig = {
-            selectedServers: new Map(),
+            ...blankMcpConfig(
+              (defaults?.approval_mode as ApprovalModeValue) ??
+                state.serverDefaultApprovalMode,
+              defaults?.loop_settings,
+            ),
             disabledServers: defaults?.disabled_servers || [],
-            approvalMode: (defaults?.approval_mode as 'disabled' | 'auto_approve' | 'manual_approve') || 'manual_approve',
             autoApprovedTools: defaults?.auto_approved_tools || [],
-            loopSettings: defaults?.loop_settings,
           }
           // THIS pane's pending config key (ITEM-51), not the single shared one.
           state.conversationConfigs.set(pendingConversationKey(paneId), pendingConfig)
@@ -342,11 +364,10 @@ export const McpComposer = defineStore('McpComposer', {
           state.conversationConfigs.set(conversationId, config)
         } else {
           // Create default config
-          state.conversationConfigs.set(conversationId, {
-            selectedServers: new Map(),
-            approvalMode: 'manual_approve',
-            autoApprovedTools: [],
-          })
+          state.conversationConfigs.set(
+            conversationId,
+            blankMcpConfig(state.serverDefaultApprovalMode),
+          )
         }
 
         // If this is current conversation, update selectedServers
@@ -406,7 +427,13 @@ export const McpComposer = defineStore('McpComposer', {
       const { ApiClient } = await import('@/api-client')
       await ApiClient.Conversation.updateMcpSettings({
         id: conversationId,
-        approval_mode: config.approvalMode || 'manual_approve',
+        // Only send approval_mode when this config actually HAS one — backend
+        // COALESCE applies the server default on insert and preserves the stored
+        // value on update. The unconditional `|| 'manual_approve'` this replaces
+        // is what made a brand-new conversation's first save pin manual approval
+        // on a deployment whose default is auto-approve (auto-approved on turn 1,
+        // prompted from turn 2). This save exists to snapshot the SERVER LIST.
+        ...approvalModePayload(config.approvalMode),
         // Only send auto_approved_tools when explicitly changing approvals — backend COALESCE preserves DB value otherwise
         ...(updateAutoApproved ? { auto_approved_tools: config.autoApprovedTools } : {}),
         disabled_servers: disabledServers,
@@ -482,7 +509,12 @@ export const McpComposer = defineStore('McpComposer', {
 
       await ApiClient.Project.updateMcpSettings({
         id: projectId,
-        approval_mode: config.approvalMode || 'manual_approve',
+        // The project endpoint's approval_mode is REQUIRED (a project's MCP
+        // settings are only ever written by an explicit user action in the project
+        // modal — there is no turn-1 auto-persist here, so the omit-on-unset rule
+        // that the conversation/user-defaults writes use doesn't apply). Still
+        // source the value from the SERVER default rather than a literal.
+        approval_mode: config.approvalMode || get().serverDefaultApprovalMode,
         auto_approved_tools: config.autoApprovedTools || [],
         disabled_servers: disabledServers,
         loop_settings: config.loopSettings,
@@ -519,12 +551,7 @@ export const McpComposer = defineStore('McpComposer', {
       const state = get()
       let config = state.conversationConfigs.get(PENDING_CONVERSATION_KEY)
       if (!config) {
-        config = {
-          selectedServers: new Map(),
-          disabledServers: [],
-          approvalMode: 'manual_approve',
-          autoApprovedTools: [],
-        }
+        config = blankMcpConfig(state.serverDefaultApprovalMode)
         set(s => {
           s.conversationConfigs.set(PENDING_CONVERSATION_KEY, config!)
         })
@@ -557,19 +584,14 @@ export const McpComposer = defineStore('McpComposer', {
     /**
      * Set approval mode for a conversation (or pending if conversationId is null)
      */
-    setApprovalMode: (conversationId: string | null, mode: 'disabled' | 'auto_approve' | 'manual_approve') => {
+    setApprovalMode: (conversationId: string | null, mode: ApprovalModeValue) => {
       set(state => {
         const configKey = resolveConfigKey(state, conversationId)
         let config = state.conversationConfigs.get(configKey)
 
         // Create pending config if it doesn't exist (for new conversations)
         if (!config && !conversationId) {
-          config = {
-            selectedServers: new Map(),
-            disabledServers: [],
-            approvalMode: 'manual_approve',
-            autoApprovedTools: [],
-          }
+          config = blankMcpConfig(state.serverDefaultApprovalMode)
           state.conversationConfigs.set(configKey, config)
         }
 
@@ -591,12 +613,7 @@ export const McpComposer = defineStore('McpComposer', {
 
         // Create pending config if it doesn't exist (for new conversations)
         if (!config && !conversationId) {
-          config = {
-            selectedServers: new Map(),
-            disabledServers: [],
-            approvalMode: 'manual_approve',
-            autoApprovedTools: [],
-          }
+          config = blankMcpConfig(state.serverDefaultApprovalMode)
           state.conversationConfigs.set(configKey, config)
         }
 
@@ -663,13 +680,7 @@ export const McpComposer = defineStore('McpComposer', {
 
         // Create config if it doesn't exist (for both new and existing conversations)
         if (!config) {
-          config = {
-            selectedServers: new Map(),
-            disabledServers: [],
-            approvalMode: 'manual_approve',
-            autoApprovedTools: [],
-            loopSettings: {},
-          }
+          config = { ...blankMcpConfig(state.serverDefaultApprovalMode), loopSettings: {} }
           state.conversationConfigs.set(configKey, config)
         }
 
@@ -687,13 +698,7 @@ export const McpComposer = defineStore('McpComposer', {
 
         // Create config if it doesn't exist (for both new and existing conversations)
         if (!config) {
-          config = {
-            selectedServers: new Map(),
-            disabledServers: [],
-            approvalMode: 'manual_approve',
-            autoApprovedTools: [],
-            loopSettings: {},
-          }
+          config = { ...blankMcpConfig(state.serverDefaultApprovalMode), loopSettings: {} }
           state.conversationConfigs.set(configKey, config)
         }
 
@@ -737,13 +742,7 @@ export const McpComposer = defineStore('McpComposer', {
 
         // Create config if it doesn't exist (for both new and existing conversations)
         if (!config) {
-          config = {
-            selectedServers: new Map(),
-            disabledServers: [],
-            approvalMode: 'manual_approve',
-            autoApprovedTools: [],
-            loopSettings: {},
-          }
+          config = { ...blankMcpConfig(state.serverDefaultApprovalMode), loopSettings: {} }
           state.conversationConfigs.set(configKey, config)
         }
 
@@ -834,7 +833,7 @@ export const McpComposer = defineStore('McpComposer', {
         // Seeding a specific pane's pending config (paneId given) may run before
         // that config exists — create an empty one so the selection isn't dropped.
         if (!config && paneId !== undefined) {
-          config = { selectedServers: new Map(), approvalMode: 'manual_approve', autoApprovedTools: [] }
+          config = blankMcpConfig(state.serverDefaultApprovalMode)
           state.conversationConfigs.set(configKey, config)
         }
         if (config) {
@@ -1004,9 +1003,20 @@ export const McpComposer = defineStore('McpComposer', {
         const response = await ApiClient.Mcp.getDefaults()
         set(state => {
           state.userDefaults = response.defaults || null
+          // The server's default for any scope with no stored row. `defaults` is
+          // null for a user who never saved any, which used to leave the client
+          // with nothing but a hardcoded guess.
+          state.serverDefaultApprovalMode =
+            (response.default_approval_mode as ApprovalModeValue) ??
+            FALLBACK_APPROVAL_MODE
           state.userDefaultsLoaded = true
         })
-        console.log('[MCP Store] Loaded user defaults:', response.defaults)
+        console.log(
+          '[MCP Store] Loaded user defaults:',
+          response.defaults,
+          'server default approval mode:',
+          response.default_approval_mode,
+        )
       } catch (error) {
         console.error('[MCP Store] Failed to load user defaults:', error)
         set(state => {
@@ -1037,7 +1047,13 @@ export const McpComposer = defineStore('McpComposer', {
       try {
         const { ApiClient } = await import('@/api-client')
         const response = await ApiClient.Mcp.updateDefaults({
-          approval_mode: config?.approvalMode || 'manual_approve',
+          // Only send approval_mode when this config actually HAS one. This save is
+          // often a SIDE EFFECT of an unrelated action — removing an MCP server chip
+          // on a new chat persists the server list here — and a mode pinned by such a
+          // write becomes the fallback for EVERY future conversation of this user,
+          // not just the current one. Backend COALESCE applies the server default on
+          // insert and preserves the stored value on update.
+          ...approvalModePayload(config?.approvalMode),
           // Only send auto_approved_tools when explicitly changing approvals — backend COALESCE preserves DB value otherwise
           ...(updateAutoApproved ? { auto_approved_tools: config?.autoApprovedTools || [] } : {}),
           disabled_servers: disabledServers,
@@ -1086,7 +1102,7 @@ export const McpComposer = defineStore('McpComposer', {
         s.conversationConfigs.set(pendingConversationKey(paneId), {
           selectedServers,
           disabledServers: defaults.disabled_servers || [],
-          approvalMode: defaults.approval_mode as 'disabled' | 'auto_approve' | 'manual_approve',
+          approvalMode: defaults.approval_mode as ApprovalModeValue,
           autoApprovedTools: defaults.auto_approved_tools || [],
           loopSettings: defaults.loop_settings,
         })
@@ -1151,10 +1167,12 @@ export const McpComposer = defineStore('McpComposer', {
         state.conversationConfigs.set(key, {
           selectedServers,
           disabledServers: disabledRaw,
-          approvalMode: (settings?.approval_mode as
-            | 'disabled'
-            | 'auto_approve'
-            | 'manual_approve') || 'manual_approve',
+          // A project that has never customized its MCP settings falls back to the
+          // SERVER's default, not a client literal (the project GET already applies
+          // that default server-side, so this arm is belt-and-braces).
+          approvalMode:
+            (settings?.approval_mode as ApprovalModeValue) ||
+            state.serverDefaultApprovalMode,
           autoApprovedTools: autoApprovedRaw,
           loopSettings: loop,
         })
