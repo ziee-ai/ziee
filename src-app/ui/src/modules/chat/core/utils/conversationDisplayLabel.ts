@@ -20,6 +20,8 @@
  * deliberately removed.
  */
 
+import { mathToPlainText } from '@/components/common/mathPlainText'
+
 export const UNTITLED_CONVERSATION_LABEL = 'Untitled Conversation'
 
 /** The fields this helper needs — structural, so it accepts any conversation-ish shape. */
@@ -43,8 +45,9 @@ function firstNonBlank(...candidates: (string | null | undefined)[]): string | u
 export function conversationDisplayLabel(
   conversation: ConversationLabelSource | null | undefined,
 ): string {
-  return (
-    firstNonBlank(conversation?.title, conversation?.first_message_preview) ??
-    UNTITLED_CONVERSATION_LABEL
-  )
+  const label = firstNonBlank(conversation?.title, conversation?.first_message_preview)
+  // The preview rung is the user's RAW first message, so it carries whatever
+  // markup they typed — including `\( … \)`, which no list surface can render.
+  // Applied after the precedence choice so an empty result can still fall back.
+  return firstNonBlank(label && mathToPlainText(label)) ?? UNTITLED_CONVERSATION_LABEL
 }

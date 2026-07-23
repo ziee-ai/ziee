@@ -6,6 +6,7 @@ import { Trash2 } from 'lucide-react'
 import { Stores } from '@ziee/framework/stores'
 import type { Tool } from '@/api-client/types'
 import { pendingConversationKey, projectConfigKey } from '@/modules/mcp/stores/McpComposer.store'
+import { effectiveApprovalMode } from '@/modules/mcp/stores/approvalDefaults'
 
 /**
  * MCP Configuration Modal
@@ -57,6 +58,7 @@ export function McpConfigModal() {
     currentProjectId,
     conversationConfigs,
     configModalVisible,
+    serverDefaultApprovalMode,
   } = mcpStore
 
   // Project scope dispatch: project is in effect only when there is no
@@ -82,7 +84,13 @@ export function McpConfigModal() {
     ? projectConfigKey(currentProjectId!)
     : currentConversationId || pendingConversationKey(currentPaneId)
   const conversationConfig = conversationConfigs.get(configKey)
-  const approvalMode = conversationConfig?.approvalMode || 'manual_approve'
+  // A scope with no config yet (a brand-new chat opened before McpInitializer
+  // seeds) shows the SERVER's default. Hardcoding manual here told the user
+  // "Manual" on a deployment that will in fact auto-approve.
+  const approvalMode = effectiveApprovalMode(
+    conversationConfig?.approvalMode,
+    serverDefaultApprovalMode,
+  )
   const loopSettings = conversationConfig?.loopSettings || {
     stop_when_no_tool_calling: true,
     max_iteration: 10,
