@@ -56,10 +56,15 @@ pub async fn upsert_user_defaults(
     // None → SQL NULL, so COALESCE picks the preserve/default arm.
     let approval_mode_str: Option<String> = approval_mode.map(|m| m.to_string());
     let default_approval_mode = ApprovalMode::default().to_string();
-    let auto_approved_tools_json = match auto_approved_tools {
-        Some(tools) => serde_json::to_value(tools)
-            .map_err(|e| AppError::internal_error(format!("Failed to serialize auto_approved_tools: {}", e)))?,
-        None => serde_json::Value::Null,
+    // `Option<Value>`, not `Value::Null` — see the note in
+    // `approval/repository.rs::upsert_conversation_settings`: `Value::Null` binds
+    // as the JSON value `null`, not SQL NULL, so the COALESCE preserve-arm was
+    // never reached and an omitted allow-list was destroyed rather than kept.
+    let auto_approved_tools_json: Option<serde_json::Value> = match auto_approved_tools {
+        Some(tools) => Some(serde_json::to_value(tools).map_err(|e| {
+            AppError::internal_error(format!("Failed to serialize auto_approved_tools: {}", e))
+        })?),
+        None => None,
     };
     let disabled_servers_json = serde_json::to_value(disabled_servers)
         .map_err(|e| AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e)))?;

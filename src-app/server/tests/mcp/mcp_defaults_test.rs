@@ -191,6 +191,77 @@ async fn test_update_mcp_defaults_omitted_approval_mode_defaults_then_preserves(
     }
 }
 
+/// TEST-23 — the SIBLING tri-state field must preserve too.
+///
+/// `auto_approved_tools`'s documented "None = preserve existing DB value" contract
+/// was silently broken: the absent case bound `serde_json::Value::Null`, which
+/// encodes as the JSON value `null` rather than SQL NULL, so `COALESCE` took the
+/// first arm and overwrote the stored list (reading back as `[]`). Any save that
+/// omitted the field — including the chip-removal write below — destroyed the
+/// user's per-tool allow-list.
+#[tokio::test]
+async fn test_update_mcp_defaults_omitted_auto_approved_tools_preserves_the_allow_list() {
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["conversations::read", "conversations::edit"],
+    )
+    .await;
+
+    // The user auto-approves one specific tool under manual approval.
+    let set = update_mcp_defaults(
+        &server,
+        &user.token,
+        json!({
+            "approval_mode": "manual_approve",
+            "auto_approved_tools": [
+                { "server_id": "00000000-0000-0000-0000-0000000000aa", "tools": ["query_rag"] }
+            ],
+            "disabled_servers": []
+        }),
+    )
+    .await;
+    assert_eq!(set.status(), 200);
+    let set_body: serde_json::Value = set.json().await.unwrap();
+    assert_eq!(
+        set_body["auto_approved_tools"].as_array().unwrap().len(),
+        1,
+        "precondition: the allow-list must actually be stored"
+    );
+
+    // A later chip-removal-shaped write: server list only, no approvals.
+    let after = update_mcp_defaults(
+        &server,
+        &user.token,
+        json!({
+            "disabled_servers": [
+                { "server_id": "00000000-0000-0000-0000-0000000000bb", "tools": [] }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(after.status(), 200);
+
+    let get_body: serde_json::Value =
+        get_mcp_defaults(&server, &user.token).await.json().await.unwrap();
+    let auto = get_body["defaults"]["auto_approved_tools"]
+        .as_array()
+        .expect("auto_approved_tools array");
+    assert_eq!(
+        auto.len(),
+        1,
+        "an omitted auto_approved_tools must PRESERVE the stored allow-list, \
+         never blank it: {}",
+        get_body["defaults"]
+    );
+    assert_eq!(auto[0]["tools"], json!(["query_rag"]));
+    assert_eq!(
+        get_body["defaults"]["approval_mode"], "manual_approve",
+        "and the explicit mode must survive the same write"
+    );
+}
+
 #[tokio::test]
 async fn test_get_mcp_defaults_with_defaults_set() {
     let server = TestServer::start().await;
