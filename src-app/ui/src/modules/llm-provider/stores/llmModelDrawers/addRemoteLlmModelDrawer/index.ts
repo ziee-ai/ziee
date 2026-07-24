@@ -9,6 +9,10 @@ const AddRemoteLlmModelDrawerDef = defineStore<
   AddRemoteLlmModelDrawerState,
   Actions
 >('AddRemoteLlmModelDrawer', {
+  // Actions use immer draft-mutation (`set(s => { s.open = true })`); without
+  // this flag zustand v5 treats the mutate-and-return-undefined recipe as a
+  // no-op, so `open` never flips and the drawer never mounts.
+  immer: true,
   state: addRemoteLlmModelDrawerState,
   actions: import.meta.glob('./actions/*.ts'),
 })

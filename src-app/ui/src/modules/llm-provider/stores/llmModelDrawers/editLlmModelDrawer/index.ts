@@ -9,6 +9,8 @@ const EditLlmModelDrawerDef = defineStore<
   EditLlmModelDrawerState,
   Actions
 >('EditLlmModelDrawer', {
+  // Draft-mutation actions need immer (see addRemoteLlmModelDrawer note).
+  immer: true,
   state: editLlmModelDrawerState,
   actions: import.meta.glob('./actions/*.ts'),
   init: ({ on, get, actions }) => {

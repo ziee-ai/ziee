@@ -110,8 +110,12 @@ test.describe('smart module loading', () => {
     await expect(page.locator('[data-testid="app-root"]')).toBeVisible({
       timeout: 15000,
     })
-    // Let any reactive wave finish.
-    await page.waitForLoadState('networkidle')
+    // Let any reactive module-load wave finish. NOTE: a no-perm user can't open
+    // the sync SSE stream (profile::read gated), so it retry-churns and
+    // `networkidle` never settles — use a bounded settle instead. This asserts a
+    // NEGATIVE (no admin module requested); if the gate were broken the request
+    // would fire during this initial wave, so a fixed wait is sufficient + robust.
+    await page.waitForTimeout(2500)
 
     // The admin-only module bodies were NEVER downloaded to this browser —
     // permission gating happens at DOWNLOAD time, the strongest possible gate.
@@ -126,7 +130,10 @@ test.describe('smart module loading', () => {
     // admin page does not render its page — the module owning it never loaded,
     // so the route falls through the guard.
     await page.goto(`${baseURL}/settings/users`)
-    await page.waitForLoadState('networkidle')
+    // Bounded settle (not networkidle — the no-perm user's SSE retry-churns).
+    // The route-driven loader runs on nav; if the gate leaked, the `user` module
+    // chunk would be requested within this window.
+    await page.waitForTimeout(2000)
     expect(
       requested.has('user'),
       'the user-admin module must not load even on direct navigation for a non-admin',

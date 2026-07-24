@@ -9,6 +9,8 @@ const ViewDownloadDrawerDef = defineStore<
   ViewDownloadDrawerState,
   Actions
 >('ViewDownloadDrawer', {
+  // Draft-mutation actions need immer (see addRemoteLlmModelDrawer note).
+  immer: true,
   state: viewDownloadDrawerState,
   actions: import.meta.glob('./actions/*.ts'),
 })

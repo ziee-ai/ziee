@@ -19,7 +19,7 @@ export default createModule({
   // smart-loading gate (build-lifted into the manifest)
   shouldLoad: (ctx) =>
     ctx.isAuthenticated &&
-    ctx.can(Permissions.HubModelsRead) &&
+    ctx.can(Permissions.SkillsRead) &&
     (ctx.path === '/hub' || ctx.path.startsWith('/hub/')),
   dependencies: [],
   stores: [],

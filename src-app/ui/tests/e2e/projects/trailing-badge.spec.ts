@@ -185,11 +185,11 @@ test.describe('ConversationCard trailing badge — remove-from-project', () => {
     await card.hover()
 
     // Wait for the trailing area to mount + the project lookup to resolve.
-    // For a project-bound conversation the "Remove from project" button
-    // renders inside the card (it replaced the old membership Tag + × icon).
-    const removeButton = byTestId(card, 'project-trailing-remove-button')
-    await expect(removeButton).toBeVisible({ timeout: 10000 })
-    await removeButton.click()
+    // For a project-bound conversation the membership Tag ("In project: NAME")
+    // renders inside the card; clicking its close (×) opens the remove Confirm.
+    const removeTag = byTestId(card, 'project-trailing-remove-tag')
+    await expect(removeTag).toBeVisible({ timeout: 10000 })
+    await byTestId(card, 'project-trailing-remove-tag-close').click()
 
     // The remove Confirm (AlertDialog) opens; confirm via its primary
     // button (`<confirm-testid>-confirm`).

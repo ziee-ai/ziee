@@ -14,6 +14,7 @@ import {
 } from '@/modules/chat/core/extensions'
 import { AddToProjectModal } from '@/modules/projects/components/AddToProjectModal'
 import { SplitView } from '@/modules/chat/core/stores/splitView'
+import { Chat as ChatStore } from '@/modules/chat/core/stores/chatBridge'
 import { AssistantPicker } from '@/modules/assistant/stores/assistantPicker'
 import { Projects as ProjectsStore } from '@/modules/projects/stores/projects'
 import { EventBus } from '@ziee/framework/stores'
@@ -144,6 +145,60 @@ function sendingPaneProjectId(): string | null {
 }
 
 
+/**
+ * Persistent "In project: NAME" chip pinned at the top of the message list
+ * (the `message_list_header` slot). When the open conversation is filed into a
+ * project, renders a clickable Tag that routes to `/projects/{id}` — the ONLY
+ * in-conversation affordance for seeing/reaching a conversation's project (the
+ * card trailing tag is hover-only and lives in the sidebar list, not here).
+ * Returns null for unfiled conversations, so the context-chrome bar collapses
+ * to zero height. Reads the primary pane's conversation reactively via the
+ * migrated `ChatStore` proxy (mirrors the old `Stores.Chat.conversation`).
+ */
+function ProjectChipForConversationHeader() {
+  const conversation = ChatStore.conversation
+  const navigate = useNavigate()
+  const [project, setProject] = useState<Project | null>(() => {
+    if (!conversation?.id) return null
+    return getCached(conversation.id) ?? null
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    setProject(() => {
+      if (!conversation?.id) return null
+      return getCached(conversation.id) ?? null
+    })
+    if (!conversation?.id) return
+    if (getCached(conversation.id) !== undefined) return
+    loadProjectForConversation(conversation.id).then(p => {
+      if (cancelled) return
+      setProject(p)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [conversation?.id])
+
+  if (!conversation?.id || !project?.name) return null
+
+  return (
+    <div className="px-4 pt-2">
+      <Tag
+        variant="outline"
+        tone="info"
+        icon={<FolderOpen />}
+        className="cursor-pointer max-w-[16rem]"
+        title={project.name}
+        data-testid="project-header-chip-tag"
+        onClick={() => navigate(`/projects/${project.id}`)}
+      >
+        <span className="truncate">In project: {project.name}</span>
+      </Tag>
+    </div>
+  )
+}
+
 const projectExtension: ChatExtension = createExtension({
   name: 'project',
   description: 'Project bridge for chat (attach, URL routing, trailing).',
@@ -205,6 +260,17 @@ const projectExtension: ChatExtension = createExtension({
   renderConversationCardTrailing: (conversation) => (
     <ProjectMembershipTrailing conversationId={conversation.id} />
   ),
+
+  // Always-visible chip at the top of the message list naming the project that
+  // owns the current conversation (renders nothing when unfiled). Distinct from
+  // renderConversationCardTrailing (hover-only, on sidebar cards) — this is the
+  // persistent "you are in a project" marker + navigation on the chat page.
+  slots: {
+    message_list_header: {
+      component: ProjectChipForConversationHeader,
+      order: 10,
+    },
+  },
 
   // Dropdown contributions for the sidebar's RecentConversationsWidget
   // (and any future conversation menu). Provides:

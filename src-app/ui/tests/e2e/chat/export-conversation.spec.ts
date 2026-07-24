@@ -17,7 +17,7 @@ import { goToNewChatPage, selectModelInDropdown } from './helpers/chat-helpers'
 
 // audit id 09d22fb649b2 — conversation export (chat/extensions/export) had no
 // E2E coverage. Seed a conversation with a user + assistant text turn, then
-// drive the toolbar Export dropdown → "Export as Markdown" and assert a real
+// drive the "+" composer dropdown → Export → "Export as JSON" and assert a real
 // download fires carrying the conversation text. Only the chat SSE/messages
 // boundary is mocked; the export blob/anchor path runs for real.
 
@@ -46,7 +46,7 @@ test.describe('Chat — conversation export', () => {
     await createModelViaAPI(apiURL, token, providerId, undefined, undefined, 'openai')
   })
 
-  test('exports the conversation as Markdown via the toolbar dropdown', async ({
+  test('exports the conversation as JSON via the composer "+" dropdown', async ({
     page,
     testInfra,
   }) => {
@@ -78,24 +78,30 @@ test.describe('Chat — conversation export', () => {
       .first()
       .waitFor({ state: 'visible', timeout: 15000 })
 
-    await page.getByRole('button', { name: 'Export' }).click()
+    // Export lives INSIDE the "+" composer dropdown as a nested submenu (same
+    // mechanism as the assistant picker): open "+", click the Export row, then
+    // pick a format. JSON is the CLIENT-SIDE export (reads the in-memory
+    // transcript), so it works against these mocked, never-persisted messages;
+    // md/docx/… are backend-rendered from the persisted server transcript.
+    await page.getByTestId('chat-input-add-btn').first().click()
+    await page.getByTestId('chat-export-menu-item').click()
 
     const downloadPromise = page.waitForEvent('download')
-    await page.getByRole('menuitem', { name: 'Export as Markdown' }).click()
+    await page.getByTestId('chat-export-format-json').click()
     const download = await downloadPromise
 
-    // Filename follows `conversation-<id8>.md`.
-    expect(download.suggestedFilename()).toMatch(/^conversation-.*\.md$/)
+    // Filename follows `conversation-<id8>.json`.
+    expect(download.suggestedFilename()).toMatch(/^conversation-.*\.json$/)
 
     // Success toast + the exported file carries the conversation text.
     await expect(
-      page.getByText('Conversation exported as Markdown'),
+      page.getByText('Conversation exported as JSON'),
     ).toBeVisible({ timeout: 5000 })
 
     const path = await download.path()
     const { readFileSync } = await import('fs')
-    const md = readFileSync(path, 'utf8')
-    expect(md).toContain(ASSISTANT_TEXT)
-    expect(md).toContain('**Assistant**')
+    const json = readFileSync(path, 'utf8')
+    expect(json).toContain(ASSISTANT_TEXT)
+    expect(json).toContain('"role": "assistant"')
   })
 })

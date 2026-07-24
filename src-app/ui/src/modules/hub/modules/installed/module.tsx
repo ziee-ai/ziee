@@ -23,9 +23,14 @@ export default createModule({
     description: 'Hub tab listing every tracked install visible to the caller',
   },
   // smart-loading gate (build-lifted into the manifest)
+  // Loose gate matching the Installed tab's own read perm — any of the three
+  // hub-read perms (ctx.can takes one perm, so OR them). Gating on HubModelsRead
+  // alone wrongly excluded assistants-only / mcp-only users from their Installed tab.
   shouldLoad: (ctx) =>
     ctx.isAuthenticated &&
-    ctx.can(Permissions.HubModelsRead) &&
+    (ctx.can(Permissions.HubModelsRead) ||
+      ctx.can(Permissions.HubAssistantsRead) ||
+      ctx.can(Permissions.HubMCPServersRead)) &&
     (ctx.path === '/hub' || ctx.path.startsWith('/hub/')),
   dependencies: [],
   slots: {

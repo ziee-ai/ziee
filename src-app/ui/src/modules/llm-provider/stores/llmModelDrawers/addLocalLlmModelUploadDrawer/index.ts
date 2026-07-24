@@ -9,6 +9,8 @@ const AddLocalLlmModelUploadDrawerDef = defineStore<
   AddLocalLlmModelUploadDrawerState,
   Actions
 >('AddLocalLlmModelUploadDrawer', {
+  // Draft-mutation actions need immer (see addRemoteLlmModelDrawer note).
+  immer: true,
   state: addLocalLlmModelUploadDrawerState,
   actions: import.meta.glob('./actions/*.ts'),
 })

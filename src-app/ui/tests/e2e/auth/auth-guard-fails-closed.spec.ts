@@ -27,9 +27,17 @@ import { getAdminToken } from '../../common/auth-helpers'
 /** Seed a bogus token into the persisted auth store before any app code runs. */
 async function seedBogusToken(
   page: import('@playwright/test').Page,
+  baseURL: string,
   token: string,
 ) {
-  await page.addInitScript(t => {
+  // Seed the token ONCE by writing localStorage on the origin — NOT via
+  // addInitScript. The fail-closed path wipes the token and RELOADS
+  // (tearDownSession → window.location.reload); an addInitScript seed re-injects
+  // the token on that reload, spinning an infinite reload loop so the login wall
+  // never renders. A one-time write is cleared by the reload — exactly like a
+  // real expired session — so the wall shows.
+  await page.goto(`${baseURL}/`)
+  await page.evaluate(t => {
     try {
       localStorage.setItem(
         'auth-storage',
@@ -57,7 +65,7 @@ test.describe('Auth — AuthGuard fails closed', () => {
 
     // A structurally-bogus token: present in storage, but not a token the
     // server will accept → `/auth/me` 401.
-    await seedBogusToken(page, 'tampered.not-a-real.jwt')
+    await seedBogusToken(page, baseURL, 'tampered.not-a-real.jwt')
     await page.goto(`${baseURL}${GUARDED_ROUTE}`)
 
     // FAIL CLOSED: the login wall is shown, protected content is not.
@@ -96,7 +104,7 @@ test.describe('Auth — AuthGuard fails closed', () => {
 
     // An unknown deep-link hits the `path="*"` route, which is wrapped in the
     // SAME guard (RouterComponent.tsx:200) — it must fail closed too.
-    await seedBogusToken(page, 'another.bogus.token')
+    await seedBogusToken(page, baseURL, 'another.bogus.token')
     await page.goto(`${baseURL}/this-route-does-not-exist-${Date.now()}`)
 
     await expect(byTestId(page, 'auth-login-username')).toBeVisible({ timeout: 15000 })

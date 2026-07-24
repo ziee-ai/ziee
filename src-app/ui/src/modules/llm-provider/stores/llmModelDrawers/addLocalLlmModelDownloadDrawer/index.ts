@@ -9,6 +9,8 @@ const AddLocalLlmModelDownloadDrawerDef = defineStore<
   AddLocalLlmModelDownloadDrawerState,
   Actions
 >('AddLocalLlmModelDownloadDrawer', {
+  // Draft-mutation actions need immer (see addRemoteLlmModelDrawer note).
+  immer: true,
   state: addLocalLlmModelDownloadDrawerState,
   actions: import.meta.glob('./actions/*.ts'),
 })

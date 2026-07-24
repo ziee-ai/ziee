@@ -296,12 +296,12 @@ test('TEST-50: Open thread affordance reflects target kind + bound conversation'
   await expect(page.getByTestId(`task-open-thread-${workflowTask.id}`)).toHaveCount(0)
 
   // Open thread navigates to the bound conversation. Catch the client-side
-  // navigation itself (waitForURL resolves on the transient /conversations/{id}
+  // navigation itself (waitForURL resolves on the transient /chat/{id}
   // route) rather than the final URL — the mock conversation doesn't exist in the
   // e2e backend, so the chat page then redirects home; the navigation intent is
   // what ITEM-45 asserts.
   await Promise.all([
-    page.waitForURL(new RegExp(`/conversations/${BOUND}`), { timeout: 10000 }),
+    page.waitForURL(new RegExp(`/chat/${BOUND}`), { timeout: 10000 }),
     openThread.click(),
   ])
 })

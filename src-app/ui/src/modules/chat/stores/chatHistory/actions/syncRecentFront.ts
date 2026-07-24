@@ -21,7 +21,17 @@ export default (set: ChatHistorySet, get: ChatHistoryGet) => {
       set(draft => {
         const seen = new Set(draft.recentConversations.map(c => c.id))
         const fresh = response.conversations.filter(c => !seen.has(c.id))
-        draft.recentConversations = [...fresh, ...draft.recentConversations]
+        // A cross-device RENAME/edit reuses the conversation id, so it is NOT in
+        // `fresh` (its id is already `seen`). Refresh each already-loaded row's
+        // fields from the page-1 response so an edit (e.g. a title change on
+        // another device) propagates here — not just newly-created rows.
+        const freshById = new Map(
+          response.conversations.map(c => [c.id, c]),
+        )
+        draft.recentConversations = [
+          ...fresh,
+          ...draft.recentConversations.map(c => freshById.get(c.id) ?? c),
+        ]
         draft.recentTotal = Math.max(
           response.total,
           draft.recentConversations.length,

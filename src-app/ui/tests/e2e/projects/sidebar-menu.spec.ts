@@ -67,6 +67,14 @@ async function openSidebarMenuForRow(
   page: import('@playwright/test').Page,
   conversationId: string,
 ) {
+  // The ⋯ actions button is `pointer-events-none` until its row <li> is hovered
+  // (a CSS `group-hover/menu-row` reveal — no stateful onMouseEnter). Hovering
+  // the button directly can never make it actionable (it doesn't receive events
+  // until the ROW is hovered), so hover the row first — exactly what a real user
+  // does — which flips the button to `pointer-events-auto`, then open its menu.
+  const row = byTestId(page, `chat-recent-conversations-menu-item-${conversationId}`)
+  await expect(row).toBeVisible({ timeout: 10000 })
+  await row.hover()
   const trigger = byTestId(page, `chat-recent-row-actions-btn-${conversationId}`)
   await expect(trigger).toBeVisible({ timeout: 10000 })
   await trigger.hover()
