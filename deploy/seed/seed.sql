@@ -211,6 +211,36 @@ UPDATE groups
            'files::delete','files::preview','files::generate_token'
          ]);
 
+-- ── 4c. Backfill email_verified for pre-fix OAuth logins ──────────────────────
+-- The OAuth email_verified code fix only sets the flag at PROVISION time (new
+-- logins). Users who signed in via a provider-verified email BEFORE the fix are
+-- stuck email_verified=false, and re-login does not re-provision them. Flip them
+-- here — idempotent + conservative, and re-asserted each deploy so a data-only
+-- cutover can't silently re-break them.
+--   GOOGLE LOGINS ONLY (p.name = 'google'), and only when the provider marked the
+--   email verified (mirrors the app's own `email_verified_from_auth_result`) and
+--   the linked external_email matches the user's own email. Email/password
+--   signups (no user_auth_links row) and any non-Google provider are NEVER
+--   touched. The `email_verified = false` guard makes a re-run a true no-op (zero
+--   rows) once everyone eligible is verified.
+UPDATE users u
+   SET email_verified = true,
+       updated_at = NOW()
+ WHERE u.email_verified = false
+   AND u.email IS NOT NULL
+   AND EXISTS (
+       SELECT 1
+         FROM user_auth_links l
+         JOIN auth_providers p ON p.id = l.provider_id
+        WHERE l.user_id = u.id
+          AND p.name = 'google'
+          AND lower(l.external_email) = lower(u.email)
+          AND (
+                (l.external_data #>> '{user_info,email_verified}') ILIKE 'true'
+             OR (l.external_data #>> '{email_verified}')            ILIKE 'true'
+          )
+   );
+
 -- ── 5. First admin — create-only ─────────────────────────────────────────────
 -- bcrypt via pgcrypto (cost 12 = the app's DEFAULT_COST → $2a$12$…, verify-compatible
 -- with bcrypt::verify). Bare ON CONFLICT DO NOTHING covers the username/email UNIQUE
