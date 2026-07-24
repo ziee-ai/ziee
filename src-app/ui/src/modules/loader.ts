@@ -171,6 +171,24 @@ export function isPathModulePending(pathname: string): boolean {
 }
 
 /**
+ * Deep-link authz signal: is `pathname` owned by a manifest module the current
+ * context is NOT eligible for — i.e. a real route the user lacks permission to
+ * reach (its owner's predicate fails FOR ITS OWN PATH, so it's a permission
+ * denial, not a location-scope miss)? Distinct from a genuine 404 (no owner).
+ *
+ * The router renders an in-place 403 for this case — keeping the URL and
+ * explaining itself — WITHOUT loading the module's code (the `ensureModuleForPath`
+ * security guard stays intact: a user who lacks the permission never downloads
+ * the gated module). This restores the informative-403 deep-link UX on top of the
+ * code-non-delivery security posture, instead of a bare redirect home.
+ */
+export function isPathModuleForbidden(pathname: string): boolean {
+  const entry = entryForPath(manifest, pathname)
+  if (!entry) return false
+  return !isEligible(entry, buildLoadContext(pathname))
+}
+
+/**
  * Navigation hook (smart loading): re-evaluate every module's `shouldLoad`
  * against the NEW path and register any that just became eligible — so a module
  * scoped to a location (e.g. the hub sub-modules, gated on `/hub`) loads on

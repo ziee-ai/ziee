@@ -37,7 +37,7 @@ test.describe('auth-providers — permission gating', () => {
 
     // Deep-link → inline 403, URL preserved.
     await page.goto(`${testInfra.baseURL}/settings/auth-providers`)
-    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
+    await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/settings/auth-providers')
   })
 

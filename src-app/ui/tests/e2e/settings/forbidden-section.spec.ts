@@ -43,7 +43,7 @@ test.describe('Settings - forbidden section deep-link', () => {
     await page.goto(`${baseURL}/settings/users`)
 
     // The inline 403 panel renders (not a redirect away from /settings/users).
-    const forbidden = byTestId(page, 'settings-forbidden-result')
+    const forbidden = byTestId(page, 'router-route-forbidden-result')
     await expect(forbidden).toBeVisible({ timeout: 30000 })
     // Its subtitle names the section the user may not view.
     await expect(forbidden).toContainText(/don't have permission to view/i)

@@ -11,7 +11,7 @@ import {
 import { Button, Result } from '@ziee/kit'
 import { ModuleSystem } from '@ziee/framework/stores'
 import { useRoutesStore } from '@/modules/router/stores/routes-store'
-import { ensureModuleForPath, isPathModulePending, revalidateForPath } from '@/modules/loader'
+import { ensureModuleForPath, isPathModulePending, isPathModuleForbidden, revalidateForPath } from '@/modules/loader'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { Loading } from '@/core/components/Loading'
 import { usePermission } from '@/core/permissions'
@@ -23,6 +23,23 @@ import type { LayoutDefinition, RouteConfig } from '@/modules/router/types'
  * of the route element when the current user fails the route's
  * `permission` expression — URL and layout stay intact.
  */
+/** The inline router-level 403 panel (URL + layout stay intact). */
+function ForbiddenResult() {
+  return (
+    <Result
+      data-testid="router-route-forbidden-result"
+      status="403"
+      title="Not authorized"
+      subtitle="You don't have permission to view this page."
+      extra={
+        <Link to="/">
+          <Button data-testid="router-403-back-home-btn" variant="default">Back to home</Button>
+        </Link>
+      }
+    />
+  )
+}
+
 function RoutePermissionGate({
   permission,
   children,
@@ -31,21 +48,7 @@ function RoutePermissionGate({
   children: ReactNode
 }) {
   const allowed = usePermission(permission)
-  if (!allowed) {
-    return (
-      <Result
-        data-testid="router-route-forbidden-result"
-        status="403"
-        title="Not authorized"
-        subtitle="You don't have permission to view this page."
-        extra={
-          <Link to="/">
-            <Button data-testid="router-403-back-home-btn" variant="default">Back to home</Button>
-          </Link>
-        }
-      />
-    )
-  }
+  if (!allowed) return <ForbiddenResult />
   return <>{children}</>
 }
 
@@ -121,6 +124,12 @@ function RouteFallback({ children }: { children: ReactNode }) {
   // Re-render when routes change (a module registering its routes flows through
   // useRoutesStore in the parent) — this component reads the parent's render.
   const pending = isPathModulePending(location.pathname)
+  // A real route the user LACKS permission for: its owning module is deliberately
+  // NOT loaded (the ensureModuleForPath security guard — the gated code is never
+  // delivered), so no route ever matches. Render the in-place 403 here (URL
+  // preserved) rather than redirecting home, so an unauthorized deep-link keeps
+  // its address and explains itself.
+  const forbidden = isPathModuleForbidden(location.pathname)
   const [timedOut, setTimedOut] = useState(false)
 
   useEffect(() => {
@@ -134,6 +143,7 @@ function RouteFallback({ children }: { children: ReactNode }) {
   }, [location.pathname, pending])
 
   if (pending && !timedOut) return <Loading fullscreen />
+  if (forbidden) return <ForbiddenResult />
   return <>{children}</>
 }
 

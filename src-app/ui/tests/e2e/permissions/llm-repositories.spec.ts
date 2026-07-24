@@ -27,7 +27,7 @@ test.describe('llm-repositories — permission gating', () => {
 
     // Deep-link → inline 403, URL preserved (not a silent redirect).
     await page.goto(`${testInfra.baseURL}/settings/llm-repositories`)
-    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
+    await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/settings/llm-repositories')
   })
 })

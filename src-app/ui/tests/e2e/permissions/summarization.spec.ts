@@ -30,7 +30,7 @@ test.describe('summarization-admin — permission gating', () => {
 
     // Deep-link → inline "Not authorized", URL preserved (route gate fires).
     await page.goto(`${testInfra.baseURL}/settings/summarization-admin`)
-    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible({ timeout: 10_000 })
+    await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible({ timeout: 10_000 })
     expect(page.url()).toContain('/settings/summarization-admin')
   })
 
@@ -48,6 +48,6 @@ test.describe('summarization-admin — permission gating', () => {
     await expect(
       byTestId(page, 'summ-after-tokens-input'),
     ).toBeVisible({ timeout: 10_000 })
-    await expect(byTestId(page, 'settings-forbidden-result')).toHaveCount(0)
+    await expect(byTestId(page, 'router-route-forbidden-result')).toHaveCount(0)
   })
 })

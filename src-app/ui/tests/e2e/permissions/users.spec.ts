@@ -21,9 +21,9 @@ test.describe('users module — permission gating', () => {
     ).toHaveCount(0)
 
     // Deep-link directly to the page — should render the inline 403,
-    // URL preserved (the settings route gate emits settings-forbidden-result).
+    // URL preserved (the router gate emits router-route-forbidden-result).
     await page.goto(`${testInfra.baseURL}/settings/users`)
-    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
+    await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible()
     expect(page.url()).toContain('/settings/users')
   })
 
