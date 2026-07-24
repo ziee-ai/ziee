@@ -30,7 +30,15 @@ export default createModule({
     description: 'Hub catalog coordination module',
   },
   // smart-loading gate (build-lifted into the manifest)
-  shouldLoad: (ctx) => ctx.isAuthenticated && ctx.can(Permissions.HubModelsRead),
+  // Eligible for ANY hub read perm (mirror HUB_READ_PERM used by the route +
+  // sidebar entry) — NOT just HubModelsRead, or an MCP-servers-only user can't
+  // load the hub module and loses its sidebar entry / page. `ctx.can` takes a
+  // single permission, so OR the three explicitly.
+  shouldLoad: (ctx) =>
+    ctx.isAuthenticated &&
+    (ctx.can(Permissions.HubModelsRead) ||
+      ctx.can(Permissions.HubAssistantsRead) ||
+      ctx.can(Permissions.HubMCPServersRead)),
   dependencies: ['router'],
   // NOTE: HubCatalog / HubInstalled are page stores (the /hub page). They are
   // registerLazyStore proxies that self-register when the lazy HubPage imports
