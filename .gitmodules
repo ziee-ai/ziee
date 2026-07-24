@@ -5,10 +5,12 @@
 [submodule "sdk"]
 	path = sdk
 	url = https://github.com/ziee-ai/sdk.git
-	# ziee (the "chat" app) pins the SDK to its own dedicated branch `chat`
-	# (CytoAnalyst pins `cyto`). SDK changes made here push to sdk `chat`; when
-	# sdk `main` advances, merge main → `chat` and decide whether to adopt.
-	branch = chat
+	# ziee (the "chat" app) normally pins the SDK to its dedicated branch `chat`
+	# (CytoAnalyst pins `cyto`). While the agent-core + frontend-perf integration
+	# is in flight this pins the COMBINED branch `sdk/agent-core-and-perf` (which
+	# extends the agent-core SDK line with frontend-perf's kit changes + the
+	# post-merge testid regen); reconcile it back into `chat` once landed.
+	branch = sdk/agent-core-and-perf
 [submodule "agent-kit"]
 	path = agent-kit
 	url = https://github.com/ziee-ai/agent-kit.git
