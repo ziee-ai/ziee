@@ -21,6 +21,24 @@ SELECT 'Free Models', 'openai', true, NULL,
        'https://4000--main--workspace--khoi.workspace.tinnguyen-lab.com/v1', false
 WHERE NOT EXISTS (SELECT 1 FROM llm_providers WHERE name = 'Free Models');
 
+-- 1a) Re-assert Free Models ENABLED on EVERY deploy — NOT just on first insert.
+-- The INSERT above runs only when the row is absent, so without this UPDATE the
+-- provider's `enabled` is never re-affirmed. The seed service runs AFTER the app
+-- is healthy (compose `depends_on: ziee-web: service_healthy`), and ziee's boot
+-- health-check auto-DISABLES a provider whose endpoint was momentarily
+-- unreachable at boot — this flips it back on, exactly like the system-MCP block
+-- in seed.sql does for unreachable MCP servers. Matches BY EXACT NAME, so a
+-- built-in 'openai'-type provider is never touched.
+UPDATE llm_providers SET enabled = true, updated_at = NOW() WHERE name = 'Free Models';
+
+-- 1b) A manually-created "Open Provider" row lives in the persistent DB (it is
+-- NOT seeded by anything — the base migration ships only OpenAI/Anthropic/Groq/
+-- Gemini/Mistral/DeepSeek/Local/OpenRouter, all disabled). No seed removes it, so
+-- once enabled it stays enabled and becomes the fallback default whenever Free
+-- Models flaps off. Force it OFF every deploy so "Free Models" is the provider
+-- users land on. Exact-name match — never touches "Free Models".
+UPDATE llm_providers SET enabled = false, updated_at = NOW() WHERE name = 'Open Provider';
+
 -- 2) The models under it. engine_type 'none' = remote API (no local engine).
 -- GPT-OSS 120B is ON by default (its vLLM container runs continuously).
 INSERT INTO llm_models (provider_id, name, display_name, enabled, is_active,
@@ -30,6 +48,13 @@ SELECT p.id, 'gpt-oss-120b', 'GPT-OSS 120B', true, true, 'valid', 'none', 'safet
 FROM llm_providers p
 WHERE p.name = 'Free Models'
   AND NOT EXISTS (SELECT 1 FROM llm_models m WHERE m.provider_id = p.id AND m.name = 'gpt-oss-120b');
+
+-- Re-assert gpt-oss ON every deploy (the INSERT above is first-deploy-only).
+-- Mirrors the Scout `enabled=false` re-assert below, but keeps GPT-OSS usable so
+-- a boot health-check / manual toggle can't silently leave the only ON model off.
+UPDATE llm_models m SET enabled = true, is_active = true, validation_status = 'valid'
+FROM llm_providers p
+WHERE m.provider_id = p.id AND p.name = 'Free Models' AND m.name = 'gpt-oss-120b';
 
 -- Llama 4 Scout is seeded DISABLED + inactive: its vLLM container is normally
 -- stopped to free the GPU, so an active model would only produce errors. The
