@@ -75,7 +75,7 @@ test.describe('Programmatic Tools — run_js limits admin page', () => {
     // js_tool::settings::read which gates the /settings/js-tool route.
     await loginWithPerms(page, baseURL, apiURL, [Permissions.SkillsRead])
     await page.goto(`${baseURL}/settings/js-tool`, { waitUntil: 'domcontentloaded' })
-    await expect(byTestId(page, 'settings-forbidden-result')).toBeVisible()
+    await expect(byTestId(page, 'router-route-forbidden-result')).toBeVisible()
     await expect(byTestId(page, 'js-tool-settings-card')).toHaveCount(0)
   })
 })
