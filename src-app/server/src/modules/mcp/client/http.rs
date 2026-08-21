@@ -273,6 +273,61 @@ fn extract_response_by_id(sse_body: &str, expected_id: i64) -> Result<Value, App
     )))
 }
 
+/// True when `body` carries at least one EventSource `data:` FIELD — that is, a
+/// LINE beginning with `data:` (the spec makes the space after the colon
+/// optional).
+///
+/// Deliberately NOT a substring search. `body.contains("data: ")` matches the
+/// literal anywhere, including inside a JSON string value, so it answers a
+/// different question than the extractor that follows it. That mismatch is the
+/// defect this module carried: a tool result containing a paper titled
+/// "Mobilizing the base of neuroscience data: the case of neuronal
+/// morphologies" satisfied `contains` but had no `data:` LINE, so it entered
+/// the SSE branch and died with "No data found in SSE response".
+fn is_sse_framed(body: &str) -> bool {
+    body.lines().any(|l| l.starts_with("data:"))
+}
+
+/// Parse the body of a NON-streaming MCP response (one whose `Content-Type` did
+/// NOT declare `text/event-stream`) into its JSON-RPC envelope.
+///
+/// The framing of a response is declared by the sender in `Content-Type`; it is
+/// not a property of the bytes and is not inferable from them. A tool result is
+/// arbitrary third-party text and may contain anything that *looks* like SSE
+/// framing, so the body is never searched to guess its framing.
+///
+/// A server that emits SSE framing under a non-SSE content-type is still
+/// tolerated, but only AFTER a strict JSON parse has failed. That ordering is
+/// what makes the guarantee structural rather than a matter of having a better
+/// predicate: a body that parses as JSON is never reconsidered as SSE, so no
+/// tool content can misroute, whatever it contains. And because the fallback's
+/// predicate ([`is_sse_framed`]) applies the same `data:`-line rule as the
+/// extractor ([`extract_response_by_id`]), the two cannot drift apart again.
+fn parse_non_streaming_response_body(body: &str, expected_id: i64) -> Result<Value, AppError> {
+    let trimmed = body.trim();
+
+    // 1. The declared framing is not SSE, so this should be plain JSON.
+    match serde_json::from_str::<Value>(trimmed) {
+        Ok(v) => Ok(v),
+        // 2. Not valid JSON. ONLY NOW consider SSE framing under a wrong or
+        //    absent content-type, and only when the body is structurally framed.
+        Err(json_err) => {
+            if is_sse_framed(trimmed) {
+                tracing::warn!(
+                    "[mcp] response was not valid JSON but is SSE-framed; the server \
+                     likely mislabeled its Content-Type. Recovering via SSE extraction."
+                );
+                extract_response_by_id(trimmed, expected_id)
+            } else {
+                Err(AppError::internal_error(format!(
+                    "Failed to parse response: {}",
+                    json_err
+                )))
+            }
+        }
+    }
+}
+
 /// Forward an MCP `notifications/progress` (received mid-call over the SSE
 /// stream) to the chat UI as a `mcpToolProgress` named SSE event — mirrors
 /// how `elicitation/create` is bridged to the browser. No-op when there is
@@ -617,7 +672,7 @@ enum UnsolicitedAction {
 /// so the caller can reply with a method-not-found error rather than letting
 /// the server hang — parity with the POST path.
 fn route_unsolicited_event(server_name: &str, event_block: &str) -> UnsolicitedAction {
-    let data = sse_event_data(event_block);
+    let data = sse_event_data(&event_block);
     if data.is_empty() {
         // Spec's "priming event" — `id:` with empty `data:` — used for
         // Last-Event-Id seeding (GET-resume support is a Phase-3 follow-up).
@@ -1855,15 +1910,14 @@ impl HttpMcpClient {
                             last_event_id = Some(eid);
                         }
 
-                        // Extract data line from event block
-                        let data_line = event_block.lines()
-                            .find(|l| l.starts_with("data: "))
-                            .map(|l| &l[6..]);
-
-                        let data = match data_line {
-                            Some(d) => d,
-                            None => continue,
-                        };
+                        // Delegate to the module's spec-correct extractor rather than
+                        // hand-rolling a fourth one. `.find(starts_with("data: "))`
+                        // dropped two shapes the EventSource spec permits: a `data:`
+                        // with no space after the colon, and an event whose payload is
+                        // split across several `data:` lines (`.find` read only the
+                        // first, silently truncating the JSON).
+                        let data = sse_event_data(&event_block);
+                        let data = data.as_str();
                         // Skip events with no data (priming / keep-alive).
                         if data.is_empty() { continue; }
 
@@ -2249,14 +2303,12 @@ impl HttpMcpClient {
                             last_event_id = Some(eid);
                         }
 
-                        let data_line = event_block.lines()
-                            .find(|l| l.starts_with("data: "))
-                            .map(|l| &l[6..]);
-
-                        let data = match data_line {
-                            Some(d) => d,
-                            None => continue,
-                        };
+                        // Same delegation as the tool-call stream above: the
+                        // hand-rolled `.find(starts_with(..))` dropped a no-space
+                        // `data:` and truncated a multi-line payload to its first
+                        // fragment. `sse_event_data` implements the spec rule.
+                        let data = sse_event_data(&event_block);
+                        let data = data.as_str();
                         // Skip events with no data (priming / keep-alive).
                         if data.is_empty() { continue; }
 
@@ -2738,7 +2790,9 @@ impl McpClient for HttpMcpClient {
                 .unwrap_or("")
                 .to_string();
 
-            let result = if content_type.contains("text/event-stream") {
+            // Route on the DECLARED framing only (same predicate as
+            // `self.request()`), never on the body's bytes.
+            let result = if content_type.trim().starts_with("text/event-stream") {
                 // Branch 2: server speaks SSE — may send elicitation/create mid-stream
                 HttpMcpClient::call_tool_with_elicitation(
                     response,
@@ -2761,37 +2815,14 @@ impl McpClient for HttpMcpClient {
                         return { let _ = result_tx.send(Err(AppError::internal_error(format!("Failed to read response: {}", e)))); }
                     }
                 };
-                let trimmed = text.trim();
-                let json: serde_json::Value = if trimmed.contains("data: ") {
-                    let mut found = None;
-                    for line in trimmed.lines() {
-                        if let Some(data) = line.strip_prefix("data: ") {
-                            found = Some(match serde_json::from_str(data) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    let _ = result_tx.send(Err(AppError::internal_error(format!("Failed to parse SSE data: {}", e))));
-                                    return;
-                                }
-                            });
-                            break;
-                        }
-                    }
-                    match found {
-                        Some(v) => v,
-                        None => {
-                            let _ = result_tx.send(Err(AppError::internal_error("No data found in SSE response")));
-                            return;
-                        }
-                    }
-                } else {
-                    match serde_json::from_str(trimmed) {
+                let json: serde_json::Value =
+                    match parse_non_streaming_response_body(&text, tool_call_id) {
                         Ok(v) => v,
                         Err(e) => {
-                            let _ = result_tx.send(Err(AppError::internal_error(format!("Failed to parse response: {}", e))));
+                            let _ = result_tx.send(Err(e));
                             return;
                         }
-                    }
-                };
+                    };
                 if let Some(error) = json.get("error") {
                     return { let _ = result_tx.send(Err(AppError::internal_error(format!("MCP error: {}", error)))); }
                 }
