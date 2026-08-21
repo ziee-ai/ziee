@@ -1,6 +1,0 @@
-# DESIGN_FIDELITY — plan vs DESIGN.md invariants
-
-- **INV-1** — fidelity: UPHELD — ITEM-1 deletes the only body-substring framing decision in the MCP client (`trimmed.contains("data: ")`); ITEM-2 leaves the surviving decision entirely on the `Content-Type` header, matching `request()`. After both, no framing branch in the client inspects body bytes to choose a branch.
-- **INV-2** — fidelity: UPHELD — ITEM-1 orders a strict JSON parse BEFORE any SSE consideration, so a body that is valid JSON is returned as JSON whatever its content contains. This is structural, not a widened predicate: no tool-content string can reach the SSE path.
-- **INV-3** — fidelity: UPHELD — the genuine-SSE path is untouched by ITEM-1 (it routes at the outer Content-Type branch into `call_tool_with_elicitation`), and ITEM-3 strictly *widens* what that path accepts by delegating to `sse_event_data`, which implements the no-space and multi-line `data:` forms.
-- **INV-4** — fidelity: UPHELD — the retained fallback runs only after the JSON parse fails, and its predicate is `is_sse_framed` (a LINE beginning with `data:`), reusing the same `data:`-line rule the extractor applies. No substring search survives in the decision.
