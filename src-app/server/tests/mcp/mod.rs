@@ -60,6 +60,8 @@ mod conformance_elicitation_test;
 // Elicitation roundtrip tests via mock SSE server
 mod conformance_phase1_test;
 // Plan-3 Phase-1: version negotiation, string id, pagination
+mod response_framing_test;
+// Response framing: Content-Type (not a body substring) selects SSE vs JSON
 mod conformance_resumability_test;
 // Plan-3 Phase-3 (I1): SSE resume via Last-Event-Id
 mod conformance_oauth_test;
