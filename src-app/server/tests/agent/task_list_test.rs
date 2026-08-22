@@ -69,10 +69,16 @@ async fn insert_item(
 /// + `users`) in the given status, so the terminal writers actually flip a row.
 /// Returns the run id (= the task rows' `run_id` key for workflow/background).
 async fn make_workflow_run(pool: &sqlx::PgPool, status: &str) -> Uuid {
-    let user_id: Uuid = sqlx::query_scalar("SELECT id FROM users ORDER BY created_at ASC LIMIT 1")
-        .fetch_one(pool)
-        .await
-        .expect("seeded admin user must exist");
+    // Own the user (the per-test DB is migrated but not seeded with one) — only
+    // username + email are NOT NULL on `users`.
+    let uniq = &Uuid::new_v4().to_string()[..8];
+    let user_id: Uuid =
+        sqlx::query_scalar("INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id")
+            .bind(format!("recon_{uniq}"))
+            .bind(format!("recon_{uniq}@example.com"))
+            .fetch_one(pool)
+            .await
+            .expect("create test user");
     let workflow_id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO workflows
