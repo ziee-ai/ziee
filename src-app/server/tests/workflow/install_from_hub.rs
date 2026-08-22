@@ -26,7 +26,10 @@ async fn user_install_creates_row_extract_and_tracking() {
 
     // Row identity + scope.
     assert_eq!(wf["name"], FIXTURE_WORKFLOW_NAME, "name persisted: {body}");
-    assert_eq!(wf["scope"], "user", "user endpoint forces scope=user: {body}");
+    assert_eq!(
+        wf["scope"], "user",
+        "user endpoint forces scope=user: {body}"
+    );
     assert!(
         wf["owner_user_id"].is_string(),
         "user-scope workflow must have an owner: {body}"
@@ -56,7 +59,9 @@ async fn user_install_creates_row_extract_and_tracking() {
     // install handler already parsed + cycle-checked it (the 201 proves
     // validation passed), so reading the file back confirms the bundle
     // landed on disk.
-    let extracted_path = wf["extracted_path"].as_str().expect("extracted_path string");
+    let extracted_path = wf["extracted_path"]
+        .as_str()
+        .expect("extracted_path string");
     let wf_yaml = std::path::Path::new(extracted_path).join("workflow.yaml");
     assert!(
         wf_yaml.exists(),
@@ -78,9 +83,18 @@ async fn user_install_creates_row_extract_and_tracking() {
 
     // Hub tracking row.
     let tracking = &body["hub_tracking"];
-    assert_eq!(tracking["entity_type"], "workflow", "tracking entity_type: {body}");
-    assert_eq!(tracking["hub_category"], "workflow", "tracking hub_category: {body}");
-    assert_eq!(tracking["hub_id"], FIXTURE_WORKFLOW_NAME, "tracking hub_id: {body}");
+    assert_eq!(
+        tracking["entity_type"], "workflow",
+        "tracking entity_type: {body}"
+    );
+    assert_eq!(
+        tracking["hub_category"], "workflow",
+        "tracking hub_category: {body}"
+    );
+    assert_eq!(
+        tracking["hub_id"], FIXTURE_WORKFLOW_NAME,
+        "tracking hub_id: {body}"
+    );
 
     // The workflow now appears in GET /workflows.
     let list: Json = reqwest::Client::new()
@@ -97,7 +111,10 @@ async fn user_install_creates_row_extract_and_tracking() {
         .expect("workflows array")
         .iter()
         .any(|w| w["name"] == FIXTURE_WORKFLOW_NAME);
-    assert!(found, "installed workflow appears in GET /workflows: {list}");
+    assert!(
+        found,
+        "installed workflow appears in GET /workflows: {list}"
+    );
 }
 
 #[tokio::test]
@@ -108,7 +125,10 @@ async fn delete_removes_extracted_dir() {
     let body = install_fixture_workflow(&server, &admin.token).await;
     let wf = &body["workflow"];
     let id = wf["id"].as_str().expect("id").to_string();
-    let extracted_path = wf["extracted_path"].as_str().expect("extracted_path").to_string();
+    let extracted_path = wf["extracted_path"]
+        .as_str()
+        .expect("extracted_path")
+        .to_string();
     assert!(
         std::path::Path::new(&extracted_path).exists(),
         "extracted dir present before delete"
@@ -175,8 +195,14 @@ async fn system_install_from_hub_creates_system_scope() {
 
     // Hub tracking row stamped for the workflow entity.
     let tracking = &body["hub_tracking"];
-    assert_eq!(tracking["entity_type"], "workflow", "tracking entity_type: {body}");
-    assert_eq!(tracking["hub_id"], FIXTURE_WORKFLOW_NAME, "tracking hub_id: {body}");
+    assert_eq!(
+        tracking["entity_type"], "workflow",
+        "tracking entity_type: {body}"
+    );
+    assert_eq!(
+        tracking["hub_id"], FIXTURE_WORKFLOW_NAME,
+        "tracking hub_id: {body}"
+    );
 
     // The system workflow now appears in GET /workflows for the admin.
     let list: Json = reqwest::Client::new()
@@ -197,6 +223,58 @@ async fn system_install_from_hub_creates_system_scope() {
         found,
         "installed system workflow appears in GET /workflows: {list}"
     );
+}
+
+/// Rig-triage C: the exact rig action — an admin clicking "delete" on a
+/// SYSTEM-scope workflow (`answer-with-citations` in the report) hits
+/// `DELETE /workflows/system/{id}`. That must resolve to a clean **204**, never
+/// a 500. (System workflows ARE admin-deletable by design — mirrors skills; there
+/// is no built-in-immutable concept — so the correct outcome is a successful
+/// delete, and the rig's "500/frontend error" was against a stale build.)
+#[tokio::test]
+async fn delete_system_workflow_returns_204_not_500() {
+    let (server, _mock) = server_with_workflow_catalog().await;
+    let admin = admin_and_refresh(&server).await; // has workflows::manage_system
+
+    // Install a system-scope workflow (forces scope=system, null owner).
+    let created: Json = reqwest::Client::new()
+        .post(server.api_url("/hub/workflows/create-system"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&serde_json::json!({ "hub_id": FIXTURE_WORKFLOW_NAME, "groups": [] }))
+        .send()
+        .await
+        .expect("system install-from-hub")
+        .json()
+        .await
+        .expect("parse system install body");
+    let id = created["workflow"]["id"].as_str().expect("id").to_string();
+    assert_eq!(
+        created["workflow"]["scope"], "system",
+        "setup: system scope"
+    );
+
+    // Delete via the SYSTEM endpoint (what the FE's `deleteSystemWorkflow` calls).
+    let del = reqwest::Client::new()
+        .delete(server.api_url(&format!("/workflows/system/{id}")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("delete system workflow");
+    assert_eq!(
+        del.status(),
+        204,
+        "system-workflow delete must 204, never 500; got {}",
+        del.status()
+    );
+
+    // It's gone — a second delete is a clean 404 (not a 500).
+    let again = reqwest::Client::new()
+        .delete(server.api_url(&format!("/workflows/system/{id}")))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("second delete");
+    assert_eq!(again.status(), 404, "deleting a gone system workflow → 404");
 }
 
 /// The system hub-install endpoint is gated on `workflows::manage_system`.

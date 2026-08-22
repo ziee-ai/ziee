@@ -149,6 +149,137 @@ async fn update_without_a_name_field_is_unaffected() {
     );
 }
 
+// ───────────── Rig-triage A: realistic PUT payloads must never 500 ─────────────
+//
+// Candidate A from the live-UI audit: "PUT /api/assistants/{id} returns 500 on
+// save". The name-overflow cause is fixed above; these assert the OTHER realistic
+// save payloads a settings-page edit produces all resolve to a clean 200 (or a
+// typed 4xx), never a 500. A 500 on any of these would reopen the candidate.
+
+/// An empty body (`has_updates() == false`) is a legitimate no-op save and must
+/// echo the current row with 200, not error.
+#[tokio::test]
+async fn empty_body_update_is_noop_200() {
+    let server = TestServer::start().await;
+    let user = assistant_user(&server, "asst_empty_body").await;
+    let id = create_assistant(&server, &user, "probe-empty-body").await;
+
+    let res = put_to(&server, &user, &format!("/assistants/{id}"), json!({})).await;
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "empty no-op update must 200, not 500"
+    );
+}
+
+/// Explicit JSON `null` on every optional field deserializes to `None`
+/// (== omitted) and must not overflow, blank, or 500.
+#[tokio::test]
+async fn explicit_null_optional_fields_update_is_ok() {
+    let server = TestServer::start().await;
+    let user = assistant_user(&server, "asst_nulls").await;
+    let id = create_assistant(&server, &user, "probe-nulls").await;
+
+    let res = put_to(
+        &server,
+        &user,
+        &format!("/assistants/{id}"),
+        json!({
+            "name": null,
+            "description": null,
+            "instructions": null,
+            "parameters": null,
+            "is_default": null,
+            "enabled": null,
+        }),
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "all-null update must 200, not 500"
+    );
+}
+
+/// A fully-populated `parameters` object (every ModelParameters field, incl. a
+/// large `stop` array) round-trips into the jsonb column cleanly.
+#[tokio::test]
+async fn full_parameters_update_ok() {
+    let server = TestServer::start().await;
+    let user = assistant_user(&server, "asst_params").await;
+    let id = create_assistant(&server, &user, "probe-params").await;
+
+    let big_stop: Vec<String> = (0..64).map(|i| format!("STOP_{i}")).collect();
+    let res = put_to(
+        &server,
+        &user,
+        &format!("/assistants/{id}"),
+        json!({
+            "parameters": {
+                "max_tokens": 4096,
+                "temperature": 0.7,
+                "top_k": 40,
+                "top_p": 0.95,
+                "min_p": 0.05,
+                "repeat_last_n": 64,
+                "repeat_penalty": 1.1,
+                "presence_penalty": 0.0,
+                "frequency_penalty": 0.0,
+                "seed": 12345,
+                "stop": big_stop,
+            }
+        }),
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "full parameters update must 200, not 500"
+    );
+}
+
+/// Re-saving the same values (unchanged name + toggles) — the common "click save
+/// without changing anything" path — must 200.
+#[tokio::test]
+async fn unchanged_and_toggle_fields_update_ok() {
+    let server = TestServer::start().await;
+    let user = assistant_user(&server, "asst_unchanged").await;
+    let id = create_assistant(&server, &user, "probe-unchanged").await;
+
+    let res = put_to(
+        &server,
+        &user,
+        &format!("/assistants/{id}"),
+        json!({
+            "name": "probe-unchanged",
+            "description": "an ordinary description",
+            "instructions": "You are a helpful assistant.",
+            "is_default": true,
+            "enabled": true,
+        }),
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "unchanged-name + toggles update must 200, not 500"
+    );
+
+    // Toggle the other way in a second save (multi-turn edit) — still 200.
+    let res2 = put_to(
+        &server,
+        &user,
+        &format!("/assistants/{id}"),
+        json!({ "is_default": false, "enabled": false }),
+    )
+    .await;
+    assert_eq!(
+        res2.status(),
+        StatusCode::OK,
+        "second toggle-only update must 200, not 500"
+    );
+}
+
 // ───────────────────────── D2: create path ─────────────────────────
 
 #[tokio::test]
