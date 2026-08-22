@@ -217,7 +217,15 @@ pub async fn jsonrpc_handler(
         // check existed, any non-empty string reached `execute_command_stream` →
         // `ensure_fetched` → `install_version` →
         // `format!("ziee-sandbox-rootfs-{arch}-{flavor}.{ext}")` → a live GitHub
-        // Releases request. Refusing here is strictly upstream of all of it.
+        // Releases request.
+        //
+        // Precisely: this is upstream of the ROOTFS FETCH and of every path that
+        // builds a download URL, which is what the enum protects. It is NOT
+        // upstream of `build_context` above (ownership + workspace staging), so
+        // an invalid-flavor call still pays that cost. Deliberate — the module's
+        // established order is ownership → context → per-tool argument handling,
+        // and hoisting one pure argument check above it would only change which
+        // error a caller sees when the conversation context is ALSO broken.
         let flavor = match resolve_execute_flavor(args) {
             Ok(f) => f,
             Err(e) => {
@@ -341,19 +349,25 @@ async fn invoke_tool(
     args: &Value,
 ) -> Result<Value, crate::common::AppError> {
     match name {
+        // NOTE this arm is shadowed on the live path: `jsonrpc_handler`
+        // intercepts `tools/call execute_command` above and answers with the SSE
+        // streaming branch, so `dispatch` never sees the name today. It is kept
+        // (rather than deleted) because the interception is a routing decision
+        // that could reasonably move, and a dead arm that SKIPS a security check
+        // is a bypass waiting for that refactor — it previously carried its own
+        // `default_flavor()` literal and no enum check at all. It now resolves
+        // `flavor` through the SAME `resolve_execute_flavor` the streaming branch
+        // uses, so there is exactly one place the enum is enforced no matter
+        // which route reaches the sandbox.
         "execute_command" => {
             #[derive(Deserialize)]
             struct A {
                 command: String,
-                #[serde(default = "default_flavor")]
-                flavor: String,
-            }
-            fn default_flavor() -> String {
-                "minimal".to_string()
             }
             let a: A = serde_json::from_value(args.clone())
                 .map_err(invalid_tool_args)?;
-            tools::execute::execute_command(ctx, &a.command, &a.flavor).await
+            let flavor = resolve_execute_flavor(Some(args))?;
+            tools::execute::execute_command(ctx, &a.command, &flavor).await
         }
         "read_file" => {
             #[derive(Deserialize)]
@@ -709,40 +723,21 @@ fn disposition_filename(name: &str) -> String {
 // Helpers
 // --------------------------------------------------------------------
 
-/// The `execute_command` sandbox environment when the model supplies none.
-const DEFAULT_EXECUTE_FLAVOR: &str = "minimal";
-
 /// Copyable literal-JSON example carried by an `execute_command` flavor refusal.
 const EXECUTE_FLAVOR_EXAMPLE: &str = r#"{"command":"python hello.py","flavor":"minimal"}"#;
 
 /// Resolve `execute_command`'s `flavor` argument, ENFORCING the
 /// `["minimal","full"]` enum its tool schema advertises.
 ///
-/// Absent or explicit `null` falls to the default, exactly as before. A SUPPLIED
-/// value is validated: an unknown flavor, an empty string, and a non-string are
-/// all refused rather than replaced by the default — a supplied argument that is
-/// quietly swapped for a default hides the mistake instead of correcting it.
-///
-/// Pure (no state, no I/O) so the whole contract is unit-testable without a
-/// sandbox, a rootfs, or a network.
+/// A thin adapter over the shared [`super::resolve_tool_flavor`] — the argument
+/// name and example are all that distinguish this entry point from the
+/// background one, so only those live here.
 fn resolve_execute_flavor(args: Option<&Value>) -> Result<String, crate::common::AppError> {
-    match args.and_then(|a| a.get("flavor")) {
-        None | Some(Value::Null) => Ok(DEFAULT_EXECUTE_FLAVOR.to_string()),
-        Some(Value::String(s)) => {
-            let s = s.trim();
-            super::validate_known_flavor("flavor", s, EXECUTE_FLAVOR_EXAMPLE)?;
-            Ok(s.to_string())
-        }
-        Some(other) => Err(crate::common::AppError::bad_request(
-            "SANDBOX_UNKNOWN_FLAVOR",
-            format!(
-                "`flavor` arrived as {received}, but a string naming the sandbox \
-                 environment is required — one of {names}. Example: {EXECUTE_FLAVOR_EXAMPLE}",
-                received = crate::common::tool_args::type_word(other),
-                names = super::quoted_flavor_names(),
-            ),
-        )),
-    }
+    super::resolve_tool_flavor(
+        args.and_then(|a| a.get("flavor")),
+        "flavor",
+        EXECUTE_FLAVOR_EXAMPLE,
+    )
 }
 
 fn error_response(
@@ -1550,14 +1545,14 @@ mod tests {
         use serde_json::json;
 
         // Unchanged default: absent and explicit-null both mean `minimal`.
-        assert_eq!(resolve_execute_flavor(None).unwrap(), DEFAULT_EXECUTE_FLAVOR);
+        assert_eq!(resolve_execute_flavor(None).unwrap(), crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR);
         assert_eq!(
             resolve_execute_flavor(Some(&json!({ "command": "ls" }))).unwrap(),
-            DEFAULT_EXECUTE_FLAVOR
+            crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR
         );
         assert_eq!(
             resolve_execute_flavor(Some(&json!({ "flavor": null }))).unwrap(),
-            DEFAULT_EXECUTE_FLAVOR
+            crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR
         );
 
         // HAPPY PATH: every advertised flavor is still accepted, verbatim.

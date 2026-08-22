@@ -63,11 +63,15 @@ fn error_message(body: &Json) -> String {
 /// created nothing.
 async fn run_count(server: &TestServer, user_id: &str) -> i64 {
     let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
-    sqlx::query_scalar::<_, i64>("SELECT count(*) FROM workflow_runs WHERE user_id = $1")
+    let n = sqlx::query_scalar::<_, i64>("SELECT count(*) FROM workflow_runs WHERE user_id = $1")
         .bind(Uuid::parse_str(user_id).unwrap())
         .fetch_one(&pool)
         .await
-        .expect("count workflow_runs")
+        .expect("count workflow_runs");
+    // Close it: the harness's own ad-hoc pool uses do, and an unclosed pool per
+    // call leaks connections against the shared cluster under parallel threads.
+    pool.close().await;
+    n
 }
 
 async fn spawn(server: &TestServer, user: &TestUser, conv: Uuid, arguments: Json) -> Json {
@@ -252,14 +256,14 @@ async fn invented_sandbox_flavor_is_refused_before_any_run_row_exists() {
         "the refusal must list the flavors the schema actually advertises: {msg}"
     );
 
+    let after_refusal = run_count(&server, &user.user_id).await;
     assert_eq!(
-        run_count(&server, &user.user_id).await,
-        before,
+        after_refusal, before,
         "a refused flavor must create NO workflow_runs row — the check has to land \
          before the run exists, and therefore before any URL is constructed"
     );
 
-    // HAPPY-PATH COUNTERPART: both advertised flavors are still accepted.
+    // HAPPY-PATH COUNTERPART: both advertised flavors are still accepted…
     for flavor in ["minimal", "full"] {
         let ok = spawn(
             &server,
@@ -277,6 +281,17 @@ async fn invented_sandbox_flavor_is_refused_before_any_run_row_exists() {
             "the advertised flavor `{flavor}` must still be accepted: {sc}"
         );
     }
+
+    // …and this is ALSO the positive control for `run_count` itself. Observing
+    // only "the count did not change from 0" would pass just as happily if
+    // `run_count` queried the wrong table or the wrong database and always
+    // returned 0 — proving nothing. The count MUST be seen to MOVE for calls
+    // that are accepted, or the unchanged-count assertion above is vacuous.
+    assert_eq!(
+        run_count(&server, &user.user_id).await,
+        before + 2,
+        "the two accepted spawns must each create a workflow_runs row"
+    );
 }
 
 // =====================================================================
@@ -303,8 +318,8 @@ async fn unadvertised_spec_key_and_unknown_kind_are_refused_actionably() {
         "the refusal must name the offending key: {msg}"
     );
     assert!(
-        msg.contains("task") && msg.contains("command"),
-        "…and list the keys `spec` actually accepts: {msg}"
+        msg.contains("task") && msg.contains("system"),
+        "…and list the keys `spec` accepts FOR THIS KIND: {msg}"
     );
 
     // (b) An unknown `kind` value must list the valid kinds.

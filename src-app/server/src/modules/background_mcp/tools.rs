@@ -64,15 +64,32 @@ const BACKGROUND_SPEC_EXAMPLE: &str = r#"{"task":"Summarise the attached report"
 //     → SUCCEEDED, running a sub-agent instead of the requested command, with no
 //       error at all. Silent wrong-thing is the worse half.
 //
-// Everything below is table-driven off `KIND_CONTRACTS` so a refusal cannot
-// drift from the schema and adding a kind stays additive.
+// The resolution, the per-kind key rules, the refusal text and the dispatch are
+// all derived from `KIND_CONTRACTS` below, so a refusal cannot drift from the
+// contract it describes. What is NOT generated is the tool schema itself — it is
+// a static JSON literal, so adding a kind means editing it too. That edit is not
+// left to memory: `unadvertised_spec_keys_are_refused_and_advertised_ones_accepted`
+// fails if the schema's `kind` enums or `spec` properties disagree with this
+// table — which is precisely the advertisement-vs-enforcement gap this module is
+// being fixed for, one level up.
 
 /// One background kind's whole model-facing contract.
 struct KindContract {
     /// The value of `kind` as the schema advertises it.
     name: &'static str,
+    /// The run row's `job_kind`. Carried HERE, not hardcoded in each spawner:
+    /// the dispatch matches on this field and each spawner writes the row from
+    /// the same field, so the arm that was chosen and the row that gets written
+    /// cannot disagree. (They previously could — a spawner took a
+    /// `&KindContract` used only for refusals while hardcoding its own
+    /// `JobKind`, so the wrong contract compiled cleanly and produced a
+    /// `subagent` run that demanded `spec.command`: the exact silent-mismatch
+    /// class this module is being fixed for.)
+    job_kind: JobKind,
     /// The `spec` field this kind cannot run without.
     required_field: &'static str,
+    /// The `spec` fields this kind accepts but does not require.
+    optional_fields: &'static [&'static str],
     /// Error code for a missing `required_field`. Preserved verbatim from the
     /// pre-existing refusals so no caller's error-code handling changes.
     missing_code: &'static str,
@@ -82,17 +99,28 @@ struct KindContract {
     example: &'static str,
 }
 
+impl KindContract {
+    /// Every `spec` key valid for THIS kind, in schema order.
+    fn own_fields(&self) -> impl Iterator<Item = &'static str> + '_ {
+        std::iter::once(self.required_field).chain(self.optional_fields.iter().copied())
+    }
+}
+
 const KIND_CONTRACTS: &[KindContract] = &[
     KindContract {
         name: "subagent",
+        job_kind: JobKind::SubAgent,
         required_field: "task",
+        optional_fields: &["system"],
         missing_code: "BACKGROUND_TASK_REQUIRED",
         intent: "run a detached sub-agent on a self-contained task",
         example: r#"{"kind":"subagent","spec":{"task":"Summarise the attached report"}}"#,
     },
     KindContract {
         name: "sandbox_exec",
+        job_kind: JobKind::SandboxExec,
         required_field: "command",
+        optional_fields: &["flavor"],
         missing_code: "BACKGROUND_COMMAND_REQUIRED",
         intent: "run a shell command in this conversation's code sandbox",
         example: r#"{"kind":"sandbox_exec","spec":{"command":"python hello.py"}}"#,
@@ -105,14 +133,34 @@ const KIND_CONTRACTS: &[KindContract] = &[
 /// either location — is never replaced by it.
 const DEFAULT_KIND: &str = "subagent";
 
-/// Every key the `spec` schema advertises, across BOTH kinds, plus `kind` itself
-/// (which callers may supply here as well as at the top level).
+/// Is `key` a `spec` field the RESOLVED kind can actually act on?
 ///
-/// The UNION rather than the per-kind subset, deliberately: a cross-kind key is
-/// a MISPLACED `kind`, and [`missing_spec_field`] diagnoses that precisely,
-/// which is more useful than a blunt "unknown key". A key OUTSIDE the union is a
-/// typo (`cmd`, `prompt`, `script`) that previously did nothing at all, silently.
-const SPEC_KEYS: &[&str] = &["kind", "task", "system", "command", "flavor"];
+/// The accepted set is `kind` + this kind's own fields + the OTHER kinds'
+/// REQUIRED fields. That last clause is narrow on purpose: the other kind's
+/// required field is the signature of a MISPLACED `kind`, and letting it through
+/// to [`missing_spec_field`] buys a precise diagnosis ("`spec.command` belongs to
+/// `kind: sandbox_exec`") that a blunt "unknown key" cannot give.
+///
+/// Everything else is refused — including the other kind's OPTIONAL fields
+/// (`flavor` on a sub-agent spec, `system` on a sandbox spec). Those carry no
+/// diagnostic value: accepting them meant reading a field the spawner never
+/// looks at and telling the caller nothing, which is the same silent-ignore this
+/// module exists to remove. (An earlier revision accepted the whole union and a
+/// test certified that silence.)
+fn spec_key_is_valid(kind: &'static KindContract, key: &str) -> bool {
+    key == "kind"
+        || kind.own_fields().any(|f| f == key)
+        || KIND_CONTRACTS
+            .iter()
+            .any(|k| k.name != kind.name && k.required_field == key)
+}
+
+/// The `spec` keys the resolved kind accepts, rendered for a refusal.
+fn accepted_spec_keys(kind: &'static KindContract) -> String {
+    let mut parts: Vec<String> = kind.own_fields().map(|f| format!("`{f}`")).collect();
+    parts.push("`kind`".to_string());
+    parts.join(", ")
+}
 
 /// How many offending key names a single unknown-field refusal lists.
 ///
@@ -145,6 +193,26 @@ fn default_example() -> &'static str {
         .unwrap_or(BACKGROUND_SPEC_EXAMPLE)
 }
 
+/// The ONE `BACKGROUND_KIND_UNKNOWN` message builder.
+///
+/// Three hand-maintained copies of this text existed briefly (the empty-kind
+/// arm, `parse_spawn_args`, and the fail-closed dispatch arm) and could drift
+/// apart with nothing going red. `location` is `""` for the top-level argument
+/// or `" (inside \`spec\`)"` for the nested one.
+fn unknown_kind_error(received: &str, location: &str) -> AppError {
+    AppError::bad_request(
+        "BACKGROUND_KIND_UNKNOWN",
+        format!(
+            "`kind`{location} was `{received}`, but it must be one of {kinds}. `kind` \
+             is a top-level sibling of `spec` (supplying it inside `spec` is also \
+             accepted). Example: {example}",
+            received = crate::common::tool_args::truncate_for_message(received),
+            kinds = quoted_kind_names(),
+            example = default_example(),
+        ),
+    )
+}
+
 /// Read a `kind` value out of `container`.
 ///
 /// `Ok(None)` = absent or explicit `null`, so the caller's own default applies.
@@ -153,6 +221,15 @@ fn default_example() -> &'static str {
 fn read_kind(container: &Value, location: &str) -> Result<Option<String>, AppError> {
     match container.get("kind") {
         None | Some(Value::Null) => Ok(None),
+        // An empty / whitespace-only string is refused HERE, as an invalid kind.
+        // Two wrong alternatives were considered: letting it through as `Some("")`
+        // makes it "disagree" with a real sibling value and produces a
+        // CONFLICT refusal naming a contradiction that does not exist
+        // (`subagent` vs ``); mapping it to `None` silently substitutes the
+        // default for a value the caller supplied, which INV-2 forbids. Refusing
+        // it as an unknown kind is the only reading that is both accurate and
+        // non-silent.
+        Some(Value::String(s)) if s.trim().is_empty() => Err(unknown_kind_error(s.trim(), location)),
         Some(Value::String(s)) => Ok(Some(s.trim().to_string())),
         Some(other) => Err(AppError::bad_request(
             "BACKGROUND_KIND_INVALID",
@@ -214,36 +291,33 @@ fn parse_spawn_args(args: &Value) -> Result<SpawnArgs, AppError> {
         (None, None) => DEFAULT_KIND,
     };
 
-    let kind = find_kind(resolved).ok_or_else(|| {
-        AppError::bad_request(
-            "BACKGROUND_KIND_UNKNOWN",
-            format!(
-                "`kind` was `{received}`, but it must be one of {kinds}. `kind` is a \
-                 top-level sibling of `spec` (supplying it inside `spec` is also \
-                 accepted). Example: {example}",
-                received = crate::common::tool_args::truncate_for_message(resolved),
-                kinds = quoted_kind_names(),
-                example = default_example(),
-            ),
-        )
-    })?;
+    let kind = find_kind(resolved).ok_or_else(|| unknown_kind_error(resolved, ""))?;
 
     if let Some(map) = spec.as_object() {
-        let unknown: Vec<String> = map
-            .keys()
-            .filter(|k| !SPEC_KEYS.contains(&k.as_str()))
-            .take(MAX_REPORTED_UNKNOWN_KEYS)
-            .map(|k| format!("`{}`", crate::common::tool_args::truncate_for_message(k)))
-            .collect();
-        if !unknown.is_empty() {
+        let offending: Vec<&String> = map.keys().filter(|k| !spec_key_is_valid(kind, k)).collect();
+        if !offending.is_empty() {
+            let shown: Vec<String> = offending
+                .iter()
+                .take(MAX_REPORTED_UNKNOWN_KEYS)
+                .map(|k| format!("`{}`", crate::common::tool_args::truncate_for_message(k)))
+                .collect();
+            // The key set is model-supplied and unbounded, so only the first few
+            // are named — but SAY that the list was cut, or a model that fixes
+            // the named keys hits the same refusal again with no idea why.
+            let more = offending.len().saturating_sub(shown.len());
+            let tail = if more > 0 {
+                format!(" (and {more} more)")
+            } else {
+                String::new()
+            };
             return Err(AppError::bad_request(
                 "BACKGROUND_SPEC_UNKNOWN_FIELD",
                 format!(
-                    "`spec` contains field(s) the tool does not accept: {got}. `spec` \
-                     accepts only `task` and `system` (for `kind: subagent`), \
-                     `command` and `flavor` (for `kind: sandbox_exec`), and `kind`. \
-                     Example: {example}",
-                    got = unknown.join(", "),
+                    "`spec` contains field(s) `kind: {name}` does not accept: {got}{tail}. \
+                     For `kind: {name}`, `spec` accepts only {accepted}. Example: {example}",
+                    name = kind.name,
+                    got = shown.join(", "),
+                    accepted = accepted_spec_keys(kind),
                     example = kind.example,
                 ),
             ));
@@ -268,9 +342,13 @@ fn parse_spawn_args(args: &Value) -> Result<SpawnArgs, AppError> {
 /// (`spec.task must be a non-empty string`, for a spec that supplied `command`)
 /// is the reported symptom this whole contract exists to remove.
 fn missing_spec_field(kind: &'static KindContract, spec: &Value) -> AppError {
+    // "Supplied" must mean the same thing here as it does in `require_spec_field`
+    // — a non-empty string. `is_some()` alone is true for an explicit `null` and
+    // for a wrong type, which steered the model toward a kind whose required
+    // field was ALSO null: a confident hint pointing at another dead end.
     let sibling = KIND_CONTRACTS
         .iter()
-        .find(|k| k.name != kind.name && spec.get(k.required_field).is_some());
+        .find(|k| k.name != kind.name && spec_field_supplied(spec, k.required_field));
 
     let message = match sibling {
         Some(other) => format!(
@@ -295,6 +373,17 @@ fn missing_spec_field(kind: &'static KindContract, spec: &Value) -> AppError {
         ),
     };
     AppError::bad_request(kind.missing_code, message)
+}
+
+/// Was `field` supplied as a usable value — i.e. a non-empty string?
+///
+/// ONE definition, shared by [`require_spec_field`] (which consumes the value)
+/// and [`missing_spec_field`] (which reasons about the sibling kind's field), so
+/// the refusal cannot claim a field was "supplied" that the reader would reject.
+fn spec_field_supplied(spec: &Value, field: &str) -> bool {
+    spec.get(field)
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty())
 }
 
 /// Read the non-empty string `spec.<kind.required_field>`, or refuse via
@@ -322,9 +411,15 @@ fn decode_spec_arg(args: &Value) -> Result<Value, AppError> {
     .ok_or_else(|| {
         AppError::bad_request(
             "BACKGROUND_SPEC_REQUIRED",
+            // The example here must be a full ARGUMENTS object, not a `spec`-level
+            // one: the mistake being corrected is a MISSING `spec` key, so an
+            // example without that key is one a model can copy verbatim and hit
+            // the identical error again. (Every sibling refusal in this contract
+            // already carries a full arguments object.)
             format!(
                 "`spec` was not supplied, but a JSON object describing the work is \
-                 required. Example: {BACKGROUND_SPEC_EXAMPLE}"
+                 required. Example: {example}",
+                example = default_example(),
             ),
         )
     })
@@ -349,7 +444,7 @@ pub fn tool_list() -> Value {
                         "spec": {
                             "type": "object",
                             "additionalProperties": false,
-                            "description": "What the background job should do. The required fields depend on `kind`: 'subagent' requires `task`; 'sandbox_exec' requires `command`. Only the fields listed here are accepted — an unrecognized field is refused rather than ignored.",
+                            "description": "What the background job should do. The fields are PER-KIND and the server enforces that: 'subagent' accepts `task` (required) and `system`; 'sandbox_exec' accepts `command` (required) and `flavor`. Every field listed here carries its kind in parentheses. A field that is unrecognized, or that belongs to the other kind, is REFUSED rather than silently ignored — the one exception is the other kind's required field (`task`/`command`), which is accepted only so the error can tell you that your `kind` is wrong.",
                             "properties": {
                                 "kind": {
                                     "type": "string",
@@ -468,21 +563,20 @@ async fn spawn_background(
     // `spec` keys. See `parse_spawn_args`.
     let SpawnArgs { kind, spec } = parse_spawn_args(args)?;
 
-    match kind.name {
-        "subagent" => spawn_subagent(pool, user_id, conversation_id, kind, spec).await,
-        "sandbox_exec" => spawn_sandbox_exec(pool, user_id, conversation_id, kind, spec).await,
+    // Dispatch on the contract's OWN `job_kind`, which is also the value each
+    // spawner writes to the run row — so the arm chosen and the row written
+    // cannot disagree.
+    match kind.job_kind {
+        JobKind::SubAgent => spawn_subagent(pool, user_id, conversation_id, kind, spec).await,
+        JobKind::SandboxExec => {
+            spawn_sandbox_exec(pool, user_id, conversation_id, kind, spec).await
+        }
         // `parse_spawn_args` already refused every name outside `KIND_CONTRACTS`,
         // so this arm is unreachable. It stays as a fail-closed guard rather than
         // a panic: the value originates in model-supplied input, and a future
         // table entry without a dispatch arm must refuse, not abort the request.
-        other => Err(AppError::bad_request(
-            "BACKGROUND_KIND_UNKNOWN",
-            format!(
-                "`kind` was `{other}`, but it must be one of {kinds}. Example: {example}",
-                kinds = quoted_kind_names(),
-                example = default_example(),
-            ),
-        )),
+        // It shares the ONE message builder rather than re-formatting the text.
+        _ => Err(unknown_kind_error(kind.name, "")),
     }
 }
 
@@ -495,7 +589,9 @@ async fn spawn_subagent(
     kind: &'static KindContract,
     spec: Value,
 ) -> Result<Value, AppError> {
-    let job_kind = JobKind::SubAgent;
+    // From the contract that selected this arm — never a second hardcoded
+    // literal that could disagree with the dispatch.
+    let job_kind = kind.job_kind;
     let task = require_spec_field(kind, &spec)?;
     let system = spec
         .get("system")
@@ -710,10 +806,6 @@ async fn post_completion_notification(
     }
 }
 
-/// Default rootfs flavor for a background sandbox command (matches the foreground
-/// `execute_command` tool's `default_flavor`).
-const DEFAULT_SANDBOX_FLAVOR: &str = "minimal";
-
 /// Copyable literal-JSON example for a `spec.flavor` refusal.
 const SANDBOX_FLAVOR_EXAMPLE: &str =
     r#"{"kind":"sandbox_exec","spec":{"command":"python hello.py","flavor":"minimal"}}"#;
@@ -727,30 +819,18 @@ const SANDBOX_FLAVOR_EXAMPLE: &str =
 /// Releases request. This runs before the `workflow_runs` row is created, so a
 /// bad flavor costs nothing and constructs no URL.
 ///
-/// Absent / explicit `null` falls to the default. A SUPPLIED value — of any type,
-/// including an empty string — is validated, never silently defaulted.
+/// A thin adapter over the SHARED `code_sandbox::resolve_tool_flavor` — the
+/// argument name and the example are the only things that differ from the chat
+/// `execute_command` entry point, and they are the only things that live here.
+/// (The two were briefly duplicated resolvers; sharing only the predicate is how
+/// two copies of the same rule drift, and the default `"minimal"` had reached
+/// three independent literals.)
 fn resolve_spec_flavor(spec: &Value) -> Result<String, AppError> {
-    match spec.get("flavor") {
-        None | Some(Value::Null) => Ok(DEFAULT_SANDBOX_FLAVOR.to_string()),
-        Some(Value::String(s)) => {
-            let s = s.trim();
-            crate::modules::code_sandbox::validate_known_flavor(
-                "spec.flavor",
-                s,
-                SANDBOX_FLAVOR_EXAMPLE,
-            )?;
-            Ok(s.to_string())
-        }
-        Some(other) => Err(AppError::bad_request(
-            "SANDBOX_UNKNOWN_FLAVOR",
-            format!(
-                "`spec.flavor` arrived as {received}, but a string naming the sandbox \
-                 environment is required — one of {names}. Example: {SANDBOX_FLAVOR_EXAMPLE}",
-                received = crate::common::tool_args::type_word(other),
-                names = crate::modules::code_sandbox::quoted_flavor_names(),
-            ),
-        )),
-    }
+    crate::modules::code_sandbox::resolve_tool_flavor(
+        spec.get("flavor"),
+        "spec.flavor",
+        SANDBOX_FLAVOR_EXAMPLE,
+    )
 }
 
 /// `spawn_background{kind:'sandbox_exec'}` — launch a detached
@@ -788,7 +868,7 @@ async fn spawn_sandbox_exec(
         .ok_or_else(|| AppError::not_found("conversation not found"))?;
 
     let request = CreateBackgroundRun {
-        job_kind: JobKind::SandboxExec,
+        job_kind: kind.job_kind,
         conversation_id: Some(conversation_id),
         user_id,
         model_id: None,
@@ -806,7 +886,7 @@ async fn spawn_sandbox_exec(
 
     Ok(json!({
         "run_id": run_id,
-        "kind": JobKind::SandboxExec.as_str(),
+        "kind": kind.job_kind.as_str(),
         "status": "pending",
         "note": "Background sandbox command started. END your turn — its completion drops a notification in the inbox; read its output with collect_result on demand."
     }))
@@ -1446,6 +1526,14 @@ mod argument_contract_tests {
             .map_err(|e| e.to_string())
     }
 
+    /// Every literal-JSON example this module can hand a model.
+    fn all_examples() -> Vec<&'static str> {
+        let mut v: Vec<&'static str> = KIND_CONTRACTS.iter().map(|k| k.example).collect();
+        v.push(SANDBOX_FLAVOR_EXAMPLE);
+        v.push(BACKGROUND_SPEC_EXAMPLE);
+        v
+    }
+
     /// INV-1's three elements, asserted the same way
     /// `common::tool_args::conformance::assert_actionable` asserts them for a
     /// SHAPE refusal: the message must name the argument, say what is expected,
@@ -1465,10 +1553,26 @@ mod argument_contract_tests {
                 || msg.contains("Supply it once"),
             "[{label}] the refusal must say what is EXPECTED: {msg}"
         );
+        // The example must be one of the REAL examples this module hands out,
+        // and it must PARSE. Matching the literal "Example: {" (as an earlier
+        // revision did) would pass for an empty, malformed, or wrong-kind
+        // example — which is exactly the `label` defect one level down, and it
+        // is why the shared `tool_args::conformance::assert_actionable` matches
+        // the site's actual example string rather than a marker.
+        let carried = msg
+            .split_once("Example: ")
+            .map(|(_, tail)| tail.trim().to_string())
+            .unwrap_or_else(|| {
+                panic!("[{label}] the refusal must carry a literal-JSON EXAMPLE to copy: {msg}")
+            });
         assert!(
-            msg.contains("Example: {"),
-            "[{label}] the refusal must carry a literal-JSON EXAMPLE to copy: {msg}"
+            all_examples().contains(&carried.as_str()),
+            "[{label}] the refusal carried an example this module does not define \
+             ({carried:?}); it must hand the model one of {:?}",
+            all_examples()
         );
+        serde_json::from_str::<Value>(&carried)
+            .unwrap_or_else(|e| panic!("[{label}] the carried example must be valid JSON: {e}"));
     }
 
     // TEST-1: a `kind` nested inside `spec` RESOLVES the job kind instead of
@@ -1565,17 +1669,44 @@ mod argument_contract_tests {
         let msg = parse(json!({ "kind": "subagent", "spec": { "task": "x", "priority": "high" } }))
             .expect_err("an unadvertised key must be refused, not ignored");
         assert!(msg.contains("priority"), "names the offending key: {msg}");
-        assert!(msg.contains("task") && msg.contains("command"), "lists the accepted keys: {msg}");
+        assert!(
+            msg.contains("task") && msg.contains("system"),
+            "lists the keys THIS kind accepts: {msg}"
+        );
         assert_actionable("unknown-spec-key", &msg, "spec");
 
-        // HAPPY-PATH COUNTERPART: every advertised key is accepted.
+        // The other kind's OPTIONAL field is refused too, not silently ignored:
+        // `flavor` on a sub-agent spec is a field the spawner never reads, so
+        // accepting it would tell the caller nothing — the silent-ignore this
+        // whole contract removes. (An earlier revision accepted the union of
+        // both kinds' keys and a test certified that silence.)
+        for (label, args) in [
+            (
+                "flavor-on-subagent",
+                json!({ "kind": "subagent", "spec": { "task": "x", "flavor": "full" } }),
+            ),
+            (
+                "system-on-sandbox",
+                json!({ "kind": "sandbox_exec", "spec": { "command": "ls", "system": "s" } }),
+            ),
+        ] {
+            let msg = parse(args).expect_err("a cross-kind OPTIONAL field must be refused");
+            assert_actionable(label, &msg, "spec");
+        }
+
+        // …but the other kind's REQUIRED field is deliberately let through here,
+        // because it is the signature of a misplaced `kind` and earns the precise
+        // diagnosis in TEST-7 rather than a blunt "unknown key".
+        parse(json!({ "kind": "subagent", "spec": { "command": "ls" } }))
+            .expect("the other kind's REQUIRED field reaches the misplaced-kind diagnosis");
+
+        // HAPPY-PATH COUNTERPART: every key a kind advertises is accepted.
+        parse(json!({ "spec": { "kind": "subagent", "task": "x", "system": "s" } }))
+            .expect("every `subagent` spec key must be accepted");
         parse(json!({
-            "spec": {
-                "kind": "sandbox_exec", "task": "x", "system": "s",
-                "command": "ls", "flavor": "minimal"
-            }
+            "spec": { "kind": "sandbox_exec", "command": "ls", "flavor": "minimal" }
         }))
-        .expect("every advertised `spec` key must be accepted");
+        .expect("every `sandbox_exec` spec key must be accepted");
 
         // The ADVERTISEMENT matches the enforcement: `spec` declares
         // `additionalProperties: false` and declares `kind` among its
@@ -1591,15 +1722,38 @@ mod argument_contract_tests {
             "the schema must advertise the closed key set the server enforces"
         );
         let props = spec_schema["properties"].as_object().expect("spec properties");
-        for key in SPEC_KEYS {
+        // Derived from KIND_CONTRACTS, not a hardcoded list: adding a kind to the
+        // table without advertising its fields is the advertisement-vs-enforcement
+        // gap this whole change closes, so it must fail HERE.
+        let mut table_keys: Vec<&str> = vec!["kind"];
+        for k in KIND_CONTRACTS {
+            table_keys.extend(k.own_fields());
+        }
+        for key in &table_keys {
             assert!(props.contains_key(*key), "`spec` must advertise `{key}`");
         }
         for key in props.keys() {
             assert!(
-                SPEC_KEYS.contains(&key.as_str()),
-                "the schema advertises `{key}`, which the server would REFUSE — \
-                 an advertisement the server does not honour is the defect this \
-                 contract exists to remove"
+                table_keys.contains(&key.as_str()),
+                "the schema advertises `{key}`, which no kind in KIND_CONTRACTS \
+                 accepts — an advertisement the server does not honour is the \
+                 defect this contract exists to remove"
+            );
+        }
+        // Both `kind` enums (top-level AND the one nested in `spec`) must equal
+        // the table, so a third kind cannot be enforced-but-never-advertised.
+        let table_kinds: Vec<&str> = KIND_CONTRACTS.iter().map(|k| k.name).collect();
+        for path in [&spawn["inputSchema"]["properties"]["kind"], &spec_schema["properties"]["kind"]]
+        {
+            let advertised: Vec<&str> = path["enum"]
+                .as_array()
+                .expect("a kind enum")
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect();
+            assert_eq!(
+                advertised, table_kinds,
+                "every advertised `kind` enum must equal KIND_CONTRACTS"
             );
         }
         // The module's own copyable example must survive its own rule.
@@ -1702,6 +1856,28 @@ mod argument_contract_tests {
         );
         assert_actionable("plain-missing-task", &msg, "spec.task");
 
+        // A cross-kind field that is PRESENT but not usable — explicit null,
+        // wrong type, empty string — must NOT trigger the hint either. "Supplied"
+        // has to mean the same thing here as it does to the reader, or the
+        // refusal confidently steers the model toward a kind whose required
+        // field is just as unusable: a hint pointing at another dead end.
+        for (label, bad_command) in [
+            ("null-command", json!(null)),
+            ("number-command", json!(7)),
+            ("empty-command", json!("   ")),
+        ] {
+            let (kind, spec) =
+                parse(json!({ "kind": "subagent", "spec": { "command": bad_command } })).unwrap();
+            let contract = find_kind(kind).unwrap();
+            let msg = require_spec_field(contract, &spec).unwrap_err().to_string();
+            assert!(
+                !msg.contains("belongs to"),
+                "[{label}] `spec.command` was not usably supplied, so it must not be \
+                 reported as the real intent: {msg}"
+            );
+            assert_actionable(label, &msg, "spec.task");
+        }
+
         // HAPPY-PATH COUNTERPART: a well-formed spec still reads its field.
         let (kind, spec) = parse(json!({ "kind": "subagent", "spec": { "task": " x " } })).unwrap();
         assert_eq!(
@@ -1737,10 +1913,10 @@ mod argument_contract_tests {
                 "the advertised flavor `{name}` must still be accepted"
             );
         }
-        assert_eq!(resolve_spec_flavor(&json!({})).unwrap(), DEFAULT_SANDBOX_FLAVOR);
+        assert_eq!(resolve_spec_flavor(&json!({})).unwrap(), crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR);
         assert_eq!(
             resolve_spec_flavor(&json!({ "flavor": null })).unwrap(),
-            DEFAULT_SANDBOX_FLAVOR
+            crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR
         );
 
         // The schema advertises exactly the flavors the server accepts.
@@ -1759,5 +1935,131 @@ mod argument_contract_tests {
             crate::modules::code_sandbox::known_flavor_names(),
             "the advertised enum and the enforced allow-list must be the same list"
         );
+    }
+
+    // TEST-18: EVERY literal-JSON example this module hands a model must survive
+    // the module's OWN rules, end to end.
+    //
+    // This is the `label` defect generalised. `BACKGROUND_SPEC_EXAMPLE` used to
+    // advertise a `"label"` key that no schema declares and no code reads; TEST-5
+    // pins that one example, but the three the model actually sees in a
+    // kind/conflict/unknown-key/missing-field/flavor refusal were unpinned. An
+    // example the server would itself refuse is a refusal that cannot be obeyed.
+    #[test]
+    fn every_example_this_module_hands_out_is_itself_accepted() {
+        for kind in KIND_CONTRACTS {
+            let args: Value = serde_json::from_str(kind.example)
+                .unwrap_or_else(|e| panic!("`{}` example must be valid JSON: {e}", kind.name));
+            let (resolved, spec) = parse(args.clone()).unwrap_or_else(|e| {
+                panic!("the `{}` example must PARSE, got refusal: {e}", kind.name)
+            });
+            assert_eq!(
+                resolved, kind.name,
+                "the `{}` example must resolve to its own kind",
+                kind.name
+            );
+            require_spec_field(kind, &spec).unwrap_or_else(|e| {
+                panic!("the `{}` example must satisfy its required field: {e}", kind.name)
+            });
+        }
+
+        // The flavor example must additionally carry a flavor the server accepts.
+        let args: Value =
+            serde_json::from_str(SANDBOX_FLAVOR_EXAMPLE).expect("flavor example is valid JSON");
+        let (resolved, spec) = parse(args).expect("the flavor example must PARSE");
+        assert_eq!(resolved, "sandbox_exec");
+        require_spec_field(find_kind(resolved).unwrap(), &spec).expect("…and carry its command");
+        assert_eq!(
+            resolve_spec_flavor(&spec).expect("…and a flavor the server accepts"),
+            "minimal"
+        );
+    }
+
+    // TEST-19: the default flavor — the value taken on the MOST-TRAVELLED path,
+    // where the model supplies nothing — must itself be in the advertised
+    // catalog. Nothing else checks it: the absent/null arm returns the constant
+    // without consulting the allow-list, so a catalog rename would silently make
+    // every no-flavor call construct an unknown-flavor download URL.
+    #[test]
+    fn default_flavor_is_in_the_catalog() {
+        assert!(
+            crate::modules::code_sandbox::is_known_flavor(
+                crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR
+            ),
+            "DEFAULT_TOOL_FLAVOR must be one of {:?}",
+            crate::modules::code_sandbox::known_flavor_names()
+        );
+    }
+
+    // TEST-20: input classes the parser handles that nothing exercised — each of
+    // these could have been deleted from the implementation with no test red.
+    #[test]
+    fn parser_handles_the_awkward_input_classes() {
+        // (a) A NESTED non-string `kind`. The whole `location` argument of
+        // `read_kind` exists for this message and was previously unasserted.
+        let msg = parse(json!({ "spec": { "kind": 42, "task": "x" } }))
+            .expect_err("a nested non-string kind must be refused");
+        assert!(
+            msg.contains("inside `spec`"),
+            "the refusal must say WHERE the bad `kind` was: {msg}"
+        );
+        assert!(msg.contains("a number"), "…and what arrived: {msg}");
+
+        // (b) An empty / whitespace-only `kind` is an UNKNOWN kind, never a
+        // "conflict" with a real sibling value and never silently defaulted.
+        for spec_kind in ["", "   "] {
+            let msg = parse(json!({ "kind": "subagent", "spec": { "kind": spec_kind, "task": "x" } }))
+                .expect_err("an empty kind must be refused");
+            assert!(
+                !msg.contains("supplied twice"),
+                "an empty string is not a competing value — it must not be reported as a \
+                 contradiction: {msg}"
+            );
+            assert_actionable("empty-kind", &msg, "kind");
+        }
+
+        // (c) Whitespace around a REAL kind is trimmed, not rejected.
+        let (kind, _) = parse(json!({ "kind": "  sandbox_exec  ", "spec": { "command": "ls" } }))
+            .expect("a padded kind must be trimmed");
+        assert_eq!(kind, "sandbox_exec");
+
+        // (d) A JSON-ENCODED `spec` that ALSO carries a nested `kind` — the exact
+        // combination `decode_spec_arg` was moved ahead of the kind read for. It
+        // must decode AND resolve, not fall to the default.
+        let (kind, spec) = parse(json!({
+            "spec": r#"{"kind":"sandbox_exec","command":"python hello.py"}"#
+        }))
+        .expect("a stringified spec carrying a nested kind must decode and resolve");
+        assert_eq!(kind, "sandbox_exec", "the nested kind survives decoding");
+        assert_eq!(spec["command"], json!("python hello.py"));
+
+        // (e) More unknown keys than the refusal names: the message must SAY it
+        // was cut, or a model that fixes the named keys loops on the same error.
+        let mut many = serde_json::Map::new();
+        many.insert("task".into(), json!("x"));
+        for i in 0..(MAX_REPORTED_UNKNOWN_KEYS + 3) {
+            many.insert(format!("bogus_{i}"), json!(1));
+        }
+        let msg = parse(json!({ "kind": "subagent", "spec": Value::Object(many) }))
+            .expect_err("unknown keys must be refused");
+        assert!(msg.contains("and 3 more"), "the truncated list must say so: {msg}");
+        assert_actionable("many-unknown-keys", &msg, "spec");
+    }
+
+    // TEST-21: the dispatch arm and the run row's `job_kind` are the SAME field,
+    // so they cannot disagree. Each spawner used to hardcode its own `JobKind`
+    // while receiving an unrelated contract for its refusals — passing the wrong
+    // one compiled cleanly and produced a `subagent` run demanding `spec.command`.
+    #[test]
+    fn each_contract_names_its_own_job_kind() {
+        for k in KIND_CONTRACTS {
+            assert_eq!(
+                k.job_kind.as_str(),
+                k.name,
+                "a contract's advertised `kind` and its run-row `job_kind` must be the \
+                 same value — the dispatch selects on one and the row is written from \
+                 the other"
+            );
+        }
     }
 }

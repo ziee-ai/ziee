@@ -92,6 +92,17 @@ pub fn known_flavor_names() -> Vec<&'static str> {
     types::KNOWN_FLAVORS.iter().map(|m| m.flavor).collect()
 }
 
+/// The sandbox environment used when a model-facing tool call supplies no
+/// `flavor`.
+///
+/// ONE definition for every entry point (the chat `execute_command`, the
+/// background `sandbox_exec`). It previously existed as three separate literals
+/// that nothing kept in agreement. `default_flavor_is_in_the_catalog` pins it to
+/// `KNOWN_FLAVORS`, so it cannot silently become an unknown flavor — the
+/// no-flavor-supplied path is the most travelled one, and an unvalidated default
+/// there would rebuild the very defect this module closes.
+pub const DEFAULT_TOOL_FLAVOR: &str = "minimal";
+
 /// Enforce the `flavor` enum that a MODEL-FACING tool schema advertises.
 ///
 /// `arg` names the argument as the model sends it (`flavor` for the chat
@@ -101,13 +112,15 @@ pub fn known_flavor_names() -> Vec<&'static str> {
 /// and a copyable example.
 ///
 /// **Why here and not inside `version_manager::install_version`.** That function
-/// serves TWO callers with different contracts. The ADMIN install path
-/// (`version_handlers.rs`) validates `flavor` as a safe token rather than
-/// against `KNOWN_FLAVORS`, deliberately — an operator must be able to install a
-/// flavor published after this binary was built. Moving the enum check down into
-/// the shared function would silently remove that escape hatch. The enum is
-/// promised only in the tool schemas, so it is kept exactly at those two entry
-/// points, upstream of every path that builds a download URL.
+/// serves two callers with different contracts. The ADMIN install path
+/// (`version_handlers.rs`) validates `flavor` as a safe token rather than against
+/// `KNOWN_FLAVORS`, so an operator can DOWNLOAD a flavor published after this
+/// binary was built. Be precise about what that buys: the enum lives in the tool
+/// schema, so a flavor outside `KNOWN_FLAVORS` is one the model is never told
+/// about and — after this check — cannot invoke either. Installing it stages the
+/// artifact for a future binary that knows about it; it does not make it usable
+/// from a tool call today. Pushing the check down into `install_version` would
+/// additionally break the staging, which is why it lives here instead.
 pub fn validate_known_flavor(
     arg: &str,
     flavor: &str,
@@ -124,6 +137,44 @@ pub fn validate_known_flavor(
             names = quoted_flavor_names(),
         ),
     ))
+}
+
+/// Resolve a model-supplied `flavor` argument for ANY model-facing sandbox tool.
+///
+/// The single resolver behind both entry points — the chat `execute_command`'s
+/// top-level `flavor` and `spawn_background{sandbox_exec}`'s `spec.flavor`. They
+/// were briefly two near-identical copies differing only in the argument name and
+/// the example; sharing the predicate but not the resolver is how the two drift.
+///
+/// * absent / explicit `null` → [`DEFAULT_TOOL_FLAVOR`] (the unchanged default).
+/// * a supplied string → trimmed and held to the advertised enum. An empty or
+///   whitespace-only string is REFUSED, not defaulted: it was supplied.
+/// * a supplied non-string → refused, naming what arrived.
+///
+/// Pure: no state, no I/O, no DB. It is the whole contract, unit-testable
+/// without a sandbox, a rootfs, or a network.
+pub fn resolve_tool_flavor(
+    value: Option<&serde_json::Value>,
+    arg: &str,
+    example: &str,
+) -> Result<String, crate::common::AppError> {
+    match value {
+        None | Some(serde_json::Value::Null) => Ok(DEFAULT_TOOL_FLAVOR.to_string()),
+        Some(serde_json::Value::String(s)) => {
+            let s = s.trim();
+            validate_known_flavor(arg, s, example)?;
+            Ok(s.to_string())
+        }
+        Some(other) => Err(crate::common::AppError::bad_request(
+            "SANDBOX_UNKNOWN_FLAVOR",
+            format!(
+                "`{arg}` arrived as {received}, but a string naming the sandbox \
+                 environment is required — one of {names}. Example: {example}",
+                received = crate::common::tool_args::type_word(other),
+                names = quoted_flavor_names(),
+            ),
+        )),
+    }
 }
 
 /// `` `minimal`, `full` `` — the advertised names, quoted, for a refusal.
@@ -193,11 +244,16 @@ mod tests {
     #[test]
     fn known_flavor_names_render_identically_for_the_user_policy_message() {
         let names = known_flavor_names();
-        // The exact shape the pre-refactor inline `Vec<&str>` produced.
+        // The LITERAL string the pre-refactor site produced. Deriving the
+        // expectation from `known_flavor_names`' own body — which an earlier
+        // revision of this test did — is a tautology: it cannot fail for ANY
+        // edit to the function under test, which is the one thing it exists to
+        // protect.
         assert_eq!(
             format!("{names:?}"),
-            format!("{:?}", types::KNOWN_FLAVORS.iter().map(|m| m.flavor).collect::<Vec<&str>>()),
-            "the user-policy error text must be byte-identical after delegation"
+            r#"["minimal", "full"]"#,
+            "the user-policy MCP_UNKNOWN_FLAVOR message renders this list with \
+             `{{names:?}}`; a change here silently changes an admin-facing error"
         );
         // Identity is the NAME only — the size/description fields are
         // presentation and must not leak into the allow-list decision.

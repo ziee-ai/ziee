@@ -149,15 +149,36 @@ pub fn type_word(v: &Value) -> &'static str {
 /// limit over model-controlled data, and no deployment benefits from raising it.
 pub const MAX_ECHOED_VALUE_CHARS: usize = 64;
 
-/// Bound a model-supplied fragment for inclusion in a refusal message.
+/// Bound AND sanitise a model-supplied fragment for inclusion in a refusal
+/// message.
 ///
-/// Truncates on a CHARACTER boundary (never a byte index — `s[..n]` panics
-/// mid-codepoint, and model input is routinely non-ASCII).
+/// Two separate jobs, both required, because the output lands in text the model
+/// reads on its next turn:
+///
+/// * **Bound** — truncate to [`MAX_ECHOED_VALUE_CHARS`], on a CHARACTER boundary.
+///   Never a byte index: `s[..n]` panics mid-codepoint and model input is
+///   routinely non-ASCII.
+/// * **Sanitise** — refusals quote the fragment inside backticks, so a backtick
+///   or a newline in the fragment closes that quoting and lets model-supplied
+///   text run on as if it were the server's own words. Length alone does not
+///   prevent that. Both are replaced with a space; the fragment is a short
+///   identifier (an enum value, a field name, a flavor), so nothing meaningful
+///   is lost.
 pub fn truncate_for_message(s: &str) -> String {
-    if s.chars().count() <= MAX_ECHOED_VALUE_CHARS {
-        return s.to_string();
+    let sanitized: String = s
+        .chars()
+        .map(|c| {
+            if c == '`' || c.is_control() || c == '\u{2028}' || c == '\u{2029}' {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    if sanitized.chars().count() <= MAX_ECHOED_VALUE_CHARS {
+        return sanitized;
     }
-    let head: String = s.chars().take(MAX_ECHOED_VALUE_CHARS).collect();
+    let head: String = sanitized.chars().take(MAX_ECHOED_VALUE_CHARS).collect();
     format!("{head}…")
 }
 
@@ -868,5 +889,43 @@ mod tests {
         )
         .unwrap();
         assert_eq!(args["body"], Value::Null);
+    }
+
+    /// TEST-22: `truncate_for_message` bounds a MODEL-CONTROLLED fragment that
+    /// now appears inside refusal text. Every existing test feeds it short ASCII,
+    /// which takes the early return — so the bound itself, and the mid-codepoint
+    /// panic its doc warns about, were both unverified.
+    #[test]
+    fn truncate_for_message_bounds_and_never_splits_a_codepoint() {
+        // Short input passes through untouched — the no-regression path.
+        assert_eq!(truncate_for_message("zee-workflow"), "zee-workflow");
+        assert_eq!(truncate_for_message(""), "");
+
+        // Exactly at the bound is NOT truncated; one past it is.
+        let at = "a".repeat(MAX_ECHOED_VALUE_CHARS);
+        assert_eq!(truncate_for_message(&at), at, "the boundary length is not cut");
+        let over = "a".repeat(MAX_ECHOED_VALUE_CHARS + 1);
+        let cut = truncate_for_message(&over);
+        assert!(cut.ends_with('…'), "an over-long value is marked as cut: {cut}");
+        assert_eq!(cut.chars().count(), MAX_ECHOED_VALUE_CHARS + 1);
+
+        // Multi-byte input must not panic and must cut on a CHARACTER boundary.
+        // A byte slice at MAX_ECHOED_VALUE_CHARS would land mid-codepoint here.
+        for s in ["é".repeat(200), "日".repeat(200), "🙂".repeat(200)] {
+            let cut = truncate_for_message(&s);
+            assert_eq!(cut.chars().count(), MAX_ECHOED_VALUE_CHARS + 1);
+            assert!(cut.is_char_boundary(cut.len()));
+        }
+
+        // Content is SANITISED, not just bounded: a model-supplied fragment is
+        // echoed into text the model reads next, so backticks (which would close
+        // the surrounding quoting) and control characters must not survive.
+        let hostile = "a`b\nc\rd\te";
+        let clean = truncate_for_message(hostile);
+        assert!(!clean.contains('`'), "backticks must not survive: {clean:?}");
+        assert!(
+            !clean.contains('\n') && !clean.contains('\r'),
+            "newlines must not survive: {clean:?}"
+        );
     }
 }

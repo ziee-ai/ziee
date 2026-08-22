@@ -406,10 +406,18 @@ async fn create_system_server_persists_and_validates_sandbox_flavor() {
         .send().await.unwrap();
     assert_eq!(resp.status(), 400, "unknown flavor must be rejected");
     let err: serde_json::Value = resp.json().await.expect("error body");
-    let code = serde_json::to_string(&err).unwrap();
-    assert!(
-        code.contains("INVALID_FLAVOR"),
-        "the error code must stay INVALID_FLAVOR after the delegation: {code}"
+    // Read the CODE field, not a substring of the serialized body: a substring
+    // match also passes when the token merely appears inside a message, which is
+    // not what "the error code is preserved" means.
+    let code = err["error_code"]
+        .as_str()
+        .or_else(|| err["code"].as_str())
+        .or_else(|| err["error"]["code"].as_str())
+        .unwrap_or_else(|| panic!("no error-code field in the refusal body: {err}"));
+    assert_eq!(
+        code, "INVALID_FLAVOR",
+        "the error code must stay INVALID_FLAVOR after the delegation to \
+         code_sandbox::is_known_flavor"
     );
 }
 
