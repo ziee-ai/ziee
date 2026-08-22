@@ -99,6 +99,45 @@ async fn model_registry_fixture() -> (String, AbortOnDrop) {
     .await
 }
 
+/// The org a row must name for [`author_aware_registry_fixture`] to list any
+/// models. Any other org is, as far as that fixture is concerned, nonexistent.
+const KNOWN_ORG: &str = "acme-models";
+
+/// A model registry that answers the `author=` filter HONESTLY — a listing for
+/// [`KNOWN_ORG`], an empty array for every other org.
+///
+/// This is what makes the defect-2 assertions mean anything. The older
+/// `model_registry_fixture` serves the same listing for every query, so a row
+/// naming a NONEXISTENT org still reads `healthy` against it — which is exactly
+/// the bug (`capability_probe_url` graded Hugging Face's global catalogue, never
+/// the row). Only an author-aware fixture can tell the two apart.
+async fn author_aware_registry_fixture() -> (String, AbortOnDrop) {
+    spawn_fixture(
+        Router::new()
+            .route(
+                "/api/models",
+                get(
+                    |axum::extract::RawQuery(q): axum::extract::RawQuery| async move {
+                        let query = q.unwrap_or_default();
+                        let author = query.split('&').find_map(|kv| kv.strip_prefix("author="));
+                        let body = match author {
+                            // No author filter: the global catalogue, as today.
+                            None => HF_MODEL_LISTING,
+                            Some(a) if a == KNOWN_ORG => HF_MODEL_LISTING,
+                            // A real Hugging Face answers an unknown author with an
+                            // empty array, not a 404.
+                            Some(_) => "[]",
+                        };
+                        (StatusCode::OK, [("content-type", "application/json")], body)
+                            .into_response()
+                    },
+                ),
+            )
+            .fallback(get(|| async { "ok" })),
+    )
+    .await
+}
+
 /// Reachable, but there is no model listing here at all — the shape a
 /// self-hosted service that simply is not a model registry has. Must be
 /// `unverified`, NOT `unhealthy`, or shipping this change would auto-disable
@@ -390,7 +429,16 @@ async fn a_hugging_face_host_is_probed_against_the_hugging_face_listing_surface(
     assert!(enabled);
 
     // Positive control on the SAME classification path: the seam now points at
-    // a fixture that serves a real listing.
+    // a fixture that serves a real listing, and the row names an org that
+    // fixture actually lists.
+    //
+    // CORRECTED (defect 2). This leg previously named
+    // `https://huggingface.co/org-<random-uuid>` — a GUARANTEED-NONEXISTENT org
+    // — and asserted `healthy`. That assertion did not test the positive
+    // control it claimed to; it CERTIFIED the bug: `capability_probe_url`
+    // discarded the row's URL and graded the fixture's global catalogue, so any
+    // org name whatsoever passed. The org is now one the fixture really lists,
+    // and the nonexistent-org case is asserted below as `unverified`.
     let good_server = TestServer::start_with_options(TestServerOptions {
         extra_env: vec![("LLM_REPOSITORY_HF_API_BASE".to_string(), good_base)],
         ..Default::default()
@@ -402,14 +450,171 @@ async fn a_hugging_face_host_is_probed_against_the_hugging_face_listing_surface(
         &good_server,
         &good_admin.token,
         "hf-shaped-ok",
-        &format!("https://huggingface.co/org-{}", Uuid::new_v4()),
+        &format!("https://huggingface.co/{KNOWN_ORG}"),
     )
     .await;
     let good_result = probe_by_id(&good_server, &good_admin.token, good_id).await;
     assert_eq!(
         good_result["status"], "healthy",
-        "the same classification path with a real listing must be healthy: {good_result}"
+        "an org-scoped Hugging Face row whose org DOES list models must be \
+         healthy: {good_result}"
     );
-    let (_, good_status, _) = read_health(&good_pool, good_id).await;
+    let (good_enabled, good_status, _) = read_health(&good_pool, good_id).await;
     assert_eq!(good_status, "healthy");
+    assert!(
+        good_enabled,
+        "INV-4: the happy path must remain enabled — a stricter probe that \
+         disabled working rows would be a worse defect than the one being fixed"
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// TEST-9 [acceptance] INV-2 + TEST-10 [acceptance] INV-4 — the defect-2
+// reproduction.
+//
+// `https://huggingface.co/<nonexistent-org>` read `healthy` because the probe
+// fetched the FIXED `huggingface.co/api/models` catalogue and never the row.
+// The row is now probed with an `author=<org>` filter, so a nonexistent org
+// produces an empty listing → `unverified`.
+//
+// INV-4 is the other half and is asserted in the same test: `unverified` must
+// NOT auto-disable. `enabled` is what blocks downloads, so a stricter probe
+// that disabled working repositories would trade a bad badge for an outage.
+// ───────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn a_nonexistent_hugging_face_org_is_unverified_and_stays_enabled() {
+    let (registry_base, _registry_guard) = author_aware_registry_fixture().await;
+    let server = TestServer::start_with_options(TestServerOptions {
+        extra_env: vec![("LLM_REPOSITORY_HF_API_BASE".to_string(), registry_base)],
+        ..Default::default()
+    })
+    .await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let pool = pool_for(&server).await;
+
+    // ── The rejection: an org that does not exist. Reported live as the
+    //    `https://huggingface.co/unused-model-path-v99` case.
+    let missing_id = create_enabled_repo(
+        &server,
+        &admin.token,
+        "hf-nonexistent-org",
+        &format!("https://huggingface.co/org-{}", Uuid::new_v4()),
+    )
+    .await;
+    let missing = probe_by_id(&server, &admin.token, missing_id).await;
+    assert_eq!(
+        missing["status"], "unverified",
+        "INV-2: `healthy` must be positive evidence about THIS repository — a \
+         row naming an org that lists no models cannot be graded on the hub's \
+         global catalogue: {missing}"
+    );
+    assert_eq!(missing["success"], false, "{missing}");
+
+    let (missing_enabled, missing_status, missing_reason) = read_health(&pool, missing_id).await;
+    assert_eq!(missing_status, "unverified");
+    assert_ne!(
+        missing_status, "unhealthy",
+        "INV-4: an unconfirmable row must not be recorded unhealthy — that is \
+         what auto-disables it"
+    );
+    assert!(
+        missing_enabled,
+        "INV-4: the stricter probe must NOT auto-disable the row; `enabled` is \
+         what blocks downloads, so this is the difference between a bad badge \
+         and an outage"
+    );
+    assert!(
+        missing_reason.is_some_and(|r| r.contains("org-")),
+        "the reason must name the org that could not be confirmed, or an \
+         operator cannot act on it"
+    );
+
+    // ── The happy-path counterpart, in the SAME test: an org-scoped row whose
+    //    org DOES list models. `huggingface.co/<org>` is a LEGITIMATE base (the
+    //    download path builds `<org>/<model>` from it), and a previous attempt
+    //    at this fix was reverted for reporting every such row unverified.
+    let good_id = create_enabled_repo(
+        &server,
+        &admin.token,
+        "hf-real-org",
+        &format!("https://huggingface.co/{KNOWN_ORG}"),
+    )
+    .await;
+    let good = probe_by_id(&server, &admin.token, good_id).await;
+    assert_eq!(
+        good["status"], "healthy",
+        "an org-scoped row naming a REAL org must stay healthy — this is the \
+         case the earlier origin-only guard broke: {good}"
+    );
+    let (good_enabled, good_status, _) = read_health(&pool, good_id).await;
+    assert_eq!(good_status, "healthy");
+    assert!(good_enabled, "the working row stays enabled");
+
+    // ── Third leg: a BARE Hugging Face origin still probes the catalogue and
+    //    is still healthy, so the org filter did not become mandatory.
+    let origin_id = create_enabled_repo(
+        &server,
+        &admin.token,
+        "hf-bare-origin",
+        "https://huggingface.co/",
+    )
+    .await;
+    let origin = probe_by_id(&server, &admin.token, origin_id).await;
+    assert_eq!(
+        origin["status"], "healthy",
+        "a bare Hugging Face origin has no org to filter on and keeps the \
+         catalogue probe: {origin}"
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// TEST-11 [acceptance] INV-3 — an `Unknown`-kind row's PATH is part of its
+// identity. `https://hf.co/models` is the reported case: the probe collapsed
+// the row to its ORIGIN, so the `/models` path was never fetched.
+// ───────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn an_unknown_kind_rows_path_is_probed_not_discarded() {
+    let server = TestServer::start().await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let pool = pool_for(&server).await;
+
+    // A self-hosted mirror serving a real listing at its ROOT `/api/models`,
+    // and nothing under `/models/api/models`.
+    let (base, _guard) = model_registry_fixture().await;
+
+    // ── The rejection: the row carries a path the mirror does not serve. The
+    //    probe must fetch `{base}/models/api/models`, not `{base}/api/models`.
+    let pathed_id = create_enabled_repo(
+        &server,
+        &admin.token,
+        "mirror-with-path",
+        &format!("{base}/models"),
+    )
+    .await;
+    let pathed = probe_by_id(&server, &admin.token, pathed_id).await;
+    assert_eq!(
+        pathed["status"], "unverified",
+        "the row's own path must be probed — collapsing it to the origin grades \
+         a URL the download path would never use: {pathed}"
+    );
+    let (pathed_enabled, _, _) = read_health(&pool, pathed_id).await;
+    assert!(
+        pathed_enabled,
+        "INV-3/INV-4: unverified never auto-disables a self-hosted deployment"
+    );
+
+    // ── The happy-path counterpart: the SAME fixture as a bare origin is
+    //    healthy, unchanged from today. Without this leg the assertion above
+    //    would also pass if the Unknown branch had simply stopped working.
+    let origin_id = create_enabled_repo(&server, &admin.token, "mirror-origin", &base).await;
+    let origin = probe_by_id(&server, &admin.token, origin_id).await;
+    assert_eq!(
+        origin["status"], "healthy",
+        "a bare-origin self-hosted mirror is unaffected by the path change: {origin}"
+    );
+    let (origin_enabled, origin_status, _) = read_health(&pool, origin_id).await;
+    assert_eq!(origin_status, "healthy");
+    assert!(origin_enabled);
 }

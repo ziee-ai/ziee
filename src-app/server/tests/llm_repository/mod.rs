@@ -2,9 +2,10 @@ use serde_json::json;
 
 mod capability_probe_test;
 mod connection_health_test;
-mod update_validation_test;
+mod ssrf_probe_test;
 mod sync_emit_test;
 mod test_connection_user_agent;
+mod update_validation_test;
 
 #[tokio::test]
 async fn test_list_llm_repositories_requires_permission() {
@@ -137,8 +138,7 @@ async fn test_create_llm_repository() {
     // serde(skip_serializing). Inverting the original assertion.
     let auth_config = body.get("auth_config").expect("Should have auth_config");
     assert!(
-        auth_config.get("api_key").is_none()
-            || auth_config["api_key"].is_null(),
+        auth_config.get("api_key").is_none() || auth_config["api_key"].is_null(),
         "api_key must not be returned in response (09-llm-repository F-02); got {:?}",
         auth_config.get("api_key")
     );
@@ -1137,7 +1137,11 @@ async fn test_list_repositories_pagination_edges() {
     let b: serde_json::Value = r.json().await.unwrap();
     let total = b["total"].as_i64().unwrap();
     assert!(total >= 2, "built-in repos → total >= 2, got {total}");
-    assert_eq!(b["repositories"].as_array().unwrap().len(), 1, "per_page=1 → one row");
+    assert_eq!(
+        b["repositories"].as_array().unwrap().len(),
+        1,
+        "per_page=1 → one row"
+    );
 
     // Page far beyond the end: empty page, but total is unchanged.
     let r = get("?page=9999&per_page=1").await;
@@ -1148,13 +1152,20 @@ async fn test_list_repositories_pagination_edges() {
         0,
         "a page past the end returns no rows"
     );
-    assert_eq!(b["total"].as_i64().unwrap(), total, "total preserved past the end");
+    assert_eq!(
+        b["total"].as_i64().unwrap(),
+        total,
+        "total preserved past the end"
+    );
 
     // Over-max per_page is clamped to <= 100 (no unbounded fetch).
     let r = get("?page=1&per_page=100000").await;
     assert_eq!(r.status(), 200);
     let b: serde_json::Value = r.json().await.unwrap();
-    assert!(b["per_page"].as_i64().unwrap() <= 100, "per_page clamped to <= 100");
+    assert!(
+        b["per_page"].as_i64().unwrap() <= 100,
+        "per_page clamped to <= 100"
+    );
 
     // page=0 is coerced to the first page, not an error / empty result.
     let r = get("?page=0&per_page=10").await;
@@ -1226,7 +1237,10 @@ async fn test_list_llm_repositories_pagination_edge_cases() {
         page_of(&client, &base, &admin.token, "").await;
     assert_eq!(def_page, 1, "default page must be 1");
     assert_eq!(def_per_page, 20, "default per_page must be 20");
-    assert!(baseline_total >= 2, "built-in repos should make baseline >= 2");
+    assert!(
+        baseline_total >= 2,
+        "built-in repos should make baseline >= 2"
+    );
 
     // Create 3 additional repositories (enabled:false skips the connection probe).
     for i in 0..3 {
@@ -1249,7 +1263,10 @@ async fn test_list_llm_repositories_pagination_edge_cases() {
     // 1) per_page=1 → exactly one row, total reflects all rows, echoed page/per_page.
     let (len, t, p, pp) = page_of(&client, &base, &admin.token, "page=1&per_page=1").await;
     assert_eq!(len, 1, "per_page=1 must return exactly one repository");
-    assert_eq!(t, total, "total must count ALL repositories, not just the page");
+    assert_eq!(
+        t, total,
+        "total must count ALL repositories, not just the page"
+    );
     assert_eq!((p, pp), (1, 1), "page/per_page must be echoed back");
 
     // 2) Page past the end → EMPTY list, still 200, total unchanged (not an error).
@@ -1261,13 +1278,25 @@ async fn test_list_llm_repositories_pagination_edge_cases() {
         &format!("page={past_page}&per_page=1"),
     )
     .await;
-    assert_eq!(len, 0, "a page beyond the last must return an empty list, not an error");
-    assert_eq!(t, total, "total stays the full count even on an out-of-range page");
-    assert_eq!(p, past_page, "the requested (in-range, >=1) page is echoed back");
+    assert_eq!(
+        len, 0,
+        "a page beyond the last must return an empty list, not an error"
+    );
+    assert_eq!(
+        t, total,
+        "total stays the full count even on an out-of-range page"
+    );
+    assert_eq!(
+        p, past_page,
+        "the requested (in-range, >=1) page is echoed back"
+    );
 
     // 3) per_page over the 100 cap → clamped to PAGINATION_MAX_PER_PAGE (100).
     let (len, _, _, pp) = page_of(&client, &base, &admin.token, "page=1&per_page=9999").await;
-    assert_eq!(pp, 100, "per_page over the cap must clamp to PAGINATION_MAX_PER_PAGE");
+    assert_eq!(
+        pp, 100,
+        "per_page over the cap must clamp to PAGINATION_MAX_PER_PAGE"
+    );
     assert_eq!(
         len,
         (total as usize).min(100),
@@ -1287,4 +1316,3 @@ async fn test_list_llm_repositories_pagination_edge_cases() {
         "the clamped 1-row window returns at most one row"
     );
 }
-

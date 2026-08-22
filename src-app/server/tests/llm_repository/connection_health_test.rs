@@ -5,10 +5,10 @@ use serde_json::Value;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
-use wiremock::matchers::method;
 use wiremock::Mock;
 use wiremock::MockServer;
 use wiremock::ResponseTemplate;
+use wiremock::matchers::method;
 
 const REPO_ADMIN_PERMS: &[&str] = &[
     "llm_repositories::read",
@@ -88,7 +88,12 @@ async fn mock_401() -> MockServer {
 async fn read_repo_row(
     pool: &sqlx::PgPool,
     repo_id: Uuid,
-) -> (bool, String, Option<String>, Option<chrono::DateTime<chrono::Utc>>) {
+) -> (
+    bool,
+    String,
+    Option<String>,
+    Option<chrono::DateTime<chrono::Utc>>,
+) {
     let row = sqlx::query!(
         r#"SELECT enabled, last_health_check_status, last_health_check_reason, last_health_check_at
            FROM llm_repositories WHERE id = $1"#,
@@ -113,8 +118,7 @@ async fn read_repo_row(
 #[tokio::test]
 async fn create_with_enabled_true_against_working_mock_persists_healthy() {
     let server = TestServer::start().await;
-    let admin =
-        create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
     let upstream = mock_ok().await;
 
     let body: Value = reqwest::Client::new()
@@ -135,15 +139,16 @@ async fn create_with_enabled_true_against_working_mock_persists_healthy() {
 
     // Response shape is the new `LlmRepositoryWithHealthWarning` wrapper.
     assert!(
-        body.get("connection_warning").is_none()
-            || body["connection_warning"].is_null(),
+        body.get("connection_warning").is_none() || body["connection_warning"].is_null(),
         "happy path must omit connection_warning: {body}"
     );
     let repo = &body;
-    let repo_id: Uuid =
-        Uuid::parse_str(repo["id"].as_str().expect("id")).expect("uuid");
+    let repo_id: Uuid = Uuid::parse_str(repo["id"].as_str().expect("id")).expect("uuid");
 
-    assert_eq!(repo["enabled"], true, "row stays enabled on a passing probe");
+    assert_eq!(
+        repo["enabled"], true,
+        "row stays enabled on a passing probe"
+    );
     assert_eq!(
         repo["last_health_check_status"], "healthy",
         "status recorded as healthy: {body}"
@@ -163,8 +168,7 @@ async fn create_with_enabled_true_against_working_mock_persists_healthy() {
 #[tokio::test]
 async fn create_with_enabled_true_against_401_mock_persists_disabled_with_warning() {
     let server = TestServer::start().await;
-    let admin =
-        create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
     let upstream = mock_401().await;
 
     let body: Value = reqwest::Client::new()
@@ -184,8 +188,7 @@ async fn create_with_enabled_true_against_401_mock_persists_disabled_with_warnin
         .unwrap();
 
     let repo = &body;
-    let repo_id: Uuid =
-        Uuid::parse_str(repo["id"].as_str().expect("id")).expect("uuid");
+    let repo_id: Uuid = Uuid::parse_str(repo["id"].as_str().expect("id")).expect("uuid");
 
     // Wrapper carries the reason verbatim.
     let warning = &body["connection_warning"];
@@ -213,8 +216,7 @@ async fn create_with_enabled_true_against_401_mock_persists_disabled_with_warnin
 #[tokio::test]
 async fn create_with_enabled_false_skips_probe_entirely() {
     let server = TestServer::start().await;
-    let admin =
-        create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
     // Point at a mock that would 401 — we expect it NOT to be reached.
     let upstream = mock_401().await;
 
@@ -235,12 +237,10 @@ async fn create_with_enabled_false_skips_probe_entirely() {
         .unwrap();
 
     let repo = &body;
-    let repo_id: Uuid =
-        Uuid::parse_str(repo["id"].as_str().expect("id")).expect("uuid");
+    let repo_id: Uuid = Uuid::parse_str(repo["id"].as_str().expect("id")).expect("uuid");
 
     assert!(
-        body.get("connection_warning").is_none()
-            || body["connection_warning"].is_null(),
+        body.get("connection_warning").is_none() || body["connection_warning"].is_null(),
         "disabled rows skip the probe: {body}"
     );
     assert_eq!(repo["enabled"], false);
@@ -254,7 +254,10 @@ async fn create_with_enabled_false_skips_probe_entirely() {
     assert!(!enabled);
     assert_eq!(status, "untested");
     assert_eq!(reason, None);
-    assert!(at.is_none(), "no probe ran, so last_health_check_at stays NULL");
+    assert!(
+        at.is_none(),
+        "no probe ran, so last_health_check_at stays NULL"
+    );
 }
 
 // ─── update-transition flow ──────────────────────────────────────────────────
@@ -262,8 +265,7 @@ async fn create_with_enabled_false_skips_probe_entirely() {
 #[tokio::test]
 async fn update_flipping_false_to_true_against_failing_mock_returns_400() {
     let server = TestServer::start().await;
-    let admin =
-        create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
     let upstream = mock_401().await;
     let client = reqwest::Client::new();
 
@@ -283,8 +285,7 @@ async fn update_flipping_false_to_true_against_failing_mock_returns_400() {
         .json()
         .await
         .unwrap();
-    let repo_id: Uuid =
-        Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+    let repo_id: Uuid = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
 
     // PUT { enabled: true } — backend probes, fails, reverts.
     let resp = client
@@ -320,8 +321,7 @@ async fn update_flipping_false_to_true_against_failing_mock_returns_400() {
 #[tokio::test]
 async fn update_flipping_false_to_true_against_working_mock_persists_healthy() {
     let server = TestServer::start().await;
-    let admin =
-        create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
     let upstream = mock_ok().await;
     let client = reqwest::Client::new();
 
@@ -340,8 +340,7 @@ async fn update_flipping_false_to_true_against_working_mock_persists_healthy() {
         .json()
         .await
         .unwrap();
-    let repo_id: Uuid =
-        Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+    let repo_id: Uuid = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
 
     let resp = client
         .post(server.api_url(&format!("/llm-repositories/{repo_id}")))
@@ -365,8 +364,7 @@ async fn update_flipping_false_to_true_against_working_mock_persists_healthy() {
 #[tokio::test]
 async fn update_with_no_enabled_transition_skips_probe() {
     let server = TestServer::start().await;
-    let admin =
-        create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
     // 401 mock — we expect it NOT to be touched.
     let upstream = mock_401().await;
     let client = reqwest::Client::new();
@@ -388,8 +386,7 @@ async fn update_with_no_enabled_transition_skips_probe() {
         .json()
         .await
         .unwrap();
-    let repo_id: Uuid =
-        Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+    let repo_id: Uuid = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
 
     let resp = client
         .post(server.api_url(&format!("/llm-repositories/{repo_id}")))
@@ -398,7 +395,11 @@ async fn update_with_no_enabled_transition_skips_probe() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 200, "non-transition update succeeds even with a failing mock");
+    assert_eq!(
+        resp.status(),
+        200,
+        "non-transition update succeeds even with a failing mock"
+    );
 
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["name"], "renamed");
@@ -418,8 +419,7 @@ async fn update_with_no_enabled_transition_skips_probe() {
 #[tokio::test]
 async fn run_startup_health_check_disables_only_failing_rows() {
     let server = TestServer::start().await;
-    let admin =
-        create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
     let healthy_upstream = mock_ok().await;
     let failing_upstream = mock_401().await;
     let client = reqwest::Client::new();
@@ -460,10 +460,8 @@ async fn run_startup_health_check_disables_only_failing_rows() {
     // boot-path doing its OWN downgrade (otherwise we'd be testing
     // create-flow twice).
     let pool = pool_for(&server).await;
-    let r1_id: Uuid =
-        Uuid::parse_str(r1["id"].as_str().unwrap()).unwrap();
-    let r2_id: Uuid =
-        Uuid::parse_str(r2["id"].as_str().unwrap()).unwrap();
+    let r1_id: Uuid = Uuid::parse_str(r1["id"].as_str().unwrap()).unwrap();
+    let r2_id: Uuid = Uuid::parse_str(r2["id"].as_str().unwrap()).unwrap();
     sqlx::query!(
         "UPDATE llm_repositories SET enabled = TRUE, last_health_check_status = 'untested', last_health_check_reason = NULL, last_health_check_at = NULL WHERE id = $1",
         r2_id,
@@ -493,8 +491,7 @@ async fn run_startup_health_check_disables_only_failing_rows() {
 #[tokio::test]
 async fn run_startup_health_check_records_healthy_on_pass() {
     let server = TestServer::start().await;
-    let admin =
-        create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
+    let admin = create_user_with_permissions(&server, "admin", REPO_ADMIN_PERMS).await;
     let upstream = mock_ok().await;
     let client = reqwest::Client::new();
 
@@ -513,8 +510,7 @@ async fn run_startup_health_check_records_healthy_on_pass() {
         .json()
         .await
         .unwrap();
-    let repo_id: Uuid =
-        Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
+    let repo_id: Uuid = Uuid::parse_str(created["id"].as_str().unwrap()).unwrap();
 
     let pool = pool_for(&server).await;
     // Wipe health-record columns so we can observe the boot path
@@ -583,7 +579,10 @@ async fn test_by_id_with_persisted_config_passes_against_working_mock() {
         .json()
         .await
         .unwrap();
-    assert_eq!(resp["success"], true, "passing probe returns success: {resp}");
+    assert_eq!(
+        resp["success"], true,
+        "passing probe returns success: {resp}"
+    );
 
     // Row stays disabled (the test button doesn't enable; that's the
     // Switch's job). Status flips to healthy.
@@ -618,10 +617,7 @@ async fn test_by_id_with_persisted_config_fails_records_unhealthy_disabled_row()
         .unwrap();
     assert_eq!(resp["success"], false);
     assert!(
-        resp["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("failed"),
+        resp["message"].as_str().unwrap_or("").contains("failed"),
         "message surfaces the failure: {resp}"
     );
 
@@ -761,12 +757,15 @@ async fn create_enabled_huggingface_repo_probes_live_and_persists_healthy() {
     let body: Value = reqwest::Client::new()
         .post(server.api_url("/llm-repositories"))
         .header("Authorization", format!("Bearer {}", admin.token))
-        // Unique URL: https://huggingface.co is already seeded, so the exact URL
-        // would 409 DUPLICATE_REPOSITORY. The create-flow live probe uses
-        // auth_test_api_endpoint (whoami-v2), independent of this URL.
+        // A REAL org-scoped URL: unique vs the seeded bare `https://huggingface.co`
+        // (so no 409), and — now that the capability probe filters the listing by
+        // the row's own org (`author=google`) — one that genuinely lists models, so
+        // the healthy verdict is earned. The prior `repo-<uuid>` suffix was a
+        // uniqueness dodge the per-row probe correctly reads as a nonexistent org
+        // (-> unverified); asserting it `healthy` was the bug this fix removes.
         .json(&json!({
             "name": "live-hf",
-            "url": format!("https://huggingface.co/repo-{}", Uuid::new_v4()),
+            "url": "https://huggingface.co/google",
             "auth_type": "bearer_token",
             "auth_config": {
                 "token": api_key,
@@ -787,9 +786,18 @@ async fn create_enabled_huggingface_repo_probes_live_and_persists_healthy() {
     // still enabled (a valid key never trips the auto-disable path).
     let pool = pool_for(&server).await;
     let (enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
-    assert!(enabled, "valid live credentials must leave the repo enabled");
-    assert_eq!(status, "healthy", "live HF probe must persist healthy (reason: {reason:?})");
-    assert!(at.is_some(), "last_health_check_at must be stamped by the live probe");
+    assert!(
+        enabled,
+        "valid live credentials must leave the repo enabled"
+    );
+    assert_eq!(
+        status, "healthy",
+        "live HF probe must persist healthy (reason: {reason:?})"
+    );
+    assert!(
+        at.is_some(),
+        "last_health_check_at must be stamped by the live probe"
+    );
 }
 
 #[tokio::test]
@@ -857,10 +865,16 @@ async fn test_by_id_concurrent_probes_same_repo_are_race_safe() {
     // torn-write race would leave a stale or missing health record.
     let pool = pool_for(&server).await;
     let (enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
-    assert!(!enabled, "test-by-id never mutates `enabled`, even under concurrency");
+    assert!(
+        !enabled,
+        "test-by-id never mutates `enabled`, even under concurrency"
+    );
     assert_eq!(status, "healthy", "concurrent probes converge to healthy");
     assert_eq!(reason, None, "healthy outcome carries no reason");
-    assert!(at.is_some(), "last_health_check_at stamped by the winning write");
+    assert!(
+        at.is_some(),
+        "last_health_check_at stamped by the winning write"
+    );
 }
 
 /// Tier-3 LIVE-credential connectivity test (the existing suite uses wiremock).
@@ -881,7 +895,8 @@ async fn live_huggingface_connection_test_with_real_credentials() {
     };
 
     let server = TestServer::start().await;
-    let user = create_user_with_permissions(&server, "repo_live", &["llm_repositories::read"]).await;
+    let user =
+        create_user_with_permissions(&server, "repo_live", &["llm_repositories::read"]).await;
 
     let res = reqwest::Client::new()
         .post(server.api_url("/llm-repositories/test"))
@@ -944,11 +959,14 @@ async fn test_by_id_real_huggingface_credentials_probe_succeeds() {
         .header("Authorization", format!("Bearer {}", admin.token))
         // Unique URL: a "Hugging Face Hub" repo at https://huggingface.co is
         // already seeded (llm_repository seed), so reusing that exact URL 409s
-        // DUPLICATE_REPOSITORY. The live probe uses auth_test_api_endpoint, not
-        // this URL, so a unique URL exercises the same create+probe path.
+        // DUPLICATE_REPOSITORY. A REAL org-scoped URL (google lists models): unique
+        // vs the seeded bare host, and — now that the capability probe filters the
+        // listing by the row's own org (author=google) — one the probe confirms.
+        // The prior repo-<uuid> suffix was a uniqueness dodge the per-row probe
+        // correctly reads as a nonexistent org (-> unverified).
         .json(&json!({
             "name": "hf-live",
-            "url": format!("https://huggingface.co/repo-{}", Uuid::new_v4()),
+            "url": "https://huggingface.co/google",
             "auth_type": "api_key",
             "enabled": false,
             "auth_config": {
@@ -988,7 +1006,10 @@ async fn test_by_id_real_huggingface_credentials_probe_succeeds() {
     assert!(!enabled, "test-by-id does not change `enabled`");
     assert_eq!(status, "healthy", "live HF probe recorded as healthy");
     assert_eq!(reason, None);
-    assert!(at.is_some(), "last_health_check_at stamped after the live probe");
+    assert!(
+        at.is_some(),
+        "last_health_check_at stamped after the live probe"
+    );
 }
 
 /// Concurrent test-connection probes of the SAME repository must all succeed
@@ -1019,15 +1040,25 @@ async fn concurrent_test_by_id_probes_all_succeed_and_converge() {
     }
     for h in handles {
         let resp = h.await.unwrap();
-        assert_eq!(resp.status(), 200, "every concurrent probe must 200, not error");
+        assert_eq!(
+            resp.status(),
+            200,
+            "every concurrent probe must 200, not error"
+        );
         let body: Value = resp.json().await.unwrap();
-        assert_eq!(body["success"], true, "each concurrent probe succeeds: {body}");
+        assert_eq!(
+            body["success"], true,
+            "each concurrent probe succeeds: {body}"
+        );
     }
 
     // The row converges to a single consistent healthy state.
     let pool = pool_for(&server).await;
     let (_enabled, status, reason, at) = read_repo_row(&pool, repo_id).await;
-    assert_eq!(status, "healthy", "row converges healthy after concurrent probes");
+    assert_eq!(
+        status, "healthy",
+        "row converges healthy after concurrent probes"
+    );
     assert_eq!(reason, None);
     assert!(at.is_some(), "last_health_check_at stamped");
 }
@@ -1083,7 +1114,11 @@ async fn concurrent_test_connection_probes_same_repo_are_consistent() {
     for h in handles {
         let (status, success) = h.await.unwrap();
         assert_eq!(status, StatusCode::OK, "each concurrent probe must 200");
-        assert_eq!(success, Some(true), "each probe must succeed against the 200 mock");
+        assert_eq!(
+            success,
+            Some(true),
+            "each probe must succeed against the 200 mock"
+        );
     }
 
     // The persisted health outcome converged to healthy (no torn write).
@@ -1094,10 +1129,12 @@ async fn concurrent_test_connection_probes_same_repo_are_consistent() {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(status, "healthy", "final persisted health must be consistent");
+    assert_eq!(
+        status, "healthy",
+        "final persisted health must be consistent"
+    );
     pool.close().await;
 }
-
 
 // ───────────────────────────────────────────────────────────────────────────
 // TEST-22 (ITEM-12) — the by-id probe keeps its auth gate and its sync emit,

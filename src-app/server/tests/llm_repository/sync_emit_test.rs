@@ -1,17 +1,13 @@
-use std::time::Duration;
-use serde_json::json;
 use crate::common::sync_probe::SyncProbe;
+use serde_json::json;
+use std::time::Duration;
 
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 
 const SILENCE_WINDOW: Duration = Duration::from_secs(1);
 
 /// POST /llm-repositories as `token`, returning the new repository id.
-async fn create_repository(
-    server: &crate::common::TestServer,
-    token: &str,
-    name: &str,
-) -> String {
+async fn create_repository(server: &crate::common::TestServer, token: &str, name: &str) -> String {
     let res = reqwest::Client::new()
         .post(server.api_url("/llm-repositories"))
         .header("Authorization", format!("Bearer {token}"))
@@ -46,12 +42,9 @@ async fn admin_create_delivers_llm_repository_event_other_user_silent() {
     .await;
     // Bob holds only the baseline (default group → profile::read); enough to
     // subscribe, but he lacks `llm_repositories::read` so he must stay silent.
-    let bob = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "sync_repo_bob",
-        &[],
-    )
-    .await;
+    let bob =
+        crate::common::test_helpers::create_user_with_permissions(&server, "sync_repo_bob", &[])
+            .await;
 
     let mut admin_probe = SyncProbe::open(&server, &admin.token).await;
     let mut bob_probe = SyncProbe::open(&server, &bob.token).await;
@@ -104,7 +97,10 @@ async fn admin_update_delivers_llm_repository_event_other_user_silent() {
     let frame = admin_probe
         .expect_event("llm_repository", "update", EVENT_TIMEOUT)
         .await;
-    assert_eq!(frame.id, id, "the frame must carry the updated repository's id");
+    assert_eq!(
+        frame.id, id,
+        "the frame must carry the updated repository's id"
+    );
 
     bob_probe.expect_silence(SILENCE_WINDOW).await;
 }
@@ -122,12 +118,9 @@ async fn group_membership_change_updates_sync_audience() {
         &["llm_repositories::create", "llm_repositories::read"],
     )
     .await;
-    let bob = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "sync_grp_bob",
-        &[],
-    )
-    .await;
+    let bob =
+        crate::common::test_helpers::create_user_with_permissions(&server, "sync_grp_bob", &[])
+            .await;
 
     // Phase 1 — Bob lacks read: a create must NOT reach him.
     {
@@ -150,14 +143,12 @@ async fn group_membership_change_updates_sync_audience() {
     .await
     .unwrap();
     let bob_uuid = uuid::Uuid::parse_str(&bob.user_id).unwrap();
-    sqlx::query(
-        "INSERT INTO user_groups (user_id, group_id, assigned_at) VALUES ($1, $2, NOW())",
-    )
-    .bind(bob_uuid)
-    .bind(group_id)
-    .execute(&pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO user_groups (user_id, group_id, assigned_at) VALUES ($1, $2, NOW())")
+        .bind(bob_uuid)
+        .bind(group_id)
+        .execute(&pool)
+        .await
+        .unwrap();
     pool.close().await;
 
     // Phase 2 — Bob re-bootstraps (fresh subscription = new permission snapshot)
@@ -198,12 +189,9 @@ async fn group_derived_read_perm_puts_user_in_llm_repository_audience() {
     )
     .await;
     // Bob holds NO direct llm_repositories::read — only the default baseline.
-    let bob = crate::common::test_helpers::create_user_with_permissions(
-        &server,
-        "grp_repo_bob",
-        &[],
-    )
-    .await;
+    let bob =
+        crate::common::test_helpers::create_user_with_permissions(&server, "grp_repo_bob", &[])
+            .await;
 
     // A group that GRANTS llm_repositories::read, then add Bob to it so his
     // effective perms include the read VIA the group.
@@ -246,4 +234,3 @@ async fn group_derived_read_perm_puts_user_in_llm_repository_audience() {
         "a group-derived llm_repositories::read must place Bob in the llm_repository/create audience"
     );
 }
-

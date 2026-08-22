@@ -416,6 +416,26 @@ pub async fn test_repository_connection(
         ));
     }
 
+    // SSRF: the probe's actual destination may be `auth_test_api_endpoint`, and
+    // this unsaved path previously validated only `request.url` — so an admin
+    // could aim the test endpoint at a forbidden host (loopback / RFC1918 /
+    // link-local IMDS) and the probe would connect WITH the row's credentials
+    // attached. Validate it BEFORE any probe runs; on refusal return `unhealthy`
+    // (an actionable config error) WITHOUT probing, so no credential ever leaves
+    // for the forbidden host.
+    if let Some(cfg) = &request.auth_config {
+        if let Err(e) = utils::validate_test_endpoint(&cfg.auth_test_api_endpoint) {
+            return Ok((
+                StatusCode::OK,
+                Json(TestRepositoryConnectionResponse {
+                    success: false,
+                    message: format!("Test endpoint refused: {}", e),
+                    status: RepositoryHealthStatus::Unhealthy,
+                }),
+            ));
+        }
+    }
+
     // Test the repository connection. Three-way: only a CONFIRMED model
     // listing reports success.
     let verdict = utils::test_repository_connectivity(&request).await;

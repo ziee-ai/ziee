@@ -9,7 +9,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use axum::{extract::State, http::HeaderMap, routing::get, Router};
+use axum::{Router, extract::State, http::HeaderMap, routing::get};
 use serde_json::json;
 
 #[tokio::test]
@@ -52,15 +52,13 @@ async fn test_repository_connection_sends_user_agent() {
     // debug-only `LLM_REPOSITORY_GITHUB_API_BASE` seam) so this regression
     // test stays offline while keeping the real `https://api.github.com`
     // repository URL that gives it its GitHub shape.
-    let server = crate::common::TestServer::start_with_options(
-        crate::common::TestServerOptions {
-            extra_env: vec![(
-                "LLM_REPOSITORY_GITHUB_API_BASE".to_string(),
-                format!("http://127.0.0.1:{}", addr.port()),
-            )],
-            ..Default::default()
-        },
-    )
+    let server = crate::common::TestServer::start_with_options(crate::common::TestServerOptions {
+        extra_env: vec![(
+            "LLM_REPOSITORY_GITHUB_API_BASE".to_string(),
+            format!("http://127.0.0.1:{}", addr.port()),
+        )],
+        ..Default::default()
+    })
     .await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
