@@ -1,14 +1,15 @@
-use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
-use tokio::sync::RwLock;
-use uuid::Uuid;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
+use std::time::Instant;
+use tokio::sync::RwLock;
+use uuid::Uuid;
 
 use super::session::McpSession;
 use crate::common::AppError;
-use crate::core::{config::Config, Repos};
+use crate::core::{Repos, config::Config};
 use crate::modules::auth::jwt::Claims;
 use crate::modules::mcp::models::McpServer;
 use crate::modules::mcp::tool_calls::models::{McpCallContext, McpToolCallSource};
@@ -54,8 +55,79 @@ const REAPER_TICK: std::time::Duration = std::time::Duration::from_secs(60);
 #[allow(dead_code)] // reached only from `spawn_idle_reaper`, wired in the bin (main.rs)
 const REAPER_MAX_IDLE_SECONDS: u64 = 30 * 60;
 
+// ---------------------------------------------------------------------------
+// Connection circuit-breaker
+//
+// A `get_or_create*` miss builds a fresh `McpSession`, whose `client.connect()`
+// performs a TCP/stdio dial. For an UNREACHABLE server (process down, connect
+// refused, host gone) that dial fails only AFTER blocking out its full
+// connect_timeout — and with no failure state the very next call (and every
+// turn thereafter) re-dials the same dead server. A corpus sweep observed
+// ~30k such repeated re-dials, each paying the connect_timeout in per-turn
+// latency.
+//
+// The breaker records per-server connection failures and short-circuits a
+// re-dial while the server is inside an exponentially-growing cooldown window,
+// so a down server costs one connect attempt per backoff window instead of one
+// per turn. A SUCCESSFUL connect clears the breaker immediately, so a recovered
+// server serves on the very next call with no lingering penalty.
+// ---------------------------------------------------------------------------
+
+/// First cooldown after a single connect failure. Deliberately small so a
+/// briefly-flapping server recovers quickly; it doubles on each consecutive
+/// failure up to [`BREAKER_MAX_COOLDOWN`].
+const BREAKER_BASE_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Ceiling on the cooldown regardless of how many consecutive failures have
+/// accrued. Five minutes bounds a long-down server to ~12 retries/hour (rather
+/// than one per turn) while still letting a recovered server be re-tried within
+/// minutes of coming back — the same order of magnitude as the idle reaper.
+const BREAKER_MAX_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+
+/// Per-server connect-failure state driving the circuit-breaker. An entry
+/// exists ONLY while a server is failing; a successful connect removes it.
+#[derive(Clone)]
+struct BreakerState {
+    /// Instant of the most recent failed connect attempt.
+    last_failure: Instant,
+    /// Number of consecutive failures — drives the backoff exponent. Always
+    /// `>= 1` for a live entry (incremented on each failure, entry removed on
+    /// success).
+    consecutive: u32,
+    /// The most recent connection error message, replayed while the breaker is
+    /// open so the caller sees the real cause instead of a generic message.
+    last_error: String,
+}
+
+/// Cooldown window for a server with `consecutive` consecutive failures:
+/// `BREAKER_BASE_COOLDOWN * 2^(consecutive - 1)`, saturating at
+/// [`BREAKER_MAX_COOLDOWN`]. `consecutive <= 1` yields the base cooldown; the
+/// shift is bounded so a large failure count can never overflow.
+fn breaker_backoff(consecutive: u32) -> std::time::Duration {
+    let base_secs = BREAKER_BASE_COOLDOWN.as_secs().max(1);
+    let max_secs = BREAKER_MAX_COOLDOWN.as_secs();
+    let shift = consecutive.saturating_sub(1).min(63);
+    let scaled = base_secs.checked_shl(shift).unwrap_or(u64::MAX);
+    std::time::Duration::from_secs(scaled.min(max_secs))
+}
+
+/// Whether a fresh connect should be attempted now, given a server's breaker
+/// state. `None` (never failed, or cleared by a prior success) → always
+/// attempt. Otherwise attempt only once the cooldown window for the recorded
+/// consecutive-failure count has fully elapsed since the last failure.
+fn should_attempt_connect(state: Option<&BreakerState>, now: Instant) -> bool {
+    match state {
+        None => true,
+        Some(s) => now.saturating_duration_since(s.last_failure) >= breaker_backoff(s.consecutive),
+    }
+}
+
 pub struct McpSessionManager {
     sessions: Arc<RwLock<HashMap<Uuid, Arc<RwLock<McpSession>>>>>,
+    /// Per-server connection circuit-breaker state. Keyed by `server_id`; an
+    /// entry is present only while a server is in a failing streak (removed on
+    /// the first successful connect). See the module-level breaker comment.
+    failures: Arc<RwLock<HashMap<Uuid, BreakerState>>>,
     config: Arc<Config>,
 }
 
@@ -63,7 +135,72 @@ impl McpSessionManager {
     pub fn new(config: Arc<Config>) -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            failures: Arc::new(RwLock::new(HashMap::new())),
             config,
+        }
+    }
+
+    /// Circuit-breaker gate: if `server_id` is inside its cooldown window,
+    /// return the cached connection error IMMEDIATELY (no fresh dial). Returns
+    /// `Ok(())` when a connect should be attempted (no state, or the window has
+    /// elapsed). Called on every `get_or_create*` MISS, before building a
+    /// session — see the module-level breaker comment.
+    async fn check_connection_breaker(&self, server_id: Uuid) -> Result<(), AppError> {
+        let failures = self.failures.read().await;
+        if let Some(state) = failures.get(&server_id)
+            && !should_attempt_connect(Some(state), Instant::now())
+        {
+            return Err(AppError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "MCP_SERVER_UNREACHABLE",
+                format!(
+                    "MCP server is unreachable and in a connection cooldown after \
+                     {} consecutive failure(s); last error: {}",
+                    state.consecutive, state.last_error
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Record a failed connect for `server_id`: create or increment its breaker
+    /// entry, stamp the failure time, and cache the error for replay while the
+    /// breaker is open.
+    async fn record_connection_failure(&self, server_id: Uuid, err: &AppError) {
+        let mut failures = self.failures.write().await;
+        let entry = failures.entry(server_id).or_insert_with(|| BreakerState {
+            last_failure: Instant::now(),
+            consecutive: 0,
+            last_error: String::new(),
+        });
+        entry.last_failure = Instant::now();
+        entry.consecutive = entry.consecutive.saturating_add(1);
+        entry.last_error = err.to_string();
+    }
+
+    /// Clear any breaker entry for `server_id` after a successful connect, so a
+    /// recovered server serves immediately on the next call.
+    async fn clear_connection_breaker(&self, server_id: Uuid) {
+        self.failures.write().await.remove(&server_id);
+    }
+
+    /// Build an `McpSession` (which dials on connect) while maintaining the
+    /// connection circuit-breaker: clear the breaker on success, record/increment
+    /// it on failure. The caller MUST have already passed `check_connection_breaker`.
+    async fn create_session_tracked(
+        &self,
+        server_id: Uuid,
+        server: McpServer,
+    ) -> Result<McpSession, AppError> {
+        match McpSession::new(server).await {
+            Ok(session) => {
+                self.clear_connection_breaker(server_id).await;
+                Ok(session)
+            }
+            Err(e) => {
+                self.record_connection_failure(server_id, &e).await;
+                Err(e)
+            }
         }
     }
 
@@ -81,16 +218,25 @@ impl McpSessionManager {
         }
 
         // Load server config from database
-        let server = Repos.mcp.get_any_server(server_id).await?
+        let server = Repos
+            .mcp
+            .get_any_server(server_id)
+            .await?
             .ok_or_else(|| AppError::not_found("Server not found"))?;
 
         // Check if server is enabled
         if !server.enabled {
-            return Err(AppError::bad_request("server_disabled", "Server is disabled"));
+            return Err(AppError::bad_request(
+                "server_disabled",
+                "Server is disabled",
+            ));
         }
 
-        // Create new session
-        let session = McpSession::new(server).await?;
+        // Circuit-breaker: don't re-dial a server still inside its cooldown.
+        self.check_connection_breaker(server_id).await?;
+
+        // Create new session (this performs the connect); breaker is updated inside.
+        let session = self.create_session_tracked(server_id, server).await?;
         let session = Arc::new(RwLock::new(session));
 
         // Store session
@@ -117,12 +263,21 @@ impl McpSessionManager {
         tool_use_id: Option<String>,
         source: McpToolCallSource,
     ) -> Result<Arc<RwLock<McpSession>>, AppError> {
-        let server = Repos.mcp.get_any_server(server_id).await?
+        let server = Repos
+            .mcp
+            .get_any_server(server_id)
+            .await?
             .ok_or_else(|| AppError::not_found("Server not found"))?;
 
         if !server.enabled {
-            return Err(AppError::bad_request("server_disabled", "Server is disabled"));
+            return Err(AppError::bad_request(
+                "server_disabled",
+                "Server is disabled",
+            ));
         }
+
+        // Circuit-breaker: don't re-dial a server still inside its cooldown.
+        self.check_connection_breaker(server_id).await?;
 
         // Recording context stamped onto whichever session we build below.
         let call_ctx = McpCallContext {
@@ -153,13 +308,15 @@ impl McpSessionManager {
             .await?;
 
             // Ephemeral session — not stored in the pool
-            let mut session = McpSession::new(server_with_ctx).await?;
+            let mut session = self
+                .create_session_tracked(server_id, server_with_ctx)
+                .await?;
             session.set_call_context(call_ctx);
             return Ok(Arc::new(RwLock::new(session)));
         }
 
         // Non-built-in: create ephemeral session per call (no pool, allows parallel tool execution)
-        let mut session = McpSession::new(server).await?;
+        let mut session = self.create_session_tracked(server_id, server).await?;
         session.set_call_context(call_ctx);
         Ok(Arc::new(RwLock::new(session)))
     }
@@ -182,10 +339,7 @@ impl McpSessionManager {
     /// enabled-filtered upstream in `get_all_accessible_config`), and the sampling /
     /// always-mode direct-build path is for external `supports_sampling` servers, not
     /// loopback built-ins. Keep it a thin un-redacted re-fetch.
-    pub async fn resolve_server_for_session(
-        &self,
-        server_id: Uuid,
-    ) -> Result<McpServer, AppError> {
+    pub async fn resolve_server_for_session(&self, server_id: Uuid) -> Result<McpServer, AppError> {
         Repos
             .mcp
             .get_any_server(server_id)
@@ -224,10 +378,16 @@ impl McpSessionManager {
         let mut headers = server.headers.as_object().cloned().unwrap_or_default();
 
         if let Some(cid) = conversation_id {
-            headers.insert("x-conversation-id".to_string(), Value::String(cid.to_string()));
+            headers.insert(
+                "x-conversation-id".to_string(),
+                Value::String(cid.to_string()),
+            );
         }
         if let Some(msg_id) = message_id {
-            headers.insert("x-message-id".to_string(), Value::String(msg_id.to_string()));
+            headers.insert(
+                "x-message-id".to_string(),
+                Value::String(msg_id.to_string()),
+            );
         }
 
         // Only mint if the row didn't already carry an Authorization header.
@@ -334,7 +494,7 @@ impl McpSessionManager {
     pub async fn close_all(&self) -> Result<(), AppError> {
         let sessions = {
             let mut sessions = self.sessions.write().await;
-            
+
             sessions.drain().collect::<Vec<_>>()
         };
 
@@ -408,5 +568,87 @@ impl McpSessionManager {
         }
 
         Ok(to_remove.len())
+    }
+}
+
+#[cfg(test)]
+mod breaker_tests {
+    use super::*;
+    use std::time::Duration as StdDuration;
+
+    /// A breaker entry whose last failure was `since` ago, with `consecutive`
+    /// consecutive failures recorded.
+    fn state(consecutive: u32, since: StdDuration) -> BreakerState {
+        BreakerState {
+            last_failure: Instant::now()
+                .checked_sub(since)
+                .unwrap_or_else(Instant::now),
+            consecutive,
+            last_error: "connect refused".to_string(),
+        }
+    }
+
+    #[test]
+    fn no_state_always_attempts() {
+        assert!(should_attempt_connect(None, Instant::now()));
+    }
+
+    #[test]
+    fn cooldown_active_suppresses_redial() {
+        // One failure just now → inside the base cooldown → must NOT re-dial.
+        let s = state(1, StdDuration::from_millis(0));
+        assert!(
+            !should_attempt_connect(Some(&s), Instant::now()),
+            "a server inside its cooldown window must not be re-dialed"
+        );
+    }
+
+    #[test]
+    fn window_elapsed_allows_retry() {
+        // One failure, but longer ago than backoff(1) (=1s) → retry allowed.
+        let s = state(1, StdDuration::from_secs(2));
+        assert!(should_attempt_connect(Some(&s), Instant::now()));
+    }
+
+    #[test]
+    fn success_clears_then_attempts() {
+        // A deep failing streak is suppressed …
+        let failing = state(5, StdDuration::from_millis(0));
+        assert!(
+            !should_attempt_connect(Some(&failing), Instant::now()),
+            "a long failing streak stays suppressed inside its (longer) cooldown"
+        );
+        // … but once a success clears the entry (None), the next call attempts.
+        assert!(
+            should_attempt_connect(None, Instant::now()),
+            "a cleared breaker (success) must attempt on the next call"
+        );
+    }
+
+    #[test]
+    fn backoff_is_exponential() {
+        assert_eq!(breaker_backoff(1), BREAKER_BASE_COOLDOWN);
+        assert_eq!(breaker_backoff(2), BREAKER_BASE_COOLDOWN * 2);
+        assert_eq!(breaker_backoff(3), BREAKER_BASE_COOLDOWN * 4);
+        assert_eq!(breaker_backoff(4), BREAKER_BASE_COOLDOWN * 8);
+    }
+
+    #[test]
+    fn backoff_saturates_at_cap() {
+        assert_eq!(breaker_backoff(1_000_000), BREAKER_MAX_COOLDOWN);
+        // No count, however large, may exceed the cap or overflow.
+        for c in [10u32, 20, 31, 32, 63, 64, 100, u32::MAX] {
+            assert!(
+                breaker_backoff(c) <= BREAKER_MAX_COOLDOWN,
+                "backoff({c}) exceeded the cap"
+            );
+        }
+    }
+
+    #[test]
+    fn backoff_zero_is_base() {
+        // `consecutive` is >= 1 for a live entry, but the shift math must not
+        // underflow for 0 — it saturates to the base cooldown.
+        assert_eq!(breaker_backoff(0), BREAKER_BASE_COOLDOWN);
     }
 }
