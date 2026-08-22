@@ -5,14 +5,21 @@ pure Rust logic (message text, log-outcome classification, string redaction). No
 frontend path is touched, so no `tier: e2e` is required. No permission is
 introduced, so no `[negative-perm]` spec is required.
 
+The enumerated acceptance tests are filed in the **server (superproject) crate**
+(per repo convention — acceptance tests live where the lifecycle gate sees them,
+not in the `sdk` submodule) and reach the engine behavior through the same
+`code_sandbox::{config, sandbox, tools::execute}` re-exports the production code
+uses (the two pure helpers are `pub` for exactly this). The SDK crate also keeps
+its own in-source unit tests for these helpers as crate-level coverage.
+
 Each defect's assertion is about MESSAGE CONTENT / LOG OUTCOME / REDACTION, so
 the tests assert those directly (not exit codes).
 
-- **TEST-1** (tier: unit) [acceptance] [invariant: INV-1] [covers: ITEM-1] file: `sdk/crates/ziee-sandbox/src/config.rs` — asserts: `SandboxAvailability::explain()` returns an accurate, specific reason for EVERY variant, and in particular the `HostUnsupported` reason mentions bwrap/host and NO variant's reason contains the false phrase "not yet booted".
-- **TEST-2** (tier: unit) [acceptance] [invariant: INV-1] [covers: ITEM-2, ITEM-3] file: `sdk/crates/ziee-sandbox/src/tools/execute.rs` — asserts: `execute_command` on an uninitialized sandbox returns a `SANDBOX_NOT_INITIALIZED` error whose message CONTAINS the recorded `init_status().explain()` reason and does NOT contain "module disabled or not yet booted".
-- **TEST-3** (tier: unit) [acceptance] [invariant: INV-2] [covers: ITEM-4] file: `sdk/crates/ziee-sandbox/src/sandbox.rs` — asserts: the write-outcome classifier maps `offset<total & EPIPE` → `ChildGone`, `offset<total & other errno / EOF` → `Truncated`, `offset==total` → `Complete`; and (the loud-stays-loud trap) that a genuine truncation is NOT classified as ChildGone.
-- **TEST-4** (tier: unit) [acceptance] [invariant: INV-3] [covers: ITEM-5] file: `sdk/crates/ziee-sandbox/src/tools/execute.rs` — asserts: `redact_host_paths` replaces the host workspace root and rootfs mount-dir prefixes with sandbox-relative placeholders, and is a no-op on text containing no host path.
-- **TEST-5** (tier: unit) [acceptance] [invariant: INV-3] [covers: ITEM-5] file: `sdk/crates/ziee-sandbox/src/tools/execute.rs` — asserts: a simulated bwrap dead-mount stderr line (`bwrap: Can't mount <host rootfs>/usr ...`) run through the redaction helper with real host roots no longer contains the host absolute path (the exact string a workload never emits but bwrap's setup failure does).
+- **TEST-1** (tier: unit) [acceptance] [invariant: INV-1] [covers: ITEM-1] file: `src-app/server/src/modules/code_sandbox/honest_diagnostics_tests.rs` — asserts: `SandboxAvailability::explain()` returns an accurate, specific reason for EVERY variant, and in particular the `HostUnsupported` reason mentions bwrap/host and NO variant's reason contains the false phrase "not yet booted".
+- **TEST-2** (tier: unit) [acceptance] [invariant: INV-1] [covers: ITEM-2, ITEM-3] file: `src-app/server/src/modules/code_sandbox/honest_diagnostics_tests.rs` — asserts: `config::not_initialized_error()` produces a `SANDBOX_NOT_INITIALIZED` error whose message CONTAINS the recorded `init_status().explain()` reason and does NOT contain "module disabled" or "not yet booted".
+- **TEST-3** (tier: unit) [acceptance] [invariant: INV-2] [covers: ITEM-4] file: `src-app/server/src/modules/code_sandbox/honest_diagnostics_tests.rs` — asserts: the write-outcome classifier maps `offset<total & EPIPE` → `ChildGone`, `offset<total & other errno / EOF` → `Truncated`, `offset==total` → `Complete`; and (the loud-stays-loud trap) that a genuine truncation is NOT classified as ChildGone.
+- **TEST-4** (tier: unit) [acceptance] [invariant: INV-3] [covers: ITEM-5] file: `src-app/server/src/modules/code_sandbox/honest_diagnostics_tests.rs` — asserts: `redact_host_paths` replaces the host workspace root, rootfs mount-dir, AND every extra bind source (workflow/provider mounts + caller ro-binds) with sandbox-relative placeholders, and is a no-op on text containing no host path.
+- **TEST-5** (tier: unit) [acceptance] [invariant: INV-3] [covers: ITEM-5] file: `src-app/server/src/modules/code_sandbox/honest_diagnostics_tests.rs` — asserts: a simulated bwrap dead-mount stderr line for BOTH a rootfs mount and a provider mount source, run through the redaction helper with real host roots, no longer contains the host absolute path (the exact string a workload never emits but bwrap's setup failure does).
 
 ## Plan-coverage check
 
