@@ -263,7 +263,10 @@ async fn run_execute(
         None => {
             let _ = tx.send(StreamMsg::Final {
                 rpc_id,
-                result: error_result("code_sandbox not initialized"),
+                result: error_result(&format!(
+                    "code_sandbox is not available: {}",
+                    config::init_status().explain()
+                )),
             });
             return;
         }
