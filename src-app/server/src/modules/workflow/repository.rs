@@ -587,7 +587,7 @@ pub async fn mark_status(
     error_message: Option<&str>,
 ) -> Result<(), AppError> {
     let allow_cancelled_self = matches!(status, WorkflowRunStatus::Cancelled);
-    sqlx::query!(
+    let res = sqlx::query!(
         r#"
         UPDATE workflow_runs
         SET status = $2,
@@ -607,6 +607,15 @@ pub async fn mark_status(
     .execute(pool)
     .await
     .map_err(AppError::database_error)?;
+    // Run-terminal reconciliation: when this transition actually drives the run
+    // terminal, drive its agent task-list rows terminal too (no `pending`/
+    // `in_progress` task may survive under a completed/failed/cancelled run).
+    // This single guarded chokepoint covers every runner arm (run_workflow /
+    // run_test / spawn_background_run). Non-terminal writers and no-op CAS hits
+    // (already-terminal row) skip it.
+    if status.is_terminal() && res.rows_affected() > 0 {
+        crate::modules::agent::task_list::reconcile_run_terminal(pool, run_id).await?;
+    }
     Ok(())
 }
 
@@ -1106,6 +1115,11 @@ pub async fn cancel_cas(
     .fetch_optional(pool)
     .await
     .map_err(AppError::database_error)?;
+    // The user-cancel path bypasses `mark_status`, so reconcile the run's task
+    // list here too when the cancel actually landed (Some ⇒ a row was flipped).
+    if row.is_some() {
+        crate::modules::agent::task_list::reconcile_run_terminal(pool, run_id).await?;
+    }
     Ok(row.map(|r| r.status))
 }
 
@@ -1218,6 +1232,33 @@ pub async fn fail_orphaned_runs(
         }
     }
     Ok(total)
+}
+
+/// Boot-time self-healing sweep for the agent task list: drive to `abandoned`
+/// every OPEN (`pending`/`in_progress`) task row whose owning `workflow_runs`
+/// row is already terminal (`completed`/`failed`/`cancelled`). Called right after
+/// [`fail_orphaned_runs`] at boot, so it covers BOTH the crash/restart-recovery
+/// path (orphaned runs the sweep just failed) AND retroactively remediates any
+/// pre-existing leaked rows left non-terminal under an already-terminal run.
+///
+/// Keyed on `run_id = workflow_runs.id` (task rows for workflow/background runs;
+/// chat rows carry a message-id run_id absent from `workflow_runs` and are
+/// untouched). Runtime query (no compile-time macro), matching `agent::task_list`.
+pub async fn reconcile_orphaned_task_lists(pool: &PgPool) -> Result<u64, AppError> {
+    let res = sqlx::query(
+        r#"
+        UPDATE agent_task_list t
+        SET status = 'abandoned', updated_at = NOW()
+        FROM workflow_runs r
+        WHERE t.run_id = r.id
+          AND r.status IN ('completed', 'failed', 'cancelled')
+          AND t.status IN ('pending', 'in_progress')
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(res.rows_affected())
 }
 
 /// ITEM-17: every run parked in the `resumable` crash-resume state, oldest

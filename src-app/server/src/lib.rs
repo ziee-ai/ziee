@@ -381,6 +381,19 @@ pub mod test_internals {
     pub use crate::modules::skill::repository::insert as skill_repository_insert;
     pub use crate::modules::workflow::models::CreateWorkflow;
     pub use crate::modules::workflow::repository::insert as workflow_repository_insert;
+
+    // Agent task-list terminal reconciliation surface, so the reconciliation
+    // suite (`tests/agent/task_list_test.rs`) fires the REAL terminal writers +
+    // reconcile fns against a seeded run instead of mirroring their SQL — the
+    // only production callers are the runner/cancel/boot-sweep paths whose real
+    // timing (a live agent loop reaching terminal) cannot be driven in a test.
+    pub use crate::modules::agent::task_list::reconcile_run_terminal;
+    pub use crate::modules::workflow::models::WorkflowRunStatus;
+    pub use crate::modules::workflow::repository::{
+        cancel_cas as workflow_cancel_cas, fail_orphaned_runs as workflow_fail_orphaned_runs,
+        mark_status as workflow_mark_status,
+        reconcile_orphaned_task_lists as workflow_reconcile_orphaned_task_lists,
+    };
 }
 
 // Re-export axum types for route building

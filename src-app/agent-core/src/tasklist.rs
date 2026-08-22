@@ -225,6 +225,8 @@ fn render_list_lines(items: &[TaskItem]) -> String {
                 TaskStatus::Pending => ("[ ]", it.content.as_str()),
                 TaskStatus::InProgress => ("[~]", it.active_form.as_str()),
                 TaskStatus::Completed => ("[x]", it.content.as_str()),
+                // System-reconciled: the run ended before this task was finished.
+                TaskStatus::Abandoned => ("[-]", it.content.as_str()),
             };
             format!("{mark} {label}")
         })
@@ -507,6 +509,21 @@ mod tests {
         ScriptedModel,
     };
     use crate::types::{ApprovalMode, SandboxMode, SubagentLimits};
+
+    // TEST-5 (render arm): an `Abandoned` item renders with the `[-]` mark (a
+    // terminal, not-done glyph — distinct from `[ ]` pending and `[x]` done).
+    #[test]
+    fn abandoned_item_renders_dash_mark() {
+        let item = TaskItem {
+            id: uuid::Uuid::new_v4(),
+            content: "Write report".into(),
+            active_form: "Writing report".into(),
+            status: TaskStatus::Abandoned,
+            owner: None,
+            deps: vec![],
+        };
+        assert_eq!(render_list_lines(&[item]), "[-] Write report");
+    }
 
     fn build_core(store: Arc<FakeTaskStore>) -> AgentCore {
         AgentCore {

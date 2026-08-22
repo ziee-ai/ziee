@@ -48,23 +48,54 @@ impl TaskListRow {
     }
 }
 
-/// `TaskStatus` → the DB CHECK vocabulary (`pending` / `in_progress` / `completed`).
+/// `TaskStatus` → the DB CHECK vocabulary
+/// (`pending` / `in_progress` / `completed` / `abandoned`). `abandoned` is the
+/// run-end reconciliation terminal state — written by [`reconcile_run_terminal`]
+/// (not by the model), representing a task the run never finished.
 fn status_to_str(s: TaskStatus) -> &'static str {
     match s {
         TaskStatus::Pending => "pending",
         TaskStatus::InProgress => "in_progress",
         TaskStatus::Completed => "completed",
+        TaskStatus::Abandoned => "abandoned",
     }
 }
 
 /// DB text → `TaskStatus`; an unrecognized value degrades to `Pending` rather
 /// than panicking (§6 — never `unwrap()` on an enum string from the DB).
+/// `abandoned` round-trips (the read path must not degrade a reconciled row back
+/// to `Pending`, or the fix would be invisible to any store reader).
 fn status_from_str(s: &str) -> TaskStatus {
     match s {
         "in_progress" => TaskStatus::InProgress,
         "completed" => TaskStatus::Completed,
+        "abandoned" => TaskStatus::Abandoned,
         _ => TaskStatus::Pending,
     }
+}
+
+/// Run-terminal reconciliation (the fix): when a run reaches a terminal state,
+/// every task row it left OPEN (`pending`/`in_progress`) is driven to the honest
+/// terminal `abandoned` value. `completed` rows are deliberately left untouched
+/// (real completion is preserved; unfinished work is never re-labelled done).
+///
+/// Idempotent (a second call flips nothing) and keyed purely by `run_id` — the
+/// universal key that equals `workflow_runs.id` for workflow/background runs and
+/// the assistant message id for chat. Returns the number of rows reconciled.
+/// Runtime query (no compile-time macro), matching this module's convention.
+pub async fn reconcile_run_terminal(pool: &PgPool, run_id: Uuid) -> Result<u64, AppError> {
+    let res = sqlx::query(
+        r#"
+        UPDATE agent_task_list
+        SET status = 'abandoned', updated_at = NOW()
+        WHERE run_id = $1 AND status IN ('pending', 'in_progress')
+        "#,
+    )
+    .bind(run_id)
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(res.rows_affected())
 }
 
 /// `deps: &[Uuid]` → a jsonb array of stringified uuids.
@@ -122,13 +153,18 @@ impl TaskListStore for PgTaskListStore {
         let deps = deps_to_json(&item.deps);
         // `position` = next slot for this run (append-at-end ordering) so `load`
         // returns items in creation order.
+        // `workflow_run_id` is set (for ON DELETE CASCADE cleanup) ONLY when
+        // `run_id` is a real `workflow_runs` row — the existence-guarded subquery
+        // yields NULL for chat/fan-out run_ids, so those rows keep it NULL and
+        // never violate the FK (run_id itself is polymorphic; see the migration).
         let row: TaskListRow = sqlx::query_as(
             r#"
             INSERT INTO agent_task_list
-                (run_id, content, active_form, status, owner, deps, position)
+                (run_id, content, active_form, status, owner, deps, position, workflow_run_id)
             VALUES (
                 $1, $2, $3, $4, $5, $6,
-                COALESCE((SELECT MAX(position) + 1 FROM agent_task_list WHERE run_id = $1), 0)
+                COALESCE((SELECT MAX(position) + 1 FROM agent_task_list WHERE run_id = $1), 0),
+                (SELECT id FROM workflow_runs WHERE id = $1)
             )
             RETURNING id, content, active_form, status, owner, deps
             "#,
@@ -215,11 +251,21 @@ impl TaskListStore for PgTaskListStore {
 mod tests {
     use super::*;
 
+    // TEST-5: status_to_str / status_from_str round-trip, INCLUDING the new
+    // `abandoned` reconciliation terminal — the read path must NOT degrade a
+    // reconciled row back to Pending, or the fix would be invisible on read.
     #[test]
     fn status_roundtrips_through_db_vocabulary() {
-        for s in [TaskStatus::Pending, TaskStatus::InProgress, TaskStatus::Completed] {
+        for s in [
+            TaskStatus::Pending,
+            TaskStatus::InProgress,
+            TaskStatus::Completed,
+            TaskStatus::Abandoned,
+        ] {
             assert_eq!(status_from_str(status_to_str(s)), s);
         }
+        assert_eq!(status_to_str(TaskStatus::Abandoned), "abandoned");
+        assert_eq!(status_from_str("abandoned"), TaskStatus::Abandoned);
         // Unknown DB text degrades to Pending (never panics).
         assert_eq!(status_from_str("garbage"), TaskStatus::Pending);
     }

@@ -203,12 +203,19 @@ pub struct SubAgentChild {
 
 /// A task-list item's status (DEC-54). Snake-case on the wire so the model's
 /// `status: "in_progress"` deserializes directly.
+///
+/// `Abandoned` is a SYSTEM-only terminal state (not offered in the model-settable
+/// tool schema): when a run reaches a terminal state, any task the run never
+/// finished is reconciled to `Abandoned` — honest about the work NOT being done,
+/// unlike `Completed`. The model never sets it; it exists so a store read
+/// round-trips the reconciled value instead of degrading it back to `Pending`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     Pending,
     InProgress,
     Completed,
+    Abandoned,
 }
 
 /// One agent task-list item (ITEM-34 / DEC-54). `content` is the imperative

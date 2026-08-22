@@ -38,6 +38,17 @@ pub async fn sweep_at_boot(
         );
     }
 
+    // Self-heal the agent task list: drive to `abandoned` any open task rows left
+    // under a now-terminal run — both the runs just failed above (crash recovery)
+    // and any pre-existing leak from before this reconciliation shipped.
+    let reconciled = repository::reconcile_orphaned_task_lists(pool).await?;
+    if reconciled > 0 {
+        tracing::warn!(
+            count = reconciled,
+            "workflow: startup sweep reconciled {reconciled} orphaned agent task-list row(s) to abandoned"
+        );
+    }
+
     // Walk <workspace_root>/*/workflow/*/ and rm any subdir whose
     // run_id is no longer in a non-terminal status. We delete only
     // dirs that match the run-id naming convention (UUID v4).

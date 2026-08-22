@@ -208,6 +208,9 @@ pub enum TaskListItemStatus {
     Pending,
     InProgress,
     Completed,
+    /// Run-end reconciliation terminal state — a task the run never finished.
+    /// A faithful 1:1 mirror of `agent_core::TaskStatus`; not model-settable.
+    Abandoned,
 }
 
 impl From<agent_core::TaskStatus> for TaskListItemStatus {
@@ -216,6 +219,7 @@ impl From<agent_core::TaskStatus> for TaskListItemStatus {
             agent_core::TaskStatus::Pending => Self::Pending,
             agent_core::TaskStatus::InProgress => Self::InProgress,
             agent_core::TaskStatus::Completed => Self::Completed,
+            agent_core::TaskStatus::Abandoned => Self::Abandoned,
         }
     }
 }
