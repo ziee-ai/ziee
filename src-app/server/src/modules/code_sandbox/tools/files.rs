@@ -535,13 +535,7 @@ pub async fn get_resource_link(
     // the API path to get the origin. MCP clients on a different host
     // need an absolute URL to follow the link; relative paths only work
     // for same-origin consumers.
-    let state = config::get_state().ok_or_else(|| {
-        AppError::new(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "SANDBOX_NOT_INITIALIZED",
-            "code_sandbox state not initialized",
-        )
-    })?;
+    let state = config::get_state().ok_or_else(config::not_initialized_error)?;
     // Single source of truth shared with the MCP artifact-save pipeline
     // (mcp::chat_extension::mcp::file_download_origin): public_base_url when
     // set, else the pinned loopback origin already encoded in loopback_url.

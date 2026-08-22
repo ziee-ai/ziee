@@ -157,11 +157,7 @@ fn live_pool() -> Result<std::sync::Arc<sqlx::PgPool>, (StatusCode, crate::commo
     let _state = config::get_state().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            crate::common::AppError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "SANDBOX_NOT_INITIALIZED",
-                "code_sandbox is not initialized (enabled: false in config or boot probe failed)",
-            ),
+            config::not_initialized_error(),
         )
     })?;
     // The DB pool no longer lives on the (de-`pool`-ed) engine state; source it
@@ -180,11 +176,7 @@ fn cache_root() -> Result<std::path::PathBuf, (StatusCode, crate::common::AppErr
     let state = config::get_state().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            crate::common::AppError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "SANDBOX_NOT_INITIALIZED",
-                "code_sandbox is not initialized",
-            ),
+            config::not_initialized_error(),
         )
     })?;
     let rootfs_path = state.config.rootfs_path();
@@ -428,11 +420,7 @@ pub async fn set_pin_handler(
     let state = config::get_state().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            crate::common::AppError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "SANDBOX_NOT_INITIALIZED",
-                "code_sandbox is not initialized",
-            ),
+            config::not_initialized_error(),
         )
     })?;
     let swap = version_manager::set_pin_with_drain(

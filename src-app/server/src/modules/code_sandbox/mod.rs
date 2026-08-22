@@ -65,6 +65,9 @@ pub fn code_sandbox_server_id() -> Uuid {
 pub use ziee_framework::mcp::loopback_host;
 
 #[cfg(test)]
+mod honest_diagnostics_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

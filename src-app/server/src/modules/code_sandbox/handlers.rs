@@ -120,9 +120,10 @@ pub async fn jsonrpc_handler(
             return error_response(
                 req.id,
                 StatusCode::SERVICE_UNAVAILABLE,
-                JsonRpcError::internal(
-                    "code_sandbox not initialized (code_sandbox.enabled = false or boot probes failed)",
-                ),
+                JsonRpcError::internal(format!(
+                    "code_sandbox is not available: {}",
+                    config::init_status().explain()
+                )),
             );
         }
     };
@@ -614,13 +615,7 @@ pub async fn download_handler(
     use axum::body::Body;
     use axum::response::Response;
 
-    let state = config::get_state().ok_or_else(|| {
-        crate::common::AppError::new(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "SANDBOX_NOT_INITIALIZED",
-            "code_sandbox not initialized",
-        )
-    })?;
+    let state = config::get_state().ok_or_else(config::not_initialized_error)?;
 
     // Download is per-conversation; require the header.
     let conversation_id = conversation_id.ok_or_else(|| {
@@ -919,13 +914,7 @@ pub(crate) async fn execute_command_detached(
     let lock = conv_lock(conversation_id);
     let _guard = lock.lock().await;
 
-    let state = config::get_state().ok_or_else(|| {
-        crate::common::AppError::new(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "SANDBOX_NOT_INITIALIZED",
-            "code_sandbox is not initialized (module disabled or not yet booted)",
-        )
-    })?;
+    let state = config::get_state().ok_or_else(config::not_initialized_error)?;
     // Reuses the ownership check + staging + workspace-mode inside build_context.
     let ctx = build_context(&state, conversation_id, user_id).await?;
     crate::modules::code_sandbox::tools::execute::execute_command(&ctx, command, flavor).await
