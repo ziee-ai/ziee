@@ -216,6 +216,14 @@ impl From<agent_core::TaskStatus> for TaskListItemStatus {
             agent_core::TaskStatus::Pending => Self::Pending,
             agent_core::TaskStatus::InProgress => Self::InProgress,
             agent_core::TaskStatus::Completed => Self::Completed,
+            // `Abandoned` is a post-run DB reconciliation state (agent::task_list).
+            // It is UNREACHABLE on this live stream: the TaskListChanged SSE
+            // snapshot is the list loaded DURING the (non-terminal) turn, and
+            // reconciliation emits no SSE. This DTO also deliberately mirrors the
+            // FE's 3-value union, so we keep the wire at 3 and map the unreachable
+            // case to `Pending` (an open, NOT-done item) — never `Completed`,
+            // which would falsely claim the abandoned work was finished.
+            agent_core::TaskStatus::Abandoned => Self::Pending,
         }
     }
 }
