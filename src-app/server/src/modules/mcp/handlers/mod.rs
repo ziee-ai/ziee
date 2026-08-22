@@ -41,17 +41,20 @@ fn require_host_command(cmd: &str) -> Result<(), AppError> {
 }
 
 /// Reject an unknown `sandbox_flavor` (must be one of KNOWN_FLAVORS).
+///
+/// The allow-list check itself is `code_sandbox::is_known_flavor` — the one
+/// canonical predicate — so this admin surface cannot drift from the two
+/// model-facing tool schemas that enforce the same enum. The error code and
+/// status stay `INVALID_FLAVOR` / 400 verbatim: this contract is pinned by
+/// `tests/mcp/run_in_sandbox_test.rs` and by the admin UI that reads it.
 fn validate_sandbox_flavor(flavor: Option<&str>) -> Result<(), AppError> {
-    if let Some(f) = flavor {
-        let known = crate::modules::code_sandbox::types::KNOWN_FLAVORS
-            .iter()
-            .any(|m| m.flavor == f);
-        if !known {
-            return Err(AppError::bad_request(
-                "INVALID_FLAVOR",
-                format!("Unknown sandbox flavor '{}'", f),
-            ));
-        }
+    if let Some(f) = flavor
+        && !crate::modules::code_sandbox::is_known_flavor(f)
+    {
+        return Err(AppError::bad_request(
+            "INVALID_FLAVOR",
+            format!("Unknown sandbox flavor '{}'", f),
+        ));
     }
     Ok(())
 }

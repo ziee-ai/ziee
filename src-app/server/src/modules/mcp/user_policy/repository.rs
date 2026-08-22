@@ -133,14 +133,14 @@ fn validate(
                 )
             })?;
 
-        let known = code_sandbox::types::KNOWN_FLAVORS
-            .iter()
-            .any(|m| m.flavor == f);
-        if !known {
-            let names: Vec<&str> = code_sandbox::types::KNOWN_FLAVORS
-                .iter()
-                .map(|m| m.flavor)
-                .collect();
+        // Allow-list check via the one canonical predicate
+        // (`code_sandbox::is_known_flavor`) so this policy surface cannot drift
+        // from the MCP-server-create check or the two model-facing tool schemas.
+        // The code, status and message text stay verbatim — `known_flavor_names`
+        // returns the same `Vec<&'static str>` this site used to build inline,
+        // so the `{names:?}` rendering is unchanged.
+        if !code_sandbox::is_known_flavor(&f) {
+            let names = code_sandbox::known_flavor_names();
             return Err(AppError::unprocessable_entity(
                 "MCP_UNKNOWN_FLAVOR",
                 format!("user_stdio_sandbox_flavor must be one of {names:?}; got {f:?}"),
