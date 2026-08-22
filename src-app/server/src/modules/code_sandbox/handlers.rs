@@ -1594,6 +1594,15 @@ mod tests {
             .iter()
             .find(|t| t["name"] == "execute_command")
             .expect("execute_command is advertised");
+        // The advertised DEFAULT must be the one the server applies. It is a
+        // separate literal in the schema JSON, so nothing but this pins them
+        // together — and a schema advertising a default the server no longer
+        // uses is the same advertisement/enforcement drift this change closes.
+        assert_eq!(
+            exec["inputSchema"]["properties"]["flavor"]["default"],
+            serde_json::json!(crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR),
+            "the advertised default must equal DEFAULT_TOOL_FLAVOR"
+        );
         let advertised: Vec<&str> = exec["inputSchema"]["properties"]["flavor"]["enum"]
             .as_array()
             .expect("flavor enum")

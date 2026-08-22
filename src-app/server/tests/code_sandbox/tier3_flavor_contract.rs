@@ -113,29 +113,41 @@ async fn execute_command_refuses_a_flavor_outside_the_advertised_enum() {
     // ---- (2) POSITIVE CONTROL, executing nothing.
     //
     // A DIFFERENT sandbox tool on the same route, same auth, same conversation.
-    // `read_file` goes through the identical chain the refusal must traverse —
+    // `list_files` goes through the identical chain the refusal must traverse —
     // JWT → permission → `x-conversation-id` → ownership → `build_context` →
-    // `dispatch` — and comes back as a normal JSON-RPC result. Without this, a
-    // "the bad flavor was refused" assertion is indistinguishable from "every
-    // call on this route fails". It is deliberately NOT `execute_command`: on a
-    // rootfs-less server an accepted flavor would spawn a real GitHub download.
+    // `dispatch` — and SUCCEEDS on an empty workspace, so it yields a real
+    // `result` rather than an error envelope. Without this, a "the bad flavor was
+    // refused" assertion is indistinguishable from "every call on this route
+    // fails". It is deliberately NOT `execute_command`: on a rootfs-less server
+    // an accepted flavor would spawn a real GitHub download (see the header).
     let control: serde_json::Value = rpc(serde_json::json!({
         "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-        "params": { "name": "read_file", "arguments": { "filename": "definitely-absent.txt" } }
+        "params": { "name": "list_files", "arguments": {} }
     }))
     .await
     .expect("control call")
     .json()
     .await
     .expect("control json");
+    // `x["result"].is_object() || x["error"]["message"].is_string()` would be
+    // satisfied by ANY error envelope — including the generic
+    // `CONVERSATION_NOT_FOUND` / `BUILD_CONTEXT_FAILED` this handler emits BEFORE
+    // dispatch runs. That is exactly the "every call on this route fails" state
+    // the control exists to rule out, so it must not be accepted here.
+    let control_err = control["error"]["message"].as_str().unwrap_or("");
+    for generic in ["CONVERSATION_NOT_FOUND", "BUILD_CONTEXT_FAILED", "not initialized"] {
+        assert!(
+            !control_err.contains(generic),
+            "the control failed BEFORE dispatch ({generic}) — the route itself is \
+             broken, so nothing this test asserts about the refusal would mean \
+             anything: {control}"
+        );
+    }
     assert!(
-        control["result"].is_object() || control["error"]["message"].is_string(),
-        "the control must produce a real JSON-RPC response: {control}"
-    );
-    let control_text = control.to_string();
-    assert!(
-        !control_text.contains("must be one of"),
-        "the control call must NOT be refused for a flavor — it supplies none: {control}"
+        control["result"].is_object(),
+        "the control must reach the tool dispatcher and produce a real result — \
+         proving JWT → permission → x-conversation-id → ownership → build_context \
+         → dispatch all work on this server: {control}"
     );
 
     // ---- (3) The ENFORCEMENT: an invented flavor is refused, as a plain JSON
