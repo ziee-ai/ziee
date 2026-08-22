@@ -56,6 +56,16 @@ already supports the chat key shape, but no live hook is wired in chat.
 experimental "for behavioral verification"), unmeasured by the rig, and its
 message-id-keyed rows have no crash-recovery model.
 
+**Caveat (from the phase-6 blind audit, corroborated by db + design-conformance):**
+unlike every workflow leak, a chat leak would have NO backstop — the boot sweep
+joins on `workflow_runs.id`, and chat run_ids never appear there. This is
+acceptable ONLY because with the flag OFF (production default) the chat agent-host
+is not used, so ZERO chat task rows are ever created (nothing to leak or
+accumulate). If/when the flag graduates, the fix is a single
+`reconcile_run_terminal(pool, assistant_message_id)` call at the chat
+stream-terminal point (the primitive already supports that key shape — TEST-5).
+Tracked, not silently dropped.
+
 ### DEC-7: Is any operational tunable introduced (retention / caps / thresholds)?
 **Resolution:** No admin-configurable settings row. Reconciliation has no tunable:
 the `abandoned` vocabulary is a fixed data-integrity value, cascade cleanup is

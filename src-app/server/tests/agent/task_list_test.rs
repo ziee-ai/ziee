@@ -20,7 +20,7 @@ use uuid::Uuid;
 use crate::common::TestServer;
 use ziee::test_internals::{
     WorkflowRunStatus, reconcile_run_terminal, workflow_cancel_cas, workflow_fail_orphaned_runs,
-    workflow_mark_status, workflow_reconcile_orphaned_task_lists,
+    workflow_mark_status, workflow_reconcile_orphaned_task_lists, workflow_sweep_at_boot,
 };
 
 async fn pool(server: &TestServer) -> sqlx::PgPool {
@@ -259,15 +259,33 @@ async fn reconcile_leaves_all_completed_run_untouched() {
     let pool = pool(&server).await;
     let run = make_workflow_run(&pool, "running").await;
 
+    // Two completed rows AND one open row, so the hook MUST fire (discriminating:
+    // if the hook were deleted, `open` would stay in_progress; if reconcile wrongly
+    // included 'completed' in its WHERE, d0/d1 would flip — either mutation → RED).
     let d0 = insert_item(&pool, run, "A", "a", "completed", serde_json::json!([])).await;
     let d1 = insert_item(&pool, run, "B", "b", "completed", serde_json::json!([])).await;
+    let open = insert_item(&pool, run, "C", "c", "in_progress", serde_json::json!([])).await;
 
     workflow_mark_status(&pool, run, WorkflowRunStatus::Completed, None)
         .await
         .unwrap();
 
-    assert_eq!(status_of(&pool, d0).await, "completed");
-    assert_eq!(status_of(&pool, d1).await, "completed");
+    // INV-2: completed rows are NEVER rewritten, even when the hook fires.
+    assert_eq!(
+        status_of(&pool, d0).await,
+        "completed",
+        "completed row preserved"
+    );
+    assert_eq!(
+        status_of(&pool, d1).await,
+        "completed",
+        "completed row preserved"
+    );
+    assert_eq!(
+        status_of(&pool, open).await,
+        "abandoned",
+        "the open row is the only one reconciled"
+    );
     let abandoned: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM agent_task_list WHERE run_id = $1 AND status = 'abandoned'",
     )
@@ -276,8 +294,8 @@ async fn reconcile_leaves_all_completed_run_untouched() {
     .await
     .unwrap();
     assert_eq!(
-        abandoned, 0,
-        "an all-completed run must produce ZERO abandoned rows"
+        abandoned, 1,
+        "exactly the one open row abandons; completed rows must NOT be re-labelled"
     );
 }
 
@@ -498,5 +516,38 @@ async fn reconcile_run_terminal_primitive_is_run_id_keyed() {
         reconcile_run_terminal(&pool, run).await.unwrap(),
         0,
         "reconcile is idempotent"
+    );
+}
+
+/// TEST-3 (wiring) — proves the PRODUCTION boot wiring, not just the repo fn:
+/// `sweep_at_boot` itself must reconcile open task rows under terminal runs.
+/// Deleting the `reconcile_orphaned_task_lists` call inside `sweep_at_boot` turns
+/// this RED (the direct-fn assertion in TEST-3 would still pass).
+#[tokio::test]
+async fn sweep_at_boot_reconciles_orphaned_task_rows() {
+    let server = TestServer::start().await;
+    let pool = pool(&server).await;
+
+    // A run already terminal (completed) with a leaked open row.
+    let leaked = make_workflow_run(&pool, "completed").await;
+    let open = insert_item(
+        &pool,
+        leaked,
+        "Stuck",
+        "Stuck",
+        "in_progress",
+        serde_json::json!([]),
+    )
+    .await;
+
+    // Drive the REAL boot entry point (its fs cleanup is a no-op when the
+    // workspace root is absent). cutoff in the past → no live run is swept.
+    let cutoff = time::OffsetDateTime::now_utc() - time::Duration::minutes(1);
+    workflow_sweep_at_boot(&pool, cutoff).await.unwrap();
+
+    assert_eq!(
+        status_of(&pool, open).await,
+        "abandoned",
+        "sweep_at_boot must reconcile the leaked row (production wiring)"
     );
 }

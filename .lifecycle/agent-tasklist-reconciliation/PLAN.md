@@ -92,10 +92,10 @@ the agent task list plus the defect report.
 - `src-app/agent-core/src/tasklist.rs` (ITEM-2 `render_list_lines` arm)
 - `src-app/server/src/modules/workflow/repository.rs` (ITEM-3 mark_status hook; ITEM-4 cancel_cas hook; ITEM-5 `reconcile_orphaned_task_lists`)
 - `src-app/server/src/modules/workflow/startup_sweep.rs` (ITEM-5 call in sweep_at_boot)
-- `src-app/server/src/modules/chat/core/types/streaming.rs` (ITEM-2 — `TaskListItemStatus::Abandoned`, keeps `From<TaskStatus>` total + faithful; see DRIFT-1.1)
+- `src-app/server/src/modules/chat/core/types/streaming.rs` (ITEM-2 — the `From<agent_core::TaskStatus>` match gains an `Abandoned` arm mapped to `Pending`; the wire enum STAYS 3-value per its documented FE-mirror purpose; see DRIFT-1.1)
 - `src-app/server/src/lib.rs` (`test_internals` exports of the reconcile fns + terminal writers; see DRIFT-1.2)
 - `src-app/server/tests/agent/task_list_test.rs` (tests — extend existing)
-- Regenerated (deterministic): `src-app/server/openapi/openapi.json`, `src-app/ui/openapi/openapi.json`, `src-app/{ui,desktop/ui}/src/api-client/types.ts` (ITEM-2 wire-enum value; see DRIFT-1.1)
+- NO regenerated files: `abandoned` never reaches the wire, so `openapi.json`/`types.ts` are unchanged (see DRIFT-1.1).
 
 ## Patterns to follow
 
@@ -157,20 +157,18 @@ the agent task list plus the defect report.
 
 ## OpenAPI regen
 
-- REQUIRED (amended — see DRIFT-1.1). `agent_task_list` itself has no REST
-  surface, but adding `TaskStatus::Abandoned` forces `TaskListItemStatus`
-  (the chat-streaming wire DTO, `#[derive(schemars::JsonSchema)]`) to gain the
-  same value to keep its `From<TaskStatus>` total + honest. That is a schema
-  delta → `just openapi-regen` (both binaries) + the `emit_ts` golden parity
-  test must stay green. FE consumers: none import the generated
-  `TaskListItemStatus`, so no hand-written UI change and tsc stays green (still
-  not classified as UI work — the generated files are excluded from the UI-diff
-  gate).
+- NOT required (phase-2's original conclusion; DRIFT-1.1 briefly flipped this and
+  self-corrected). `agent_task_list` has no REST surface, and the wire DTO
+  `TaskListItemStatus` STAYS 3-value (its documented purpose is to mirror the
+  3-value FE union; `abandoned` never travels the SSE stream). A clean
+  `cargo clean -p ziee` + regen produced ZERO diff to `openapi.json`/`types.ts`,
+  confirming no schema delta. The `emit_ts` golden parity test passes on the
+  unchanged committed files.
 
 ## Per-item verdicts
 
 - **ITEM-1** — verdict: PASS — new free fn in `task_list.rs`; mirrors file's runtime-query style; no existing caller affected.
-- **ITEM-2** — verdict: PASS — enum extension is compiler-checked; `status_schema()` deliberately left at the 3 model-settable values (verified it is a plain literal array, not derived from the enum, so no drift). NOTE (DRIFT-1.1): the wire DTO `TaskListItemStatus` also gains the value → OpenAPI regen required; FE union is hand-written + separate, so no FE break.
+- **ITEM-2** — verdict: PASS — enum extension is compiler-checked; `status_schema()` deliberately left at the 3 model-settable values (verified it is a plain literal array, not derived from the enum, so no drift). The wire DTO `TaskListItemStatus` stays 3-value (mirrors the FE union; `abandoned` never streams) — no OpenAPI regen (DRIFT-1.1, self-corrected).
 - **ITEM-3** — verdict: PASS — `mark_status` is the single guarded chokepoint for the runner terminal arms (verified: run_workflow 507/531/555, run_test 1150/1163/1172, spawn_background_run 1476/1480/1489 all route through it).
 - **ITEM-4** — verdict: PASS — `cancel_cas` (repository.rs:1091) is the user-cancel writer that bypasses `mark_status`; returns `Option<String>` to gate the reconcile.
 - **ITEM-5** — verdict: PASS — `sweep_at_boot` (startup_sweep.rs:33) already runs at boot after `fail_orphaned_runs`; a bulk reconcile there covers crash-recovery + retroactive remediation.

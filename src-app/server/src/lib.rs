@@ -394,6 +394,10 @@ pub mod test_internals {
         mark_status as workflow_mark_status,
         reconcile_orphaned_task_lists as workflow_reconcile_orphaned_task_lists,
     };
+    // The boot entry point itself, so a test can prove the PRODUCTION wiring
+    // (sweep_at_boot actually calls reconcile_orphaned_task_lists), not just the
+    // repository fn in isolation.
+    pub use crate::modules::workflow::startup_sweep::sweep_at_boot as workflow_sweep_at_boot;
 }
 
 // Re-export axum types for route building

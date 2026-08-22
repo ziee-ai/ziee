@@ -253,6 +253,20 @@ fn fingerprint(items: &[TaskItem]) -> String {
     serde_json::to_string(items).unwrap_or_default()
 }
 
+/// Enforce the system-only invariant for `Abandoned` (DEC-2): it is written ONLY
+/// by run-end reconciliation, never by the model. `status_schema()` omits it from
+/// the advertised enum, but serde still deserializes any `TaskStatus` variant, so
+/// the model could smuggle `status: "abandoned"` through — reject it here
+/// (returns `Some(error_result)` when the model tried to set it).
+fn reject_model_set_abandoned(tool: &str, status: Option<TaskStatus>) -> Option<ToolResult> {
+    matches!(status, Some(TaskStatus::Abandoned)).then(|| {
+        error_tool_result(format!(
+            "{tool}: `abandoned` is not a settable status (use pending/in_progress/completed); \
+             it is assigned only by the system when a run ends."
+        ))
+    })
+}
+
 /// `task_store` is `None` → the feature is disabled for this run. Return a
 /// CLEAR result (not a silent success) so the model proceeds without the list
 /// (DEC-50). Marked `is_error` so the model treats it as "unavailable".
@@ -330,6 +344,9 @@ impl AgentCore {
                 "task_create: `content` and `active_form` are required and must be non-empty",
             );
         }
+        if let Some(bad) = reject_model_set_abandoned("task_create", input.status) {
+            return bad;
+        }
         let created = match store
             .create(
                 run_id,
@@ -362,6 +379,9 @@ impl AgentCore {
             Ok(i) => i,
             Err(e) => return error_tool_result(format!("task_update: invalid input: {e}")),
         };
+        if let Some(bad) = reject_model_set_abandoned("task_update", input.status) {
+            return bad;
+        }
         let updated = match store
             .update(
                 run_id,
@@ -586,6 +606,64 @@ mod tests {
             .as_ref()
             .expect("structured_content present");
         serde_json::from_value(v.get("tasks").cloned().unwrap()).unwrap()
+    }
+
+    // TEST-5 (C4 fix): `abandoned` is a SYSTEM-only terminal state — the model
+    // must NOT set it via task_create/task_update (serde accepts the string, so
+    // the handler guard is what enforces DEC-2). A rejected call is an error and
+    // creates/changes nothing.
+    #[tokio::test]
+    async fn model_cannot_set_abandoned_status() {
+        let store = Arc::new(FakeTaskStore::default());
+        let core = build_core(store.clone());
+        let run = Uuid::new_v4();
+
+        let create = core
+            .handle_task_create(
+                run,
+                &call(
+                    TASK_CREATE_TOOL,
+                    serde_json::json!({ "content": "X", "active_form": "Xing", "status": "abandoned" }),
+                ),
+            )
+            .await;
+        assert!(
+            create.is_error,
+            "model-set `abandoned` on create must be rejected"
+        );
+        assert!(
+            store.load(run).await.unwrap().is_empty(),
+            "the rejected create must not persist a row"
+        );
+
+        let ok = core
+            .handle_task_create(
+                run,
+                &call(
+                    TASK_CREATE_TOOL,
+                    serde_json::json!({ "content": "Y", "active_form": "Ying" }),
+                ),
+            )
+            .await;
+        let id = structured_tasks(&ok)[0].id;
+        let update = core
+            .handle_task_update(
+                run,
+                &call(
+                    TASK_UPDATE_TOOL,
+                    serde_json::json!({ "id": id.to_string(), "status": "abandoned" }),
+                ),
+            )
+            .await;
+        assert!(
+            update.is_error,
+            "model-set `abandoned` on update must be rejected"
+        );
+        assert_eq!(
+            store.get(run, id).await.unwrap().unwrap().status,
+            TaskStatus::Pending,
+            "the rejected update must leave the task unchanged"
+        );
     }
 
     /// TEST-93: per-item create + patch-by-id + read-back; item shape carries

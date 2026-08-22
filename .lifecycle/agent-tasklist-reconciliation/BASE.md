@@ -9,9 +9,8 @@
 - Files this branch edits that main might also touch: `workflow/repository.rs`,
   `agent/task_list.rs`, `agent-core/{types,tasklist}.rs`. No evidence of concurrent
   main churn on these; the merge-gate re-checks against real main at merge time.
-- **OpenAPI regen implied? YES** (revised — see DRIFT-1.1). `agent_task_list`
-  has no REST surface, but `TaskStatus::Abandoned` propagates to the wire DTO
-  `TaskListItemStatus` (`#[derive(schemars::JsonSchema)]`, chat streaming), a
-  schema delta → regen both binaries + `emit_ts` golden test. No hand-written
-  frontend file changes (the FE union is separate + hand-written; nothing imports
-  the generated `TaskListItemStatus`), so no UI gates are triggered.
+- **OpenAPI regen implied? NO** (DRIFT-1.1 briefly said YES, self-corrected). The
+  wire DTO `TaskListItemStatus` stays 3-value (its documented purpose is to mirror
+  the 3-value FE union; `abandoned` is a post-run DB state that never streams). A
+  clean rebuild + regen produced zero diff to `openapi.json`/`types.ts`. No UI
+  workspace touched → no UI gates.

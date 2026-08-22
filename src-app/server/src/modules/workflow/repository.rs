@@ -614,7 +614,18 @@ pub async fn mark_status(
     // run_test / spawn_background_run). Non-terminal writers and no-op CAS hits
     // (already-terminal row) skip it.
     if status.is_terminal() && res.rows_affected() > 0 {
-        crate::modules::agent::task_list::reconcile_run_terminal(pool, run_id).await?;
+        // Best-effort: the run IS terminal now (the primary write committed). A
+        // task-list reconcile hiccup must NOT fail that transition (nor surface as
+        // an error a caller retries into a rows_affected=0 no-op) — log and let the
+        // boot self-heal sweep be the backstop. Mirrors the fire-and-forget MCP
+        // tool-call recorder (a secondary DB write never fails the primary op).
+        if let Err(e) = crate::modules::agent::task_list::reconcile_run_terminal(pool, run_id).await
+        {
+            tracing::warn!(
+                %run_id, error = %e,
+                "workflow: task-list terminal reconciliation failed; boot sweep is the backstop"
+            );
+        }
     }
     Ok(())
 }
@@ -1117,8 +1128,15 @@ pub async fn cancel_cas(
     .map_err(AppError::database_error)?;
     // The user-cancel path bypasses `mark_status`, so reconcile the run's task
     // list here too when the cancel actually landed (Some ⇒ a row was flipped).
+    // Best-effort (see `mark_status`): a reconcile hiccup must not fail the cancel.
     if row.is_some() {
-        crate::modules::agent::task_list::reconcile_run_terminal(pool, run_id).await?;
+        if let Err(e) = crate::modules::agent::task_list::reconcile_run_terminal(pool, run_id).await
+        {
+            tracing::warn!(
+                %run_id, error = %e,
+                "workflow: task-list reconciliation after cancel failed; boot sweep is the backstop"
+            );
+        }
     }
     Ok(row.map(|r| r.status))
 }

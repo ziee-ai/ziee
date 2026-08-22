@@ -37,8 +37,11 @@ ALTER TABLE public.agent_task_list
     ADD COLUMN workflow_run_id uuid
         REFERENCES public.workflow_runs(id) ON DELETE CASCADE;
 
+-- Partial index (matches the mcp_tool_calls.workflow_run_id precedent): chat /
+-- fan-out rows keep workflow_run_id NULL, so index only the CASCADE-relevant rows.
 CREATE INDEX idx_agent_task_list_workflow_run
-    ON public.agent_task_list USING btree (workflow_run_id);
+    ON public.agent_task_list USING btree (workflow_run_id)
+    WHERE workflow_run_id IS NOT NULL;
 
 -- Backfill: link every existing row whose run_id IS a workflow_runs id, so a
 -- delete of an already-existing run cascades its task rows too.
