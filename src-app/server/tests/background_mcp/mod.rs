@@ -22,6 +22,12 @@ mod resume;
 mod nul_query_param_test;
 mod run_notes;
 mod runs;
+// Argument-CONTRACT tests for `spawn_background` (tool-argument-contracts):
+// nested-`kind` resolution, unadvertised `spec` keys, and the advertised
+// `flavor` enum. Rootfs-free — the default TestServer has code_sandbox
+// DISABLED, so a spawned sandbox run fails fast in its driver and the SPAWN
+// result (what these assert) is produced before any network call.
+mod spawn_contract;
 // Group C — background sandbox code execution (ITEM-11/12/13). Rootfs-gated
 // (mirrors the code_sandbox tier6 pattern): the driver runs a REAL bwrap command,
 // so it needs a booted sandbox + a published rootfs. Linux is the reference

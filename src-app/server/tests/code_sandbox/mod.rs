@@ -25,6 +25,12 @@ mod tier3_read_artifacts;
 mod tier3_concurrency;
 mod tier3_versions;
 mod tier3_resource_limits;
+// Tier 3 — the chat-path `execute_command` FLAVOR enum is enforced
+// (tool-argument-contracts). Rootfs-FREE: code_sandbox defers every
+// rootfs-dependent probe to the first execute_command, so this boots a
+// sandbox-enabled server whose rootfs dir is empty — the strictest place to
+// prove the refusal lands before anything touches a rootfs or the network.
+mod tier3_flavor_contract;
 mod sync_emit_test;
 mod tier4_sandbox_smoke;
 mod tier4_hardening;

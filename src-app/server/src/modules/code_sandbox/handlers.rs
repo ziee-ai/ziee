@@ -213,11 +213,17 @@ pub async fn jsonrpc_handler(
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let flavor = args
-            .and_then(|a| a.get("flavor"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("minimal")
-            .to_string();
+        // ENFORCE the `["minimal","full"]` enum the schema advertises. Until this
+        // check existed, any non-empty string reached `execute_command_stream` →
+        // `ensure_fetched` → `install_version` →
+        // `format!("ziee-sandbox-rootfs-{arch}-{flavor}.{ext}")` → a live GitHub
+        // Releases request. Refusing here is strictly upstream of all of it.
+        let flavor = match resolve_execute_flavor(args) {
+            Ok(f) => f,
+            Err(e) => {
+                return error_response(id, StatusCode::OK, JsonRpcError::from_app_error(&e));
+            }
+        };
         let progress_token = req
             .params
             .get("_meta")
@@ -702,6 +708,42 @@ fn disposition_filename(name: &str) -> String {
 // --------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------
+
+/// The `execute_command` sandbox environment when the model supplies none.
+const DEFAULT_EXECUTE_FLAVOR: &str = "minimal";
+
+/// Copyable literal-JSON example carried by an `execute_command` flavor refusal.
+const EXECUTE_FLAVOR_EXAMPLE: &str = r#"{"command":"python hello.py","flavor":"minimal"}"#;
+
+/// Resolve `execute_command`'s `flavor` argument, ENFORCING the
+/// `["minimal","full"]` enum its tool schema advertises.
+///
+/// Absent or explicit `null` falls to the default, exactly as before. A SUPPLIED
+/// value is validated: an unknown flavor, an empty string, and a non-string are
+/// all refused rather than replaced by the default — a supplied argument that is
+/// quietly swapped for a default hides the mistake instead of correcting it.
+///
+/// Pure (no state, no I/O) so the whole contract is unit-testable without a
+/// sandbox, a rootfs, or a network.
+fn resolve_execute_flavor(args: Option<&Value>) -> Result<String, crate::common::AppError> {
+    match args.and_then(|a| a.get("flavor")) {
+        None | Some(Value::Null) => Ok(DEFAULT_EXECUTE_FLAVOR.to_string()),
+        Some(Value::String(s)) => {
+            let s = s.trim();
+            super::validate_known_flavor("flavor", s, EXECUTE_FLAVOR_EXAMPLE)?;
+            Ok(s.to_string())
+        }
+        Some(other) => Err(crate::common::AppError::bad_request(
+            "SANDBOX_UNKNOWN_FLAVOR",
+            format!(
+                "`flavor` arrived as {received}, but a string naming the sandbox \
+                 environment is required — one of {names}. Example: {EXECUTE_FLAVOR_EXAMPLE}",
+                received = crate::common::tool_args::type_word(other),
+                names = super::quoted_flavor_names(),
+            ),
+        )),
+    }
+}
 
 fn error_response(
     id: Option<Value>,
@@ -1497,6 +1539,78 @@ pub fn update_resource_limits_docs(
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    /// TEST-10 [acceptance] [invariant: INV-3] (tool-argument-contracts): the
+    /// chat path enforces the `["minimal","full"]` enum its schema advertises,
+    /// before `execute_command_stream` — the only route to `install_version`'s
+    /// `format!("ziee-sandbox-rootfs-{arch}-{flavor}.{ext}")` and the live
+    /// GitHub Releases request that followed it.
+    #[test]
+    fn execute_command_flavor_is_held_to_the_advertised_enum() {
+        use serde_json::json;
+
+        // Unchanged default: absent and explicit-null both mean `minimal`.
+        assert_eq!(resolve_execute_flavor(None).unwrap(), DEFAULT_EXECUTE_FLAVOR);
+        assert_eq!(
+            resolve_execute_flavor(Some(&json!({ "command": "ls" }))).unwrap(),
+            DEFAULT_EXECUTE_FLAVOR
+        );
+        assert_eq!(
+            resolve_execute_flavor(Some(&json!({ "flavor": null }))).unwrap(),
+            DEFAULT_EXECUTE_FLAVOR
+        );
+
+        // HAPPY PATH: every advertised flavor is still accepted, verbatim.
+        // Derived from the catalog so a future flavor is covered automatically.
+        for name in crate::modules::code_sandbox::known_flavor_names() {
+            assert_eq!(
+                resolve_execute_flavor(Some(&json!({ "flavor": name }))).unwrap(),
+                name,
+                "the advertised flavor `{name}` must still be accepted"
+            );
+        }
+
+        // The reported value — a flavor the model invented — is refused, and the
+        // refusal is actionable.
+        let msg = resolve_execute_flavor(Some(&json!({ "flavor": "zee-workflow" })))
+            .expect_err("an invented flavor must be refused")
+            .to_string();
+        assert!(msg.contains("flavor"), "names the argument: {msg}");
+        for name in crate::modules::code_sandbox::known_flavor_names() {
+            assert!(msg.contains(name), "lists the advertised flavor `{name}`: {msg}");
+        }
+        assert!(msg.contains("Example: {"), "carries a copyable example: {msg}");
+
+        // A SUPPLIED-but-unusable value is refused, never swapped for the
+        // default — an empty string (which previously passed straight through as
+        // an empty flavor) and a non-string.
+        for bad in [json!({ "flavor": "" }), json!({ "flavor": "  " }), json!({ "flavor": 7 })] {
+            assert!(
+                resolve_execute_flavor(Some(&bad)).is_err(),
+                "a supplied-but-invalid flavor must be refused, not defaulted: {bad}"
+            );
+        }
+
+        // The ADVERTISEMENT and the enforcement are the same list.
+        let defs = tool_definitions();
+        let exec = defs
+            .as_array()
+            .expect("tool_definitions is a JSON array")
+            .iter()
+            .find(|t| t["name"] == "execute_command")
+            .expect("execute_command is advertised");
+        let advertised: Vec<&str> = exec["inputSchema"]["properties"]["flavor"]["enum"]
+            .as_array()
+            .expect("flavor enum")
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert_eq!(
+            advertised,
+            crate::modules::code_sandbox::known_flavor_names(),
+            "the enum shown to the model must be the list the server enforces"
+        );
+    }
 
     /// TEST-8 (ITEM-3): the tool-error mapper surfaces a real message for
     /// client-class (4xx) errors so the model gets an actionable reason, while

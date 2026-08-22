@@ -64,12 +64,146 @@ pub fn code_sandbox_server_id() -> Uuid {
 // (15 modules) resolves unchanged (decision N2 shim).
 pub use ziee_framework::mcp::loopback_host;
 
+// =====================================================================
+// Rootfs-flavor allow-list — ONE canonical check
+// =====================================================================
+//
+// `KNOWN_FLAVORS` is the catalog this binary advertises (it lives in the
+// `ziee-sandbox` engine crate and reaches us through the `types` shim above).
+// Several surfaces need to ask "is this flavor real?", and each used to
+// re-derive its own `.iter().any(…)` scan — which is exactly how the next one
+// drifts, and how the two MODEL-FACING tool schemas came to advertise
+// `"enum": ["minimal","full"]` while enforcing nothing at all.
+//
+// Only the PREDICATE is shared. Each caller still builds its own error, because
+// their contracts differ and are pinned by tests (`INVALID_FLAVOR`/400 for MCP
+// server create, `MCP_UNKNOWN_FLAVOR`/422 for the user policy).
+
+/// Is `flavor` one of the rootfs flavors this binary advertises?
+///
+/// Matches on NAME only — the size/description fields of `FlavorMetadata` are
+/// presentation, not identity.
+pub fn is_known_flavor(flavor: &str) -> bool {
+    types::KNOWN_FLAVORS.iter().any(|m| m.flavor == flavor)
+}
+
+/// The advertised flavor names, in advertisement order.
+pub fn known_flavor_names() -> Vec<&'static str> {
+    types::KNOWN_FLAVORS.iter().map(|m| m.flavor).collect()
+}
+
+/// Enforce the `flavor` enum that a MODEL-FACING tool schema advertises.
+///
+/// `arg` names the argument as the model sends it (`flavor` for the chat
+/// `execute_command`, `spec.flavor` for `spawn_background`); `example` is a
+/// literal-JSON snippet the model can copy. The refusal therefore carries all
+/// three things a model needs to fix the call: the argument, what is expected,
+/// and a copyable example.
+///
+/// **Why here and not inside `version_manager::install_version`.** That function
+/// serves TWO callers with different contracts. The ADMIN install path
+/// (`version_handlers.rs`) validates `flavor` as a safe token rather than
+/// against `KNOWN_FLAVORS`, deliberately — an operator must be able to install a
+/// flavor published after this binary was built. Moving the enum check down into
+/// the shared function would silently remove that escape hatch. The enum is
+/// promised only in the tool schemas, so it is kept exactly at those two entry
+/// points, upstream of every path that builds a download URL.
+pub fn validate_known_flavor(
+    arg: &str,
+    flavor: &str,
+    example: &str,
+) -> Result<(), crate::common::AppError> {
+    if is_known_flavor(flavor) {
+        return Ok(());
+    }
+    Err(crate::common::AppError::bad_request(
+        "SANDBOX_UNKNOWN_FLAVOR",
+        format!(
+            "`{arg}` was `{received}`, but it must be one of {names}. Example: {example}",
+            received = crate::common::tool_args::truncate_for_message(flavor),
+            names = quoted_flavor_names(),
+        ),
+    ))
+}
+
+/// `` `minimal`, `full` `` — the advertised names, quoted, for a refusal.
+pub fn quoted_flavor_names() -> String {
+    known_flavor_names()
+        .iter()
+        .map(|n| format!("`{n}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     // The two `loopback_host` tests moved with the function to
     // `ziee_framework::mcp` (Chunk C1).
+
+    // TEST-9 [acceptance] [invariant: INV-3]: the canonical allow-list accepts
+    // EXACTLY what `KNOWN_FLAVORS` advertises and refuses everything else.
+    //
+    // The accepted set is DERIVED from the const rather than hardcoded, so a
+    // flavor added to the catalog tomorrow is covered by this test the moment it
+    // lands — a hardcoded `["minimal","full"]` here would quietly stop testing
+    // the real list.
+    #[test]
+    fn known_flavor_allow_list_matches_the_advertised_catalog() {
+        let advertised = known_flavor_names();
+        assert!(!advertised.is_empty(), "the catalog must advertise at least one flavor");
+        for name in &advertised {
+            assert!(is_known_flavor(name), "the advertised flavor `{name}` must be accepted");
+            assert!(
+                validate_known_flavor("flavor", name, "EXAMPLE").is_ok(),
+                "…and must not be refused: `{name}`"
+            );
+        }
+
+        // Everything else is refused: the invented value from the live rig, an
+        // empty string, a case variant (the catalog is case-SENSITIVE — a
+        // lookalike must not slip through), a whitespace-padded name, and a
+        // traversal-shaped value that would otherwise land in a download URL.
+        let first = advertised[0];
+        for bad in [
+            "zee-workflow",
+            "",
+            " ",
+            &first.to_ascii_uppercase(),
+            &format!(" {first} "),
+            "../../etc",
+            "minimal;rm -rf /",
+        ] {
+            assert!(!is_known_flavor(bad), "`{bad}` must NOT be a known flavor");
+            let msg = validate_known_flavor("spec.flavor", bad, "EXAMPLE")
+                .expect_err("an unknown flavor must be refused")
+                .to_string();
+            assert!(msg.contains("spec.flavor"), "the refusal names the argument: {msg}");
+            for name in &advertised {
+                assert!(msg.contains(name), "…and enumerates the valid flavors: {msg}");
+            }
+            assert!(msg.contains("EXAMPLE"), "…and carries the copyable example: {msg}");
+        }
+    }
+
+    // TEST-17: the delegation in `mcp/user_policy/repository.rs` must not change
+    // the `MCP_UNKNOWN_FLAVOR` message an admin sees. That site renders the name
+    // list with `{names:?}`, so pin the rendering of what it now receives.
+    #[test]
+    fn known_flavor_names_render_identically_for_the_user_policy_message() {
+        let names = known_flavor_names();
+        // The exact shape the pre-refactor inline `Vec<&str>` produced.
+        assert_eq!(
+            format!("{names:?}"),
+            format!("{:?}", types::KNOWN_FLAVORS.iter().map(|m| m.flavor).collect::<Vec<&str>>()),
+            "the user-policy error text must be byte-identical after delegation"
+        );
+        // Identity is the NAME only — the size/description fields are
+        // presentation and must not leak into the allow-list decision.
+        assert!(is_known_flavor(types::KNOWN_FLAVORS[0].flavor));
+        assert!(!is_known_flavor(types::KNOWN_FLAVORS[0].description));
+    }
 
     #[test]
     fn code_sandbox_server_id_is_stable() {

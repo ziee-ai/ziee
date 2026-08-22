@@ -123,7 +123,11 @@ impl std::fmt::Display for ArgError {
 }
 
 /// The JSON type name of a value, as a model-facing word.
-fn type_word(v: &Value) -> &'static str {
+///
+/// `pub` so a refusal built OUTSIDE this module (e.g. `background_mcp`'s `kind`
+/// contract, which is an enum rather than a shape) describes a received value in
+/// the same words a shape refusal does. One vocabulary, one place.
+pub fn type_word(v: &Value) -> &'static str {
     match v {
         Value::Null => "null",
         Value::Bool(_) => "a boolean",
@@ -132,6 +136,29 @@ fn type_word(v: &Value) -> &'static str {
         Value::Array(_) => "an array",
         Value::Object(_) => "an object",
     }
+}
+
+/// Longest model-supplied fragment echoed back inside a refusal message.
+///
+/// A refusal that quotes what it received is far more useful than one that does
+/// not, but the received value is MODEL-CONTROLLED and unbounded — echoing it
+/// whole turns a one-line refusal into a megabyte of tool result. 64 characters
+/// is enough to recognise any realistic mistake (an enum value, a field name, a
+/// short path) and short enough that a hostile or runaway value cannot inflate
+/// the message. A fixed constant rather than a setting: it is an input-bounding
+/// limit over model-controlled data, and no deployment benefits from raising it.
+pub const MAX_ECHOED_VALUE_CHARS: usize = 64;
+
+/// Bound a model-supplied fragment for inclusion in a refusal message.
+///
+/// Truncates on a CHARACTER boundary (never a byte index — `s[..n]` panics
+/// mid-codepoint, and model input is routinely non-ASCII).
+pub fn truncate_for_message(s: &str) -> String {
+    if s.chars().count() <= MAX_ECHOED_VALUE_CHARS {
+        return s.to_string();
+    }
+    let head: String = s.chars().take(MAX_ECHOED_VALUE_CHARS).collect();
+    format!("{head}…")
 }
 
 /// Build the model-facing refusal. Every variant carries the same three

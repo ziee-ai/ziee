@@ -387,6 +387,13 @@ async fn create_system_server_persists_and_validates_sandbox_flavor() {
     assert_eq!(body["sandbox_flavor"], "minimal");
 
     // Unknown flavor → 400.
+    //
+    // TEST-16 (tool-argument-contracts, ITEM-8): this site's allow-list scan now
+    // DELEGATES to the canonical `code_sandbox::is_known_flavor`, shared with the
+    // two model-facing tool schemas. The delegation must be invisible here, so
+    // the ERROR CODE is asserted alongside the status — asserting only `400`
+    // would let the code silently change to the tool-path's
+    // `SANDBOX_UNKNOWN_FLAVOR` and still pass.
     let resp = client
         .post(&server.api_url("/mcp/system-servers"))
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -398,6 +405,12 @@ async fn create_system_server_persists_and_validates_sandbox_flavor() {
         }))
         .send().await.unwrap();
     assert_eq!(resp.status(), 400, "unknown flavor must be rejected");
+    let err: serde_json::Value = resp.json().await.expect("error body");
+    let code = serde_json::to_string(&err).unwrap();
+    assert!(
+        code.contains("INVALID_FLAVOR"),
+        "the error code must stay INVALID_FLAVOR after the delegation: {code}"
+    );
 }
 
 #[tokio::test]
