@@ -27,7 +27,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 // Re-export types for desktop/external use
-pub use core::config::{Config, CorsConfig, JwtConfig};
+pub use core::config::{Config, CorsConfig, HttpServerConfig, JwtConfig};
 pub use core::{Repos, EventBus, EventHandler, AppEvent};
 // Chunk BG-3: the desktop-consumer boot path (ziee-desktop's `ServerBoot` impl +
 // `ensure_desktop_admin`) threads the `BootHandle.pool` into repositories rather
@@ -151,6 +151,17 @@ pub use modules::code_sandbox::embedded as code_sandbox_embedded;
 // the full config-load path.
 #[doc(hidden)]
 pub use core::{set_app_data_dir, set_caches_config};
+
+/// Exported for the DESKTOP binary, which boots the embedded server itself and
+/// must capture its listen address the way `server/src/main.rs` does.
+///
+/// Until it did, `set_server_addr` had exactly one caller in the repo — the
+/// standalone server binary — so on desktop the address stayed at the module
+/// default `127.0.0.1:3000` while the app bound a port in 8080-8180. Local
+/// providers carry `base_url = NULL` and have it injected at READ time from
+/// this global, so every local provider resolved to a port nothing listened on
+/// and chat hung with no error.
+pub use core::{get_server_addr, set_server_addr};
 
 // Test-helper exports: the platform-specific sandbox backend dispatch
 // + the raw-exec result shape. Used by tests/code_sandbox/harness.rs

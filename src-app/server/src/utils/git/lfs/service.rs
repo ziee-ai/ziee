@@ -53,6 +53,49 @@ impl Object {
     }
 }
 
+/// How long a blob transfer may go with NO bytes arriving before it is killed.
+///
+/// 60s. The job is to distinguish "silent" from "slow", and silence is the
+/// signal: TCP keeps a healthy connection delivering *something* well inside a
+/// minute, while a stalled or hostile peer delivers nothing at all. A tighter
+/// value (say 10s) would start killing real transfers across a congested link
+/// or a server-side seek; a looser one buys the user nothing, because a
+/// connection silent for a minute is not coming back inside this download.
+/// It is also a 30× improvement on the old bound for the pure-hang case, which
+/// took the full 30 minutes to notice.
+const LFS_STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Absolute backstop on a single blob transfer.
+///
+/// 6 hours — deliberately NOT the binding constraint on a legitimate pull. At
+/// 5.68 GB (the default model's Q4_K_M blob) this implies a floor of ~0.26 MB/s
+/// (~2.1 Mbps), i.e. it only fires on a connection slower than early broadband.
+/// The old 30-minute cap implied 3.16 MB/s (~25.2 Mbps) on the same file, which
+/// is a hard ceiling a user cannot retry their way past — and, because there is
+/// no resume, it discarded the whole transfer after ~28 minutes of healthy
+/// progress. `lfs_absolute_backstop_is_not_the_binding_constraint` pins this.
+const LFS_ABSOLUTE_BACKSTOP: std::time::Duration = std::time::Duration::from_secs(60 * 60 * 6);
+
+/// Absolute budget for the small batch-API metadata POST.
+const LFS_METADATA_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Connect budget, shared by both clients.
+const LFS_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Slack allowed over an object's declared size before the stream is aborted.
+///
+/// The LFS batch API tells us exactly how many bytes an object has, so a server
+/// that keeps sending past that is malfunctioning or hostile and there is no
+/// reason to keep writing it to disk. Without this, lengthening the absolute
+/// timeout would have WIDENED 07-llm-model F-07: the streaming loop had no byte
+/// cap at all, so "how much disk can a malicious LFS server consume" was bounded
+/// only by the clock — 30 minutes before, 6 hours after. With the cap it is
+/// bounded by the object's own size regardless of either timeout, which is
+/// strictly stronger than what shipped. 1 MiB of slack keeps a server that pads
+/// a final chunk from failing a legitimate download; the checksum still has the
+/// final say on correctness.
+const LFS_SIZE_SLACK_BYTES: u64 = 1024 * 1024;
+
 pub struct LfsService {
     // Field removed as it was never accessed - methods use static get_cache_dir instead
 }
@@ -211,6 +254,99 @@ impl LfsService {
         Ok(parsed)
     }
 
+    /// Ceiling on bytes accepted for an object of `declared` size.
+    ///
+    /// Saturating so a malicious `size` near `u64::MAX` cannot wrap the ceiling
+    /// down to a small number and make every honest chunk look oversized.
+    fn max_object_bytes(declared: u64) -> u64 {
+        declared.saturating_add(LFS_SIZE_SLACK_BYTES)
+    }
+
+    /// Would accepting `chunk_len` more bytes push the transfer past `max_bytes`?
+    fn exceeds_declared_size(downloaded: u64, chunk_len: u64, max_bytes: u64) -> bool {
+        downloaded.saturating_add(chunk_len) > max_bytes
+    }
+
+    /// Client for the git-lfs **batch API** call — a small JSON POST.
+    ///
+    /// Kept on its own tight absolute budget. The blob client below deliberately
+    /// tolerates a transfer that runs for hours; applying that to a metadata
+    /// request would let a hostile endpoint pin a task for the same period for
+    /// the sake of a few hundred bytes. Two clients rather than one client with
+    /// a per-request override, so neither call can inherit the other's budget by
+    /// accident — the override form makes the tight bound a property of one call
+    /// site that a later edit can silently drop.
+    fn metadata_client(absolute: std::time::Duration) -> Result<Client, LfsError> {
+        Ok(Client::builder()
+            .timeout(absolute)
+            .connect_timeout(LFS_CONNECT_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build()?)
+    }
+
+    /// Client for the **blob** GET — potentially many GB.
+    ///
+    /// `read_timeout` bounds each read of the body and resets on every
+    /// successful read (reqwest's documented semantics), so a connection that is
+    /// alive but slow survives while one that goes silent is cut off promptly.
+    /// The absolute timeout stays as a backstop so total time is still bounded.
+    fn blob_client(
+        stall: std::time::Duration,
+        absolute: std::time::Duration,
+    ) -> Result<Client, LfsError> {
+        Ok(Client::builder()
+            .read_timeout(stall)
+            .timeout(absolute)
+            .connect_timeout(LFS_CONNECT_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build()?)
+    }
+
+    /// Create the temp file an LFS object streams into, inside `staging_dir`.
+    ///
+    /// Split out of `download_file` purely so this — the code that failed on the
+    /// owner's machine — is reachable from a test without standing up an LFS
+    /// server. `download_file` itself needs a live HTTP endpoint; this does not.
+    async fn create_staging_file(
+        staging_dir: &Path,
+        oid: &str,
+        randomizer_bytes: Option<usize>,
+    ) -> Result<NamedTempFile, LfsError> {
+        debug!("creating temp file in staging dir {:?}", staging_dir);
+
+        const TEMP_SUFFIX: &str = ".lfstmp";
+        // Staged in `staging_dir`, NEVER in the CWD — see `download_file`'s doc
+        // comment for what CWD staging cost on macOS.
+        let tmp_path = staging_dir.join(format!("{oid}{TEMP_SUFFIX}"));
+
+        if randomizer_bytes.is_none() && tmp_path.exists() {
+            debug!("temp file exists. Deleting");
+            fs::remove_file(&tmp_path).await?;
+        }
+
+        tempfile::Builder::new()
+            .prefix(oid)
+            .suffix(TEMP_SUFFIX)
+            .rand_bytes(randomizer_bytes.unwrap_or_default())
+            .tempfile_in(staging_dir)
+            .map_err(|e| LfsError::TempFile(e.to_string()))
+    }
+
+    /// `staging_dir` is where the multi-GB object is written while it streams.
+    ///
+    /// It is a PARAMETER rather than a constant because the previous `"./"`
+    /// staged in the process's current working directory, and a process may not
+    /// assume anything about its CWD. A macOS `.app` launched from Finder
+    /// inherits `CWD = /`, which since 10.15 is the read-only Signed System
+    /// Volume, so every LFS download died instantly with EROFS — reported by the
+    /// owner as `Read-only file system (os error 30) at path
+    /// "/./<oid>.lfstmp"`. (The `/./` is the fingerprint of the bug: `tempfile`
+    /// absolutizes a relative base against CWD, and `absolute()` does not
+    /// normalize `.`.)
+    ///
+    /// Callers pass the object's CACHE directory, which makes the final
+    /// `rename` same-directory — hence atomic and same-filesystem — by
+    /// construction.
     async fn download_file(
         meta_data: &LfsMetadata,
         repo_remote_url: &str,
@@ -219,18 +355,16 @@ impl LfsService {
         progress_tx: Option<&mpsc::UnboundedSender<LfsProgress>>,
         base_progress: u64,
         total_size_all_files: u64,
+        staging_dir: &Path,
     ) -> Result<NamedTempFile, LfsError> {
         const MEDIA_TYPE: &str = "application/vnd.git-lfs+json";
-        // SECURITY: bound the HTTP client with explicit timeouts and a
-        // redirect cap. The previous `Client::builder().build()` used
-        // reqwest defaults (no overall timeout, no per-request budget,
-        // up to 10 redirects with no per-host filter). Closes
-        // 07-llm-model F-07 (Medium).
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(60 * 30)) // 30-min absolute cap (LFS blobs can be GB)
-            .connect_timeout(std::time::Duration::from_secs(30))
-            .redirect(reqwest::redirect::Policy::limited(5))
-            .build()?;
+        // SECURITY: bound both HTTP calls with explicit timeouts, a redirect cap
+        // and — for the blob — a hard byte cap. Closes 07-llm-model F-07
+        // (Medium). See DEC-19: the bound is a STALL timeout plus a size cap,
+        // not the former 30-minute absolute cap, which could not tell a slow
+        // download from a malicious one and so failed healthy multi-GB pulls.
+        let metadata_client = Self::metadata_client(LFS_METADATA_TIMEOUT)?;
+        let client = Self::blob_client(LFS_STALL_TIMEOUT, LFS_ABSOLUTE_BACKSTOP)?;
 
         if meta_data.hash != Some(super::metadata::Hash::SHA256) {
             return Err(LfsError::InvalidFormat("Only SHA256 hash is supported"));
@@ -254,7 +388,9 @@ impl LfsService {
 
         let request_url = repo_remote_url.to_owned() + "/info/lfs/objects/batch";
         let request_url = Self::url_with_auth(&request_url, access_token)?;
-        let response = client
+        // The METADATA client — tightly bounded. Not `client`, which tolerates a
+        // multi-hour blob transfer.
+        let response = metadata_client
             .post(request_url.clone())
             .header("Accept", MEDIA_TYPE)
             .header("Content-Type", MEDIA_TYPE)
@@ -332,23 +468,8 @@ impl LfsService {
             return Err(LfsError::InvalidResponse(message));
         }
 
-        debug!("creating temp file in current dir");
-
-        const TEMP_SUFFIX: &str = ".lfstmp";
-        const TEMP_FOLDER: &str = "./";
-        let tmp_path = PathBuf::from(TEMP_FOLDER).join(format!("{}{TEMP_SUFFIX}", &meta_data.oid));
-
-        if randomizer_bytes.is_none() && tmp_path.exists() {
-            debug!("temp file exists. Deleting");
-            fs::remove_file(&tmp_path).await?;
-        }
-
-        let temp_file = tempfile::Builder::new()
-            .prefix(&meta_data.oid)
-            .suffix(TEMP_SUFFIX)
-            .rand_bytes(randomizer_bytes.unwrap_or_default())
-            .tempfile_in(TEMP_FOLDER)
-            .map_err(|e| LfsError::TempFile(e.to_string()))?;
+        let temp_file =
+            Self::create_staging_file(staging_dir, &meta_data.oid, randomizer_bytes).await?;
 
         debug!("created tempfile: {:?}", &temp_file);
 
@@ -358,8 +479,24 @@ impl LfsService {
         // Don't overwrite total_size parameter - it contains the sum of all files
         // meta_data.size is only the size of the current file
 
+        // SECURITY (F-07): the object's size is known from the batch API, so a
+        // server that keeps sending past it is malfunctioning or hostile. Abort
+        // rather than writing unbounded bytes to disk — this, not the clock, is
+        // what bounds disk consumption now that the absolute timeout is hours.
+        let max_bytes = Self::max_object_bytes(meta_data.size);
+
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result?;
+            if Self::exceeds_declared_size(downloaded_bytes, chunk.len() as u64, max_bytes) {
+                error!(
+                    "LFS object {} sent more than its declared size ({} bytes); aborting",
+                    &meta_data.oid, meta_data.size
+                );
+                return Err(LfsError::InvalidResponse(format!(
+                    "LFS server sent more data than the object's declared size ({} bytes)",
+                    meta_data.size
+                )));
+            }
             temp_file.as_file().write_all(&chunk).map_err(|e| {
                 error!("Could not write tempfile");
                 LfsError::Io(e)
@@ -423,6 +560,9 @@ impl LfsService {
                 )
             })?;
 
+            // Stage IN the destination directory (created just above). The
+            // object is multi-GB, so this also keeps the bytes on the volume
+            // they will live on rather than copying them across afterwards.
             let temp_file = Self::download_file(
                 metadata,
                 &repo_url,
@@ -431,6 +571,7 @@ impl LfsService {
                 progress_tx,
                 base_progress,
                 total_size_all_files,
+                &cache_dir,
             )
             .await?;
 
@@ -440,12 +581,21 @@ impl LfsService {
                     &cache_file
                 );
             } else {
-                // `rename` fails with EXDEV (Cross-device link) when the
-                // temp file's filesystem differs from the cache dir's —
-                // common when the project lives on a secondary volume but
-                // tempfile picks the OS default /tmp on the boot volume.
-                // Fall back to copy+remove in that case; faster path of
-                // a single rename when both live on the same fs.
+                // `rename` fails with EXDEV (Cross-device link) when the temp
+                // file's filesystem differs from the cache dir's.
+                //
+                // KEPT DELIBERATELY, though it is now unreachable (DEC-17).
+                // The temp file is staged IN `cache_dir`, so both paths are in
+                // one directory and therefore one filesystem — EXDEV cannot
+                // occur today. It is retained because `staging_dir` is a
+                // PARAMETER: a future caller that stages elsewhere makes this
+                // reachable again, and the cost of keeping it is one comparison
+                // on an error path that a multi-GB download would otherwise
+                // fail outright.
+                //
+                // (The comment this replaces claimed "tempfile picks the OS
+                // default /tmp". That was never true — it picked `./`, the
+                // process CWD, which is the bug this round fixes.)
                 if let Err(e) =
                     fs::rename(&temp_file.path(), cache_file.as_path()).await
                 {
@@ -466,7 +616,10 @@ impl LfsService {
                                 );
                                 LfsError::Io(e)
                             })?;
-                        // Best-effort cleanup; the OS reaps /tmp anyway.
+                        // Best-effort cleanup. NOT "the OS reaps /tmp anyway":
+                        // the temp file lives in the LFS cache dir, which
+                        // nothing reaps. `NamedTempFile`'s own Drop is the
+                        // backstop if this fails.
                         let _ = fs::remove_file(temp_file.path()).await;
                     } else {
                         error!(
@@ -733,5 +886,257 @@ mod tests {
         let result = LfsService::remote_url_ssh_to_https(repo_remote_https.to_string())
             .expect("Could not parse url");
         assert_eq!(result, repo_remote_https);
+    }
+
+    // --- FB-3: an LFS object must never be staged in the process CWD ---------
+    //
+    // The owner's macOS `.app` inherited `CWD = /` (the read-only Signed System
+    // Volume) and every download died instantly with
+    // `Read-only file system (os error 30) at path "/./<oid>.lfstmp"`.
+    //
+    // Both tests below assert the SAME invariant from opposite sides, and both
+    // go red if the staging base reverts to `"./"`.
+
+    const TEST_OID: &str = "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8";
+
+    #[tokio::test]
+    async fn staging_file_is_created_in_the_directory_it_was_given() {
+        let staging = tempfile::tempdir().expect("staging dir");
+        let file = LfsService::create_staging_file(staging.path(), TEST_OID, None)
+            .await
+            .expect("staging file should be creatable in a writable dir");
+
+        // The PARENT is the assertion. "the download succeeded" would pass on
+        // the broken code whenever the CWD happened to be writable, which is
+        // exactly why this bug survived to a release.
+        let parent = file.path().parent().expect("temp file has a parent");
+        assert_eq!(
+            parent.canonicalize().expect("parent canonicalize"),
+            staging.path().canonicalize().expect("staging canonicalize"),
+            "LFS objects must stage in the directory passed by the caller, not the process CWD",
+        );
+    }
+
+    #[tokio::test]
+    async fn staging_leaves_no_temp_file_in_the_process_cwd() {
+        // The other side of the invariant, and the closest safe reproduction of
+        // the owner's failure. A literal read-only-CWD test would have to mutate
+        // the PROCESS-GLOBAL current directory inside a test binary that runs
+        // ~1500 tests in parallel threads, which risks breaking unrelated tests
+        // that resolve relative paths — a worse outcome than the coverage gained
+        // (and a child-process harness to isolate it would be far more apparatus
+        // than this ten-line fix warrants). Asserting the CWD stays CLEAN pins
+        // the same property without touching it: under the old `"./"` base the
+        // temp file landed here.
+        let cwd = std::env::current_dir().expect("cwd");
+        let before = count_lfstmp(&cwd);
+
+        let staging = tempfile::tempdir().expect("staging dir");
+        let file = LfsService::create_staging_file(staging.path(), TEST_OID, None)
+            .await
+            .expect("staging file");
+
+        assert!(file.path().exists(), "the staged file should exist");
+        assert_eq!(
+            count_lfstmp(&cwd),
+            before,
+            "staging must not create a .lfstmp in the process CWD — on a read-only CWD that is an outright EROFS failure",
+        );
+    }
+
+    // --- FB-4 / DEC-19: the transfer bound is a STALL, not a wall clock -------
+    //
+    // The old `.timeout(30min)` was an ABSOLUTE cap on the whole request body,
+    // so at 5.68 GB it imposed a 3.16 MB/s (~25.2 Mbps) floor that no amount of
+    // retrying could get past — and with no resume, it discarded ~28 minutes of
+    // healthy progress. These tests pin the replacement's BEHAVIOUR on a real
+    // socket, with millisecond budgets so nothing sleeps for real.
+
+    use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
+
+    /// Serve one HTTP response whose body is dribbled `chunks` × 1 byte at
+    /// `gap`, then (if `then_go_silent`) hold the connection open forever
+    /// without sending the rest.
+    async fn dribble_server(
+        chunks: usize,
+        gap: Duration,
+        then_go_silent: bool,
+    ) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let declared = if then_go_silent { chunks + 1000 } else { chunks };
+        let handle = tokio::spawn(async move {
+            if let Ok((mut sock, _)) = listener.accept().await {
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {declared}\r\n\r\n"
+                );
+                if sock.write_all(head.as_bytes()).await.is_err() {
+                    return;
+                }
+                for _ in 0..chunks {
+                    if sock.write_all(b"x").await.is_err() {
+                        return;
+                    }
+                    let _ = sock.flush().await;
+                    tokio::time::sleep(gap).await;
+                }
+                if then_go_silent {
+                    // Never send the remaining bytes, never close.
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                }
+            }
+        });
+        (format!("http://{addr}/"), handle)
+    }
+
+    #[tokio::test]
+    async fn a_slow_but_progressing_transfer_survives_an_absolute_cap_that_would_kill_it() {
+        // 20 bytes at 20ms = ~400ms of steady progress.
+        let (url, server) = dribble_server(20, Duration::from_millis(20), false).await;
+
+        // NEW shape: generous absolute backstop + a stall bound that keeps
+        // resetting because bytes keep arriving.
+        let ok = Self_blob(Duration::from_millis(150), Duration::from_secs(30))
+            .get(&url)
+            .send()
+            .await
+            .expect("request")
+            .bytes()
+            .await;
+        assert!(ok.is_ok(), "a steadily-progressing transfer must not be killed: {ok:?}");
+        assert_eq!(ok.unwrap().len(), 20);
+
+        // POSITIVE CONTROL — the OLD shape (absolute cap only, no read timeout)
+        // kills that same healthy stream. This is the 30-minute cap in
+        // miniature, and it is why the owner could not download 5.68 GB.
+        let (url2, server2) = dribble_server(20, Duration::from_millis(20), false).await;
+        let old = Client::builder()
+            .timeout(Duration::from_millis(200))
+            .build()
+            .expect("client")
+            .get(&url2)
+            .send()
+            .await
+            .expect("request")
+            .bytes()
+            .await;
+        assert!(
+            old.is_err(),
+            "control failed: the old absolute-cap-only config should kill a healthy slow stream",
+        );
+
+        server.abort();
+        server2.abort();
+    }
+
+    #[tokio::test]
+    async fn a_transfer_that_goes_silent_is_cut_off_promptly() {
+        // SECURITY (F-07): a peer that stops sending must not pin the task.
+        // Sends 3 bytes, promises 1003, then goes quiet forever.
+        let (url, server) = dribble_server(3, Duration::from_millis(5), true).await;
+
+        let started = std::time::Instant::now();
+        let result = Self_blob(Duration::from_millis(150), Duration::from_secs(30))
+            .get(&url)
+            .send()
+            .await
+            .expect("request")
+            .bytes()
+            .await;
+
+        assert!(result.is_err(), "a silent peer must be cut off, not awaited");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the stall bound must fire promptly, not wait for the absolute backstop",
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn the_metadata_call_keeps_its_own_tight_budget() {
+        // The regression a naive fix causes: pointing the small batch-API POST
+        // at the blob client would let a hostile endpoint hold a task for the
+        // blob's multi-hour budget.
+        let (url, server) = dribble_server(1, Duration::from_millis(5), true).await;
+
+        let started = std::time::Instant::now();
+        let meta = LfsService::metadata_client(Duration::from_millis(200))
+            .expect("metadata client")
+            .post(&url)
+            .send()
+            .await;
+        let elapsed_or_body = match meta {
+            Ok(resp) => resp.bytes().await.err().map(|_| ()),
+            Err(_) => Some(()),
+        };
+        assert!(
+            elapsed_or_body.is_some(),
+            "the metadata call must be bounded by its own absolute budget",
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the metadata budget must not have been widened to the blob's",
+        );
+        server.abort();
+    }
+
+    #[test]
+    fn lfs_absolute_backstop_is_not_the_binding_constraint() {
+        // The arithmetic that made the old cap a hard ceiling. The default
+        // model's blob is 5.68 GB; the backstop must not imply a throughput
+        // floor a home connection cannot meet.
+        const BLOB_BYTES: f64 = 5.68 * 1000.0 * 1000.0 * 1000.0;
+        let floor_mbps =
+            (BLOB_BYTES * 8.0) / LFS_ABSOLUTE_BACKSTOP.as_secs() as f64 / 1_000_000.0;
+        assert!(
+            floor_mbps < 5.0,
+            "backstop implies a {floor_mbps:.1} Mbps floor — the old 30-min cap implied 25.2 Mbps, which is what broke the owner's download",
+        );
+        // And the stall bound must stay tight enough to be a real security bound.
+        assert!(
+            LFS_STALL_TIMEOUT <= Duration::from_secs(120),
+            "a stall bound this loose stops being a bound",
+        );
+    }
+
+    #[test]
+    fn an_object_may_not_exceed_its_declared_size() {
+        // SECURITY (F-07): with the absolute timeout now measured in hours, THIS
+        // is what bounds how much disk a hostile LFS server can consume. The
+        // streaming loop previously had no byte cap at all.
+        let max = LfsService::max_object_bytes(1_000);
+        assert!(!LfsService::exceeds_declared_size(0, 1_000, max), "the exact size must be accepted");
+        assert!(
+            !LfsService::exceeds_declared_size(1_000, LFS_SIZE_SLACK_BYTES, max),
+            "a padded final chunk within the slack must not fail a real download",
+        );
+        assert!(
+            LfsService::exceeds_declared_size(1_000, LFS_SIZE_SLACK_BYTES + 1, max),
+            "a server sending past the declared size + slack must be cut off",
+        );
+        // A declared size near u64::MAX must not wrap the ceiling to a tiny
+        // number — that would reject every honest chunk instead of accepting it.
+        assert_eq!(LfsService::max_object_bytes(u64::MAX), u64::MAX);
+        assert!(!LfsService::exceeds_declared_size(u64::MAX - 1, 1, u64::MAX));
+    }
+
+    /// Local alias so the tests read as "the blob client".
+    #[allow(non_snake_case)]
+    fn Self_blob(stall: Duration, absolute: Duration) -> Client {
+        LfsService::blob_client(stall, absolute).expect("blob client")
+    }
+
+    fn count_lfstmp(dir: &Path) -> usize {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|e| {
+                        e.file_name().to_string_lossy().ends_with(".lfstmp")
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
     }
 }

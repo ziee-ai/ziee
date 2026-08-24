@@ -112,6 +112,30 @@ impl DesktopModule for BackendModule {
         // The ngrok host is added at tunnel-start time; static
         // origins are below.
         let port = config.server.port;
+
+        // Capture the listen address for read-time local-provider URL injection.
+        //
+        // `llm_provider::repositories::admin::inject_runtime_fields` rewrites
+        // every local provider's `base_url` (stored NULL) from this global via
+        // `derive_proxy_url`. `server/src/main.rs` sets it for the standalone
+        // binary; NOTHING set it in the desktop app, so it stayed at the module
+        // default `127.0.0.1:3000` while the desktop binds a port in 8080-8180.
+        // Every local provider therefore resolved to
+        // `http://127.0.0.1:3000/api/local-llm/v1`, where nothing listens — and
+        // because that is a connection to a dead port rather than a rejected
+        // request, chat simply hung with no error. No local model has ever been
+        // usable in the desktop app.
+        //
+        // Read from `config`, NOT from the `find_available_port` result above:
+        // the config may equally have been LOADED from a file in the other
+        // branch, and only this object is guaranteed to be what the server
+        // actually binds. `api_prefix` likewise comes from the config rather
+        // than a hardcoded "/api", because module routes nest under whatever it
+        // says.
+        //
+        // Placed here, before the server is started or any provider is read.
+        capture_server_addr(&config.server);
+
         config.server.cors = Some(ziee::CorsConfig {
             allow_origins: vec![
                 "tauri://localhost".to_string(),
@@ -490,6 +514,27 @@ async fn proxy_to_vite(req: Request<Body>) -> Result<Response<Body>, axum::http:
 /// Everything else (postgres embedded version, install/data dirs via
 /// resolve_paths, pool sizes, logging) uses the same defaults the
 /// development config uses.
+/// Publish the address the embedded server will bind, for read-time
+/// local-provider URL injection.
+///
+/// Extracted from the boot path so it is testable: the boot path itself needs a
+/// Tauri `AppHandle`, and a capture that could only be exercised by launching
+/// the app is a capture that ships unverified — which is how the missing call
+/// survived unnoticed.
+fn capture_server_addr(server: &ziee::HttpServerConfig) {
+    ziee::set_server_addr(
+        server.host.clone(),
+        server.port,
+        server.api_prefix.clone(),
+    );
+    tracing::info!(
+        "Captured server addr for local-provider URL injection: {}:{}{}",
+        server.host,
+        server.port,
+        server.api_prefix,
+    );
+}
+
 fn create_desktop_config(
     data_dir: &std::path::Path,
     port: u16,
@@ -662,6 +707,54 @@ pub fn ensure_persistent_storage_key(data_dir: &std::path::Path) -> Result<Strin
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    /// REGRESSION GUARD — the test that would have caught "no local model has
+    /// ever been usable in the desktop app".
+    ///
+    /// `set_server_addr` had exactly ONE caller in the repo — the standalone
+    /// server binary — so on desktop the address stayed at the module default
+    /// `127.0.0.1:3000` while the app binds a port in 8080-8180. Local providers
+    /// store `base_url = NULL` and have it injected at READ time from that
+    /// global, so every local provider resolved to a port nothing listens on and
+    /// chat hung silently.
+    ///
+    /// Asserting the DERIVED URL rather than just the tuple is deliberate: the
+    /// tuple being right is not the property that matters — the URL a provider
+    /// read hands to the chat path is.
+    #[test]
+    fn desktop_boot_captures_the_bound_server_addr_not_the_default() {
+        let tmp = TempDir::new().unwrap();
+        // A port from the desktop's real 8080-8180 range, and NOT 3000.
+        let config = create_desktop_config(tmp.path(), 8137)
+            .expect("desktop config should build");
+
+        capture_server_addr(&config.server);
+
+        let (host, port, api_prefix) = ziee::get_server_addr();
+        assert_eq!(
+            port, 8137,
+            "the captured port must be the one the desktop actually bound, not the 3000 default",
+        );
+        assert_eq!(host, config.server.host);
+        assert_eq!(
+            api_prefix, config.server.api_prefix,
+            "api_prefix must come from the config, not a hardcoded /api",
+        );
+
+        // The end of the chain: what a local-provider read would hand to chat.
+        let derived = format!(
+            "http://{host}:{port}{}/local-llm/v1",
+            api_prefix.trim_end_matches('/')
+        );
+        assert!(
+            derived.contains(":8137/"),
+            "a local provider must resolve to the bound port; got {derived}",
+        );
+        assert!(
+            !derived.contains(":3000/"),
+            "resolving to :3000 is the bug: nothing listens there on desktop",
+        );
+    }
 
     #[test]
     fn ensure_persistent_storage_key_creates_64_hex_chars_on_first_call() {

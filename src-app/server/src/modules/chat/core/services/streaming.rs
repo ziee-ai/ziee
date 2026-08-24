@@ -531,6 +531,19 @@ impl StreamingService {
                         stream
                     }
                     Err(e) => {
+                        // LOG IT. This branch is where a chat against an
+                        // UNREACHABLE provider lands, and it said nothing at all
+                        // server-side: the log simply stopped after "Adding N
+                        // tools to ChatRequest" while the UI spun, so diagnosing
+                        // it took source reading rather than a log line. The
+                        // error was already forwarded to the stream channel
+                        // below — it was never RECORDED. A silent failure is
+                        // worse than a visible one.
+                        tracing::error!(
+                            "chat: provider stream failed to start for conversation {}: {}",
+                            conversation_id,
+                            e
+                        );
                         let _ = tx.send(Err(AppError::internal_error(format!(
                             "AI provider error: {}",
                             e
