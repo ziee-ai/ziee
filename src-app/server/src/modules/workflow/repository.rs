@@ -607,7 +607,12 @@ pub async fn insert_background_run_guarded(
     let mut tx = pool.begin().await.map_err(AppError::database_error)?;
 
     // Serialize concurrent spawns for THIS conversation across the whole
-    // check-then-insert (txn-scoped advisory lock; auto-released at txn end).
+    // check-then-insert (txn-scoped advisory lock; auto-released at txn end,
+    // including on error via `?`). A blocked spawn holds its pooled connection
+    // while waiting on the lock, but spawn is not a hot path and the cap this
+    // guard enforces bounds the fan-in, so the connection-hold is bounded; a
+    // hashtextextended key collision would at worst serialize two unrelated
+    // conversations (correctness preserved, only extra waiting).
     sqlx::query!(
         "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
         conversation_id.to_string()
@@ -619,6 +624,16 @@ pub async fn insert_background_run_guarded(
     // DEDUP (INV-1/INV-3): an identical same-spec run that is currently active
     // (any age) OR recently terminal-successful/failed within the window. Excludes
     // 'cancelled' (an explicit stop) and old terminal runs (a legitimate re-run).
+    //
+    // The terminal clause keys off `updated_at`, NOT `created_at`: the loop this
+    // guard breaks is completion→[Background task complete] re-inject→re-spawn, and
+    // that re-inject happens at COMPLETION time. `mark_status` stamps
+    // `updated_at = NOW()` on the terminal transition, so `updated_at` is the run's
+    // completion time; `created_at` is its SPAWN time. A run that ran longer than
+    // the window would, keyed on `created_at`, already be outside the window the
+    // instant it completes — so its immediate identical re-spawn would escape
+    // dedup, and (because such runs are sequential) never trip the cap either: the
+    // exact loop for any task > the window. Keying on `updated_at` closes that.
     let existing = sqlx::query_scalar!(
         r#"
         SELECT id FROM workflow_runs
@@ -629,7 +644,7 @@ pub async fn insert_background_run_guarded(
           AND (
                 status IN ('pending','running','waiting','resumable')
              OR (status IN ('completed','failed')
-                 AND created_at > now() - (interval '1 second' * $5))
+                 AND updated_at > now() - (interval '1 second' * $5))
           )
         ORDER BY created_at DESC
         LIMIT 1

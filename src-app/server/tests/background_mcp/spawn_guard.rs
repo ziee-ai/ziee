@@ -81,29 +81,35 @@ async fn run_count(server: &TestServer, conv: Uuid) -> i64 {
 }
 
 /// Seed a background `workflow_runs` row directly (bypassing the spawn boundary),
-/// so the guard has live state to read. `created_at` defaults to `now()`; for the
-/// "old, outside the dedup window" control, pass `age_secs`.
+/// so the guard has live state to read. Controls BOTH timestamps independently:
+/// `created_age_secs` sets `created_at` (SPAWN time) and `updated_age_secs` sets
+/// `updated_at` (the run's last-transition time — for a terminal run, its
+/// COMPLETION time, which is what the dedup window keys off). Keeping them separate
+/// is what lets a test model a LONG run: created long ago, completed just now.
 async fn seed_bg_run(
     server: &TestServer,
     conv: Uuid,
     user_id: &str,
     inputs: Json,
     status: &str,
-    age_secs: i64,
+    created_age_secs: i64,
+    updated_age_secs: i64,
 ) -> Uuid {
     let pool = sqlx::PgPool::connect(&server.database_url).await.unwrap();
     let owner = Uuid::parse_str(user_id).unwrap();
     let id = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO workflow_runs \
-            (job_kind, conversation_id, user_id, run_kind, invocation_source, inputs_json, status, created_at) \
-         VALUES ('subagent', $1, $2, 'normal', 'conversation', $3, $4, now() - (interval '1 second' * $5)) \
+            (job_kind, conversation_id, user_id, run_kind, invocation_source, inputs_json, status, created_at, updated_at) \
+         VALUES ('subagent', $1, $2, 'normal', 'conversation', $3, $4, \
+                 now() - (interval '1 second' * $5), now() - (interval '1 second' * $6)) \
          RETURNING id",
     )
     .bind(conv)
     .bind(owner)
     .bind(inputs)
     .bind(status)
-    .bind(age_secs)
+    .bind(created_age_secs)
+    .bind(updated_age_secs)
     .fetch_one(&pool)
     .await
     .expect("seed background run");
@@ -164,6 +170,7 @@ async fn identical_inflight_spec_is_deduped_to_one_run() {
         json!({ "task": "Generate the Mandelbrot set" }),
         "running",
         0,
+        0,
     )
     .await;
     assert_eq!(run_count(&server, conv).await, 1, "one seeded run");
@@ -218,6 +225,7 @@ async fn over_cap_spawn_is_refused_and_creates_no_run() {
                 &user.user_id,
                 json!({ "task": format!("distinct task {i}") }),
                 "running",
+                0,
                 0,
             )
             .await,
@@ -294,14 +302,20 @@ async fn completed_reinjection_does_not_respawn() {
     let (user, conv, _stub) = user_with_conversation(&server, "bg_guard_reinject").await;
 
     // A sub-agent that just COMPLETED (its completion is what re-injected the
-    // conversation) with this exact spec.
+    // conversation) with this exact spec. Model a LONG run: created well before the
+    // dedup window (1h ago) but COMPLETED just now (updated_at=now). The dedup must
+    // key off COMPLETION time (updated_at), NOT spawn time (created_at) — else a
+    // task that ran longer than the window has its re-inject escape dedup, which is
+    // the exact loop this feature must break. (With the created_at bug this seed
+    // would NOT dedup and the assertion below would fail.)
     let done = seed_bg_run(
         &server,
         conv,
         &user.user_id,
         json!({ "task": "Generate the Mandelbrot set" }),
         "completed",
-        0,
+        3600, // created 1h ago (a long run) — OUTSIDE the window by created_at
+        0,    // but completed just now — INSIDE the window by updated_at
     )
     .await;
     assert_eq!(
@@ -331,9 +345,11 @@ async fn completed_reinjection_does_not_respawn() {
         "the completion re-injection created NO new run (INV-3)"
     );
 
-    // POSITIVE CONTROL: an OLD completed run (well outside the 300s dedup window)
-    // must NOT block a deliberate later re-run — in a fresh conversation to isolate
-    // the count.
+    // POSITIVE CONTROL: an OLD completed run (COMPLETED well outside the 300s dedup
+    // window — updated_at 1h ago) must NOT block a deliberate later re-run — in a
+    // fresh conversation to isolate the count. Both timestamps old = genuinely
+    // finished long ago (distinct from the long-run case above where updated_at is
+    // recent), so keying on updated_at still allows this deliberate re-run.
     let (user2, conv2, _stub2) = user_with_conversation(&server, "bg_guard_oldrun").await;
     seed_bg_run(
         &server,
@@ -341,7 +357,8 @@ async fn completed_reinjection_does_not_respawn() {
         &user2.user_id,
         json!({ "task": "Generate the Mandelbrot set" }),
         "completed",
-        3600, // an hour ago — past the window
+        3600, // created an hour ago
+        3600, // AND completed an hour ago — past the window by updated_at
     )
     .await;
     let ok = spawn(
