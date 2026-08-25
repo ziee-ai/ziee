@@ -198,6 +198,15 @@ impl AgentCore {
     /// Called at the join barrier for every SPAWNED child — including a child-RUN
     /// error / panic, which emits no `Stopped` event, so the child's own sink can
     /// never observe its own failure.
+    ///
+    /// INVARIANT (why the `FailFast` early-returns do NOT settle survivors): a
+    /// `FailFast` fan-out is factory-free by contract — the only `FailFast` caller
+    /// is the public [`AgentCore::fan_out`], whose callers never inject a
+    /// `child_sink_factory` (they don't set `isolate_children`), so no child row is
+    /// ever created on that path and there is nothing to settle. The chat host,
+    /// which DOES inject a factory, always uses [`FailureMode::ErrorSummary`], which
+    /// drains + settles every spawned child. If a future host ever pairs a factory
+    /// with `FailFast`, add survivor-settling to `stop_survivors`.
     async fn settle_child_run(&self, child_run_id: Uuid, ok: bool) {
         if let Some(factory) = &self.child_sink_factory {
             factory.settle_child(child_run_id, ok).await;

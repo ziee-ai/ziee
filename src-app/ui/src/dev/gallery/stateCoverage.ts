@@ -55,6 +55,22 @@ export const STATE_COVERAGE = {
   // running/failed, attachments, elicitation) that have no single named key.
   'modules/chat/pages/ConversationPage:delayed': { via: 'page-state-mode' },
   'modules/chat/pages/ConversationPage:error': { via: 'page-state-mode' },
+  // Sub-agent transcript drill-in: the child transcript is fetched lazily on a
+  // per-child expand CLICK (an async REST call), so its transient loading/error
+  // branches are not deterministically snapshottable in the seeded gallery — same
+  // shape as FileEditBody:error / the voice-card fetch states below. Both branches
+  // are verified deterministically by the SubAgentActivity.store unit test (TEST-14:
+  // loading→loaded and 404→status-only-error) and the drill-in e2e (TEST-13).
+  'modules/chat/components/agent-activity/SubAgentActivityCard:delayed': {
+    skip: true,
+    reason:
+      'transient child-transcript LOADING state on the lazy drill-in expand (a per-click async fetch, not deterministically snapshottable); the loading→loaded transition is covered by the SubAgentActivity.store unit test (TEST-14) and the drill-in e2e (TEST-13)',
+  },
+  'modules/chat/components/agent-activity/SubAgentActivityCard:error': {
+    skip: true,
+    reason:
+      'transient child-transcript ERROR/404 state (a pruned child) on the lazy drill-in expand; the 404→status-only transition is covered deterministically by the SubAgentActivity.store unit test (TEST-14) and the drill-in e2e (TEST-13)',
+  },
   // Voice surfaces: gallery cells deferred (DRIFT-1). The required states are
   // derived from the components' real render branches. The HAPPY-PATH + loading
   // (delayed) + populated/empty flows ARE exercised by committed 14-voice specs

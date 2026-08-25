@@ -8,7 +8,7 @@
 ## Summary
 
 - **353** surfaces carry at least one renderable-state signal.
-- **2177** signals total: 1710 branch, 141 empty, 126 error, 93 loading, 102 overlay, 5 panel.
+- **2184** signals total: 1714 branch, 142 empty, 127 error, 94 loading, 102 overlay, 5 panel.
 - **5** right-panel renderers registered (each a right-panel-open state).
 - **35** slot registrations (sidebar / settings / chat mount points).
 
@@ -16,9 +16,9 @@
 
 | state | surfaces |
 |---|---|
-| `delayed` | 83 |
+| `delayed` | 84 |
 | `empty` | 114 |
-| `error` | 97 |
+| `error` | 98 |
 | `open` | 85 |
 | `panel-open` | 5 |
 
@@ -314,18 +314,19 @@ Required states: `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!text` | 113 |
-| branch | `run.has_result` | 151 |
-| error | `run.status === 'failed' && run.error_message` | 163 |
-| branch | `terminal` | 175 |
-| branch | `!terminal` | 188 |
-| branch | `!terminal` | 199 |
-| overlay | `<Confirm open>` | 210 |
-| branch | `!terminal && steerOpen` | 236 |
-| branch | `pendingNotes.length > 0` | 241 |
-| branch | `terminal && resultOpen` | 281 |
-| branch | `detailError` | 287 |
-| branch | `detail` | 294 |
+| branch | `!text` | 115 |
+| branch | `run.has_result` | 153 |
+| error | `run.status === 'failed' && run.error_message` | 165 |
+| branch | `terminal` | 177 |
+| branch | `!terminal` | 190 |
+| branch | `!terminal` | 201 |
+| overlay | `<Confirm open>` | 212 |
+| branch | `!terminal && steerOpen` | 238 |
+| branch | `pendingNotes.length > 0` | 243 |
+| branch | `terminal && resultOpen` | 283 |
+| branch | `detailError` | 289 |
+| branch | `detail` | 296 |
+| branch | `transcript.length > 0` | 308 |
 
 ### `modules/background/components/BackgroundRunResult`
 
@@ -640,11 +641,17 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 ### `modules/chat/components/agent-activity/SubAgentActivityCard`
 
-Required states: `empty`
+Required states: `delayed`, `empty`, `error`
 
 | kind | condition | line |
 |---|---|---|
-| empty | `children.length === 0` | 39 |
+| empty | `children.length === 0` | 61 |
+| branch | `open` | 128 |
+| branch | `!detail` | 167 |
+| branch | `canFetch` | 168 |
+| loading | `detail.status === 'loading'` | 182 |
+| error | `detail.status === 'error'` | 190 |
+| empty | `detail.activity.length === 0` | 198 |
 
 ### `modules/chat/components/agent-activity/TaskListChecklist`
 
@@ -868,7 +875,7 @@ Required states: _(branch-only — proven via dynamic coverage)_
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!msg \|\| msg.role !== 'assistant'` | 32 |
+| branch | `!msg \|\| msg.role !== 'assistant'` | 34 |
 
 ### `modules/chat/extensions/sub-agent-activity/extension`
 
