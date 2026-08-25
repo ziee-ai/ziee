@@ -2459,6 +2459,9 @@ mod tests {
         };
         let user_id = make_user(&pool).await;
 
+        // TEST-6 (background-spawn-loop-guard): the unguarded (`guard: None`)
+        // detached/scheduler spawn path is unchanged — it drives to terminal and
+        // returns `BackgroundSpawnResult::Spawned`.
         let run_id = match crate::modules::workflow::runner::spawn_background_run(
             &pool,
             bg_req(user_id, JobKind::SubAgent),
