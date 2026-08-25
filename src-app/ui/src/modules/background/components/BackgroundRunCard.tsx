@@ -143,10 +143,13 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
   const tokens = run.total_tokens > 0 ? run.total_tokens : null
 
   return (
-    <Card className="shrink-0" data-testid={`background-run-card-${run.id}`}>
+    <Card size="sm" className="shrink-0" data-testid={`background-run-card-${run.id}`}>
       <Flex className="flex-col gap-2">
-        {/* Kind glyph + title + status pill (one wrapping row; the pill drops
-            UNDER the title at 390px via `flex-wrap` + `ms-auto`). */}
+        {/* Kind glyph + title + status pill on one row. The title is `flex-1
+            min-w-0 line-clamp-2`, so it takes the row's width and clamps to two
+            lines (never a hard single-line truncate) while the status pill hugs
+            the end; at 390px the title wraps to two lines and the pill stays
+            top-right beside it — no clip. */}
         <Flex className="flex-wrap items-start gap-x-2 gap-y-1">
           <KindIcon jobKind={run.job_kind} />
           <Text strong className="min-w-0 flex-1 line-clamp-2 break-words text-sm">
@@ -155,7 +158,6 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
           <Tag
             variant="outline"
             tone={STATUS_TONE[run.status] ?? 'default'}
-            className="ms-auto"
             data-testid={`background-run-status-${run.id}`}
           >
             {run.status}
@@ -172,7 +174,7 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
           </Text>
           {tokens !== null && (
             <Text type="secondary" className="text-xs">
-              · {tokens.toLocaleString()} tokens
+              {tokens.toLocaleString()} tokens
             </Text>
           )}
           {run.has_result && (
