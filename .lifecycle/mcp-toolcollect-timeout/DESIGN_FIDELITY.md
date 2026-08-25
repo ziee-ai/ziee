@@ -13,6 +13,8 @@ One fidelity verdict per invariant (design = CODING_GUIDELINES.md §2/§5/§6 + 
   into a hang; fixes the empty-assistant-message bug).
 - **INV-3** — fidelity: UPHELD — ITEM-3/ITEM-4 return the existing
   `upstream_error(Unreachable)` on elapse, which flows through `create_session_tracked`
-  → `record_connection_failure`, opening the breaker on a repeatedly-hanging server
-  (§5). The outer timeout alone would NOT do this (it warns+continues without recording),
-  which is exactly why both layers are required.
+  → `record_connection_failure` when the INNER timeout wins (e.g. the test-connection
+  path). On the tool-collection path the OUTER timeout wins (audit F1), so ITEM-6/ITEM-7
+  explicitly call `record_connection_failure` in the auto and always-mode
+  connect-timeout/build-error arms — the breaker therefore opens regardless of which
+  timer fires, on both usage modes.

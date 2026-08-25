@@ -754,10 +754,14 @@ mod tests {
             elapsed < std::time::Duration::from_secs(5),
             "handshake timeout did not fire within a bounded window: {elapsed:?}"
         );
+        // The timeout returns the stable `Unreachable` upstream error (the
+        // "timed out" detail is internal/log-only, not in the Display string —
+        // same contract as a serve() failure), so assert it is that error for
+        // this server rather than the internal detail text.
         let err = res.unwrap_err();
         assert!(
-            err.to_string().contains("timed out"),
-            "timeout error should note it timed out; got: {err}"
+            err.to_string().contains("stalling-server"),
+            "timeout must return the server's unreachable error; got: {err}"
         );
 
         // Passthrough: a handshake that completes returns its value unchanged.

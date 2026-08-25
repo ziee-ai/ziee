@@ -122,6 +122,23 @@ fn should_attempt_connect(state: Option<&BreakerState>, now: Instant) -> bool {
     }
 }
 
+/// Create or increment the breaker entry for `server_id`: stamp the failure
+/// time, bump the consecutive count, and cache the error string. Split out of
+/// `record_connection_failure` (which just takes the write lock and calls this)
+/// so the exact recording logic is unit-testable without a `Config`-bearing
+/// manager. A freshly-recorded failure (`consecutive == 1`) opens the breaker
+/// for its base cooldown.
+fn record_failure_into(map: &mut HashMap<Uuid, BreakerState>, server_id: Uuid, err: &AppError) {
+    let entry = map.entry(server_id).or_insert_with(|| BreakerState {
+        last_failure: Instant::now(),
+        consecutive: 0,
+        last_error: String::new(),
+    });
+    entry.last_failure = Instant::now();
+    entry.consecutive = entry.consecutive.saturating_add(1);
+    entry.last_error = err.to_string();
+}
+
 pub struct McpSessionManager {
     sessions: Arc<RwLock<HashMap<Uuid, Arc<RwLock<McpSession>>>>>,
     /// Per-server connection circuit-breaker state. Keyed by `server_id`; an
@@ -166,16 +183,16 @@ impl McpSessionManager {
     /// Record a failed connect for `server_id`: create or increment its breaker
     /// entry, stamp the failure time, and cache the error for replay while the
     /// breaker is open.
-    async fn record_connection_failure(&self, server_id: Uuid, err: &AppError) {
+    ///
+    /// `pub(crate)` so the chat tool-collection loop can record a CONNECT
+    /// TIMEOUT it caught at its own outer `tokio::time::timeout` (which cancels
+    /// the connect future before `create_session_tracked` could record it) and
+    /// so the always-mode path — which builds sessions via `McpSession::new`
+    /// directly, bypassing `create_session_tracked` — can still open the breaker
+    /// on a hanging server (INV-3).
+    pub(crate) async fn record_connection_failure(&self, server_id: Uuid, err: &AppError) {
         let mut failures = self.failures.write().await;
-        let entry = failures.entry(server_id).or_insert_with(|| BreakerState {
-            last_failure: Instant::now(),
-            consecutive: 0,
-            last_error: String::new(),
-        });
-        entry.last_failure = Instant::now();
-        entry.consecutive = entry.consecutive.saturating_add(1);
-        entry.last_error = err.to_string();
+        record_failure_into(&mut failures, server_id, err);
     }
 
     /// Clear any breaker entry for `server_id` after a successful connect, so a
@@ -652,44 +669,55 @@ mod breaker_tests {
         assert_eq!(breaker_backoff(0), BREAKER_BASE_COOLDOWN);
     }
 
-    // TEST-3 [acceptance] [invariant: INV-3] [covers: ITEM-3, ITEM-4]
+    // TEST-3 [acceptance] [invariant: INV-3] [covers: ITEM-3, ITEM-4, ITEM-7]
     // A connect/handshake TIMEOUT is recorded as a connection failure so the
-    // circuit-breaker OPENS on a hanging server. The stdio handshake timeout
-    // returns the SAME `Unreachable` upstream error as a serve() failure; that
-    // error flows through `create_session_tracked` → `record_connection_failure`,
-    // which builds exactly the first-failure `BreakerState` reconstructed here
-    // (consecutive: 1, last_failure: now, last_error: err.to_string()). We assert
-    // that state suppresses an immediate re-dial — the breaker is open.
-    //
-    // (`record_connection_failure` is exercised on a real `McpSessionManager`,
-    // but that requires a full YAML-deserialized `Config` — an integration-tier
-    // dependency — so this unit test mirrors its construction and asserts the
-    // gate it feeds. Before this fix a hang never returned, so the breaker never
-    // received a failure and every turn re-dialed the same wedged server.)
+    // circuit-breaker OPENS on a hanging server. This drives the REAL recording
+    // function `record_failure_into` (the body of `record_connection_failure`,
+    // which the outer tool-collection timeout arm and the always-mode failure
+    // arm now call) with the exact `Unreachable` error the stdio timeout emits,
+    // then asserts the gate it feeds: a just-recorded timeout opens the breaker,
+    // and a SECOND timeout deepens the streak. This is not a hand-built state —
+    // it exercises the production increment/stamp logic, so it FAILS if that
+    // logic is broken (unlike a mirror-constructed BreakerState).
     #[test]
     fn timeout_origin_failure_opens_the_breaker() {
-        // The exact error shape the stdio handshake timeout returns.
+        use std::collections::HashMap;
+
         let timeout_err = crate::modules::mcp::client::errors::upstream_error(
             "stalling-server",
             crate::modules::mcp::client::errors::UpstreamFailure::Unreachable,
             "server_id=<id> stdio handshake (native) timed out after 30s",
         );
+        let id = Uuid::new_v4();
+        let mut map: HashMap<Uuid, BreakerState> = HashMap::new();
 
-        // As built by `record_connection_failure` for the FIRST failure.
-        let recorded = BreakerState {
-            last_failure: Instant::now(),
-            consecutive: 1,
-            last_error: timeout_err.to_string(),
-        };
+        // A different server must not be suppressed by an unrelated failure.
+        assert!(should_attempt_connect(map.get(&id), Instant::now()));
 
+        // Record the timeout via the REAL production recording logic.
+        record_failure_into(&mut map, id, &timeout_err);
+
+        let entry = map.get(&id).expect("failure must be recorded");
+        assert_eq!(entry.consecutive, 1, "first timeout → consecutive == 1");
+        // The recorded error is the stable `Unreachable` upstream message (the
+        // "timed out" detail is internal/log-only), so assert the failure was
+        // recorded for this server — the breaker opening is the real invariant.
         assert!(
-            !should_attempt_connect(Some(&recorded), Instant::now()),
-            "a just-recorded connect timeout must open the breaker (no immediate re-dial)"
+            entry.last_error.contains("stalling-server"),
+            "the cached breaker error must be recorded for the server; got: {}",
+            entry.last_error
         );
         assert!(
-            recorded.last_error.contains("timed out"),
-            "the cached breaker error must carry the timeout signature; got: {}",
-            recorded.last_error
+            !should_attempt_connect(map.get(&id), Instant::now()),
+            "a just-recorded connect timeout must open the breaker (no immediate re-dial)"
+        );
+
+        // A second timeout deepens the streak (longer backoff).
+        record_failure_into(&mut map, id, &timeout_err);
+        assert_eq!(map.get(&id).unwrap().consecutive, 2);
+        assert!(
+            !should_attempt_connect(map.get(&id), Instant::now()),
+            "the breaker stays open across a deepening failure streak"
         );
     }
 }

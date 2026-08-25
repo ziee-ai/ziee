@@ -45,5 +45,12 @@ Not required — no handler signature / response type / schema change. `openapi.
 - **ITEM-5** — verdict: PASS — a single `pub(super)` helper in stdio.rs avoids a magic
   number and gives INV-1 a directly-unit-testable seam (mirrors `filter_env` being
   `pub(super)` for the same reason). `tokio` (with `time`) is already a dependency.
+- **ITEM-6** — verdict: PASS — added in Phase 7 to resolve audit F1. `record_connection_failure`
+  is made `pub(crate)` and its body split into free fn `record_failure_into`;
+  the auto outer connect-timeout arm calls it. Mirrors the existing breaker API in
+  manager.rs; no signature change to any public caller.
+- **ITEM-7** — verdict: PASS — added in Phase 7 to resolve audit F4/F7. Always-mode
+  failure/timeout arms call `record_connection_failure`; the call_tool-timeout arm
+  `break`s the tool loop. No new types; reuses the same breaker API as ITEM-6.
 
 No BLOCKED verdicts.

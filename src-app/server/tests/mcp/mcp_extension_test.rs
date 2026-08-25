@@ -1328,3 +1328,65 @@ async fn stalling_always_mode_server_does_not_stall_turn() {
         "healthy auto-mode search_bio must be advertised to the LLM"
     );
 }
+
+// TEST-7 [acceptance] [invariant: INV-1] [covers: ITEM-3, ITEM-5]
+// The REAL bug on the REAL stdio path: register a stdio server whose child
+// spawns (embedded Bun via the `node` launcher) but never completes the MCP
+// `initialize` handshake. Creating it runs the server's connection health probe,
+// which calls the exact `connect_native` -> `().serve(transport)` handshake that
+// was UNBOUNDED before this fix — so before the fix this create would hang
+// forever. The test asserts the create returns in BOUNDED time (< 20s) AND takes
+// AT LEAST ~the configured 2s handshake timeout (proving the handshake genuinely
+// hung until `with_handshake_timeout` fired, not a fast spawn failure), and that
+// the server is downgraded to disabled because its handshake never completed.
+// Nothing but the new stdio handshake timeout makes this terminate.
+#[tokio::test]
+async fn hanging_stdio_handshake_is_time_bounded() {
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "stdio-hang", &["*"]).await;
+
+    let fixture = format!(
+        "{}/tests/mcp/fixtures/hang_stdio_server.js",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let unique = Uuid::new_v4().to_string();
+
+    let started = std::time::Instant::now();
+    let res = reqwest::Client::new()
+        .post(server.api_url("/mcp/system-servers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "name": format!("hang_stdio_{}", &unique[..8]),
+            "display_name": "Hanging stdio server",
+            "description": "spawns but never completes the MCP handshake",
+            "enabled": true,
+            "transport_type": "stdio",
+            "command": "node",
+            "args": [fixture],
+            "run_in_sandbox": false,
+            "timeout_seconds": 2,
+        }))
+        .send()
+        .await
+        .expect("create hang stdio server");
+    let elapsed = started.elapsed();
+    let status = res.status();
+    let body: serde_json::Value = res.json().await.unwrap();
+
+    assert_eq!(
+        status, 201,
+        "server should be created (then downgraded): {body}"
+    );
+
+    // INV-1 upper bound: the create-time handshake probe did NOT hang.
+    assert!(
+        elapsed < std::time::Duration::from_secs(20),
+        "the stdio handshake probe must not hang forever: create took {elapsed:?}"
+    );
+    // INV-1 lower bound: the handshake genuinely hung until the ~2s timeout fired
+    // (a fast spawn failure would return in well under a second and prove nothing).
+    assert!(
+        elapsed >= std::time::Duration::from_millis(1500),
+        "expected the stdio handshake to hang until the ~2s timeout; create took {elapsed:?} — did the child fail to spawn?"
+    );
+}

@@ -56,13 +56,30 @@ the diagnosis recorded in this file's header.
   magic numbers; one definition). The budget source is `server.timeout_seconds`
   (DEC-1). ITEM-1/ITEM-2 use `server.timeout_seconds.max(1)` inline for the outer
   `tokio::time::timeout` (no serve future to wrap there).
+- **ITEM-6**: Breaker-recording at the OUTER connect-timeout arm (auto path) —
+  because the outer `tokio::time::timeout` cancels `get_or_create_with_context`
+  before `create_session_tracked → record_connection_failure` can run, the outer
+  connect-timeout arm must itself call `session_manager.record_connection_failure`
+  so INV-3 holds on the reachable tool-collection path (audit F1). Make
+  `record_connection_failure` `pub(crate)` and split its body into a testable free
+  fn `record_failure_into`. (DEC-5.)
+- **ITEM-7**: Breaker-recording for ALWAYS-mode — always-mode builds sessions via
+  `McpSession::new` directly, bypassing `create_session_tracked`, so its
+  connect-timeout AND build-error arms must call `record_connection_failure` too,
+  or a hanging always-mode server's breaker never opens (audit F4). Also, on a
+  per-tool `call_tool` timeout in always-mode, `break` out of the tool loop rather
+  than reusing a session whose transport has a cancelled in-flight request (audit
+  F7). (DEC-6.)
 
 ## Files to touch
 
-- `src-app/server/src/modules/mcp/chat_extension/mcp.rs` (ITEM-1, ITEM-2)
+- `src-app/server/src/modules/mcp/chat_extension/mcp.rs` (ITEM-1, ITEM-2, ITEM-6, ITEM-7)
 - `src-app/server/src/modules/mcp/client/stdio.rs` (ITEM-3, ITEM-4, ITEM-5)
-- `src-app/server/tests/mcp/mcp_extension_test.rs` (TEST for INV-2)
-- `src-app/server/tests/mcp/stdio_transport_test.rs` (TEST for INV-1, if integration-shaped)
+- `src-app/server/src/modules/mcp/client/manager.rs` (ITEM-6: `pub(crate)` +
+  `record_failure_into`; INV-3 breaker unit test)
+- `src-app/server/tests/mcp/mcp_extension_test.rs` (TEST for INV-2 + the real
+  stdio-hang INV-1/INV-2 acceptance)
+- `src-app/server/tests/mcp/fixtures/hang_stdio_server.js` (hang fixture for TEST-7)
 - in-source `#[cfg(test)]` in `stdio.rs` (INV-1 helper unit test) and
   `manager.rs` (INV-3 breaker unit test)
 

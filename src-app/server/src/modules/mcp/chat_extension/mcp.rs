@@ -2317,6 +2317,18 @@ impl ChatExtension for McpChatExtension {
                     {
                         Ok(r) => r,
                         Err(_elapsed) => {
+                            // Always-mode builds sessions via `McpSession::new`
+                            // directly, bypassing `create_session_tracked`, so it
+                            // must record the connect timeout itself or a hanging
+                            // always-mode server's breaker never opens (INV-3).
+                            let timeout_err = AppError::internal_error(format!(
+                                "Always-mode MCP server '{}' connect timed out after {}s",
+                                server.name,
+                                server.timeout_seconds.max(1)
+                            ));
+                            self.session_manager
+                                .record_connection_failure(server.id, &timeout_err)
+                                .await;
                             tracing::warn!(
                                 "Always-mode: timed out connecting to server {} after {}s — skipping",
                                 server.name,
@@ -2328,6 +2340,13 @@ impl ChatExtension for McpChatExtension {
 
                     match session_result {
                         Err(e) => {
+                            // Same rationale as the timeout arm above: always-mode
+                            // bypasses the manager's breaker bookkeeping, so a build
+                            // failure (incl. an inner stdio handshake timeout that
+                            // won the race) is recorded here too (INV-3).
+                            self.session_manager
+                                .record_connection_failure(server.id, &e)
+                                .await;
                             tracing::warn!(
                                 "Always-mode: failed to connect to server {}: {}",
                                 server.name,
@@ -2438,12 +2457,20 @@ impl ChatExtension for McpChatExtension {
                                         );
                                     }
                                     Err(_elapsed) => {
+                                        // The in-flight JSON-RPC request was
+                                        // cancelled mid-flight; a late response could
+                                        // arrive on this shared session's transport
+                                        // and be mismatched against a later request.
+                                        // Stop reusing this session — drop it and move
+                                        // on rather than running more tools over a
+                                        // possibly-desynced transport.
                                         tracing::warn!(
-                                            "Always-mode: tool {} on {} timed out after {}s — skipping",
+                                            "Always-mode: tool {} on {} timed out after {}s — abandoning this server's pre-run",
                                             tool.name,
                                             server.name,
                                             server.timeout_seconds.max(1)
                                         );
+                                        break;
                                     }
                                 }
                             }
@@ -2517,6 +2544,21 @@ impl ChatExtension for McpChatExtension {
                     continue;
                 }
                 Err(_elapsed) => {
+                    // The outer timeout cancels `get_or_create_with_context`
+                    // before `create_session_tracked` -> `record_connection_failure`
+                    // can run, so record the connection failure HERE — otherwise a
+                    // hanging server's breaker never opens and every turn re-dials it
+                    // (INV-3). The inner stdio handshake timeout uses the same budget
+                    // but the outer timer starts earlier, so on the collection path
+                    // the outer one wins; this call is what makes INV-3 hold here.
+                    let timeout_err = AppError::internal_error(format!(
+                        "MCP server '{}' connect timed out after {}s during tool collection",
+                        server.name,
+                        server.timeout_seconds.max(1)
+                    ));
+                    self.session_manager
+                        .record_connection_failure(*server_id, &timeout_err)
+                        .await;
                     tracing::warn!(
                         "Timed out connecting to MCP server '{}' after {}s — skipping",
                         server.name,
