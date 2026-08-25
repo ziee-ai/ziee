@@ -1066,3 +1066,265 @@ async fn labeled_external_tool_still_dispatches() {
         "labeled external tool must still dispatch (mock should receive a tools/call)"
     );
 }
+
+// ============================================================================
+// Tool-collection timeout (feature: mcp-toolcollect-timeout)
+//
+// A hanging / misconfigured MCP server must NOT stall the send: the collection
+// loop skips it (warn + continue) and the LLM is still called with the
+// reachable servers' tools. Regression for the observed bug where one wedged
+// stdio server produced an EMPTY assistant message (0 content blocks) because
+// the LLM was never called. Here the wedge is modeled with an HTTP mock whose
+// `tools/list` stalls far past the per-server `timeout_seconds` (INV-2).
+// ============================================================================
+
+/// Register an external HTTP MCP server with explicit `timeout_seconds` +
+/// `usage_mode`. Mirrors `register_external_mcp`, exposing the two knobs the
+/// timeout tests need.
+async fn register_external_mcp_tuned(
+    server: &TestServer,
+    token: &str,
+    name: &str,
+    url: &str,
+    timeout_seconds: i64,
+    usage_mode: &str,
+) -> Uuid {
+    let res = reqwest::Client::new()
+        .post(server.api_url("/mcp/servers"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({
+            "name": name,
+            "display_name": name,
+            "description": name,
+            "transport_type": "http",
+            "url": url,
+            "enabled": true,
+            "timeout_seconds": timeout_seconds,
+            "usage_mode": usage_mode,
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    assert_eq!(status, 201, "register tuned mcp: {status}: {body}");
+    let row: serde_json::Value = serde_json::from_str(&body).unwrap();
+    Uuid::parse_str(row["id"].as_str().unwrap()).unwrap()
+}
+
+/// A mock that connects (auto initialize) but whose `tools/list` STALLS 30s —
+/// far past the 1s per-server timeout the tests register — modeling a server
+/// that spawns/connects yet never returns its tool list.
+async fn start_stalling_tools_list_mock() -> MockMcpServer {
+    let mock = MockMcpServer::start().await;
+    for _ in 0..20 {
+        mock.on_method(
+            "tools/list",
+            MockResponse::DelayedJsonOk {
+                delay_ms: 30_000,
+                value: json!({ "tools": [] }),
+            },
+        );
+    }
+    mock
+}
+
+// TEST-2 [acceptance] [invariant: INV-2] [covers: ITEM-1, ITEM-2]
+// One HEALTHY auto-mode MCP server + one STALLING auto-mode MCP server, both
+// attached. The turn must complete in bounded time and the captured LLM request
+// must carry the healthy server's tool — the stalling server is skipped, not
+// fatal. Would FAIL if the collection loop propagated the stalling server's
+// error/hang instead of warn+skip (the LLM request would never be captured).
+#[tokio::test]
+async fn stalling_server_is_skipped_and_llm_still_gets_healthy_tools() {
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "toolcollect", &["*"]).await;
+
+    let healthy = start_bio_mock().await;
+    let healthy_id =
+        register_external_mcp(&server, &user.token, "healthysrv", "Healthy", &healthy.base_url())
+            .await;
+
+    let stalling = start_stalling_tools_list_mock().await;
+    let stalling_id = register_external_mcp_tuned(
+        &server,
+        &user.token,
+        "stallingsrv",
+        &stalling.base_url(),
+        1, // 1s timeout — the 30s tools/list stall trips it fast
+        "auto",
+    )
+    .await;
+
+    let stub = StubChat::start(StubPlan::text("hi")).await;
+    let model_id_s =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url(), true, None).await;
+    let model_id = Uuid::parse_str(&model_id_s).unwrap();
+
+    let conversation = create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = parse_uuid(&conversation["id"]);
+    let branch_id = parse_uuid(&conversation["active_branch_id"]);
+
+    let started = std::time::Instant::now();
+    send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        json!({
+            "content": "hello",
+            "model_id": model_id,
+            "branch_id": branch_id,
+            "enable_mcp": true,
+            "mcp_config": { "mcp_servers": [
+                { "server_id": healthy_id, "tools": [] },
+                { "server_id": stalling_id, "tools": [] },
+            ] },
+        }),
+        &[],
+    )
+    .await;
+    let elapsed = started.elapsed();
+
+    // Bounded: the turn must not hang on the 30s stall. Generous slack for a
+    // shared CI box, but far under the stall.
+    assert!(
+        elapsed < std::time::Duration::from_secs(20),
+        "the send must not stall on the wedged server: took {elapsed:?}"
+    );
+
+    // The LLM WAS called, and with the healthy server's tool present.
+    let body = stub
+        .requests()
+        .into_iter()
+        .find(|b| tool_descs(b).iter().any(|(n, _)| n.ends_with("__search_bio")))
+        .expect("LLM must be called with the healthy server's tool despite the stalling server");
+    let descs = tool_descs(&body);
+    assert!(
+        descs.iter().any(|(n, _)| n.ends_with("__search_bio")),
+        "healthy server's search_bio tool must reach the LLM request"
+    );
+    // The stalling server advertised nothing (its tools/list never returned), so
+    // no tool from it can appear — the id-prefixed name is absent.
+    let stalling_prefix = format!("{stalling_id}__");
+    assert!(
+        !descs.iter().any(|(n, _)| n.starts_with(&stalling_prefix)),
+        "no tool from the stalling server should reach the LLM"
+    );
+}
+
+// TEST-5 [covers: ITEM-1] Healthy-path no-op: a single healthy auto-mode HTTP
+// MCP server's tool is still collected into the LLM request unchanged — the
+// timeout wrap does not alter the success path.
+#[tokio::test]
+async fn healthy_auto_server_tools_reach_llm_unchanged() {
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "healthy-noop", &["*"]).await;
+
+    let mock = start_bio_mock().await;
+    let mcp_id =
+        register_external_mcp(&server, &user.token, "healthyonly", "Healthy only", &mock.base_url())
+            .await;
+
+    let stub = StubChat::start(StubPlan::text("hi")).await;
+    let model_id_s =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url(), true, None).await;
+    let model_id = Uuid::parse_str(&model_id_s).unwrap();
+
+    let conversation = create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = parse_uuid(&conversation["id"]);
+    let branch_id = parse_uuid(&conversation["active_branch_id"]);
+
+    send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        json!({
+            "content": "hello",
+            "model_id": model_id,
+            "branch_id": branch_id,
+            "enable_mcp": true,
+            "mcp_config": { "mcp_servers": [ { "server_id": mcp_id, "tools": [] } ] },
+        }),
+        &[],
+    )
+    .await;
+
+    let body = stub
+        .requests()
+        .into_iter()
+        .find(|b| tool_descs(b).iter().any(|(n, _)| n.ends_with("__search_bio")))
+        .expect("healthy server's tool must reach the LLM on the success path");
+    assert!(
+        tool_descs(&body).iter().any(|(n, _)| n.ends_with("__search_bio")),
+        "search_bio must be advertised to the LLM"
+    );
+}
+
+// TEST-6 [covers: ITEM-2] Always-mode path: an ALWAYS-mode server that stalls on
+// tools/list must not stall the turn — the downstream healthy AUTO-mode server's
+// tool still reaches the LLM. Exercises the always-mode timeout arms (ITEM-2),
+// distinct from TEST-2's auto-mode subject.
+#[tokio::test]
+async fn stalling_always_mode_server_does_not_stall_turn() {
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "always-stall", &["*"]).await;
+
+    let stalling = start_stalling_tools_list_mock().await;
+    let stalling_id = register_external_mcp_tuned(
+        &server,
+        &user.token,
+        "alwaysstall",
+        &stalling.base_url(),
+        1,
+        "always",
+    )
+    .await;
+
+    let healthy = start_bio_mock().await;
+    let healthy_id =
+        register_external_mcp(&server, &user.token, "autohealthy", "Healthy", &healthy.base_url())
+            .await;
+
+    let stub = StubChat::start(StubPlan::text("hi")).await;
+    let model_id_s =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url(), true, None).await;
+    let model_id = Uuid::parse_str(&model_id_s).unwrap();
+
+    let conversation = create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = parse_uuid(&conversation["id"]);
+    let branch_id = parse_uuid(&conversation["active_branch_id"]);
+
+    let started = std::time::Instant::now();
+    send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        json!({
+            "content": "hello",
+            "model_id": model_id,
+            "branch_id": branch_id,
+            "enable_mcp": true,
+            "mcp_config": { "mcp_servers": [
+                { "server_id": stalling_id, "tools": [] },
+                { "server_id": healthy_id, "tools": [] },
+            ] },
+        }),
+        &[],
+    )
+    .await;
+    let elapsed = started.elapsed();
+
+    assert!(
+        elapsed < std::time::Duration::from_secs(20),
+        "always-mode stall must not wedge the turn: took {elapsed:?}"
+    );
+    let body = stub
+        .requests()
+        .into_iter()
+        .find(|b| tool_descs(b).iter().any(|(n, _)| n.ends_with("__search_bio")))
+        .expect("healthy auto-mode tool must reach the LLM despite the stalling always-mode server");
+    assert!(
+        tool_descs(&body).iter().any(|(n, _)| n.ends_with("__search_bio")),
+        "healthy auto-mode search_bio must be advertised to the LLM"
+    );
+}

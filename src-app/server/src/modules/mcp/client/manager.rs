@@ -651,4 +651,45 @@ mod breaker_tests {
         // underflow for 0 — it saturates to the base cooldown.
         assert_eq!(breaker_backoff(0), BREAKER_BASE_COOLDOWN);
     }
+
+    // TEST-3 [acceptance] [invariant: INV-3] [covers: ITEM-3, ITEM-4]
+    // A connect/handshake TIMEOUT is recorded as a connection failure so the
+    // circuit-breaker OPENS on a hanging server. The stdio handshake timeout
+    // returns the SAME `Unreachable` upstream error as a serve() failure; that
+    // error flows through `create_session_tracked` → `record_connection_failure`,
+    // which builds exactly the first-failure `BreakerState` reconstructed here
+    // (consecutive: 1, last_failure: now, last_error: err.to_string()). We assert
+    // that state suppresses an immediate re-dial — the breaker is open.
+    //
+    // (`record_connection_failure` is exercised on a real `McpSessionManager`,
+    // but that requires a full YAML-deserialized `Config` — an integration-tier
+    // dependency — so this unit test mirrors its construction and asserts the
+    // gate it feeds. Before this fix a hang never returned, so the breaker never
+    // received a failure and every turn re-dialed the same wedged server.)
+    #[test]
+    fn timeout_origin_failure_opens_the_breaker() {
+        // The exact error shape the stdio handshake timeout returns.
+        let timeout_err = crate::modules::mcp::client::errors::upstream_error(
+            "stalling-server",
+            crate::modules::mcp::client::errors::UpstreamFailure::Unreachable,
+            "server_id=<id> stdio handshake (native) timed out after 30s",
+        );
+
+        // As built by `record_connection_failure` for the FIRST failure.
+        let recorded = BreakerState {
+            last_failure: Instant::now(),
+            consecutive: 1,
+            last_error: timeout_err.to_string(),
+        };
+
+        assert!(
+            !should_attempt_connect(Some(&recorded), Instant::now()),
+            "a just-recorded connect timeout must open the breaker (no immediate re-dial)"
+        );
+        assert!(
+            recorded.last_error.contains("timed out"),
+            "the cached breaker error must carry the timeout signature; got: {}",
+            recorded.last_error
+        );
+    }
 }
