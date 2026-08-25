@@ -400,7 +400,10 @@ impl MemoryRepository {
         .map_err(AppError::database_error)?;
 
         if let Some(ref r) = row {
-            let snapshot = prior.as_ref().map(|p| p.content.as_str()).unwrap_or(r.content.as_str());
+            let snapshot = prior
+                .as_ref()
+                .map(|p| p.content.as_str())
+                .unwrap_or(r.content.as_str());
             sqlx::query!(
                 r#"
                 INSERT INTO memory_audit_log
@@ -464,13 +467,10 @@ impl MemoryRepository {
     /// Hard-delete all own memories (the "forget everything" button).
     pub async fn hard_delete_all_for_user(&self, user_id: Uuid) -> Result<u64, AppError> {
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
-        let n = sqlx::query!(
-            "DELETE FROM user_memories WHERE user_id = $1",
-            user_id
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(AppError::database_error)?;
+        let n = sqlx::query!("DELETE FROM user_memories WHERE user_id = $1", user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
 
         let count = n.rows_affected();
         if count > 0 {

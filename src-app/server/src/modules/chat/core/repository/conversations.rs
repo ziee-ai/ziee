@@ -77,14 +77,12 @@ pub async fn create_conversation(
     title: Option<String>,
 ) -> Result<Conversation, AppError> {
     if let Some(mid) = model_id {
-        let model_exists = sqlx::query_scalar!(
-            "SELECT EXISTS(SELECT 1 FROM llm_models WHERE id = $1)",
-            mid
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(AppError::database_error)?
-        .unwrap_or(false);
+        let model_exists =
+            sqlx::query_scalar!("SELECT EXISTS(SELECT 1 FROM llm_models WHERE id = $1)", mid)
+                .fetch_one(pool)
+                .await
+                .map_err(AppError::database_error)?
+                .unwrap_or(false);
 
         if !model_exists {
             return Err(AppError::not_found("Model"));
@@ -416,6 +414,9 @@ mod tests {
         assert_eq!(normalize_sort(Some("")), "recent");
         assert_eq!(normalize_sort(Some("bogus")), "recent");
         // Defense-in-depth: an injection attempt is not a known key → default.
-        assert_eq!(normalize_sort(Some("updated_at; DROP TABLE conversations")), "recent");
+        assert_eq!(
+            normalize_sort(Some("updated_at; DROP TABLE conversations")),
+            "recent"
+        );
     }
 }

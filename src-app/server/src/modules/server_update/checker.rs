@@ -76,7 +76,11 @@ pub async fn check_once() {
                     let available = is_newer(&latest, env!("CARGO_PKG_VERSION"));
                     c.latest_version = Some(latest);
                     c.update_available = available;
-                    c.release_url = if html_url.is_empty() { None } else { Some(html_url) };
+                    c.release_url = if html_url.is_empty() {
+                        None
+                    } else {
+                        Some(html_url)
+                    };
                     c.notes = body;
                     tracing::info!(update_available = available, "server update check complete");
                 }
@@ -149,7 +153,10 @@ fn semver_of(tag: &str) -> Option<String> {
 /// `latest > current` per semver. Lenient: an unparseable version is never
 /// treated as newer (so garbage from GitHub can't spam a false banner).
 fn is_newer(latest: &str, current: &str) -> bool {
-    match (semver::Version::parse(latest), semver::Version::parse(current)) {
+    match (
+        semver::Version::parse(latest),
+        semver::Version::parse(current),
+    ) {
         (Ok(l), Ok(c)) => l > c,
         _ => false,
     }
@@ -225,8 +232,8 @@ mod tests {
         // No tag_name → None (the GitHub "no release" / {} body).
         assert!(extract_release(&serde_json::json!({})).is_none());
         // Missing html_url → empty string; empty body → None.
-        let (tag, url, body) = extract_release(&serde_json::json!({ "tag_name": "v1.0.0" }))
-            .expect("has tag");
+        let (tag, url, body) =
+            extract_release(&serde_json::json!({ "tag_name": "v1.0.0" })).expect("has tag");
         assert_eq!(tag, "v1.0.0");
         assert_eq!(url, "");
         assert!(body.is_none());

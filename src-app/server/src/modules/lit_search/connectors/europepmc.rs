@@ -83,8 +83,15 @@ fn map_results(resp: EpmcResponse) -> Vec<LitRecord> {
         .filter(|r| !r.title.trim().is_empty())
         .map(|r| {
             let is_preprint = r.source.eq_ignore_ascii_case("PPR");
-            let authors = r.author_string.as_deref().map(split_authors).unwrap_or_default();
-            let year = r.pub_year.as_deref().and_then(|y| y.trim().parse::<i32>().ok());
+            let authors = r
+                .author_string
+                .as_deref()
+                .map(split_authors)
+                .unwrap_or_default();
+            let year = r
+                .pub_year
+                .as_deref()
+                .and_then(|y| y.trim().parse::<i32>().ok());
             let url = r
                 .doi
                 .as_deref()
@@ -179,7 +186,10 @@ mod tests {
 
     #[test]
     fn year_filter_builds_expected_clause() {
-        assert_eq!(year_filter("crispr", Some(2020), Some(2022)), "(crispr) AND (PUB_YEAR:[2020 TO 2022])");
+        assert_eq!(
+            year_filter("crispr", Some(2020), Some(2022)),
+            "(crispr) AND (PUB_YEAR:[2020 TO 2022])"
+        );
         assert_eq!(year_filter("crispr", None, None), "crispr");
     }
 }

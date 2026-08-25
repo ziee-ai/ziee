@@ -34,8 +34,7 @@ pub fn validate_setup_request(req: &SetupAdminRequest) -> Result<(), (StatusCode
     // so the setup-admin flow enforces the same min/max length + NUL-byte
     // checks as registration. Closes 13-misc H-1 (bcrypt 72-byte silent
     // truncation hazard).
-    if let Err(msg) = crate::modules::auth::password::validate_password_strength(&req.password)
-    {
+    if let Err(msg) = crate::modules::auth::password::validate_password_strength(&req.password) {
         return Err((
             StatusCode::BAD_REQUEST,
             AppError::bad_request("WEAK_PASSWORD", msg),
@@ -112,10 +111,7 @@ pub fn is_valid_email(email: &str) -> bool {
         if label.is_empty() || label.len() > 63 {
             return false;
         }
-        if !label
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-')
-        {
+        if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return false;
         }
         if label.starts_with('-') || label.ends_with('-') {
@@ -145,11 +141,14 @@ mod tests {
     // restating a literal, so widening the column can't leave them stale.
     use crate::modules::auth::username::DISPLAY_NAME_MAX_CHARS;
 
-
     const GOOD_PW: &str = "Str0ng-Pass!42";
 
-
-    fn req(username: &str, email: &str, password: &str, display: Option<&str>) -> SetupAdminRequest {
+    fn req(
+        username: &str,
+        email: &str,
+        password: &str,
+        display: Option<&str>,
+    ) -> SetupAdminRequest {
         SetupAdminRequest {
             username: username.to_string(),
             email: email.to_string(),
@@ -158,7 +157,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn validate_setup_request_accepts_a_well_formed_request() {
         assert!(validate_setup_request(&req("admin", "a@b.com", GOOD_PW, Some("Admin"))).is_ok());
@@ -166,14 +164,12 @@ mod tests {
         assert!(validate_setup_request(&req("admin", "a@b.com", GOOD_PW, None)).is_ok());
     }
 
-
     #[test]
     fn validate_setup_request_rejects_short_and_long_usernames() {
         assert!(validate_setup_request(&req("ab", "a@b.com", GOOD_PW, None)).is_err());
         let long = "a".repeat(101);
         assert!(validate_setup_request(&req(&long, "a@b.com", GOOD_PW, None)).is_err());
     }
-
 
     #[test]
     fn validate_setup_request_rejects_whitespace_and_control_chars_in_username() {
@@ -186,11 +182,11 @@ mod tests {
         );
     }
 
-
     #[test]
     fn validate_setup_request_rejects_control_chars_in_display_name() {
         assert!(
-            validate_setup_request(&req("admin", "a@b.com", GOOD_PW, Some("Ad\u{0007}min"))).is_err()
+            validate_setup_request(&req("admin", "a@b.com", GOOD_PW, Some("Ad\u{0007}min")))
+                .is_err()
         );
         // The bound is now the shared one — `users.display_name` is
         // varchar(255) counted in CHARACTERS, not this path's old hand-rolled
@@ -201,12 +197,10 @@ mod tests {
         assert!(validate_setup_request(&req("admin", "a@b.com", GOOD_PW, Some(&long_dn))).is_err());
     }
 
-
     #[test]
     fn validate_setup_request_rejects_weak_password() {
         assert!(validate_setup_request(&req("admin", "a@b.com", "short", None)).is_err());
     }
-
 
     #[test]
     fn is_valid_email_accepts_well_formed_addresses() {
@@ -215,17 +209,13 @@ mod tests {
         }
     }
 
-
     #[test]
     fn is_valid_email_rejects_malformed_addresses() {
         // The exact cases the strictened validator (13-misc F-05) closes.
-        for e in [
-            "", "a@.com", "a@b..com", "a@b.c.", "no-at-sign", "@b.com",
-        ] {
+        for e in ["", "a@.com", "a@b..com", "a@b.c.", "no-at-sign", "@b.com"] {
             assert!(!is_valid_email(e), "{e} should be invalid");
         }
     }
-
 
     #[test]
     fn is_strong_password_enforces_min_length() {
@@ -233,12 +223,13 @@ mod tests {
         assert!(is_strong_password("longenough"));
     }
 
-
     #[test]
     fn validate_setup_accepts_a_well_formed_request() {
-        assert!(validate_setup_request(&req("rootadmin", "root@example.com", GOOD_PW, Some("Root"))).is_ok());
+        assert!(
+            validate_setup_request(&req("rootadmin", "root@example.com", GOOD_PW, Some("Root")))
+                .is_ok()
+        );
     }
-
 
     #[test]
     fn validate_setup_rejects_bad_usernames() {
@@ -247,17 +238,25 @@ mod tests {
         assert!(validate_setup_request(&req(&"x".repeat(101), "a@b.co", GOOD_PW, None)).is_err());
         // Whitespace + control chars (incl. RTL override U+202E spoofing).
         assert!(validate_setup_request(&req("root admin", "a@b.co", GOOD_PW, None)).is_err());
-        assert!(validate_setup_request(&req("root\u{202E}admin", "a@b.co", GOOD_PW, None)).is_err());
+        assert!(
+            validate_setup_request(&req("root\u{202E}admin", "a@b.co", GOOD_PW, None)).is_err()
+        );
     }
-
 
     #[test]
     fn validate_setup_rejects_long_display_name_and_bad_email_and_weak_password() {
-        assert!(validate_setup_request(&req("rootadmin", "a@b.co", GOOD_PW, Some(&"d".repeat(DISPLAY_NAME_MAX_CHARS + 1)))).is_err());
+        assert!(
+            validate_setup_request(&req(
+                "rootadmin",
+                "a@b.co",
+                GOOD_PW,
+                Some(&"d".repeat(DISPLAY_NAME_MAX_CHARS + 1))
+            ))
+            .is_err()
+        );
         assert!(validate_setup_request(&req("rootadmin", "not-an-email", GOOD_PW, None)).is_err());
         assert!(validate_setup_request(&req("rootadmin", "a@b.co", "weak", None)).is_err());
     }
-
 
     #[test]
     fn is_valid_email_edge_cases() {
@@ -272,7 +271,6 @@ mod tests {
         assert!(!is_valid_email("a@-b.com")); // label starts with hyphen
     }
 
-
     #[test]
     fn email_validator_accepts_well_formed() {
         for ok in ["a@b.com", "user.name@sub.example.co", "x@y.io"] {
@@ -280,46 +278,66 @@ mod tests {
         }
     }
 
-
     #[test]
     fn email_validator_rejects_the_audited_malformed_cases() {
         // The exact F-05 failures the strictened validator closes.
         for bad in [
-            "a@.com",      // leading-dot domain
-            "a@b..com",    // consecutive dots
-            "a@b.c.",      // trailing dot
-            "a@b",         // no dot in domain
-            "@b.com",      // empty local
-            "a@",          // empty domain
-            "a@@b.com",    // two @
-            "a b@c.com",   // whitespace
-            "a@b.c",       // 1-char TLD
-            "a@b.c1",      // non-alpha TLD
-            "",            // empty
+            "a@.com",    // leading-dot domain
+            "a@b..com",  // consecutive dots
+            "a@b.c.",    // trailing dot
+            "a@b",       // no dot in domain
+            "@b.com",    // empty local
+            "a@",        // empty domain
+            "a@@b.com",  // two @
+            "a b@c.com", // whitespace
+            "a@b.c",     // 1-char TLD
+            "a@b.c1",    // non-alpha TLD
+            "",          // empty
         ] {
             assert!(!is_valid_email(bad), "{bad:?} should be rejected");
         }
     }
 
-
     #[test]
     fn setup_request_rejects_bad_username() {
         // Too short / too long.
         assert!(validate_setup_request(&req("ab", "a@b.com", "password123", None)).is_err());
-        assert!(validate_setup_request(&req(&"x".repeat(101), "a@b.com", "password123", None)).is_err());
+        assert!(
+            validate_setup_request(&req(&"x".repeat(101), "a@b.com", "password123", None)).is_err()
+        );
         // Whitespace + control chars (incl. RTL override U+202E spoofing).
         assert!(validate_setup_request(&req("ad min", "a@b.com", "password123", None)).is_err());
-        assert!(validate_setup_request(&req("admin\u{202e}", "a@b.com", "password123", None)).is_err());
+        assert!(
+            validate_setup_request(&req("admin\u{202e}", "a@b.com", "password123", None)).is_err()
+        );
     }
-
 
     #[test]
     fn setup_request_display_name_control_and_length_gates() {
         // Control char in display name.
-        assert!(validate_setup_request(&req("admin", "a@b.com", "password123", Some("ev\u{0007}il"))).is_err());
+        assert!(
+            validate_setup_request(&req(
+                "admin",
+                "a@b.com",
+                "password123",
+                Some("ev\u{0007}il")
+            ))
+            .is_err()
+        );
         // Over-length display name.
-        assert!(validate_setup_request(&req("admin", "a@b.com", "password123", Some(&"x".repeat(DISPLAY_NAME_MAX_CHARS + 1)))).is_err());
+        assert!(
+            validate_setup_request(&req(
+                "admin",
+                "a@b.com",
+                "password123",
+                Some(&"x".repeat(DISPLAY_NAME_MAX_CHARS + 1))
+            ))
+            .is_err()
+        );
         // A clean request passes all gates.
-        assert!(validate_setup_request(&req("admin", "a@b.com", "password123", Some("Admin User"))).is_ok());
+        assert!(
+            validate_setup_request(&req("admin", "a@b.com", "password123", Some("Admin User")))
+                .is_ok()
+        );
     }
 }

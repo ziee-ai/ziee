@@ -77,17 +77,15 @@ impl AppModule for NotificationModule {
         // crate produces (create / mark-read / delete / mark-all-read) maps onto
         // ziee's owner-scoped `SyncEntity::Notification` frame so all of the
         // owner's devices refetch. `set_sync_emitter` is first-registration-wins.
-        ziee_notification::set_sync_emitter(Arc::new(
-            |user_id, action, id, origin| {
-                sync_publish(
-                    SyncEntity::Notification,
-                    map_sync_action(action),
-                    id,
-                    Audience::owner(user_id),
-                    origin,
-                );
-            },
-        ));
+        ziee_notification::set_sync_emitter(Arc::new(|user_id, action, id, origin| {
+            sync_publish(
+                SyncEntity::Notification,
+                map_sync_action(action),
+                id,
+                Audience::owner(user_id),
+                origin,
+            );
+        }));
 
         // Periodic retention prune (reads scheduler_admin_settings each tick;
         // 0 = keep forever). Fire-and-forget, like the mcp tool-call prune.

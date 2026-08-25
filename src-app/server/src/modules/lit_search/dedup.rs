@@ -42,7 +42,11 @@ fn title_year_key(record: &LitRecord) -> String {
         }
     }
     let t = t.trim();
-    format!("{}|{}", t, record.year.map(|y| y.to_string()).unwrap_or_default())
+    format!(
+        "{}|{}",
+        t,
+        record.year.map(|y| y.to_string()).unwrap_or_default()
+    )
 }
 
 /// The grouping key for a record: its normalized DOI if present, else the
@@ -146,7 +150,13 @@ pub fn distinct_sources(record: &LitRecord) -> usize {
 mod tests {
     use super::*;
 
-    fn rec(doi: Option<&str>, title: &str, year: Option<i32>, source: &str, abs: Option<&str>) -> LitRecord {
+    fn rec(
+        doi: Option<&str>,
+        title: &str,
+        year: Option<i32>,
+        source: &str,
+        abs: Option<&str>,
+    ) -> LitRecord {
         LitRecord {
             doi: doi.map(String::from),
             pmid: None,
@@ -166,7 +176,10 @@ mod tests {
 
     #[test]
     fn doi_normalization_collapses_variants() {
-        assert_eq!(normalize_doi("https://doi.org/10.1/AbC").as_deref(), Some("10.1/abc"));
+        assert_eq!(
+            normalize_doi("https://doi.org/10.1/AbC").as_deref(),
+            Some("10.1/abc")
+        );
         assert_eq!(normalize_doi("doi:10.1/abc").as_deref(), Some("10.1/abc"));
         assert_eq!(normalize_doi("10.1/ABC").as_deref(), Some("10.1/abc"));
         assert_eq!(normalize_doi("not-a-doi"), None);
@@ -175,11 +188,26 @@ mod tests {
 
     #[test]
     fn merges_same_doi_keeps_longest_abstract_and_accumulates_sources() {
-        let a = rec(Some("10.1/x"), "Title", Some(2020), "europepmc", Some("short"));
-        let b = rec(Some("HTTPS://doi.org/10.1/X"), "Title", Some(2020), "crossref", Some("a much longer abstract"));
+        let a = rec(
+            Some("10.1/x"),
+            "Title",
+            Some(2020),
+            "europepmc",
+            Some("short"),
+        );
+        let b = rec(
+            Some("HTTPS://doi.org/10.1/X"),
+            "Title",
+            Some(2020),
+            "crossref",
+            Some("a much longer abstract"),
+        );
         let merged = merge_by_doi(vec![a, b]);
         assert_eq!(merged.len(), 1, "same DOI should merge");
-        assert_eq!(merged[0].abstract_text.as_deref(), Some("a much longer abstract"));
+        assert_eq!(
+            merged[0].abstract_text.as_deref(),
+            Some("a much longer abstract")
+        );
         assert_eq!(distinct_sources(&merged[0]), 2);
         assert_eq!(merged[0].doi.as_deref(), Some("10.1/x"));
     }
@@ -187,7 +215,13 @@ mod tests {
     #[test]
     fn doi_less_records_merge_by_title_year() {
         let a = rec(None, "CRISPR base editing!", Some(2021), "arxiv", None);
-        let b = rec(None, "crispr   base  editing", Some(2021), "europepmc", Some("abs"));
+        let b = rec(
+            None,
+            "crispr   base  editing",
+            Some(2021),
+            "europepmc",
+            Some("abs"),
+        );
         let merged = merge_by_doi(vec![a, b]);
         assert_eq!(merged.len(), 1, "same normalized (title,year) should merge");
         assert_eq!(distinct_sources(&merged[0]), 2);

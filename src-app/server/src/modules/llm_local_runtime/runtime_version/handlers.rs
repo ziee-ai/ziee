@@ -1,8 +1,12 @@
 //! API handlers for runtime version management
 
-use aide::axum::IntoApiResponse;
-use axum::{extract::{Extension, Path, Query}, http::StatusCode, Json};
 use crate::modules::llm_local_runtime::engine::EngineType;
+use aide::axum::IntoApiResponse;
+use axum::{
+    Json,
+    extract::{Extension, Path, Query},
+    http::StatusCode,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -15,14 +19,13 @@ use crate::{
     modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
 };
 
+use super::super::BinaryManager;
 use super::super::events::LlmLocalRuntimeEvent;
 use super::super::permissions::*;
-use super::models::*;
-use super::super::BinaryManager;
 use super::download_task::{
-    self, DOWNLOAD_TASKS, DownloadTask, SSEEngineDownloadConnectedData,
-    SSEEngineDownloadEvent,
+    self, DOWNLOAD_TASKS, DownloadTask, SSEEngineDownloadConnectedData, SSEEngineDownloadEvent,
 };
+use super::models::*;
 
 // =====================================================
 // Query Parameters
@@ -50,8 +53,12 @@ pub struct ListVersionsQuery {
     pub per_page: i64,
 }
 
-fn default_page() -> i64 { 1 }
-fn default_per_page() -> i64 { DEFAULT_PAGE_SIZE }
+fn default_page() -> i64 {
+    1
+}
+fn default_per_page() -> i64 {
+    DEFAULT_PAGE_SIZE
+}
 
 /// Query for the discovery endpoint. `engine` is optional: omitted, every
 /// engine's catalogue is returned, so a caller that knows nothing at all still
@@ -67,7 +74,8 @@ pub struct AvailableVersionsQuery {
 fn is_valid_backend(s: &str) -> bool {
     !s.is_empty()
         && s.chars().next().is_some_and(|c| c.is_ascii_lowercase())
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.')
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.')
         && !s.contains("..")
 }
 
@@ -101,8 +109,11 @@ pub async fn list_runtime_versions(
     let engine = crate::common::text_guard::guard_raw(params.engine.as_deref(), "engine")?;
 
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_with_id(e))?;
+    let binary_manager = BinaryManager::with_cache_dir(
+        pool.clone(),
+        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
+    )
+    .map_err(|e| AppError::internal_with_id(e))?;
 
     let versions = if let Some(engine) = engine {
         binary_manager
@@ -136,8 +147,11 @@ pub async fn get_runtime_version(
     Path(version_id): Path<Uuid>,
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_with_id(e))?;
+    let binary_manager = BinaryManager::with_cache_dir(
+        pool.clone(),
+        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
+    )
+    .map_err(|e| AppError::internal_with_id(e))?;
 
     // Verify binary exists (result is the path, but we only need to check existence)
     let _version = binary_manager
@@ -152,12 +166,16 @@ pub async fn get_runtime_version(
         })?;
 
     // Get the version record from database
-    let version_record = crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
-        .await
-        .map_err(|e| AppError::database_error(e))?
-        .ok_or_else(|| AppError::not_found("Runtime version"))?;
+    let version_record =
+        crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
+            .await
+            .map_err(|e| AppError::database_error(e))?
+            .ok_or_else(|| AppError::not_found("Runtime version"))?;
 
-    Ok((StatusCode::OK, Json(RuntimeVersionResponse::from(version_record))))
+    Ok((
+        StatusCode::OK,
+        Json(RuntimeVersionResponse::from(version_record)),
+    ))
 }
 
 /// Start (or join) a download task for a runtime version.
@@ -188,7 +206,7 @@ pub async fn download_runtime_version(
             return Err((
                 StatusCode::BAD_REQUEST,
                 AppError::bad_request("INVALID_ENGINE", "Engine must be 'llamacpp' or 'mistralrs'"),
-            ))
+            ));
         }
     };
 
@@ -200,7 +218,10 @@ pub async fn download_runtime_version(
     if !matches!(req.platform.as_str(), "linux" | "macos" | "windows") {
         return Err((
             StatusCode::BAD_REQUEST,
-            AppError::bad_request("INVALID_PLATFORM", "Platform must be linux, macos, or windows"),
+            AppError::bad_request(
+                "INVALID_PLATFORM",
+                "Platform must be linux, macos, or windows",
+            ),
         ));
     }
     if !matches!(req.arch.as_str(), "x86_64" | "aarch64") {
@@ -260,10 +281,7 @@ pub async fn download_runtime_version(
         // `@` is a valid URL path char (RFC 3986 pchar), and our
         // version/backend validation rejects `/` + `..`, so the raw
         // key is safe to inline without percent-encoding.
-        events_url: format!(
-            "/api/local-runtime/versions/downloads/{}/events",
-            task.key
-        ),
+        events_url: format!("/api/local-runtime/versions/downloads/{}/events", task.key),
     };
 
     // NOTE: the RuntimeVersion Create sync event is emitted from the detached
@@ -339,9 +357,8 @@ pub async fn get_download_snapshot(
     _auth: RequirePermissions<(RuntimeVersionRead,)>,
     Path(key): Path<String>,
 ) -> ApiResult<Json<DownloadSnapshot>> {
-    let task = download_task::get_task(&key).ok_or_else(|| {
-        AppError::not_found(&format!("download task {key:?}"))
-    })?;
+    let task = download_task::get_task(&key)
+        .ok_or_else(|| AppError::not_found(&format!("download task {key:?}")))?;
     Ok((StatusCode::OK, Json(snapshot_of(&task).await)))
 }
 
@@ -361,9 +378,8 @@ pub async fn subscribe_download_events(
 > {
     use axum::response::sse::{Event, KeepAlive, Sse};
 
-    let task = download_task::get_task(&key).ok_or_else(|| {
-        AppError::not_found(&format!("download task {key:?}"))
-    })?;
+    let task = download_task::get_task(&key)
+        .ok_or_else(|| AppError::not_found(&format!("download task {key:?}")))?;
 
     // Subscribe BEFORE snapshotting to avoid dropping events that
     // arrive between the snapshot read and the .subscribe() call.
@@ -393,16 +409,18 @@ pub async fn subscribe_download_events(
                 percent,
             });
         }
-        let complete = snap.result.as_ref().map(|v| {
-            super::download_task::SSEEngineDownloadCompleteData {
-                version_id: v.id,
-                bytes_downloaded: snap.bytes_received,
-                duration_ms: 0,
-            }
-        });
-        let failed = snap.error.as_ref().map(|e| {
-            super::download_task::SSEEngineDownloadFailedData { error: e.clone() }
-        });
+        let complete =
+            snap.result
+                .as_ref()
+                .map(|v| super::download_task::SSEEngineDownloadCompleteData {
+                    version_id: v.id,
+                    bytes_downloaded: snap.bytes_received,
+                    duration_ms: 0,
+                });
+        let failed = snap
+            .error
+            .as_ref()
+            .map(|e| super::download_task::SSEEngineDownloadFailedData { error: e.clone() });
         (snap.status, replay, complete, failed)
     };
 
@@ -467,21 +485,27 @@ pub async fn delete_runtime_version(
     origin: SyncOrigin,
 ) -> ApiResult<impl IntoApiResponse> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_with_id(e))?;
+    let binary_manager = BinaryManager::with_cache_dir(
+        pool.clone(),
+        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
+    )
+    .map_err(|e| AppError::internal_with_id(e))?;
 
     let remove_binary = params.remove_binary.unwrap_or(false);
 
     // Get version info before deletion for event. If it's already gone (e.g. a
     // concurrent DELETE won the race), DELETE is idempotent — return 204 rather
     // than a spurious 404.
-    let version_record = match crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
+    let version_record =
+        match crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(
+            pool, version_id,
+        )
         .await
         .map_err(|e| AppError::database_error(e))?
-    {
-        Some(v) => v,
-        None => return Ok((StatusCode::NO_CONTENT, ())),
-    };
+        {
+            Some(v) => v,
+            None => return Ok((StatusCode::NO_CONTENT, ())),
+        };
 
     // In-use guard. The runtime_version FKs are ON DELETE SET NULL, so the DB
     // would silently orphan dependents (breaking auto-start) rather than
@@ -553,7 +577,10 @@ pub async fn delete_runtime_version(
         ));
     }
 
-    if let Err(e) = binary_manager.delete_version(version_id, remove_binary).await {
+    if let Err(e) = binary_manager
+        .delete_version(version_id, remove_binary)
+        .await
+    {
         // A concurrent DELETE removed the row between our in-use check and here.
         // DELETE is idempotent: treat "already gone" as success (204).
         if e.to_string().contains("not found") {
@@ -572,7 +599,13 @@ pub async fn delete_runtime_version(
         .into(),
     );
 
-    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Delete, version_id, Audience::perm::<RuntimeVersionRead>(), origin.0);
+    sync_publish(
+        SyncEntity::RuntimeVersion,
+        SyncAction::Delete,
+        version_id,
+        Audience::perm::<RuntimeVersionRead>(),
+        origin.0,
+    );
 
     Ok((StatusCode::NO_CONTENT, ()))
 }
@@ -585,8 +618,11 @@ pub async fn set_system_default(
     origin: SyncOrigin,
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_with_id(e))?;
+    let binary_manager = BinaryManager::with_cache_dir(
+        pool.clone(),
+        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
+    )
+    .map_err(|e| AppError::internal_with_id(e))?;
 
     binary_manager
         .set_system_default(version_id)
@@ -601,10 +637,11 @@ pub async fn set_system_default(
         })?;
 
     // Get the updated version record
-    let version_record = crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
-        .await
-        .map_err(|e| AppError::database_error(e))?
-        .ok_or_else(|| AppError::not_found("Runtime version"))?;
+    let version_record =
+        crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
+            .await
+            .map_err(|e| AppError::database_error(e))?
+            .ok_or_else(|| AppError::not_found("Runtime version"))?;
 
     // Emit event for cache invalidation
     event_bus.emit_async(
@@ -616,9 +653,18 @@ pub async fn set_system_default(
         .into(),
     );
 
-    sync_publish(SyncEntity::RuntimeVersion, SyncAction::Update, version_id, Audience::perm::<RuntimeVersionRead>(), origin.0);
+    sync_publish(
+        SyncEntity::RuntimeVersion,
+        SyncAction::Update,
+        version_id,
+        Audience::perm::<RuntimeVersionRead>(),
+        origin.0,
+    );
 
-    Ok((StatusCode::OK, Json(RuntimeVersionResponse::from(version_record))))
+    Ok((
+        StatusCode::OK,
+        Json(RuntimeVersionResponse::from(version_record)),
+    ))
 }
 
 /// Check for available updates from GitHub
@@ -627,8 +673,11 @@ pub async fn check_for_updates(
     Path(engine): Path<String>,
 ) -> ApiResult<Json<AvailableUpdatesResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_with_id(e))?;
+    let binary_manager = BinaryManager::with_cache_dir(
+        pool.clone(),
+        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
+    )
+    .map_err(|e| AppError::internal_with_id(e))?;
 
     // Asset-readiness is host-specific: a release may ship the cpu binary
     // for one platform/arch before another. Compute the diff for THIS host,
@@ -840,16 +889,16 @@ pub async fn sync_cache(
     origin: SyncOrigin,
 ) -> ApiResult<Json<SyncCacheResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
-        .map_err(|e| AppError::internal_with_id(e))?;
+    let binary_manager = BinaryManager::with_cache_dir(
+        pool.clone(),
+        std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
+    )
+    .map_err(|e| AppError::internal_with_id(e))?;
 
-    let synced_count = binary_manager
-        .sync_cache()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to sync cache: {}", e);
-            AppError::internal_with_id(e)
-        })?;
+    let synced_count = binary_manager.sync_cache().await.map_err(|e| {
+        tracing::error!("Failed to sync cache: {}", e);
+        AppError::internal_with_id(e)
+    })?;
 
     let response = SyncCacheResponse {
         synced_count,
@@ -883,7 +932,9 @@ pub struct DeleteVersionQuery {
 // OpenAPI Documentation
 // =====================================================
 
-pub fn list_runtime_versions_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn list_runtime_versions_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionRead,)>(op)
         .id("RuntimeVersion.list")
         .description("List all registered runtime versions, optionally filtered by engine")
@@ -894,18 +945,20 @@ pub fn list_runtime_versions_docs(op: aide::transform::TransformOperation) -> ai
         })
 }
 
-pub fn get_runtime_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn get_runtime_version_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionRead,)>(op)
         .id("RuntimeVersion.get")
         .description("Get a specific runtime version by ID")
         .tag("Runtime Versions")
         .response::<200, Json<RuntimeVersionResponse>>()
-        .response_with::<404, (), _>(|res| {
-            res.description("Runtime version not found")
-        })
+        .response_with::<404, (), _>(|res| res.description("Runtime version not found"))
 }
 
-pub fn download_runtime_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn download_runtime_version_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionCreate,)>(op)
         .id("RuntimeVersion.download")
         .description(
@@ -913,29 +966,31 @@ pub fn download_runtime_version_docs(op: aide::transform::TransformOperation) ->
              Returns immediately with task identifiers + an SSE URL; the \
              download keeps running on the server even after the client \
              disconnects, so a page reload can pick it up via \
-             GET /local-runtime/versions/downloads."
+             GET /local-runtime/versions/downloads.",
         )
         .tag("Runtime Versions")
         .response::<200, Json<DownloadVersionStartedResponse>>()
-        .response_with::<400, (), _>(|res| {
-            res.description("Invalid request parameters")
-        })
+        .response_with::<400, (), _>(|res| res.description("Invalid request parameters"))
 }
 
-pub fn list_active_downloads_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn list_active_downloads_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionRead,)>(op)
         .id("RuntimeVersion.listDownloads")
         .description(
             "List every download task currently held by the in-process \
              registry (running OR terminal-but-not-yet-replaced). The UI \
              calls this on mount to repaint in-flight progress after a \
-             page reload."
+             page reload.",
         )
         .tag("Runtime Versions")
         .response::<200, Json<DownloadListResponse>>()
 }
 
-pub fn get_download_snapshot_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn get_download_snapshot_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionRead,)>(op)
         .id("RuntimeVersion.getDownload")
         .description("Snapshot of a single download task by its composite key.")
@@ -944,45 +999,49 @@ pub fn get_download_snapshot_docs(op: aide::transform::TransformOperation) -> ai
         .response_with::<404, (), _>(|res| res.description("No such download task"))
 }
 
-pub fn subscribe_download_events_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn subscribe_download_events_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionRead,)>(op)
         .id("RuntimeVersion.subscribeDownloadEvents")
         .description(
             "Subscribe to SSE progress events for one download task. \
              Sends Connected with the current state snapshot immediately, \
              replays buffered Progress frames, then live-streams further \
-             events until Complete/Failed."
+             events until Complete/Failed.",
         )
         .tag("Runtime Versions")
         .response::<200, Json<SSEEngineDownloadEvent>>()
         .response_with::<404, (), _>(|res| res.description("No such download task"))
 }
 
-pub fn delete_runtime_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn delete_runtime_version_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionDelete,)>(op)
         .id("RuntimeVersion.delete")
-        .description("Delete a runtime version from the database and optionally remove the binary file")
+        .description(
+            "Delete a runtime version from the database and optionally remove the binary file",
+        )
         .tag("Runtime Versions")
-        .response_with::<204, (), _>(|res| {
-            res.description("Runtime version deleted successfully")
-        })
-        .response_with::<404, (), _>(|res| {
-            res.description("Runtime version not found")
-        })
+        .response_with::<204, (), _>(|res| res.description("Runtime version deleted successfully"))
+        .response_with::<404, (), _>(|res| res.description("Runtime version not found"))
 }
 
-pub fn set_system_default_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn set_system_default_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionUpdate,)>(op)
         .id("RuntimeVersion.setDefault")
         .description("Set a runtime version as the system default for its engine")
         .tag("Runtime Versions")
         .response::<200, Json<RuntimeVersionResponse>>()
-        .response_with::<404, (), _>(|res| {
-            res.description("Runtime version not found")
-        })
+        .response_with::<404, (), _>(|res| res.description("Runtime version not found"))
 }
 
-pub fn check_for_updates_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn check_for_updates_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionRead,)>(op)
         .id("RuntimeVersion.checkUpdates")
         .description("Check for available runtime version updates from GitHub")
@@ -990,11 +1049,12 @@ pub fn check_for_updates_docs(op: aide::transform::TransformOperation) -> aide::
         .response::<200, Json<AvailableUpdatesResponse>>()
 }
 
-pub fn sync_cache_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn sync_cache_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(RuntimeVersionUpdate,)>(op)
         .id("RuntimeVersion.syncCache")
         .description("Sync cached binaries with the database")
         .tag("Runtime Versions")
         .response::<200, Json<SyncCacheResponse>>()
 }
-

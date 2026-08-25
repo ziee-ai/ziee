@@ -129,7 +129,10 @@ impl ChatTranscriptStore {
         //    fallback and the text extension's converter exactly).
         match block {
             ContentBlock::Text { text } => Some(MessageContentData::Text { text: text.clone() }),
-            ContentBlock::Thinking { thinking, signature } => Some(MessageContentData::Thinking {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => Some(MessageContentData::Thinking {
                 thinking: thinking.clone(),
                 metadata: signature.as_ref().map(|sig| ThinkingMetadata {
                     token_count: None,
@@ -243,7 +246,11 @@ impl TranscriptStore for ChatTranscriptStore {
         // being generated into) reduces to `group_assistant_blocks([]) == []`, so it
         // contributes nothing — the same effect as the legacy loop's empty-assistant
         // filter.
-        let history = Repos.chat.core.get_conversation_history(self.branch_id).await?;
+        let history = Repos
+            .chat
+            .core
+            .get_conversation_history(self.branch_id)
+            .await?;
         crate::modules::chat::core::services::streaming::StreamingService::convert_history_to_messages_with_extensions(
             &history,
             self.registry.as_ref(),
@@ -336,10 +343,7 @@ impl TranscriptStore for ChatTranscriptStore {
     /// Empty: idempotent resume-replay by key (ITEM-16) is a later durability stage;
     /// the base loop replays via the transcript, never consulting this. Matches
     /// `WorkflowTranscriptStore::completed_tool_calls`.
-    async fn completed_tool_calls(
-        &self,
-        _run_id: Uuid,
-    ) -> Result<Vec<ToolCallRecord>, AppError> {
+    async fn completed_tool_calls(&self, _run_id: Uuid) -> Result<Vec<ToolCallRecord>, AppError> {
         Ok(Vec::new())
     }
 }

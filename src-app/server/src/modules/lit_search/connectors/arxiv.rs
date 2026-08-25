@@ -48,7 +48,13 @@ impl Entry {
             return None;
         }
         // `<id>` is a URL like http://arxiv.org/abs/2201.00001v1 → the part after /abs/.
-        let arxiv_id = self.id.rsplit("/abs/").next().unwrap_or("").trim().to_string();
+        let arxiv_id = self
+            .id
+            .rsplit("/abs/")
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         let year = self.published.get(0..4).and_then(|y| y.parse::<i32>().ok());
         let abstract_text = {
             let a = collapse_ws(&self.summary);
@@ -128,9 +134,7 @@ fn parse_atom(xml: &str) -> Vec<LitRecord> {
                 tag.clear();
             }
             Ok(Event::Text(t)) => {
-                if in_entry
-                    && let Some(entry) = cur.as_mut()
-                {
+                if in_entry && let Some(entry) = cur.as_mut() {
                     let text = t.unescape().map(|c| c.into_owned()).unwrap_or_default();
                     // Accumulating fields: append ALL text (incl. nested-child
                     // text) verbatim until the field's End.
@@ -267,6 +271,9 @@ mod tests {
         let recs = parse_atom(feed);
         assert_eq!(recs.len(), 1);
         assert_eq!(recs[0].title, "Before nested after");
-        assert_eq!(recs[0].abstract_text.as_deref(), Some("Summary start mid summary end."));
+        assert_eq!(
+            recs[0].abstract_text.as_deref(),
+            Some("Summary start mid summary end.")
+        );
     }
 }

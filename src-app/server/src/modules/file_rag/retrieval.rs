@@ -7,8 +7,8 @@
 //! (`query_as`) because the `halfvec <=>` operator and `regconfig` cast aren't
 //! verifiable by the `query!` macro.
 
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use uuid::Uuid;
 
 use super::models::{FileRagAdminSettings, RetrievalMode, SemanticHit};
@@ -117,60 +117,62 @@ pub async fn semantic_search(
     // Fetch one extra hit so `truncated` is precise rather than a heuristic.
     let probe = effective_top.saturating_add(1);
 
-    let (mut hits, mode): (Vec<SemanticHit>, RetrievalMode) =
-        match (plan_arm(vector_emb_id.is_some(), admin.fts_enabled), vector_emb_id) {
-            (Arm::Hybrid, Some(emb_id)) => match embed(emb_id, query).await {
-                Ok(v) => (
-                    hybrid_search(
-                        scope_ids,
-                        user_id,
-                        &HalfVector::from_f32_slice(&v),
-                        admin.cosine_threshold,
-                        query,
-                        probe,
-                        dict,
-                        min_rank,
-                        admin.fts_rrf_k,
-                        admin.fts_candidate_multiplier,
-                    )
-                    .await?,
-                    RetrievalMode::Hybrid,
-                ),
-                Err(e) => {
-                    tracing::warn!("file_rag.search: embed failed ({e}); FTS-only fallback");
-                    (
-                        fts_search(scope_ids, user_id, query, probe, dict, min_rank).await?,
-                        RetrievalMode::Fts,
-                    )
-                }
-            },
-            (Arm::Vector, Some(emb_id)) => match embed(emb_id, query).await {
-                Ok(v) => (
-                    vector_search(
-                        scope_ids,
-                        user_id,
-                        &HalfVector::from_f32_slice(&v),
-                        admin.cosine_threshold,
-                        probe,
-                    )
-                    .await?,
-                    RetrievalMode::Vector,
-                ),
-                Err(e) => {
-                    tracing::warn!(
-                        "file_rag.search: embed failed ({e}); fts_enabled=false → empty (no fallback)"
-                    );
-                    (Vec::new(), RetrievalMode::Vector)
-                }
-            },
-            (Arm::Fts, _) => (
-                fts_search(scope_ids, user_id, query, probe, dict, min_rank).await?,
-                RetrievalMode::Fts,
+    let (mut hits, mode): (Vec<SemanticHit>, RetrievalMode) = match (
+        plan_arm(vector_emb_id.is_some(), admin.fts_enabled),
+        vector_emb_id,
+    ) {
+        (Arm::Hybrid, Some(emb_id)) => match embed(emb_id, query).await {
+            Ok(v) => (
+                hybrid_search(
+                    scope_ids,
+                    user_id,
+                    &HalfVector::from_f32_slice(&v),
+                    admin.cosine_threshold,
+                    query,
+                    probe,
+                    dict,
+                    min_rank,
+                    admin.fts_rrf_k,
+                    admin.fts_candidate_multiplier,
+                )
+                .await?,
+                RetrievalMode::Hybrid,
             ),
-            // Arm::None, plus the logically-impossible vector-arm-without-a-model
-            // combos (plan_arm only returns Hybrid/Vector when has_vector is true).
-            _ => (Vec::new(), RetrievalMode::None),
-        };
+            Err(e) => {
+                tracing::warn!("file_rag.search: embed failed ({e}); FTS-only fallback");
+                (
+                    fts_search(scope_ids, user_id, query, probe, dict, min_rank).await?,
+                    RetrievalMode::Fts,
+                )
+            }
+        },
+        (Arm::Vector, Some(emb_id)) => match embed(emb_id, query).await {
+            Ok(v) => (
+                vector_search(
+                    scope_ids,
+                    user_id,
+                    &HalfVector::from_f32_slice(&v),
+                    admin.cosine_threshold,
+                    probe,
+                )
+                .await?,
+                RetrievalMode::Vector,
+            ),
+            Err(e) => {
+                tracing::warn!(
+                    "file_rag.search: embed failed ({e}); fts_enabled=false → empty (no fallback)"
+                );
+                (Vec::new(), RetrievalMode::Vector)
+            }
+        },
+        (Arm::Fts, _) => (
+            fts_search(scope_ids, user_id, query, probe, dict, min_rank).await?,
+            RetrievalMode::Fts,
+        ),
+        // Arm::None, plus the logically-impossible vector-arm-without-a-model
+        // combos (plan_arm only returns Hybrid/Vector when has_vector is true).
+        _ => (Vec::new(), RetrievalMode::None),
+    };
 
     // Rerank stage: retrieve-wide → cross-encoder rerank → top-k. Reorders the
     // candidate pool by the reranker's relevance scores; on any error we keep the
@@ -179,7 +181,8 @@ pub async fn semantic_search(
     if rerank_active && hits.len() > 1 {
         if let Some(reranker_id) = admin.reranker_model_id {
             let docs: Vec<String> = hits.iter().map(|h| h.content.clone()).collect();
-            match crate::modules::memory::engine::dispatch::rerank(reranker_id, query, &docs).await {
+            match crate::modules::memory::engine::dispatch::rerank(reranker_id, query, &docs).await
+            {
                 Ok(order) if !order.is_empty() => {
                     // Reorder without cloning: take() each hit out of its slot in
                     // the reranker's order; append any the reranker omitted.
@@ -202,7 +205,9 @@ pub async fn semantic_search(
                 }
                 Ok(_) => {} // empty rerank result → keep pre-rerank order
                 Err(e) => {
-                    tracing::warn!("file_rag.search: rerank failed ({e}); keeping pre-rerank order");
+                    tracing::warn!(
+                        "file_rag.search: rerank failed ({e}); keeping pre-rerank order"
+                    );
                 }
             }
         }
@@ -235,7 +240,9 @@ pub async fn vector_search_hit_count_for_test(
     limit: i64,
 ) -> Result<usize, AppError> {
     let v = HalfVector::from_f32_slice(query_vec);
-    Ok(vector_search(scope_ids, user_id, &v, threshold, limit).await?.len())
+    Ok(vector_search(scope_ids, user_id, &v, threshold, limit)
+        .await?
+        .len())
 }
 
 /// Test-only: number of FTS-arm hits. Re-exported alongside the vector wrapper.
@@ -249,7 +256,9 @@ pub async fn fts_search_hit_count_for_test(
     dict: &str,
     min_rank: f32,
 ) -> Result<usize, AppError> {
-    Ok(fts_search(scope_ids, user_id, query, limit, dict, min_rank).await?.len())
+    Ok(fts_search(scope_ids, user_id, query, limit, dict, min_rank)
+        .await?
+        .len())
 }
 
 async fn vector_search(
@@ -305,10 +314,13 @@ async fn fts_search(
     min_rank: f32,
 ) -> Result<Vec<SemanticHit>, AppError> {
     let rows = fts_rows(scope_ids, user_id, query, limit, dict, min_rank).await?;
-    Ok(rows.into_iter().map(|r| {
-        let score = r.metric;
-        r.into_hit(score)
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let score = r.metric;
+            r.into_hit(score)
+        })
+        .collect())
 }
 
 async fn fts_rows(
@@ -437,7 +449,10 @@ mod tests {
         let lo = Uuid::from_u128(10);
         let hi = Uuid::from_u128(20);
         let fused = rrf_fuse(vec![vec![row(hi, "hi")], vec![row(lo, "lo")]], 60, 10);
-        assert_eq!(fused[0].content, "lo", "lower id wins the tie deterministically");
+        assert_eq!(
+            fused[0].content, "lo",
+            "lower id wins the tie deterministically"
+        );
         assert_eq!(fused[1].content, "hi");
     }
 

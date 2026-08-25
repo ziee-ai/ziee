@@ -18,7 +18,10 @@ const CAVEAT: &str = "Heuristic saturation signal based on cross-source agreemen
 
 /// Estimate saturation over the deduped, ranked records + per-source identified
 /// counts. `records` should already be ranked (we look at the top slice).
-pub fn estimate(records: &[LitRecord], identified: &BTreeMap<String, usize>) -> CompletenessEstimate {
+pub fn estimate(
+    records: &[LitRecord],
+    identified: &BTreeMap<String, usize>,
+) -> CompletenessEstimate {
     let sources_with_hits = identified.values().filter(|&&c| c > 0).count();
 
     // Capture-recapture overlap over the top records: fraction found by ≥2 sources.

@@ -14,9 +14,9 @@
 // chat's `ConversationResponse`). Importing chat types in this subdir is
 // the correct architectural direction — `chat_extension/` is the bridge.
 
-mod project;
 pub mod extension; // Auto-discovered by the chat extension registration system
 pub mod handlers;
+mod project;
 pub mod repository;
 pub mod routes;
 

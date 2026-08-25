@@ -1299,6 +1299,70 @@ mod tests {
         }
     }
 
+    /// TEST-7 (subagent-transcripts, ITEM-1): after extracting the shared
+    /// `map_agent_event`, `WorkflowEventSink::emit` STILL maps a `Message` to the
+    /// same distinct `agent-<seq>` AgentActivity tracks (thinking, tool_call,
+    /// message) — the workflow `kind: agent` step's live+durable activity is
+    /// byte-identical across the refactor.
+    #[tokio::test]
+    async fn subagent_transcripts_emit_delegates_to_shared_mapping() {
+        use agent_core::{AgentEvent, EventSink};
+        use ai_providers::{ChatMessage, ContentBlock, Role};
+
+        let captured: Arc<Mutex<Vec<SSEWorkflowRunEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let emitter: Arc<dyn ProgressEmitter> = Arc::new(CapturingEmitter {
+            events: captured.clone(),
+        });
+        let pool = PgPool::connect_lazy("postgres://localhost/none").unwrap();
+        let sink = WorkflowEventSink {
+            emit: emitter,
+            run_id: Uuid::new_v4(),
+            step_id: "s".to_string(),
+            pool,
+            seq: AtomicU64::new(0),
+        };
+
+        sink.emit(AgentEvent::Message(ChatMessage::with_blocks(
+            Role::Assistant,
+            vec![
+                ContentBlock::Thinking {
+                    thinking: "t".into(),
+                    signature: None,
+                },
+                ContentBlock::ToolUse {
+                    id: "1".into(),
+                    name: "mytool".into(),
+                    input: serde_json::json!({}),
+                },
+                ContentBlock::Text {
+                    text: "answer".into(),
+                },
+            ],
+        )))
+        .await;
+
+        let tracks: Vec<ProgressTrack> = captured.lock().unwrap().iter().map(track_of).collect();
+        assert_eq!(tracks.len(), 3, "one track per mapped activity");
+        let kinds: Vec<AgentActivityKind> = tracks
+            .iter()
+            .map(|t| match &t.kind {
+                ProgressKind::AgentActivity { kind, .. } => *kind,
+                other => panic!("expected AgentActivity, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                AgentActivityKind::Thinking,
+                AgentActivityKind::ToolCall,
+                AgentActivityKind::Message,
+            ],
+            "emit still maps a Message to thinking/tool_call/message, in order"
+        );
+        assert_eq!(tracks[0].id, "agent-0", "distinct accumulating track ids");
+        assert_eq!(tracks[2].id, "agent-2");
+    }
+
     /// TEST-7 — the ITEM-5 anti-collapse guarantee: `WorkflowEventSink` maps each
     /// activity to a DISTINCT, monotonically-increasing `seq` on its own
     /// `agent-<seq>` track (never one collapsing id), and byte-caps oversize

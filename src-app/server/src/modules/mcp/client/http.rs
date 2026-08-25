@@ -26,8 +26,13 @@ const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 /// Protocol versions this client can interoperate with, newest first. The
 /// negotiated version returned by a server's `initialize` MUST be one of
 /// these or the client refuses the connection (spec § version negotiation).
-const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
-    &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+    "2024-10-07",
+];
 
 /// Safety cap on `nextCursor` pagination loops (`list_tools` / `list_resources`
 /// / `list_prompts`) so a buggy server that never drops the cursor can't spin
@@ -228,20 +233,30 @@ fn extract_response_by_id(sse_body: &str, expected_id: i64) -> Result<Value, App
         let mut data = String::new();
         for line in event_block.lines() {
             if let Some(rest) = line.strip_prefix("data: ") {
-                if !data.is_empty() { data.push('\n'); }
+                if !data.is_empty() {
+                    data.push('\n');
+                }
                 data.push_str(rest);
             } else if let Some(rest) = line.strip_prefix("data:") {
                 // SSE allows "data:" with no space
-                if !data.is_empty() { data.push('\n'); }
+                if !data.is_empty() {
+                    data.push('\n');
+                }
                 data.push_str(rest);
             }
         }
-        if data.is_empty() { continue; }
+        if data.is_empty() {
+            continue;
+        }
 
         let json: Value = match serde_json::from_str(&data) {
             Ok(v) => v,
             Err(e) => {
-                tracing::debug!("[mcp] SSE data line was not valid JSON: {} ({})", e, &data[..data.len().min(80)]);
+                tracing::debug!(
+                    "[mcp] SSE data line was not valid JSON: {} ({})",
+                    e,
+                    &data[..data.len().min(80)]
+                );
                 continue;
             }
         };
@@ -269,7 +284,8 @@ fn extract_response_by_id(sse_body: &str, expected_id: i64) -> Result<Value, App
         );
     }
     Err(AppError::internal_error(format!(
-        "SSE stream ended without a response for request id={}", expected_id
+        "SSE stream ended without a response for request id={}",
+        expected_id
     )))
 }
 
@@ -333,7 +349,11 @@ fn parse_non_streaming_response_body(body: &str, expected_id: i64) -> Result<Val
 /// how `elicitation/create` is bridged to the browser. No-op when there is
 /// no browser SSE sender (e.g. the runtime tool-test endpoint).
 fn forward_progress_notification(
-    sse_tx: &Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+    sse_tx: &Option<
+        tokio::sync::mpsc::UnboundedSender<
+            Result<axum::response::sse::Event, std::convert::Infallible>,
+        >,
+    >,
     message_id: Option<uuid::Uuid>,
     server_name: &str,
     params: &Value,
@@ -413,9 +433,7 @@ async fn drain_standalone_sse(
         let bytes = match chunk {
             Ok(b) => b,
             Err(e) => {
-                tracing::info!(
-                    "[mcp] '{server_name}' standalone GET-SSE read error: {e}"
-                );
+                tracing::info!("[mcp] '{server_name}' standalone GET-SSE read error: {e}");
                 return;
             }
         };
@@ -582,9 +600,10 @@ fn backoff_delay_ms(initial_ms: u64, attempt: u32) -> u64 {
 fn sse_event_retry_ms(event_block: &str) -> Option<u64> {
     for line in event_block.lines() {
         if let Some(rest) = line.strip_prefix("retry:")
-            && let Ok(n) = rest.trim().parse::<u64>() {
-                return Some(n);
-            }
+            && let Ok(n) = rest.trim().parse::<u64>()
+        {
+            return Some(n);
+        }
     }
     None
 }
@@ -613,7 +632,9 @@ fn sse_event_data(event_block: &str) -> String {
 struct ActiveCallContext {
     message_id: Option<uuid::Uuid>,
     sse_tx: Option<
-        tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+        tokio::sync::mpsc::UnboundedSender<
+            Result<axum::response::sse::Event, std::convert::Infallible>,
+        >,
     >,
     elicit_notify_tx: Option<
         tokio::sync::mpsc::UnboundedSender<
@@ -764,12 +785,16 @@ async fn handle_get_stream_elicitation(
         .unwrap_or("")
         .to_string();
     let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
-        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
+        params
+            .get("requestedSchema")
+            .cloned()
+            .unwrap_or(Value::Null),
     );
 
     // POST a JSON-RPC result back to the server with the spec-required headers.
     let post_result = |result_value: Value| {
-        let body = serde_json::json!({ "jsonrpc": "2.0", "id": req_id.clone(), "result": result_value });
+        let body =
+            serde_json::json!({ "jsonrpc": "2.0", "id": req_id.clone(), "result": result_value });
         apply_mcp_post_headers(
             stream_client.post(&url).json(&body),
             session_id.clone(),
@@ -789,7 +814,9 @@ async fn handle_get_stream_elicitation(
             "[elicitation] '{server_name}' GET-SSE elicitation/create id={req_id:?} but no active \
              call context — auto-cancelling"
         );
-        let _ = post_result(serde_json::json!({ "action": "cancel" })).send().await;
+        let _ = post_result(serde_json::json!({ "action": "cancel" }))
+            .send()
+            .await;
         return;
     };
 
@@ -826,9 +853,13 @@ async fn handle_get_stream_elicitation(
         .event("mcpElicitationRequired")
         .data(event_data.to_string());
     if sse_tx.send(Ok(event)).is_err() {
-        tracing::warn!("[elicitation] '{server_name}' GET-SSE channel closed — cancelling id={req_id:?}");
+        tracing::warn!(
+            "[elicitation] '{server_name}' GET-SSE channel closed — cancelling id={req_id:?}"
+        );
         let _ = registry::remove(elicitation_id);
-        let _ = post_result(serde_json::json!({ "action": "cancel" })).send().await;
+        let _ = post_result(serde_json::json!({ "action": "cancel" }))
+            .send()
+            .await;
         return;
     }
 
@@ -837,11 +868,15 @@ async fn handle_get_stream_elicitation(
     // tools/call with plain JSON), so it is NOT covered by the tool call's outer
     // timeout. Bound it here so an abandoned elicitation reclaims its task +
     // registry entry and cancels the server's request instead of parking forever.
-    let user_response = match tokio::time::timeout(GET_STREAM_ELICITATION_TIMEOUT, elicit_rx).await {
+    let user_response = match tokio::time::timeout(GET_STREAM_ELICITATION_TIMEOUT, elicit_rx).await
+    {
         Ok(Ok(r)) => r,
         Ok(Err(_)) => {
             // Channel dropped (SSE closed / registry removed) — treat as cancel.
-            models::ElicitationResponse { action: "cancel".to_string(), content: None }
+            models::ElicitationResponse {
+                action: "cancel".to_string(),
+                content: None,
+            }
         }
         Err(_) => {
             tracing::warn!(
@@ -850,7 +885,10 @@ async fn handle_get_stream_elicitation(
                 GET_STREAM_ELICITATION_TIMEOUT.as_secs()
             );
             let _ = registry::remove(elicitation_id);
-            models::ElicitationResponse { action: "cancel".to_string(), content: None }
+            models::ElicitationResponse {
+                action: "cancel".to_string(),
+                content: None,
+            }
         }
     };
     let result_value = if user_response.action == "accept" {
@@ -858,7 +896,11 @@ async fn handle_get_stream_elicitation(
     } else {
         serde_json::json!({ "action": user_response.action })
     };
-    let action_str = result_value.get("action").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+    let action_str = result_value
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?")
+        .to_string();
     match post_result(result_value).send().await {
         Ok(r) => tracing::info!(
             "[elicitation] '{server_name}' GET-SSE POSTed response id={req_id:?} action='{action_str}' → HTTP {}",
@@ -941,17 +983,23 @@ async fn try_resume_sse(
             Ok(resp) if resp.status().is_success() => {
                 tracing::info!(
                     "[mcp] resumed SSE stream from '{}' via Last-Event-Id={} (attempt {})",
-                    server_name, leid, attempt
+                    server_name,
+                    leid,
+                    attempt
                 );
                 return Some(resp);
             }
             Ok(resp) => tracing::warn!(
                 "[mcp] SSE resume attempt {} for '{}' returned HTTP {}",
-                attempt, server_name, resp.status()
+                attempt,
+                server_name,
+                resp.status()
             ),
             Err(e) => tracing::warn!(
                 "[mcp] SSE resume attempt {} for '{}' failed: {}",
-                attempt, server_name, e
+                attempt,
+                server_name,
+                e
             ),
         }
     }
@@ -1033,10 +1081,7 @@ impl HttpMcpClient {
     /// Construct a client that authenticates to an external server via the
     /// OAuth 2.1 `client_credentials` grant (acquired lazily on the first 401).
     #[allow(dead_code)]
-    pub fn new_with_oauth(
-        server: McpServer,
-        oauth: OAuthClientConfig,
-    ) -> Result<Self, AppError> {
+    pub fn new_with_oauth(server: McpServer, oauth: OAuthClientConfig) -> Result<Self, AppError> {
         Self::new_internal(server, None, Some(oauth))
     }
 
@@ -1046,11 +1091,15 @@ impl HttpMcpClient {
         oauth: Option<OAuthClientConfig>,
     ) -> Result<Self, AppError> {
         if server.transport_type != TransportType::Http {
-            return Err(AppError::bad_request("INVALID_TRANSPORT", "Only HTTP transport supported"));
+            return Err(AppError::bad_request(
+                "INVALID_TRANSPORT",
+                "Only HTTP transport supported",
+            ));
         }
 
-        let base_url = server.url.clone()
-            .ok_or_else(|| AppError::bad_request("MISSING_URL", "Missing URL for HTTP transport"))?;
+        let base_url = server.url.clone().ok_or_else(|| {
+            AppError::bad_request("MISSING_URL", "Missing URL for HTTP transport")
+        })?;
 
         // SSRF: validate the configured URL up-front under the MCP policy
         // (localhost + RFC1918 LAN allowed for built-in/self-hosted servers,
@@ -1083,14 +1132,18 @@ impl HttpMcpClient {
         for e in &header_errors {
             tracing::warn!(
                 "[mcp] server '{}' has an unparseable configured header {:?} ({}); it will NOT be sent",
-                server.name, e.name, e.reason
+                server.name,
+                e.name,
+                e.reason
             );
         }
         if !headers.is_empty() {
             let names: Vec<&str> = headers.keys().map(|k| k.as_str()).collect();
             tracing::debug!(
                 "[mcp] server '{}' attaching {} custom header(s): {:?}",
-                server.name, names.len(), names
+                server.name,
+                names.len(),
+                names
             );
         }
 
@@ -1118,7 +1171,9 @@ impl HttpMcpClient {
             .pool_max_idle_per_host(0)
             .default_headers(headers.clone())
             .build()
-            .map_err(|e| AppError::internal_error(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| {
+                AppError::internal_error(format!("Failed to create HTTP client: {}", e))
+            })?;
 
         // Streaming client: only connect timeout (no overall timeout — SSE streams can be long)
         let stream_client = crate::utils::url_validator::validated_client_builder(mcp_policy)
@@ -1126,7 +1181,9 @@ impl HttpMcpClient {
             .pool_max_idle_per_host(0)
             .default_headers(headers)
             .build()
-            .map_err(|e| AppError::internal_error(format!("Failed to create stream client: {}", e)))?;
+            .map_err(|e| {
+                AppError::internal_error(format!("Failed to create stream client: {}", e))
+            })?;
 
         Ok(Self {
             server_name: server.name.clone(),
@@ -1164,11 +1221,16 @@ impl HttpMcpClient {
         // If we already have a (possibly expired) token + endpoint, refresh;
         // otherwise discover from the challenge.
         let cached = self.oauth_token.read().ok().and_then(|g| g.clone());
-        let endpoint = self.oauth_token_endpoint.read().ok().and_then(|g| g.clone());
+        let endpoint = self
+            .oauth_token_endpoint
+            .read()
+            .ok()
+            .and_then(|g| g.clone());
         let (token, endpoint) = match (cached, endpoint) {
-            (Some(cur), Some(ep)) => {
-                (auth::refresh_token(&self.client, &ep, config, &cur).await?, ep)
-            }
+            (Some(cur), Some(ep)) => (
+                auth::refresh_token(&self.client, &ep, config, &cur).await?,
+                ep,
+            ),
             _ => auth::obtain_token_from_challenge(&self.client, www_authenticate, config).await?,
         };
         let access = token.access_token.clone();
@@ -1328,24 +1390,15 @@ impl HttpMcpClient {
                             "[mcp] '{server_name}' standalone GET-SSE returned 401; \
                              running OAuth refresh"
                         );
-                        let cached =
-                            oauth_token.read().ok().and_then(|g| g.clone());
-                        let endpoint = oauth_token_endpoint
-                            .read()
-                            .ok()
-                            .and_then(|g| g.clone());
+                        let cached = oauth_token.read().ok().and_then(|g| g.clone());
+                        let endpoint = oauth_token_endpoint.read().ok().and_then(|g| g.clone());
                         let result = match (cached, endpoint) {
                             (Some(cur), Some(ep)) => {
                                 auth::refresh_token(&client, &ep, oauth_cfg, &cur)
                                     .await
                                     .map(|t| (t, ep))
                             }
-                            _ => {
-                                auth::obtain_token_from_challenge(
-                                    &client, &www, oauth_cfg,
-                                )
-                                .await
-                            }
+                            _ => auth::obtain_token_from_challenge(&client, &www, oauth_cfg).await,
                         };
                         match result {
                             Ok((token, endpoint)) => {
@@ -1437,9 +1490,10 @@ impl HttpMcpClient {
     /// [`Self::disconnect`]; safe to call when no task is running.
     fn abort_standalone_get_sse(&self) {
         if let Ok(mut g) = self.get_sse_task.lock()
-            && let Some(h) = g.take() {
-                h.abort();
-            }
+            && let Some(h) = g.take()
+        {
+            h.abort();
+        }
     }
 
     /// Allocate the next monotonically increasing JSON-RPC request id.
@@ -1486,7 +1540,8 @@ impl HttpMcpClient {
             })
         };
 
-        let mut req = self.client
+        let mut req = self
+            .client
             .post(&self.base_url)
             .header("Accept", "application/json, text/event-stream")
             .json(&body);
@@ -1569,10 +1624,13 @@ impl HttpMcpClient {
             Err(e) if allow_retry_on_404 && e.error_code() == errors::CODE_UPSTREAM_NOT_FOUND => {
                 tracing::warn!(
                     "[mcp] server '{}' returned 404 for '{}' — stale session; reinitializing per MCP spec",
-                    self.server_name, method
+                    self.server_name,
+                    method
                 );
                 // Clear session so initialize doesn't echo it back
-                if let Ok(mut g) = self.session_id.write() { *g = None; }
+                if let Ok(mut g) = self.session_id.write() {
+                    *g = None;
+                }
                 self.do_initialize().await?;
                 self.request_once::<T>(method, &params).await
             }
@@ -1598,7 +1656,8 @@ impl HttpMcpClient {
                 "params": params,
             });
 
-            let mut request = self.client
+            let mut request = self
+                .client
                 .post(&self.base_url)
                 // Per spec § Transports: client MUST advertise both content types so
                 // the server can choose JSON or SSE.
@@ -1635,23 +1694,29 @@ impl HttpMcpClient {
             // the `WWW-Authenticate` challenge and retry the request once.
             if status.as_u16() == 401 && self.oauth.is_some() && !oauth_retried {
                 oauth_retried = true;
-                let www = response.headers()
+                let www = response
+                    .headers()
                     .get("www-authenticate")
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("")
                     .to_string();
                 tracing::info!(
                     "[mcp] server '{}' returned 401 for '{}'; running OAuth client_credentials flow",
-                    self.server_name, method
+                    self.server_name,
+                    method
                 );
                 self.acquire_oauth_token(&www).await?;
                 continue;
             }
 
             if let Some(session_id) = response.headers().get("mcp-session-id")
-                && let Ok(s) = session_id.to_str() { self.set_session_id(s); }
+                && let Ok(s) = session_id.to_str()
+            {
+                self.set_session_id(s);
+            }
 
-            let content_type = response.headers()
+            let content_type = response
+                .headers()
                 .get("content-type")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("")
@@ -1693,15 +1758,17 @@ impl HttpMcpClient {
             extract_response_by_id(&response_text, id)?
         } else {
             // Plain JSON. Tolerate trailing newline.
-            serde_json::from_str(response_text.trim())
-                .map_err(|e| AppError::internal_error(format!("Failed to parse JSON response: {}", e)))?
+            serde_json::from_str(response_text.trim()).map_err(|e| {
+                AppError::internal_error(format!("Failed to parse JSON response: {}", e))
+            })?
         };
 
         if let Some(error) = response_json.get("error") {
             return Err(AppError::internal_error(format!("MCP error: {}", error)));
         }
 
-        let result = response_json.get("result")
+        let result = response_json
+            .get("result")
             .ok_or_else(|| AppError::internal_error("MCP response missing 'result' field"))?;
 
         serde_json::from_value(result.clone())
@@ -1738,9 +1805,7 @@ impl HttpMcpClient {
             .get("protocolVersion")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                AppError::internal_error(
-                    "MCP initialize response is missing `protocolVersion`",
-                )
+                AppError::internal_error("MCP initialize response is missing `protocolVersion`")
             })?
             .to_string();
         if !SUPPORTED_PROTOCOL_VERSIONS.contains(&negotiated.as_str()) {
@@ -1754,7 +1819,8 @@ impl HttpMcpClient {
         // MCP spec § Lifecycle: "After successful initialization, the client
         // MUST send an `initialized` notification to indicate it is ready to
         // begin normal operations."
-        self.send_notification("notifications/initialized", serde_json::Value::Null).await?;
+        self.send_notification("notifications/initialized", serde_json::Value::Null)
+            .await?;
 
         Ok(())
     }
@@ -1776,8 +1842,16 @@ impl HttpMcpClient {
         name: String,
         arguments: Value,
         message_id: Option<uuid::Uuid>,
-        sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
-        elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
+        sse_tx: Option<
+            tokio::sync::mpsc::UnboundedSender<
+                Result<axum::response::sse::Event, std::convert::Infallible>,
+            >,
+        >,
+        elicit_notify_tx: Option<
+            tokio::sync::mpsc::UnboundedSender<
+                crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
+            >,
+        >,
     ) -> Result<ToolResult, AppError> {
         use crate::modules::mcp::sampling::models::{
             SamplingContent, SamplingCreateMessageRequest, SamplingCreateMessageResult,
@@ -1807,7 +1881,8 @@ impl HttpMcpClient {
 
         tracing::info!(
             "[sampling] call_tool_with_sampling: server='{}' tool='{}'",
-            server_name, name,
+            server_name,
+            name,
         );
 
         let request_body = serde_json::json!({
@@ -1845,34 +1920,44 @@ impl HttpMcpClient {
 
         tracing::info!(
             "[sampling] tools/call → url={} headers={{Accept: application/json+SSE, Content-Type: application/json, mcp-session-id: {:?}, MCP-Protocol-Version: {:?}}} body={}",
-            url, sid, protocol_version, request_body
+            url,
+            sid,
+            protocol_version,
+            request_body
         );
 
         tracing::info!("[sampling] sending tools/call SSE request");
 
-        let response = req.send().await
-            .map_err(|e| {
-                tracing::error!("[sampling] SSE request failed: {}", e);
-                AppError::internal_error(format!("SSE request failed: {}", e))
-            })?;
+        let response = req.send().await.map_err(|e| {
+            tracing::error!("[sampling] SSE request failed: {}", e);
+            AppError::internal_error(format!("SSE request failed: {}", e))
+        })?;
 
         tracing::info!("[sampling] SSE response headers received");
 
         if let Some(sid) = response.headers().get("mcp-session-id")
-            && let Ok(s) = sid.to_str() {
-                set_sid(s);
-            }
+            && let Ok(s) = sid.to_str()
+        {
+            set_sid(s);
+        }
 
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::internal_error(format!("MCP HTTP error {}: {}", status, error_text)));
+            return Err(AppError::internal_error(format!(
+                "MCP HTTP error {}: {}",
+                status, error_text
+            )));
         }
 
         tracing::info!(
             "[sampling] SSE stream open: status={} content-type={:?}",
             status,
-            response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("none"),
+            response
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("none"),
         );
 
         let mut byte_stream = response.bytes_stream();
@@ -1887,15 +1972,12 @@ impl HttpMcpClient {
             match byte_stream.next().await {
                 Some(Ok(chunk)) => {
                     let chunk_str = String::from_utf8_lossy(&chunk);
-                    tracing::debug!(
-                        "[sampling] SSE chunk: {} bytes",
-                        chunk.len(),
-                    );
+                    tracing::debug!("[sampling] SSE chunk: {} bytes", chunk.len(),);
 
                     // Guard against unbounded buffer growth from a server that never sends \n\n
                     if buffer.len() + chunk.len() > MAX_SSE_EVENT_BYTES {
                         return Err(AppError::internal_error(
-                            "MCP SSE event exceeded 50MB limit — server may be sending malformed events without \\n\\n terminator"
+                            "MCP SSE event exceeded 50MB limit — server may be sending malformed events without \\n\\n terminator",
                         ));
                     }
                     buffer.push_str(&chunk_str);
@@ -1919,12 +2001,18 @@ impl HttpMcpClient {
                         let data = sse_event_data(&event_block);
                         let data = data.as_str();
                         // Skip events with no data (priming / keep-alive).
-                        if data.is_empty() { continue; }
+                        if data.is_empty() {
+                            continue;
+                        }
 
                         let json: Value = match serde_json::from_str(data) {
                             Ok(v) => v,
                             Err(e) => {
-                                tracing::warn!("Failed to parse MCP SSE event: {} — data: {}", e, &data[..data.len().min(200)]);
+                                tracing::warn!(
+                                    "Failed to parse MCP SSE event: {} — data: {}",
+                                    e,
+                                    &data[..data.len().min(200)]
+                                );
                                 continue;
                             }
                         };
@@ -1937,7 +2025,12 @@ impl HttpMcpClient {
                             // keep reading for the eventual tool result.
                             if method == "notifications/progress" {
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
-                                forward_progress_notification(&sse_tx, message_id, &server_name, &params);
+                                forward_progress_notification(
+                                    &sse_tx,
+                                    message_id,
+                                    &server_name,
+                                    &params,
+                                );
                                 continue;
                             }
                             // --- Elicitation (MCP spec 2025-03-26+) ---
@@ -1945,14 +2038,23 @@ impl HttpMcpClient {
                             if method == "elicitation/create" {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
-                                let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                                let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
-        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
-    );
+                                let message = params
+                                    .get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let requested_schema =
+                                    crate::modules::mcp::elicitation::models::cap_requested_schema(
+                                        params
+                                            .get("requestedSchema")
+                                            .cloned()
+                                            .unwrap_or(Value::Null),
+                                    );
 
                                 tracing::info!(
                                     "[elicitation] received elicitation/create id={:?} from '{}'",
-                                    req_id, server_name
+                                    req_id,
+                                    server_name
                                 );
 
                                 // Generate a fresh per-elicitation UUID as the registry key.
@@ -1963,8 +2065,14 @@ impl HttpMcpClient {
                                 let content_id = uuid::Uuid::new_v4();
 
                                 // Register a oneshot channel in the global registry keyed by elicitation_id
-                                let (elicit_tx, elicit_rx) = tokio::sync::oneshot::channel::<crate::modules::mcp::elicitation::models::ElicitationResponse>();
-                                crate::modules::mcp::elicitation::registry::register(elicitation_id, elicit_tx, Some(content_id));
+                                let (elicit_tx, elicit_rx) = tokio::sync::oneshot::channel::<
+                                    crate::modules::mcp::elicitation::models::ElicitationResponse,
+                                >();
+                                crate::modules::mcp::elicitation::registry::register(
+                                    elicitation_id,
+                                    elicit_tx,
+                                    Some(content_id),
+                                );
 
                                 // Notify the extension layer (mcp.rs) so it can persist the content block via Repos.
                                 // http.rs has no DB access — the notification channel bridges to the higher layer.
@@ -1996,8 +2104,12 @@ impl HttpMcpClient {
                                         .event("mcpElicitationRequired")
                                         .data(event_data.to_string());
                                     if tx.send(Ok(event)).is_err() {
-                                        tracing::warn!("[elicitation] SSE channel closed — sending cancel");
-                                        let _ = crate::modules::mcp::elicitation::registry::remove(elicitation_id);
+                                        tracing::warn!(
+                                            "[elicitation] SSE channel closed — sending cancel"
+                                        );
+                                        let _ = crate::modules::mcp::elicitation::registry::remove(
+                                            elicitation_id,
+                                        );
                                         // Post cancel to unblock the MCP server
                                         let body = serde_json::json!({
                                             "jsonrpc": "2.0",
@@ -2015,8 +2127,13 @@ impl HttpMcpClient {
                                     }
                                 } else {
                                     // No SSE channel — immediately cancel
-                                    tracing::warn!("[elicitation] no sse_tx available — sending cancel for id={:?}", req_id);
-                                    let _ = crate::modules::mcp::elicitation::registry::remove(elicitation_id);
+                                    tracing::warn!(
+                                        "[elicitation] no sse_tx available — sending cancel for id={:?}",
+                                        req_id
+                                    );
+                                    let _ = crate::modules::mcp::elicitation::registry::remove(
+                                        elicitation_id,
+                                    );
                                     let body = serde_json::json!({
                                         "jsonrpc": "2.0",
                                         "id": req_id,
@@ -2045,7 +2162,10 @@ impl HttpMcpClient {
                                     Ok(response) => response,
                                     Err(_) => {
                                         // Channel dropped — SSE closed or registry removed
-                                        tracing::warn!("[elicitation] oneshot channel dropped for id={:?}", req_id);
+                                        tracing::warn!(
+                                            "[elicitation] oneshot channel dropped for id={:?}",
+                                            req_id
+                                        );
                                         crate::modules::mcp::elicitation::models::ElicitationResponse {
                                             action: "cancel".to_string(),
                                             content: None,
@@ -2076,11 +2196,17 @@ impl HttpMcpClient {
                                 match post.send().await {
                                     Ok(r) => tracing::info!(
                                         "[elicitation] POSTed response id={:?} action='{}' → HTTP {}",
-                                        req_id, &result_value.get("action").and_then(|v| v.as_str()).unwrap_or("?"), r.status()
+                                        req_id,
+                                        &result_value
+                                            .get("action")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("?"),
+                                        r.status()
                                     ),
                                     Err(e) => tracing::error!(
                                         "[elicitation] Failed to POST response id={:?}: {}",
-                                        req_id, e
+                                        req_id,
+                                        e
                                     ),
                                 }
 
@@ -2091,7 +2217,8 @@ impl HttpMcpClient {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
                                 tracing::info!(
                                     "[sampling] received sampling/createMessage id={:?} from '{}'",
-                                    req_id, server_name
+                                    req_id,
+                                    server_name
                                 );
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
 
@@ -2099,7 +2226,8 @@ impl HttpMcpClient {
                                 // reading loop can continue being polled by the executor.
                                 // Clone into the spawn block using block-before-spawn to avoid
                                 // moving captured variables out of the loop.
-                                match serde_json::from_value::<SamplingCreateMessageRequest>(params) {
+                                match serde_json::from_value::<SamplingCreateMessageRequest>(params)
+                                {
                                     Ok(sampling_req) => {
                                         tokio::spawn({
                                             let handler = handler.clone();
@@ -2110,12 +2238,16 @@ impl HttpMcpClient {
                                             let bearer = bearer.clone();
                                             let protocol_version = protocol_version.clone();
                                             async move {
-                                                let result = match handler.create_message(sampling_req).await {
+                                                let result = match handler
+                                                    .create_message(sampling_req)
+                                                    .await
+                                                {
                                                     Ok(r) => r,
                                                     Err(e) => {
                                                         tracing::error!(
                                                             "[sampling] handler error id={:?}: {}",
-                                                            req_id, e
+                                                            req_id,
+                                                            e
                                                         );
                                                         SamplingCreateMessageResult {
                                                             role: "assistant".to_string(),
@@ -2142,11 +2274,13 @@ impl HttpMcpClient {
                                                 match post.send().await {
                                                     Ok(r) => tracing::info!(
                                                         "[sampling] POSTed sampling response id={:?} → HTTP {}",
-                                                        req_id, r.status()
+                                                        req_id,
+                                                        r.status()
                                                     ),
                                                     Err(e) => tracing::error!(
                                                         "[sampling] Failed to POST sampling response id={:?}: {}",
-                                                        req_id, e
+                                                        req_id,
+                                                        e
                                                     ),
                                                 }
                                             }
@@ -2155,7 +2289,8 @@ impl HttpMcpClient {
                                     Err(e) => {
                                         tracing::error!(
                                             "[sampling] Failed to parse sampling request id={:?}: {}",
-                                            req_id, e
+                                            req_id,
+                                            e
                                         );
                                         // POST an error result so the MCP server is unblocked
                                         tokio::spawn({
@@ -2169,7 +2304,10 @@ impl HttpMcpClient {
                                                 let error_result = SamplingCreateMessageResult {
                                                     role: "assistant".to_string(),
                                                     content: SamplingContent::Text {
-                                                        text: format!("Error: failed to parse sampling request: {}", e),
+                                                        text: format!(
+                                                            "Error: failed to parse sampling request: {}",
+                                                            e
+                                                        ),
                                                     },
                                                     model: "unknown".to_string(),
                                                     stop_reason: Some("error".to_string()),
@@ -2188,7 +2326,8 @@ impl HttpMcpClient {
                                                 if let Err(post_err) = post.send().await {
                                                     tracing::error!(
                                                         "[sampling] Failed to POST parse-error response id={:?}: {}",
-                                                        req_id, post_err
+                                                        req_id,
+                                                        post_err
                                                     );
                                                 }
                                             }
@@ -2203,12 +2342,19 @@ impl HttpMcpClient {
                         // Check if this is the final tool result
                         if json.get("result").is_some() {
                             let result_value = json["result"].clone();
-                            return serde_json::from_value(result_value)
-                                .map_err(|e| AppError::internal_error(format!("Failed to parse tool result: {}", e)));
+                            return serde_json::from_value(result_value).map_err(|e| {
+                                AppError::internal_error(format!(
+                                    "Failed to parse tool result: {}",
+                                    e
+                                ))
+                            });
                         }
 
                         if let Some(error) = json.get("error") {
-                            return Err(AppError::internal_error(format!("MCP tool error: {}", error)));
+                            return Err(AppError::internal_error(format!(
+                                "MCP tool error: {}",
+                                error
+                            )));
                         }
                     }
                 }
@@ -2216,8 +2362,16 @@ impl HttpMcpClient {
                     // Network error mid-stream — try to resume via Last-Event-Id
                     // before giving up (MCP resumability).
                     if let Some(resp) = try_resume_sse(
-                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
-                    ).await {
+                        &stream_client,
+                        &url,
+                        get_sid(),
+                        &protocol_version,
+                        &bearer,
+                        &last_event_id,
+                        &server_name,
+                    )
+                    .await
+                    {
                         byte_stream = resp.bytes_stream();
                         buffer.clear();
                         continue;
@@ -2228,13 +2382,23 @@ impl HttpMcpClient {
                     // Stream ended before the tool result. If the server emitted
                     // event ids (resumable), reconnect via GET + Last-Event-Id.
                     if let Some(resp) = try_resume_sse(
-                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
-                    ).await {
+                        &stream_client,
+                        &url,
+                        get_sid(),
+                        &protocol_version,
+                        &bearer,
+                        &last_event_id,
+                        &server_name,
+                    )
+                    .await
+                    {
                         byte_stream = resp.bytes_stream();
                         buffer.clear();
                         continue;
                     }
-                    return Err(AppError::internal_error("SSE stream ended without tool result"));
+                    return Err(AppError::internal_error(
+                        "SSE stream ended without tool result",
+                    ));
                 }
             }
         }
@@ -2256,8 +2420,16 @@ impl HttpMcpClient {
         bearer: Option<String>,
         server_name: String,
         message_id: Option<uuid::Uuid>,
-        sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
-        elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
+        sse_tx: Option<
+            tokio::sync::mpsc::UnboundedSender<
+                Result<axum::response::sse::Event, std::convert::Infallible>,
+            >,
+        >,
+        elicit_notify_tx: Option<
+            tokio::sync::mpsc::UnboundedSender<
+                crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
+            >,
+        >,
     ) -> Result<ToolResult, AppError> {
         let get_sid = {
             let arc = session_id_arc.clone();
@@ -2283,17 +2455,25 @@ impl HttpMcpClient {
         loop {
             match byte_stream.next().await {
                 Some(Ok(chunk)) => {
-                    tracing::info!("[elicitation] received SSE chunk: {} bytes from '{}'", chunk.len(), server_name);
+                    tracing::info!(
+                        "[elicitation] received SSE chunk: {} bytes from '{}'",
+                        chunk.len(),
+                        server_name
+                    );
 
                     if buffer.len() + chunk.len() > MAX_SSE_EVENT_BYTES {
                         return Err(AppError::internal_error(
-                            "MCP SSE event exceeded 50MB limit — server may be sending malformed events without \\n\\n terminator"
+                            "MCP SSE event exceeded 50MB limit — server may be sending malformed events without \\n\\n terminator",
                         ));
                     }
                     buffer.push_str(&String::from_utf8_lossy(&chunk));
 
                     // Support both LF-only (\n\n) and CRLF (\r\n\r\n) event separators per SSE spec
-                    let sep = if buffer.contains("\r\n\r\n") { "\r\n\r\n" } else { "\n\n" };
+                    let sep = if buffer.contains("\r\n\r\n") {
+                        "\r\n\r\n"
+                    } else {
+                        "\n\n"
+                    };
                     while let Some(event_end) = buffer.find(sep) {
                         let event_block = buffer[..event_end].to_string();
                         buffer.drain(..event_end + sep.len());
@@ -2310,12 +2490,18 @@ impl HttpMcpClient {
                         let data = sse_event_data(&event_block);
                         let data = data.as_str();
                         // Skip events with no data (priming / keep-alive).
-                        if data.is_empty() { continue; }
+                        if data.is_empty() {
+                            continue;
+                        }
 
                         let json: Value = match serde_json::from_str(data) {
                             Ok(v) => v,
                             Err(e) => {
-                                tracing::warn!("[elicitation] Failed to parse SSE event: {} — data: {}", e, &data[..data.len().min(200)]);
+                                tracing::warn!(
+                                    "[elicitation] Failed to parse SSE event: {} — data: {}",
+                                    e,
+                                    &data[..data.len().min(200)]
+                                );
                                 continue;
                             }
                         };
@@ -2332,28 +2518,48 @@ impl HttpMcpClient {
                             // --- Progress (MCP spec § Progress) ---
                             if method == "notifications/progress" {
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
-                                forward_progress_notification(&sse_tx, message_id, &server_name, &params);
+                                forward_progress_notification(
+                                    &sse_tx,
+                                    message_id,
+                                    &server_name,
+                                    &params,
+                                );
                                 continue;
                             }
                             // --- Elicitation (identical to call_tool_with_sampling) ---
                             if method == "elicitation/create" {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
                                 let params = json.get("params").cloned().unwrap_or(Value::Null);
-                                let message = params.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                                let requested_schema = crate::modules::mcp::elicitation::models::cap_requested_schema(
-        params.get("requestedSchema").cloned().unwrap_or(Value::Null),
-    );
+                                let message = params
+                                    .get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let requested_schema =
+                                    crate::modules::mcp::elicitation::models::cap_requested_schema(
+                                        params
+                                            .get("requestedSchema")
+                                            .cloned()
+                                            .unwrap_or(Value::Null),
+                                    );
 
                                 tracing::info!(
                                     "[elicitation] received elicitation/create id={:?} from '{}'",
-                                    req_id, server_name
+                                    req_id,
+                                    server_name
                                 );
 
                                 let elicitation_id = uuid::Uuid::new_v4();
                                 let content_id = uuid::Uuid::new_v4();
 
-                                let (elicit_tx, elicit_rx) = tokio::sync::oneshot::channel::<crate::modules::mcp::elicitation::models::ElicitationResponse>();
-                                crate::modules::mcp::elicitation::registry::register(elicitation_id, elicit_tx, Some(content_id));
+                                let (elicit_tx, elicit_rx) = tokio::sync::oneshot::channel::<
+                                    crate::modules::mcp::elicitation::models::ElicitationResponse,
+                                >();
+                                crate::modules::mcp::elicitation::registry::register(
+                                    elicitation_id,
+                                    elicit_tx,
+                                    Some(content_id),
+                                );
 
                                 // Notify the extension layer (mcp.rs) so it can persist the content block via Repos
                                 if let Some(ref notify_tx) = elicit_notify_tx {
@@ -2383,8 +2589,12 @@ impl HttpMcpClient {
                                         .event("mcpElicitationRequired")
                                         .data(event_data.to_string());
                                     if tx.send(Ok(event)).is_err() {
-                                        tracing::warn!("[elicitation] SSE channel closed — sending cancel");
-                                        let _ = crate::modules::mcp::elicitation::registry::remove(elicitation_id);
+                                        tracing::warn!(
+                                            "[elicitation] SSE channel closed — sending cancel"
+                                        );
+                                        let _ = crate::modules::mcp::elicitation::registry::remove(
+                                            elicitation_id,
+                                        );
                                         let body = serde_json::json!({
                                             "jsonrpc": "2.0",
                                             "id": req_id,
@@ -2400,8 +2610,13 @@ impl HttpMcpClient {
                                         continue;
                                     }
                                 } else {
-                                    tracing::warn!("[elicitation] no sse_tx available — sending cancel for id={:?}", req_id);
-                                    let _ = crate::modules::mcp::elicitation::registry::remove(elicitation_id);
+                                    tracing::warn!(
+                                        "[elicitation] no sse_tx available — sending cancel for id={:?}",
+                                        req_id
+                                    );
+                                    let _ = crate::modules::mcp::elicitation::registry::remove(
+                                        elicitation_id,
+                                    );
                                     let body = serde_json::json!({
                                         "jsonrpc": "2.0",
                                         "id": req_id,
@@ -2420,7 +2635,10 @@ impl HttpMcpClient {
                                 let user_response = match elicit_rx.await {
                                     Ok(response) => response,
                                     Err(_) => {
-                                        tracing::warn!("[elicitation] oneshot channel dropped for id={:?}", req_id);
+                                        tracing::warn!(
+                                            "[elicitation] oneshot channel dropped for id={:?}",
+                                            req_id
+                                        );
                                         crate::modules::mcp::elicitation::models::ElicitationResponse {
                                             action: "cancel".to_string(),
                                             content: None,
@@ -2451,12 +2669,16 @@ impl HttpMcpClient {
                                     Ok(r) => tracing::info!(
                                         "[elicitation] POSTed response id={:?} action='{}' → HTTP {}",
                                         req_id,
-                                        &result_value.get("action").and_then(|v| v.as_str()).unwrap_or("?"),
+                                        &result_value
+                                            .get("action")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("?"),
                                         r.status()
                                     ),
                                     Err(e) => tracing::error!(
                                         "[elicitation] Failed to POST response id={:?}: {}",
-                                        req_id, e
+                                        req_id,
+                                        e
                                     ),
                                 }
 
@@ -2491,19 +2713,34 @@ impl HttpMcpClient {
 
                         if json.get("result").is_some() {
                             let result_value = json["result"].clone();
-                            return serde_json::from_value(result_value)
-                                .map_err(|e| AppError::internal_error(format!("Failed to parse tool result: {}", e)));
+                            return serde_json::from_value(result_value).map_err(|e| {
+                                AppError::internal_error(format!(
+                                    "Failed to parse tool result: {}",
+                                    e
+                                ))
+                            });
                         }
 
                         if let Some(error) = json.get("error") {
-                            return Err(AppError::internal_error(format!("MCP tool error: {}", error)));
+                            return Err(AppError::internal_error(format!(
+                                "MCP tool error: {}",
+                                error
+                            )));
                         }
                     }
                 }
                 Some(Err(e)) => {
                     if let Some(resp) = try_resume_sse(
-                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
-                    ).await {
+                        &stream_client,
+                        &url,
+                        get_sid(),
+                        &protocol_version,
+                        &bearer,
+                        &last_event_id,
+                        &server_name,
+                    )
+                    .await
+                    {
                         byte_stream = resp.bytes_stream();
                         buffer.clear();
                         continue;
@@ -2512,13 +2749,23 @@ impl HttpMcpClient {
                 }
                 None => {
                     if let Some(resp) = try_resume_sse(
-                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
-                    ).await {
+                        &stream_client,
+                        &url,
+                        get_sid(),
+                        &protocol_version,
+                        &bearer,
+                        &last_event_id,
+                        &server_name,
+                    )
+                    .await
+                    {
                         byte_stream = resp.bytes_stream();
                         buffer.clear();
                         continue;
                     }
-                    return Err(AppError::internal_error("SSE stream ended without tool result"));
+                    return Err(AppError::internal_error(
+                        "SSE stream ended without tool result",
+                    ));
                 }
             }
         }
@@ -2551,7 +2798,9 @@ impl McpClient for HttpMcpClient {
         // particular session SHOULD send an HTTP DELETE to the MCP endpoint
         // with the MCP-Session-Id header, to explicitly terminate the session."
         if let Some(sid) = self.get_session_id() {
-            let mut req = self.client.delete(&self.base_url)
+            let mut req = self
+                .client
+                .delete(&self.base_url)
                 .header("mcp-session-id", &sid);
             if let Some(ver) = self.get_protocol_version() {
                 req = req.header("MCP-Protocol-Version", ver);
@@ -2567,16 +2816,23 @@ impl McpClient for HttpMcpClient {
                     if !status.is_success() && status.as_u16() != 405 {
                         tracing::warn!(
                             "[mcp] DELETE session on '{}' returned HTTP {}",
-                            self.server_name, status
+                            self.server_name,
+                            status
                         );
                     }
                 }
                 Err(e) => {
                     // Don't fail disconnect on transport errors — local cleanup must proceed.
-                    tracing::warn!("[mcp] DELETE session failed for '{}': {}", self.server_name, e);
+                    tracing::warn!(
+                        "[mcp] DELETE session failed for '{}': {}",
+                        self.server_name,
+                        e
+                    );
                 }
             }
-            if let Ok(mut g) = self.session_id.write() { *g = None; }
+            if let Ok(mut g) = self.session_id.write() {
+                *g = None;
+            }
         }
         self.connected = false;
         Ok(())
@@ -2623,8 +2879,16 @@ impl McpClient for HttpMcpClient {
         name: &str,
         arguments: Value,
         message_id: Option<uuid::Uuid>,
-        sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
-        elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
+        sse_tx: Option<
+            tokio::sync::mpsc::UnboundedSender<
+                Result<axum::response::sse::Event, std::convert::Infallible>,
+            >,
+        >,
+        elicit_notify_tx: Option<
+            tokio::sync::mpsc::UnboundedSender<
+                crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
+            >,
+        >,
     ) -> Result<ToolResult, AppError> {
         if !self.is_connected() {
             return Err(AppError::internal_error("Not connected"));
@@ -2654,14 +2918,14 @@ impl McpClient for HttpMcpClient {
         // call_tool_with_sampling is not subject to cancellation from the
         // Axum SSE handler task that drives the user's chat stream.
         if let Some(handler) = self.sampling_handler.clone() {
-            let stream_client  = self.stream_client.clone();
-            let url            = self.base_url.clone();
+            let stream_client = self.stream_client.clone();
+            let url = self.base_url.clone();
             let session_id_arc = self.session_id.clone();
-            let server_name    = self.server_name.clone();
-            let name_owned     = name.to_string();
+            let server_name = self.server_name.clone();
+            let name_owned = name.to_string();
             let arguments_owned = arguments;
-            let pv             = protocol_version.clone();
-            let bearer1        = bearer.clone();
+            let pv = protocol_version.clone();
+            let bearer1 = bearer.clone();
 
             let (result_tx, result_rx) =
                 tokio::sync::oneshot::channel::<Result<ToolResult, AppError>>();
@@ -2696,16 +2960,16 @@ impl McpClient for HttpMcpClient {
         // parsed directly (Branch 3); elicitation-capable servers return text/event-stream
         // and are handed to call_tool_with_elicitation (Branch 2).
         // Spawned in an independent task for the same cancellation-safety reason as Branch 1.
-        let stream_client        = self.stream_client.clone();
-        let url                  = self.base_url.clone();
-        let session_id_arc       = self.session_id.clone();
-        let server_name          = self.server_name.clone();
-        let name_owned           = name.to_string();
-        let arguments_owned      = arguments;
-        let message_id_owned     = message_id;
-        let elicit_notify_owned  = elicit_notify_tx;
-        let pv_owned             = protocol_version;
-        let bearer_owned         = bearer;
+        let stream_client = self.stream_client.clone();
+        let url = self.base_url.clone();
+        let session_id_arc = self.session_id.clone();
+        let server_name = self.server_name.clone();
+        let name_owned = name.to_string();
+        let arguments_owned = arguments;
+        let message_id_owned = message_id;
+        let elicit_notify_owned = elicit_notify_tx;
+        let pv_owned = protocol_version;
+        let bearer_owned = bearer;
 
         let (result_tx, result_rx) =
             tokio::sync::oneshot::channel::<Result<ToolResult, AppError>>();
@@ -2766,20 +3030,27 @@ impl McpClient for HttpMcpClient {
             let response = match req.send().await {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = result_tx.send(Err(AppError::internal_error(format!("MCP request failed: {}", e))));
+                    let _ = result_tx.send(Err(AppError::internal_error(format!(
+                        "MCP request failed: {}",
+                        e
+                    ))));
                     return;
                 }
             };
 
             if let Some(sid) = response.headers().get("mcp-session-id")
-                && let Ok(s) = sid.to_str() {
-                    set_sid(s);
-                }
+                && let Ok(s) = sid.to_str()
+            {
+                set_sid(s);
+            }
 
             let status = response.status();
             if !status.is_success() {
                 let error_text = response.text().await.unwrap_or_default();
-                let _ = result_tx.send(Err(AppError::internal_error(format!("MCP HTTP error {}: {}", status, error_text))));
+                let _ = result_tx.send(Err(AppError::internal_error(format!(
+                    "MCP HTTP error {}: {}",
+                    status, error_text
+                ))));
                 return;
             }
 
@@ -2812,7 +3083,12 @@ impl McpClient for HttpMcpClient {
                 let text = match response.text().await {
                     Ok(t) => t,
                     Err(e) => {
-                        return { let _ = result_tx.send(Err(AppError::internal_error(format!("Failed to read response: {}", e)))); }
+                        return {
+                            let _ = result_tx.send(Err(AppError::internal_error(format!(
+                                "Failed to read response: {}",
+                                e
+                            ))));
+                        };
                     }
                 };
                 let json: serde_json::Value =
@@ -2824,11 +3100,17 @@ impl McpClient for HttpMcpClient {
                         }
                     };
                 if let Some(error) = json.get("error") {
-                    return { let _ = result_tx.send(Err(AppError::internal_error(format!("MCP error: {}", error)))); }
+                    return {
+                        let _ = result_tx.send(Err(AppError::internal_error(format!(
+                            "MCP error: {}",
+                            error
+                        ))));
+                    };
                 }
                 match json.get("result") {
-                    Some(result_val) => serde_json::from_value(result_val.clone())
-                        .map_err(|e| AppError::internal_error(format!("Failed to deserialize result: {}", e))),
+                    Some(result_val) => serde_json::from_value(result_val.clone()).map_err(|e| {
+                        AppError::internal_error(format!("Failed to deserialize result: {}", e))
+                    }),
                     None => Err(AppError::internal_error("Missing result in response")),
                 }
             };
@@ -2876,9 +3158,14 @@ impl McpClient for HttpMcpClient {
             return Err(AppError::internal_error("Not connected"));
         }
 
-        let result: Value = self.request("resources/read", serde_json::json!({
-            "uri": uri
-        })).await?;
+        let result: Value = self
+            .request(
+                "resources/read",
+                serde_json::json!({
+                    "uri": uri
+                }),
+            )
+            .await?;
 
         Ok(result)
     }

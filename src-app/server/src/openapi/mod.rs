@@ -226,13 +226,17 @@ update_check:
             .expect("generate");
 
         // Split-out sibling: `permissionDescriptions.ts` must also match its golden.
-        let desc_golden_path =
-            format!("{}/{}/src/api-client/permissionDescriptions.ts", manifest, ui_rel);
+        let desc_golden_path = format!(
+            "{}/{}/src/api-client/permissionDescriptions.ts",
+            manifest, ui_rel
+        );
         let desc_golden = std::fs::read_to_string(&desc_golden_path)
             .unwrap_or_else(|e| panic!("read {}: {}", desc_golden_path, e));
         let desc_generated =
-            ziee_framework::openapi::emit_ts::generate_permission_descriptions_ts_from_json(&openapi)
-                .expect("generate permissionDescriptions");
+            ziee_framework::openapi::emit_ts::generate_permission_descriptions_ts_from_json(
+                &openapi,
+            )
+            .expect("generate permissionDescriptions");
         assert_eq!(
             desc_generated, desc_golden,
             "{} permissionDescriptions.ts parity mismatch — run `just openapi-regen`",
@@ -240,8 +244,7 @@ update_check:
         );
 
         // Split-out sibling: `permissions.ts` (the Permissions enum) must match.
-        let perms_golden_path =
-            format!("{}/{}/src/api-client/permissions.ts", manifest, ui_rel);
+        let perms_golden_path = format!("{}/{}/src/api-client/permissions.ts", manifest, ui_rel);
         let perms_golden = std::fs::read_to_string(&perms_golden_path)
             .unwrap_or_else(|e| panic!("read {}: {}", perms_golden_path, e));
         let perms_generated =
@@ -296,7 +299,10 @@ update_check:
                 }
                 panic!("{}", msg);
             }
-            panic!("{} types.ts parity mismatch (trailing-content difference)", ui_rel);
+            panic!(
+                "{} types.ts parity mismatch (trailing-content difference)",
+                ui_rel
+            );
         }
     }
 

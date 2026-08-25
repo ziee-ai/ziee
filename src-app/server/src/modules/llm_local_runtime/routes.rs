@@ -68,22 +68,34 @@ pub fn llm_local_runtime_router() -> ApiRouter {
         // Runtime version management routes
         .api_route(
             "/local-runtime/versions",
-            get_with(version_handlers::list_runtime_versions, version_handlers::list_runtime_versions_docs),
+            get_with(
+                version_handlers::list_runtime_versions,
+                version_handlers::list_runtime_versions_docs,
+            ),
         )
         // Models grouped by the engine version they effectively use. Kept off
         // the `/versions/{version_id}` path to avoid a static-vs-param router
         // conflict.
         .api_route(
             "/local-runtime/version-usage",
-            get_with(version_handlers::list_version_usage, version_handlers::list_version_usage_docs),
+            get_with(
+                version_handlers::list_version_usage,
+                version_handlers::list_version_usage_docs,
+            ),
         )
         .api_route(
             "/local-runtime/versions/{version_id}",
-            get_with(version_handlers::get_runtime_version, version_handlers::get_runtime_version_docs),
+            get_with(
+                version_handlers::get_runtime_version,
+                version_handlers::get_runtime_version_docs,
+            ),
         )
         .api_route(
             "/local-runtime/versions/download",
-            post_with(version_handlers::download_runtime_version, version_handlers::download_runtime_version_docs),
+            post_with(
+                version_handlers::download_runtime_version,
+                version_handlers::download_runtime_version_docs,
+            ),
         )
         // Version DISCOVERY: what can I install, and with which
         // platform/arch/backend? `/versions` above lists only what is already
@@ -97,7 +109,10 @@ pub fn llm_local_runtime_router() -> ApiRouter {
         // "Cannot parse `version_id` with value `available`".
         .api_route(
             "/local-runtime/versions/available",
-            get_with(version_handlers::list_available_versions, version_handlers::list_available_versions_docs),
+            get_with(
+                version_handlers::list_available_versions,
+                version_handlers::list_available_versions_docs,
+            ),
         )
         // Detached-download progress surface (page-reload-safe).
         // `list` returns every task in the in-process registry, `get`
@@ -105,31 +120,52 @@ pub fn llm_local_runtime_router() -> ApiRouter {
         // stream the UI subscribes to for live progress.
         .api_route(
             "/local-runtime/versions/downloads",
-            get_with(version_handlers::list_active_downloads, version_handlers::list_active_downloads_docs),
+            get_with(
+                version_handlers::list_active_downloads,
+                version_handlers::list_active_downloads_docs,
+            ),
         )
         .api_route(
             "/local-runtime/versions/downloads/{key}",
-            get_with(version_handlers::get_download_snapshot, version_handlers::get_download_snapshot_docs),
+            get_with(
+                version_handlers::get_download_snapshot,
+                version_handlers::get_download_snapshot_docs,
+            ),
         )
         .api_route(
             "/local-runtime/versions/downloads/{key}/events",
-            get_with(version_handlers::subscribe_download_events, version_handlers::subscribe_download_events_docs),
+            get_with(
+                version_handlers::subscribe_download_events,
+                version_handlers::subscribe_download_events_docs,
+            ),
         )
         .api_route(
             "/local-runtime/versions/{version_id}",
-            delete_with(version_handlers::delete_runtime_version, version_handlers::delete_runtime_version_docs),
+            delete_with(
+                version_handlers::delete_runtime_version,
+                version_handlers::delete_runtime_version_docs,
+            ),
         )
         .api_route(
             "/local-runtime/versions/{version_id}/set-default",
-            post_with(version_handlers::set_system_default, version_handlers::set_system_default_docs),
+            post_with(
+                version_handlers::set_system_default,
+                version_handlers::set_system_default_docs,
+            ),
         )
         .api_route(
             "/local-runtime/versions/{engine}/check-updates",
-            get_with(version_handlers::check_for_updates, version_handlers::check_for_updates_docs),
+            get_with(
+                version_handlers::check_for_updates,
+                version_handlers::check_for_updates_docs,
+            ),
         )
         .api_route(
             "/local-runtime/versions/sync-cache",
-            post_with(version_handlers::sync_cache, version_handlers::sync_cache_docs),
+            post_with(
+                version_handlers::sync_cache,
+                version_handlers::sync_cache_docs,
+            ),
         )
         // Runtime singleton settings (P1.b)
         .api_route(

@@ -1,14 +1,14 @@
 // Database repository for local runtime management
 
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
-use crate::common::AppError;
 use super::runtime_settings::models::{
     ENGINE_RELEASE_CACHE_TTL_MAX_SECS, ENGINE_RELEASE_CACHE_TTL_MIN_SECS, RuntimeSettings,
     UpdateRuntimeSettingsRequest,
 };
+use crate::common::AppError;
 
 type AppResult<T> = Result<T, AppError>;
 
@@ -97,9 +97,10 @@ impl LocalRuntimeRepository {
         .await
         .map_err(|e| {
             if let sqlx::Error::Database(db_err) = &e
-                && db_err.is_unique_violation() {
-                    return AppError::conflict("Runtime instance");
-                }
+                && db_err.is_unique_violation()
+            {
+                return AppError::conflict("Runtime instance");
+            }
             AppError::database_error(e)
         })?;
 
@@ -129,9 +130,7 @@ impl LocalRuntimeRepository {
         )
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| {
-            AppError::database_error(e)
-        })?;
+        .map_err(|e| AppError::database_error(e))?;
 
         Ok(instance)
     }
@@ -160,9 +159,7 @@ impl LocalRuntimeRepository {
             )
             .execute(&self.pool)
             .await
-            .map_err(|e| {
-                AppError::database_error(e)
-            })?;
+            .map_err(|e| AppError::database_error(e))?;
 
             if result.rows_affected() == 0 {
                 return Err(AppError::not_found("Runtime instance"));
@@ -185,9 +182,7 @@ impl LocalRuntimeRepository {
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| {
-            AppError::database_error(e)
-        })?;
+        .map_err(|e| AppError::database_error(e))?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::not_found("Runtime instance"));
@@ -197,10 +192,7 @@ impl LocalRuntimeRepository {
     }
 
     /// Delete instance record
-    pub async fn delete_instance(
-        &self,
-        model_id: Uuid,
-    ) -> AppResult<()> {
+    pub async fn delete_instance(&self, model_id: Uuid) -> AppResult<()> {
         let result = sqlx::query!(
             r#"
             DELETE FROM llm_runtime_instances
@@ -210,9 +202,7 @@ impl LocalRuntimeRepository {
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| {
-            AppError::database_error(e)
-        })?;
+        .map_err(|e| AppError::database_error(e))?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::not_found("Runtime instance"));
@@ -245,9 +235,7 @@ impl LocalRuntimeRepository {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| {
-            AppError::database_error(e)
-        })?;
+        .map_err(|e| AppError::database_error(e))?;
 
         Ok(instances)
     }
@@ -335,7 +323,6 @@ impl LocalRuntimeRepository {
         .await
         .map_err(|e| AppError::database_error(e))
     }
-
 }
 
 // =====================================================

@@ -135,10 +135,7 @@ mod tests {
         let ext = BioMcpExtension::new(lazy_pool(), true);
 
         let mut metadata = HashMap::new();
-        metadata.insert(
-            "model_tools_capable".to_string(),
-            serde_json::json!(false),
-        );
+        metadata.insert("model_tools_capable".to_string(), serde_json::json!(false));
         let mut context = StreamContext {
             conversation_id: Uuid::new_v4(),
             branch_id: Uuid::new_v4(),
@@ -188,10 +185,7 @@ mod tests {
         let ext = BioMcpExtension::new(lazy_pool(), true);
 
         let mut metadata = HashMap::new();
-        metadata.insert(
-            "model_tools_capable".to_string(),
-            serde_json::json!(true),
-        );
+        metadata.insert("model_tools_capable".to_string(), serde_json::json!(true));
         let mut context = StreamContext {
             conversation_id: Uuid::new_v4(),
             branch_id: Uuid::new_v4(),

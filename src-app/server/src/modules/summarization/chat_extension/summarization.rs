@@ -17,10 +17,10 @@ use ai_providers::ChatRequest;
 
 use crate::common::AppError;
 use crate::core::Repos;
+use crate::modules::chat::core::extension::request::SendMessageRequest;
 use crate::modules::chat::core::extension::{
     BeforeLlmAction, ChatExtension, ExtensionAction, StreamContext,
 };
-use crate::modules::chat::core::extension::request::SendMessageRequest;
 use crate::modules::chat::core::models::Message;
 
 pub struct SummarizationExtension {
@@ -114,9 +114,7 @@ impl ChatExtension for SummarizationExtension {
             .summarization
             .get_conversation_summarization_mode(context.conversation_id)
             .await
-            .unwrap_or_else(|_| {
-                super::repository::DEFAULT_SUMMARIZATION_MODE.to_string()
-            });
+            .unwrap_or_else(|_| super::repository::DEFAULT_SUMMARIZATION_MODE.to_string());
         let admin_enabled = Repos
             .summarization
             .get_admin_settings()
@@ -160,9 +158,7 @@ impl ChatExtension for SummarizationExtension {
                 .summarization
                 .get_conversation_summarization_mode(conversation_id)
                 .await
-                .unwrap_or_else(|_| {
-                    super::repository::DEFAULT_SUMMARIZATION_MODE.to_string()
-                });
+                .unwrap_or_else(|_| super::repository::DEFAULT_SUMMARIZATION_MODE.to_string());
             let admin = match Repos.summarization.get_admin_settings().await {
                 Ok(a) => a,
                 Err(_) => return,
@@ -184,7 +180,9 @@ impl ChatExtension for SummarizationExtension {
             let model_id = admin
                 .default_summarization_model_id
                 .or_else(|| conversation_model_id(&metadata));
-            let Some(model_id) = model_id else { return; };
+            let Some(model_id) = model_id else {
+                return;
+            };
 
             // Fraction-of-window: clamp the flat summary trigger by 0.75× the
             // chat model's context window so a small-context local model
@@ -220,7 +218,6 @@ impl ChatExtension for SummarizationExtension {
 mod tests {
     use super::*;
 
-
     #[test]
     fn conversation_model_id_present_and_valid() {
         let mut m = HashMap::new();
@@ -229,13 +226,11 @@ mod tests {
         assert_eq!(conversation_model_id(&m), Some(id));
     }
 
-
     #[test]
     fn conversation_model_id_missing_returns_none() {
         let m = HashMap::new();
         assert_eq!(conversation_model_id(&m), None);
     }
-
 
     #[test]
     fn conversation_model_id_non_string_returns_none() {
@@ -244,7 +239,6 @@ mod tests {
         assert_eq!(conversation_model_id(&m), None);
     }
 
-
     #[test]
     fn conversation_model_id_malformed_uuid_returns_none() {
         let mut m = HashMap::new();
@@ -252,25 +246,21 @@ mod tests {
         assert_eq!(conversation_model_id(&m), None);
     }
 
-
     #[test]
     fn resolve_effective_enabled_per_conv_on_overrides_admin_off() {
         assert!(resolve_effective_enabled("on", false));
     }
-
 
     #[test]
     fn resolve_effective_enabled_per_conv_off_overrides_admin_on() {
         assert!(!resolve_effective_enabled("off", true));
     }
 
-
     #[test]
     fn resolve_effective_enabled_inherit_follows_admin() {
         assert!(resolve_effective_enabled("inherit", true));
         assert!(!resolve_effective_enabled("inherit", false));
     }
-
 
     // audit id all-25660d690d6d — DB-failure fail-soft. When the per-conversation
     // mode read fails, before/after_llm_call do
@@ -292,7 +282,6 @@ mod tests {
         );
     }
 
-
     /// The after_llm_call spawn's cheap "skip brand-new branches" guard: fewer
     /// than MIN_HISTORY_TO_SUMMARIZE (4) messages → skip; 4+ → proceed.
     #[test]
@@ -304,7 +293,6 @@ mod tests {
         assert!(!branch_too_new_to_summarize(10));
     }
 
-
     /// Fail-soft contract: on a DB error before_llm_call defaults per_conv_mode
     /// to DEFAULT_SUMMARIZATION_MODE and admin_enabled to `true`
     /// (`.unwrap_or_else(|_| DEFAULT)` + `.unwrap_or(true)`). Those exact
@@ -313,7 +301,10 @@ mod tests {
     #[test]
     fn fail_soft_defaults_resolve_to_enabled() {
         // The documented default mode is the inherit path.
-        assert_eq!(super::super::repository::DEFAULT_SUMMARIZATION_MODE, "inherit");
+        assert_eq!(
+            super::super::repository::DEFAULT_SUMMARIZATION_MODE,
+            "inherit"
+        );
         // DB-error defaults: mode = DEFAULT_SUMMARIZATION_MODE, admin = true.
         assert!(resolve_effective_enabled(
             super::super::repository::DEFAULT_SUMMARIZATION_MODE,

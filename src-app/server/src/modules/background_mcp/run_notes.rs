@@ -18,11 +18,7 @@
 //! agent-core port + a `build_detached_agent_core` impl; see that fn's doc).
 
 use aide::transform::TransformOperation;
-use axum::{
-    Json, debug_handler,
-    extract::Path,
-    http::StatusCode,
-};
+use axum::{Json, debug_handler, extract::Path, http::StatusCode};
 use uuid::Uuid;
 
 use crate::common::{ApiResult, AppError};
@@ -75,9 +71,7 @@ pub async fn post_run_note(
 
     let note = req.note.trim();
     if note.is_empty() {
-        return Err(
-            AppError::bad_request("EMPTY_NOTE", "steering note must not be empty").into(),
-        );
+        return Err(AppError::bad_request("EMPTY_NOTE", "steering note must not be empty").into());
     }
     if note.chars().count() > MAX_NOTE_CHARS {
         return Err(AppError::bad_request(

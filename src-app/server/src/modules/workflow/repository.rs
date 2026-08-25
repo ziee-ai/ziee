@@ -1935,13 +1935,18 @@ pub async fn insert_subagent_child_run(
     model_id: Option<Uuid>,
     label: &str,
 ) -> Result<(), AppError> {
+    // `parent_conversation_id` = the parent conversation (ON DELETE CASCADE — the
+    // DEC-3 lifecycle link); it mirrors `conversation_id` here, but the latter's FK
+    // is ON DELETE SET NULL, so the dedicated cascade column is what actually
+    // deletes the child when its conversation is deleted.
     sqlx::query!(
         r#"
         INSERT INTO workflow_runs (
             id, workflow_id, job_kind, conversation_id, user_id, model_id,
-            parent_message_id, run_kind, invocation_source, inputs_json, status
+            parent_message_id, parent_conversation_id, run_kind, invocation_source,
+            inputs_json, status
         )
-        VALUES ($1, NULL, 'subagent', $2, $3, $4, $5, 'normal', 'agent', $6, 'running')
+        VALUES ($1, NULL, 'subagent', $2, $3, $4, $5, $2, 'normal', 'agent', $6, 'running')
         "#,
         child_run_id,
         conversation_id,

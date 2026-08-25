@@ -58,7 +58,8 @@ impl ChatExtension for TextExtension {
         _context: &StreamContext,
         send_request: &SendMessageRequest,
         text_content: &str,
-    ) -> Result<Vec<crate::modules::chat::core::models::content::MessageContentData>, AppError> {
+    ) -> Result<Vec<crate::modules::chat::core::models::content::MessageContentData>, AppError>
+    {
         // Create Text content from user's message
         if text_content.is_empty() {
             return Ok(Vec::new());
@@ -166,8 +167,13 @@ impl ChatExtension for TextExtension {
     async fn get_accumulated_content(
         &self,
         context: &StreamContext,
-    ) -> Result<Vec<(usize, crate::modules::chat::core::models::content::MessageContentData)>, AppError>
-    {
+    ) -> Result<
+        Vec<(
+            usize,
+            crate::modules::chat::core::models::content::MessageContentData,
+        )>,
+        AppError,
+    > {
         let conv_key = context.conversation_id.to_string();
         let mut accumulated = self.accumulated.lock().await;
 
@@ -216,7 +222,10 @@ impl ChatExtension for TextExtension {
                     Ok(Some(ContentBlock::RedactedThinking { data }))
                 } else if signature.is_some() {
                     // Real thinking block with signature — the provider forwards it.
-                    Ok(Some(ContentBlock::Thinking { thinking, signature }))
+                    Ok(Some(ContentBlock::Thinking {
+                        thinking,
+                        signature,
+                    }))
                 } else {
                     // No signature → omit (the crate would otherwise drop it, and a
                     // signature-less thinking block is rejected by Anthropic).
@@ -234,20 +243,28 @@ impl ChatExtension for TextExtension {
         Ok(())
     }
 
-    fn convert_from_content_block(&self, block: &ContentBlock) -> Option<crate::modules::chat::core::models::content::MessageContentData> {
+    fn convert_from_content_block(
+        &self,
+        block: &ContentBlock,
+    ) -> Option<crate::modules::chat::core::models::content::MessageContentData> {
         match block {
             ContentBlock::Text { text } => {
                 let content = TextContent::Text { text: text.clone() };
                 Some(content.to_message_content())
             }
-            ContentBlock::Thinking { thinking, signature } => {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
                 let content = TextContent::Thinking {
                     thinking: thinking.clone(),
-                    metadata: signature.as_ref().map(|sig| super::types::ThinkingMetadata {
-                        token_count: None,
-                        signature: Some(sig.clone()),
-                        redacted_data: None,
-                    }),
+                    metadata: signature
+                        .as_ref()
+                        .map(|sig| super::types::ThinkingMetadata {
+                            token_count: None,
+                            signature: Some(sig.clone()),
+                            redacted_data: None,
+                        }),
                 };
                 Some(content.to_message_content())
             }
@@ -317,7 +334,11 @@ mod observation_tests {
             text: "[Background task complete] Result: hello".into(),
         }
         .to_message_content();
-        assert_eq!(block.content_type(), "observation", "stored as the observation type");
+        assert_eq!(
+            block.content_type(),
+            "observation",
+            "stored as the observation type"
+        );
 
         let out = ext
             .process_content_for_llm(&block, &ctx(lazy_pool()))
@@ -325,9 +346,14 @@ mod observation_tests {
             .expect("convert ok");
         match out {
             Some(ContentBlock::Text { text }) => {
-                assert!(text.contains("Background task complete"), "carries the text: {text}");
+                assert!(
+                    text.contains("Background task complete"),
+                    "carries the text: {text}"
+                );
             }
-            other => panic!("observation must wire-map to a user-visible Text block, got {other:?}"),
+            other => {
+                panic!("observation must wire-map to a user-visible Text block, got {other:?}")
+            }
         }
     }
 
@@ -342,13 +368,21 @@ mod observation_tests {
             .await
             .expect("provide ok");
         assert_eq!(obs.len(), 1);
-        assert_eq!(obs[0].content_type(), "observation", "flag set → observation block");
+        assert_eq!(
+            obs[0].content_type(),
+            "observation",
+            "flag set → observation block"
+        );
 
         let plain = ext
             .provide_user_message_content(&ctx(lazy_pool()), &request(false), "a normal message")
             .await
             .expect("provide ok");
         assert_eq!(plain.len(), 1);
-        assert_eq!(plain[0].content_type(), "text", "flag unset → plain text block");
+        assert_eq!(
+            plain[0].content_type(),
+            "text",
+            "flag unset → plain text block"
+        );
     }
 }

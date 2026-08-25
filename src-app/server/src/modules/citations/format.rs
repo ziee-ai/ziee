@@ -62,15 +62,33 @@ fn sanitize_csl(item: &Value) -> Value {
     // Keys that are Crossref-native and have no CSL meaning. Passing them through
     // is what makes a strict reader fail; none carry citation semantics.
     const DROP: &[&str] = &[
-        "link", "license", "assertion", "relation", "reference", "content-domain",
-        "journal-issue", "resource", "update-policy", "subject", "article-number",
-        "alternative-id", "prefix", "member", "score", "deposited", "indexed",
-        "reference-count", "references-count", "is-referenced-by-count",
+        "link",
+        "license",
+        "assertion",
+        "relation",
+        "reference",
+        "content-domain",
+        "journal-issue",
+        "resource",
+        "update-policy",
+        "subject",
+        "article-number",
+        "alternative-id",
+        "prefix",
+        "member",
+        "score",
+        "deposited",
+        "indexed",
+        "reference-count",
+        "references-count",
+        "is-referenced-by-count",
     ];
     // CSL declares these as a single value; Crossref sends arrays. Take the first.
     const FIRST_OF_ARRAY: &[&str] = &["ISSN", "ISBN", "container-title", "title", "short-title"];
 
-    let Some(obj) = item.as_object() else { return item.clone() };
+    let Some(obj) = item.as_object() else {
+        return item.clone();
+    };
     let mut out = serde_json::Map::new();
     for (k, v) in obj {
         if DROP.contains(&k.as_str()) {
@@ -94,10 +112,24 @@ fn sanitize_csl(item: &Value) -> Value {
         if let Some(arr) = v.as_array() {
             let structured = matches!(
                 k.as_str(),
-                "author" | "editor" | "translator" | "container-author" | "original-author"
-                    | "recipient" | "interviewer" | "composer" | "director" | "editorial-director"
-                    | "illustrator" | "reviewed-author" | "issued" | "accessed" | "event-date"
-                    | "submitted" | "original-date" | "categories"
+                "author"
+                    | "editor"
+                    | "translator"
+                    | "container-author"
+                    | "original-author"
+                    | "recipient"
+                    | "interviewer"
+                    | "composer"
+                    | "director"
+                    | "editorial-director"
+                    | "illustrator"
+                    | "reviewed-author"
+                    | "issued"
+                    | "accessed"
+                    | "event-date"
+                    | "submitted"
+                    | "original-date"
+                    | "categories"
             );
             if !structured {
                 if arr.iter().all(|x| x.is_string() || x.is_number()) {
@@ -205,8 +237,16 @@ async fn run_pandoc(args: &[String], stdin: Vec<u8>) -> Result<String, AppError>
 
     let output = match result {
         Err(_) => return Err(AppError::internal_error("pandoc timed out after 60s")),
-        Ok(Err(e)) => return Err(AppError::internal_error(format!("pandoc task panicked: {e}"))),
-        Ok(Ok(Err(e))) => return Err(AppError::internal_error(format!("failed to run pandoc: {e}"))),
+        Ok(Err(e)) => {
+            return Err(AppError::internal_error(format!(
+                "pandoc task panicked: {e}"
+            )));
+        }
+        Ok(Ok(Err(e))) => {
+            return Err(AppError::internal_error(format!(
+                "failed to run pandoc: {e}"
+            )));
+        }
         Ok(Ok(Ok(o))) => o,
     };
     if !output.status.success() {
@@ -222,7 +262,8 @@ fn write_temp_json(items: &[Value]) -> Result<PathBuf, AppError> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!("ziee-citations-{}-{}.json", std::process::id(), n));
+    let path =
+        std::env::temp_dir().join(format!("ziee-citations-{}-{}.json", std::process::id(), n));
     let json = serde_json::to_vec(items)
         .map_err(|e| AppError::internal_error(format!("csljson serialize: {e}")))?;
     std::fs::write(&path, json)
@@ -259,7 +300,10 @@ fn ris_sanitize(s: &str) -> String {
 pub fn to_ris(items: &[Value]) -> String {
     let mut out = String::new();
     for it in items {
-        let ty = it.get("type").and_then(|v| v.as_str()).unwrap_or("article-journal");
+        let ty = it
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("article-journal");
         out.push_str(&format!("TY  - {}\n", ris_type(ty)));
         if let Some(title) = it.get("title").and_then(|v| v.as_str()) {
             out.push_str(&format!("TI  - {}\n", ris_sanitize(title)));
@@ -485,7 +529,10 @@ mod sanitize_tests {
         for (k, v) in out.as_object().unwrap() {
             if v.is_array() {
                 assert!(
-                    matches!(k.as_str(), "author" | "editor" | "translator" | "categories"),
+                    matches!(
+                        k.as_str(),
+                        "author" | "editor" | "translator" | "categories"
+                    ),
                     "unexpected array left in {k}, a strict CSL reader would reject it"
                 );
             }

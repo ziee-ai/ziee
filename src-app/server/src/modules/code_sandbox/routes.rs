@@ -17,8 +17,8 @@
 //! `ApiRouter` accepts both `.route()` (untyped) and `.api_route()`
 //! (typed) in the same router — they coexist cleanly.
 
-use aide::axum::routing::{delete_with, get_with, post_with};
 use aide::axum::ApiRouter;
+use aide::axum::routing::{delete_with, get_with, post_with};
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 

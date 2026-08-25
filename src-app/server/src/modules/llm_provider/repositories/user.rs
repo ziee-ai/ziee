@@ -25,11 +25,7 @@ impl UserKeyRepository {
     /// and storage_key is configured; falls back to the legacy
     /// plaintext api_key column for not-yet-backfilled rows. Closes
     /// 06-llm-provider F-02 (Critical) on the per-user path.
-    pub async fn get(
-        &self,
-        user_id: Uuid,
-        provider_id: Uuid,
-    ) -> Result<Option<String>, AppError> {
+    pub async fn get(&self, user_id: Uuid, provider_id: Uuid) -> Result<Option<String>, AppError> {
         let row = sqlx::query!(
             r#"
             SELECT api_key, api_key_encrypted FROM user_llm_provider_api_keys

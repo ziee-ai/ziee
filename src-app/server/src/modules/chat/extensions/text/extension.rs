@@ -1,7 +1,7 @@
-use linkme::distributed_slice;
 use crate::modules::chat::core::extension::{
-    ChatExtension, ExtensionEntry, ExtensionMetadata, CHAT_EXTENSIONS,
+    CHAT_EXTENSIONS, ChatExtension, ExtensionEntry, ExtensionMetadata,
 };
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -17,9 +17,7 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum MessageContentDataVariants {
     /// Plain text content
-    Text {
-        text: String,
-    },
+    Text { text: String },
 
     /// Thinking/reasoning content (Claude-style extended thinking)
     Thinking {
@@ -31,9 +29,7 @@ pub enum MessageContentDataVariants {
     /// System/observation content injected by ziee (e.g. a completed background
     /// sub-agent result). Renders as a distinct observation card; wire-maps to a
     /// plain-text block so the model sees it as context.
-    Observation {
-        text: String,
-    },
+    Observation { text: String },
 }
 
 /// Extension factory function

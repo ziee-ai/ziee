@@ -153,26 +153,21 @@ pub async fn fetch_and_extract(
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::env::temp_dir());
-    fs::create_dir_all(&staging_parent).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
-    let staging_root = staging_parent.join(".staging").join(Uuid::new_v4().to_string());
-    fs::create_dir_all(&staging_root).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::create_dir_all(&staging_parent).map_err(|e| AppError::internal_with_id(e))?;
+    let staging_root = staging_parent
+        .join(".staging")
+        .join(Uuid::new_v4().to_string());
+    fs::create_dir_all(&staging_root).map_err(|e| AppError::internal_with_id(e))?;
 
     let download_path = staging_root.join("bundle.tar.gz");
     let url_for_blocking = url.clone();
     let download_path_for_blocking = download_path.clone();
     let expected_sha = bundle.sha256.to_lowercase();
-    let download_result =
-        tokio::task::spawn_blocking(move || {
-            download_to_file(&url_for_blocking, &download_path_for_blocking)
-        })
-        .await
-        .map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+    let download_result = tokio::task::spawn_blocking(move || {
+        download_to_file(&url_for_blocking, &download_path_for_blocking)
+    })
+    .await
+    .map_err(|e| AppError::internal_with_id(e))?;
     let sha_actual = match download_result {
         Ok(s) => s,
         Err(e) => {
@@ -193,9 +188,7 @@ pub async fn fetch_and_extract(
 
     // Extract.
     let extracted_dir = staging_root.join("extracted");
-    fs::create_dir_all(&extracted_dir).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::create_dir_all(&extracted_dir).map_err(|e| AppError::internal_with_id(e))?;
     let extract_result = {
         let bytes = match fs::read(&download_path) {
             Ok(b) => b,
@@ -219,18 +212,12 @@ pub async fn fetch_and_extract(
     // (name, version) means the install handler upstream has already
     // decided to overwrite.
     if let Some(parent) = target_dir.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        fs::create_dir_all(parent).map_err(|e| AppError::internal_with_id(e))?;
     }
     if target_dir.exists() {
-        fs::remove_dir_all(target_dir).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        fs::remove_dir_all(target_dir).map_err(|e| AppError::internal_with_id(e))?;
     }
-    fs::rename(&extracted_dir, target_dir).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::rename(&extracted_dir, target_dir).map_err(|e| AppError::internal_with_id(e))?;
     let _ = fs::remove_dir_all(&staging_root);
 
     Ok(BundleExtraction {
@@ -268,17 +255,13 @@ pub async fn extract_from_seed_bytes(
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::env::temp_dir());
-    fs::create_dir_all(&staging_parent).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
-    let staging_root = staging_parent.join(".staging").join(Uuid::new_v4().to_string());
-    fs::create_dir_all(&staging_root).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::create_dir_all(&staging_parent).map_err(|e| AppError::internal_with_id(e))?;
+    let staging_root = staging_parent
+        .join(".staging")
+        .join(Uuid::new_v4().to_string());
+    fs::create_dir_all(&staging_root).map_err(|e| AppError::internal_with_id(e))?;
     let extracted_dir = staging_root.join("extracted");
-    fs::create_dir_all(&extracted_dir).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::create_dir_all(&extracted_dir).map_err(|e| AppError::internal_with_id(e))?;
     let extraction = match extract_tar_gz_to(bytes, &extracted_dir, kind) {
         Ok(e) => e,
         Err(e) => {
@@ -288,18 +271,12 @@ pub async fn extract_from_seed_bytes(
     };
 
     if let Some(parent) = target_dir.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        fs::create_dir_all(parent).map_err(|e| AppError::internal_with_id(e))?;
     }
     if target_dir.exists() {
-        fs::remove_dir_all(target_dir).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        fs::remove_dir_all(target_dir).map_err(|e| AppError::internal_with_id(e))?;
     }
-    fs::rename(&extracted_dir, target_dir).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::rename(&extracted_dir, target_dir).map_err(|e| AppError::internal_with_id(e))?;
     let _ = fs::remove_dir_all(&staging_root);
 
     Ok(BundleExtraction {
@@ -332,16 +309,12 @@ pub async fn extract_tarball_bytes(
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(std::env::temp_dir);
-    fs::create_dir_all(&staging_parent).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::create_dir_all(&staging_parent).map_err(|e| AppError::internal_with_id(e))?;
     let staging_root = staging_parent
         .join(".staging")
         .join(Uuid::new_v4().to_string());
     let extracted_dir = staging_root.join("extracted");
-    fs::create_dir_all(&extracted_dir).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::create_dir_all(&extracted_dir).map_err(|e| AppError::internal_with_id(e))?;
 
     let extraction = match extract_tar_gz_to(bytes, &extracted_dir, kind) {
         Ok(e) => e,
@@ -352,18 +325,12 @@ pub async fn extract_tarball_bytes(
     };
 
     if let Some(parent) = target_dir.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        fs::create_dir_all(parent).map_err(|e| AppError::internal_with_id(e))?;
     }
     if target_dir.exists() {
-        fs::remove_dir_all(target_dir).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        fs::remove_dir_all(target_dir).map_err(|e| AppError::internal_with_id(e))?;
     }
-    fs::rename(&extracted_dir, target_dir).map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    fs::rename(&extracted_dir, target_dir).map_err(|e| AppError::internal_with_id(e))?;
     let _ = fs::remove_dir_all(&staging_root);
 
     Ok(BundleExtraction {
@@ -431,9 +398,7 @@ pub fn pack_workspace_dir_measured(root: &Path) -> Result<PackMeasure, AppError>
     let enc = builder
         .into_inner()
         .map_err(|e| AppError::internal_with_id(e))?;
-    let bytes = enc
-        .finish()
-        .map_err(|e| AppError::internal_with_id(e))?;
+    let bytes = enc.finish().map_err(|e| AppError::internal_with_id(e))?;
     let sha256_hex = hex_sha256(&bytes);
     Ok(PackMeasure {
         bytes,
@@ -462,9 +427,7 @@ fn append_dir_to_tar(
     entries.sort();
 
     for path in entries {
-        let meta = fs::symlink_metadata(&path).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        let meta = fs::symlink_metadata(&path).map_err(|e| AppError::internal_with_id(e))?;
         let ft = meta.file_type();
         if ft.is_symlink() {
             return Err(AppError::bad_request(
@@ -472,9 +435,9 @@ fn append_dir_to_tar(
                 format!("symlinks are not packable ({})", path.display()),
             ));
         }
-        let rel = path.strip_prefix(root).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        let rel = path
+            .strip_prefix(root)
+            .map_err(|e| AppError::internal_with_id(e))?;
         if ft.is_dir() {
             append_dir_to_tar(builder, root, &path, file_count, total_bytes)?;
         } else if ft.is_file() {
@@ -503,9 +466,7 @@ fn append_dir_to_tar(
                     format!("workspace exceeds {MAX_BUNDLE_DECOMPRESSED_BYTES} bytes"),
                 ));
             }
-            let data = fs::read(&path).map_err(|e| {
-                AppError::internal_with_id(e)
-            })?;
+            let data = fs::read(&path).map_err(|e| AppError::internal_with_id(e))?;
             let mut header = Header::new_gnu();
             header.set_size(len);
             // Preserve the source mode so the extractor's per-kind exec policy
@@ -519,9 +480,9 @@ fn append_dir_to_tar(
             header.set_mode(0o644);
             header.set_entry_type(tar::EntryType::Regular);
             header.set_cksum();
-            builder.append_data(&mut header, rel, &data[..]).map_err(|e| {
-                AppError::internal_with_id(e)
-            })?;
+            builder
+                .append_data(&mut header, rel, &data[..])
+                .map_err(|e| AppError::internal_with_id(e))?;
         }
         // Anything else (devices/FIFOs/sockets) can't appear in a normal
         // workspace and is silently skipped.
@@ -612,7 +573,10 @@ fn extract_tar_gz_to(
                 _ => {
                     return Err(AppError::unprocessable_entity(
                         "BUNDLE_UNSAFE_PATH",
-                        format!("bundle entry path {:?} contains '..' / root / prefix component", path),
+                        format!(
+                            "bundle entry path {:?} contains '..' / root / prefix component",
+                            path
+                        ),
                     ));
                 }
             }
@@ -627,9 +591,7 @@ fn extract_tar_gz_to(
             }
             dir_count += 1;
             let dest = target_dir.join(&path);
-            fs::create_dir_all(&dest).map_err(|e| {
-                AppError::internal_with_id(e)
-            })?;
+            fs::create_dir_all(&dest).map_err(|e| AppError::internal_with_id(e))?;
             continue;
         }
 
@@ -663,9 +625,7 @@ fn extract_tar_gz_to(
 
         let dest = target_dir.join(&path);
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                AppError::internal_with_id(e)
-            })?;
+            fs::create_dir_all(parent).map_err(|e| AppError::internal_with_id(e))?;
         }
 
         // Read the body into a Vec so we can re-cap on what the
@@ -701,12 +661,9 @@ fn extract_tar_gz_to(
             .create_new(true)
             .write(true)
             .open(&dest)
-            .map_err(|e| {
-                AppError::internal_with_id(e)
-            })?;
-        f.write_all(&buf).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+            .map_err(|e| AppError::internal_with_id(e))?;
+        f.write_all(&buf)
+            .map_err(|e| AppError::internal_with_id(e))?;
         drop(f);
 
         // Per-kind permission policy.
@@ -723,10 +680,7 @@ fn extract_tar_gz_to(
                 // strip world-write.
                 BundleKind::Workflow => mode & 0o755,
             };
-            let _ = fs::set_permissions(
-                &dest,
-                fs::Permissions::from_mode(new_mode),
-            );
+            let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(new_mode));
         }
         // On Windows the execute bit doesn't exist; the kind
         // distinction is a Unix-only thing.
@@ -750,27 +704,19 @@ fn download_to_file(url: &str, dest: &Path) -> Result<String, AppError> {
         .timeout(HTTP_TIMEOUT)
         .user_agent(concat!("ziee/", env!("CARGO_PKG_VERSION")))
         .build()
-        .map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        .map_err(|e| AppError::internal_with_id(e))?;
     let resp = client
         .get(url)
         .send()
-        .map_err(|e| {
-            AppError::internal_with_id(e)
-        })?
+        .map_err(|e| AppError::internal_with_id(e))?
         .error_for_status()
-        .map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        .map_err(|e| AppError::internal_with_id(e))?;
     if let Some(len) = resp.content_length()
         && len > MAX_BUNDLE_COMPRESSED_BYTES
     {
         return Err(AppError::unprocessable_entity(
             "BUNDLE_TOO_LARGE",
-            format!(
-                "bundle: {url} declares {len} bytes (cap {MAX_BUNDLE_COMPRESSED_BYTES})"
-            ),
+            format!("bundle: {url} declares {len} bytes (cap {MAX_BUNDLE_COMPRESSED_BYTES})"),
         ));
     }
 
@@ -778,9 +724,7 @@ fn download_to_file(url: &str, dest: &Path) -> Result<String, AppError> {
         .create_new(true)
         .write(true)
         .open(dest)
-        .map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        .map_err(|e| AppError::internal_with_id(e))?;
     let mut hasher = Sha256::new();
     let mut total: u64 = 0;
     let mut reader = resp.take(MAX_BUNDLE_COMPRESSED_BYTES + 1);
@@ -800,13 +744,10 @@ fn download_to_file(url: &str, dest: &Path) -> Result<String, AppError> {
             ));
         }
         hasher.update(&buf[..n]);
-        file.write_all(&buf[..n]).map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        file.write_all(&buf[..n])
+            .map_err(|e| AppError::internal_with_id(e))?;
     }
-    file.flush().map_err(|e| {
-        AppError::internal_with_id(e)
-    })?;
+    file.flush().map_err(|e| AppError::internal_with_id(e))?;
     Ok(format!("{:x}", hasher.finalize()))
 }
 
@@ -956,7 +897,11 @@ mod tests {
     async fn extracts_minimal_skill_bundle() {
         let body = build_tar_gz(
             &[
-                ("SKILL.md", 0o644, b"---\nname: x\ndescription: y\n---\nbody"),
+                (
+                    "SKILL.md",
+                    0o644,
+                    b"---\nname: x\ndescription: y\n---\nbody",
+                ),
                 ("references/foo.md", 0o644, b"foo"),
             ],
             None,
@@ -965,10 +910,9 @@ mod tests {
         let bundle = synth_bundle(&sha, body.len() as u64, 2);
         let tmp = tempdir().unwrap();
         let target = tmp.path().join("extracted");
-        let res =
-            extract_from_seed_bytes(&bundle, &body, &target, BundleKind::Skill)
-                .await
-                .expect("extract");
+        let res = extract_from_seed_bytes(&bundle, &body, &target, BundleKind::Skill)
+            .await
+            .expect("extract");
         assert_eq!(res.file_count, 2);
         assert!(target.join("SKILL.md").exists());
         assert!(target.join("references/foo.md").exists());
@@ -977,10 +921,7 @@ mod tests {
     #[tokio::test]
     async fn extract_tarball_bytes_no_manifest_and_overwrites() {
         // First import.
-        let body1 = build_tar_gz(
-            &[("workflow.yaml", 0o644, b"steps: []\n")],
-            None,
-        );
+        let body1 = build_tar_gz(&[("workflow.yaml", 0o644, b"steps: []\n")], None);
         let tmp = tempdir().unwrap();
         let target = tmp.path().join("wf").join("0.0.0-dev");
         let res = extract_tarball_bytes(&body1, &target, BundleKind::Workflow)
@@ -1013,13 +954,8 @@ mod tests {
         let mut bundle = synth_bundle("0".repeat(64).as_str(), body.len() as u64, 1);
         bundle.sha256 = "0".repeat(64);
         let tmp = tempdir().unwrap();
-        let res = extract_from_seed_bytes(
-            &bundle,
-            &body,
-            &tmp.path().join("e"),
-            BundleKind::Skill,
-        )
-        .await;
+        let res =
+            extract_from_seed_bytes(&bundle, &body, &tmp.path().join("e"), BundleKind::Skill).await;
         assert!(res.unwrap_err().to_string().contains("sha256"));
     }
 
@@ -1042,11 +978,7 @@ mod tests {
         // Bypass the builder's `..` rejection by writing the path
         // directly into the GNU header (set_path_bytes is the escape
         // hatch the tar lib explicitly leaves open).
-        header
-            .as_gnu_mut()
-            .unwrap()
-            .name[..16]
-            .copy_from_slice(b"../../etc/passwd");
+        header.as_gnu_mut().unwrap().name[..16].copy_from_slice(b"../../etc/passwd");
         header.set_cksum();
         builder
             .append(&header, &b"pwned"[..])
@@ -1058,14 +990,9 @@ mod tests {
         let sha = hex_sha256(&body);
         let bundle = synth_bundle(&sha, body.len() as u64, 1);
         let tmp = tempdir().unwrap();
-        let err = extract_from_seed_bytes(
-            &bundle,
-            &body,
-            &tmp.path().join("e"),
-            BundleKind::Skill,
-        )
-        .await
-        .unwrap_err();
+        let err = extract_from_seed_bytes(&bundle, &body, &tmp.path().join("e"), BundleKind::Skill)
+            .await
+            .unwrap_err();
         // Could be rejected as `..` or as relative-from-unsafe;
         // either way OUR extractor refuses the entry.
         let msg = err.to_string().to_lowercase();
@@ -1083,9 +1010,7 @@ mod tests {
                 let mut header = Header::new_gnu();
                 header.set_entry_type(tar::EntryType::Symlink);
                 header.set_size(0);
-                header
-                    .set_link_name("/etc/passwd")
-                    .expect("set_link_name");
+                header.set_link_name("/etc/passwd").expect("set_link_name");
                 header.set_cksum();
                 b.append_data(&mut header, "evil_link", std::io::empty())
                     .expect("symlink append");
@@ -1094,14 +1019,9 @@ mod tests {
         let sha = hex_sha256(&body);
         let bundle = synth_bundle(&sha, body.len() as u64, 2);
         let tmp = tempdir().unwrap();
-        let err = extract_from_seed_bytes(
-            &bundle,
-            &body,
-            &tmp.path().join("e"),
-            BundleKind::Skill,
-        )
-        .await
-        .unwrap_err();
+        let err = extract_from_seed_bytes(&bundle, &body, &tmp.path().join("e"), BundleKind::Skill)
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("non-regular") || err.to_string().contains("symlink"));
     }
 
@@ -1112,21 +1032,14 @@ mod tests {
         let sha = hex_sha256(&body);
         let bundle = synth_bundle(&sha, body.len() as u64, 1);
         let tmp = tempdir().unwrap();
-        let err = extract_from_seed_bytes(
-            &bundle,
-            &body,
-            &tmp.path().join("e"),
-            BundleKind::Skill,
-        )
-        .await
-        .unwrap_err();
+        let err = extract_from_seed_bytes(&bundle, &body, &tmp.path().join("e"), BundleKind::Skill)
+            .await
+            .unwrap_err();
         let msg = err.to_string().to_lowercase();
         // Bomb-guard wins — either the header-size check, the
         // streamed-read cap, or the cumulative-decompressed cap fires.
         assert!(
-            msg.contains("decompressed")
-                || msg.contains("bytes")
-                || msg.contains("file"),
+            msg.contains("decompressed") || msg.contains("bytes") || msg.contains("file"),
             "expected size rejection, got: {err}"
         );
     }
@@ -1149,14 +1062,9 @@ mod tests {
         let sha = hex_sha256(&body);
         let bundle = synth_bundle(&sha, body.len() as u64, entries_ref.len() as u32);
         let tmp = tempdir().unwrap();
-        let err = extract_from_seed_bytes(
-            &bundle,
-            &body,
-            &tmp.path().join("e"),
-            BundleKind::Skill,
-        )
-        .await
-        .unwrap_err();
+        let err = extract_from_seed_bytes(&bundle, &body, &tmp.path().join("e"), BundleKind::Skill)
+            .await
+            .unwrap_err();
         assert!(
             err.to_string().to_lowercase().contains("decompressed"),
             "cumulative cap should fire, got: {err}"
@@ -1179,18 +1087,13 @@ mod tests {
         let sha = hex_sha256(&body);
         let bundle = synth_bundle(&sha, body.len() as u64, entries.len() as u32);
         let tmp = tempdir().unwrap();
-        let err = extract_from_seed_bytes(
-            &bundle,
-            &body,
-            &tmp.path().join("e"),
-            BundleKind::Skill,
-        )
-        .await
-        .unwrap_err();
+        let err = extract_from_seed_bytes(&bundle, &body, &tmp.path().join("e"), BundleKind::Skill)
+            .await
+            .unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(
-            msg.contains("file") && (msg.contains("many") || msg.contains("count")
-                || msg.contains("256")),
+            msg.contains("file")
+                && (msg.contains("many") || msg.contains("count") || msg.contains("256")),
             "file-count cap should fire, got: {err}"
         );
     }
@@ -1273,7 +1176,11 @@ mod tests {
     #[tokio::test]
     async fn seed_bundle_sha256_mismatch_is_rejected() {
         let body = build_tar_gz(
-            &[("SKILL.md", 0o644, b"---\nname: x\ndescription: y\n---\nbody")],
+            &[(
+                "SKILL.md",
+                0o644,
+                b"---\nname: x\ndescription: y\n---\nbody",
+            )],
             None,
         );
         // Declare a deliberately wrong sha (64 hex zeroes).
@@ -1305,9 +1212,11 @@ mod tests {
         let tmp = tempdir().unwrap();
         let target = tmp.path().join("extracted");
 
-        let res =
-            extract_from_seed_bytes(&bundle, &garbage, &target, BundleKind::Skill).await;
-        assert!(res.is_err(), "a corrupt (non-tar.gz) archive must fail to extract");
+        let res = extract_from_seed_bytes(&bundle, &garbage, &target, BundleKind::Skill).await;
+        assert!(
+            res.is_err(),
+            "a corrupt (non-tar.gz) archive must fail to extract"
+        );
     }
 
     // ── pack_workspace_dir (workspace → tar.gz) ───────────────────────
@@ -1330,21 +1239,32 @@ mod tests {
     async fn t1_pack_roundtrips_through_extract() {
         let tmp = tempdir().unwrap();
         let root = tmp.path().join("myflow");
-        write_file(&root.join("workflow.yaml"), b"name: local.dev/x\nsteps: []\n", 0o644);
+        write_file(
+            &root.join("workflow.yaml"),
+            b"name: local.dev/x\nsteps: []\n",
+            0o644,
+        );
         write_file(&root.join("scripts/run.py"), b"print('hi')\n", 0o644);
         write_file(&root.join("references/note.txt"), b"note\n", 0o644);
 
         let bytes = pack_workspace_dir(&root).expect("pack");
         let out = tmp.path().join("out");
-        let extraction =
-            extract_tarball_bytes(&bytes, &out, BundleKind::Workflow).await.expect("extract");
+        let extraction = extract_tarball_bytes(&bytes, &out, BundleKind::Workflow)
+            .await
+            .expect("extract");
         assert_eq!(extraction.file_count, 3);
         assert_eq!(
             fs::read(out.join("workflow.yaml")).unwrap(),
             b"name: local.dev/x\nsteps: []\n"
         );
-        assert_eq!(fs::read(out.join("scripts/run.py")).unwrap(), b"print('hi')\n");
-        assert_eq!(fs::read(out.join("references/note.txt")).unwrap(), b"note\n");
+        assert_eq!(
+            fs::read(out.join("scripts/run.py")).unwrap(),
+            b"print('hi')\n"
+        );
+        assert_eq!(
+            fs::read(out.join("references/note.txt")).unwrap(),
+            b"note\n"
+        );
     }
 
     #[cfg(unix)]
@@ -1358,9 +1278,17 @@ mod tests {
 
         let bytes = pack_workspace_dir(&root).expect("pack");
         let out = tmp.path().join("out");
-        extract_tarball_bytes(&bytes, &out, BundleKind::Workflow).await.expect("extract");
-        let mode = fs::metadata(out.join("scripts/x.sh")).unwrap().permissions().mode();
-        assert!(mode & 0o111 != 0, "exec bit must survive the round-trip, got {mode:o}");
+        extract_tarball_bytes(&bytes, &out, BundleKind::Workflow)
+            .await
+            .expect("extract");
+        let mode = fs::metadata(out.join("scripts/x.sh"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert!(
+            mode & 0o111 != 0,
+            "exec bit must survive the round-trip, got {mode:o}"
+        );
     }
 
     #[cfg(unix)]
@@ -1387,7 +1315,9 @@ mod tests {
 
         let bytes = pack_workspace_dir(&root).expect("pack");
         let out = tmp.path().join("out");
-        extract_tarball_bytes(&bytes, &out, BundleKind::Workflow).await.expect("extract");
+        extract_tarball_bytes(&bytes, &out, BundleKind::Workflow)
+            .await
+            .expect("extract");
         assert!(out.join("workflow.yaml").exists());
         assert!(!out.join("secret.txt").exists());
     }

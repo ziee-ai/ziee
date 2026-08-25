@@ -50,10 +50,7 @@ pub async fn track_user_mcp_install(
 /// SYSTEM analog of [`track_user_mcp_install`]. Called from
 /// `POST /api/mcp/system-servers` when the request carries `hub_id`
 /// (drawer opened from "Install for the system").
-pub async fn track_system_mcp_install(
-    server_id: Uuid,
-    hub_id: &str,
-) -> Result<(), AppError> {
+pub async fn track_system_mcp_install(server_id: Uuid, hub_id: &str) -> Result<(), AppError> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_version = hub_manager.current_version().await.ok();

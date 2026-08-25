@@ -1,9 +1,9 @@
 // File upload handler
 
 use aide::transform::TransformOperation;
+use axum::Json;
 use axum::extract::Multipart;
 use axum::http::StatusCode;
-use axum::Json;
 
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
@@ -54,19 +54,23 @@ pub async fn upload_file_inner(
 
         if field_name == "file" {
             filename = field.file_name().map(|s| s.to_string());
-            file_data = Some(field.bytes().await.map_err(|e| {
-                AppError::bad_request("UPLOAD_ERROR", format!("Failed to read file: {}", e))
-            })?.to_vec());
+            file_data = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|e| {
+                        AppError::bad_request("UPLOAD_ERROR", format!("Failed to read file: {}", e))
+                    })?
+                    .to_vec(),
+            );
         }
     }
 
-    let filename = filename.ok_or_else(|| {
-        AppError::bad_request("MISSING_FILE", "No file provided in upload")
-    })?;
+    let filename = filename
+        .ok_or_else(|| AppError::bad_request("MISSING_FILE", "No file provided in upload"))?;
 
-    let file_data = file_data.ok_or_else(|| {
-        AppError::bad_request("MISSING_FILE_DATA", "No file data provided")
-    })?;
+    let file_data = file_data
+        .ok_or_else(|| AppError::bad_request("MISSING_FILE_DATA", "No file data provided"))?;
 
     // Validate file size against the configurable per-file cap
     // (`config.server.max_file_upload_mb`, captured at boot). Both this handler
@@ -106,11 +110,7 @@ pub async fn upload_file_inner(
     let file_id = Uuid::new_v4();
 
     // Extract extension
-    let extension = filename
-        .rsplit('.')
-        .next()
-        .unwrap_or("bin")
-        .to_lowercase();
+    let extension = filename.rsplit('.').next().unwrap_or("bin").to_lowercase();
 
     // Determine MIME type. Extension is the starting point, but we
     // sniff the actual bytes to reject HTML-disguised-as-image-or-pdf
@@ -151,9 +151,10 @@ pub async fn upload_file_inner(
     // Closes 05-file F-05 (High). For non-ZIP-family MIMEs this is a
     // no-op via the is_ooxml_or_odf gate.
     if crate::modules::file::utils::zipbomb::is_ooxml_or_odf(mime_type_str)
-        && let Err(e) = crate::modules::file::utils::zipbomb::validate(&file_data) {
-            return Err(AppError::bad_request("ZIP_BOMB_DETECTED", e.to_string()));
-        }
+        && let Err(e) = crate::modules::file::utils::zipbomb::validate(&file_data)
+    {
+        return Err(AppError::bad_request("ZIP_BOMB_DETECTED", e.to_string()));
+    }
 
     let processing_result = match processing_manager
         .process_file(&file_data, mime_type_str)
@@ -224,8 +225,8 @@ pub async fn upload_file_inner(
     // the user that a file type reads poorly and suggest a better format. Computed
     // empirically from the actual extraction result, so scanned PDFs / failed
     // extractions are caught too — not just by mime.
-    let mut processing_metadata = serde_json::to_value(&processing_result.metadata)
-        .unwrap_or(serde_json::json!({}));
+    let mut processing_metadata =
+        serde_json::to_value(&processing_result.metadata).unwrap_or(serde_json::json!({}));
     {
         let has_text = !processing_result.text_pages.is_empty();
         let (suitability, suggestion) = file_suitability(mime_type_str, has_text);
@@ -255,7 +256,11 @@ pub async fn upload_file_inner(
     // Atomic quota guard (closes the TOCTOU between the pre-check above and the
     // insert). On a lost race the blob is already on disk — remove it so a
     // quota rejection doesn't leave an orphan.
-    let file = match Repos.file.create_with_quota(file_create, PER_USER_STORAGE_QUOTA_BYTES).await {
+    let file = match Repos
+        .file
+        .create_with_quota(file_create, PER_USER_STORAGE_QUOTA_BYTES)
+        .await
+    {
         Ok(f) => f,
         Err(e) => {
             let _ = storage.delete_all(user_id, file_id).await;
@@ -311,9 +316,11 @@ fn file_suitability(mime: &str, has_text: bool) -> (&'static str, Option<&'stati
             Some("Media files aren't read — upload a transcript instead."),
         );
     }
-    ("low", Some("This file type can't be read by the assistant."))
+    (
+        "low",
+        Some("This file type can't be read by the assistant."),
+    )
 }
-
 
 /// Upload file handler — thin wrapper around `upload_file_inner` that
 /// adds permission gating + the 201 response code.
@@ -343,14 +350,12 @@ pub fn upload_file_docs(op: TransformOperation) -> TransformOperation {
 mod suitability_tests {
     use super::file_suitability;
 
-
     #[test]
     fn images_and_text_are_good() {
         assert_eq!(file_suitability("image/png", false).0, "good");
         assert_eq!(file_suitability("text/markdown", true).0, "good");
         assert_eq!(file_suitability("application/pdf", true).0, "good");
     }
-
 
     #[test]
     fn powerpoint_suggests_pdf() {
@@ -361,7 +366,6 @@ mod suitability_tests {
         assert_eq!(s, "low");
         assert!(sug.unwrap().contains("PDF"));
     }
-
 
     #[test]
     fn scanned_pdf_archive_media_are_low() {

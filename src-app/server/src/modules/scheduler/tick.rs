@@ -100,7 +100,10 @@ pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::E
         // but no target is dispatched and no notification is sent.
         if let Some(reason) = preemptive_pause_reason(&task) {
             if let Err(e) = repository::mark_fired(pool, task.id, None, now, Some(reason)).await {
-                tracing::warn!("scheduler.tick: preemptive mark_fired {} failed: {e:?}", task.id);
+                tracing::warn!(
+                    "scheduler.tick: preemptive mark_fired {} failed: {e:?}",
+                    task.id
+                );
             }
             let run = super::models::NewTaskRun {
                 scheduled_task_id: task.id,
@@ -118,7 +121,10 @@ pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::E
                 fired_at: now,
             };
             if let Err(e) = repository::insert_run(pool, run).await {
-                tracing::warn!("scheduler.tick: preemptive insert_run {} failed: {e:?}", task.id);
+                tracing::warn!(
+                    "scheduler.tick: preemptive insert_run {} failed: {e:?}",
+                    task.id
+                );
             }
             super::events::emit_task(
                 crate::modules::sync::SyncAction::Update,
@@ -138,7 +144,10 @@ pub async fn run_once(pool: &PgPool, config: &Arc<Config>) -> Result<(), sqlx::E
         // `next_run_at` from the clamped proposal, or self-completes on stop/expiry.
         if matches!(kind, ScheduleKind::SelfPaced) {
             if let Err(e) = repository::disarm_self_paced(pool, task.id, now).await {
-                tracing::warn!("scheduler.tick: disarm_self_paced {} failed: {e:?}", task.id);
+                tracing::warn!(
+                    "scheduler.tick: disarm_self_paced {} failed: {e:?}",
+                    task.id
+                );
                 continue;
             }
             let pool = pool.clone();
@@ -282,7 +291,12 @@ pub async fn fire_task(
     if outcome.success && matches!(task.schedule_kind(), ScheduleKind::SelfPaced) {
         let (min_interval, max_horizon) = settings::get(pool)
             .await
-            .map(|s| (i64::from(s.min_interval_seconds), i64::from(s.max_horizon_days)))
+            .map(|s| {
+                (
+                    i64::from(s.min_interval_seconds),
+                    i64::from(s.max_horizon_days),
+                )
+            })
             .unwrap_or((300, 7));
 
         if let Some(condition) = task.completion_condition.as_deref() {
@@ -341,7 +355,10 @@ pub async fn fire_task(
             };
             if let Err(e) = repository::arm_self_paced(pool, task.id, sp_outcome, now, reason).await
             {
-                tracing::warn!("scheduler.tick: goal arm_self_paced {} failed: {e:?}", task.id);
+                tracing::warn!(
+                    "scheduler.tick: goal arm_self_paced {} failed: {e:?}",
+                    task.id
+                );
             }
         } else if trigger != "run_now" {
             // Plain self-paced (ITEM-21 / DEC-42): feed the model's `schedule_next`
@@ -367,7 +384,12 @@ pub async fn fire_task(
     }
 
     // Notify the owner's devices that the task (its runs/state) changed.
-    super::events::emit_task(crate::modules::sync::SyncAction::Update, task.id, task.user_id, None);
+    super::events::emit_task(
+        crate::modules::sync::SyncAction::Update,
+        task.id,
+        task.user_id,
+        None,
+    );
 }
 
 #[cfg(test)]

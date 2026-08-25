@@ -6,13 +6,12 @@
 //!
 //! See plan §3 (REST surface) + §4.5 (dry-run) + §7 (test fixtures).
 
-
 use std::sync::Arc;
 
 use aide::transform::TransformOperation;
+use axum::Json;
 use axum::extract::{Multipart, Path as AxumPath, Query};
 use axum::http::StatusCode;
-use axum::Json;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
@@ -276,8 +275,7 @@ pub(crate) async fn install_workflow_from_bytes(
         }
     };
     if let Err(e) =
-        validate::validate_for_install_async(&workflow_def, &extraction.extracted_path, true)
-            .await
+        validate::validate_for_install_async(&workflow_def, &extraction.extracted_path, true).await
     {
         let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
         return Err(e.into());
@@ -293,13 +291,9 @@ pub(crate) async fn install_workflow_from_bytes(
     // name+version (the extracted dir was already overwritten by
     // extract_tarball_bytes). H6: scope the pre-delete to THIS owner so
     // it can never delete another user's workflow row.
-    if let Some(prior) = repository::find_by_name_version_owner(
-        Repos.pool(),
-        &name,
-        Some(&version),
-        owner_user_id,
-    )
-    .await?
+    if let Some(prior) =
+        repository::find_by_name_version_owner(Repos.pool(), &name, Some(&version), owner_user_id)
+            .await?
     {
         repository::delete(Repos.pool(), prior.id).await?;
     }
@@ -369,9 +363,7 @@ pub(crate) async fn install_workflow_from_bytes(
 /// downstream extract→validate→compile→insert core is byte-identical whether the
 /// bundle came from a tarball upload or the builder. `serde_norway` (the repo's
 /// maintained serde_yaml fork, used by `parse_workflow_yaml`) is the serializer.
-pub(crate) async fn def_to_bundle_bytes(
-    def: &validate::WorkflowDef,
-) -> Result<Vec<u8>, AppError> {
+pub(crate) async fn def_to_bundle_bytes(def: &validate::WorkflowDef) -> Result<Vec<u8>, AppError> {
     let yaml = serde_norway::to_string(def).map_err(|e| {
         AppError::bad_request(
             "WORKFLOW_SERIALIZE_FAILED",
@@ -386,9 +378,9 @@ pub(crate) async fn def_to_bundle_bytes(
     // and error paths (no RAII guard for a plain PathBuf, so do it explicitly).
     let result = async {
         let yaml_path = tmp_dir.join("workflow.yaml");
-        tokio::fs::write(&yaml_path, yaml.as_bytes()).await.map_err(|e| {
-            AppError::internal_error(format!("failed to write workflow.yaml: {e}"))
-        })?;
+        tokio::fs::write(&yaml_path, yaml.as_bytes())
+            .await
+            .map_err(|e| AppError::internal_error(format!("failed to write workflow.yaml: {e}")))?;
         crate::modules::hub::bundle::pack_workspace_dir(&tmp_dir)
     }
     .await;
@@ -1052,18 +1044,16 @@ pub async fn dry_run(
     // `scope == "user"` check skipped the group check for system workflows,
     // letting a non-member dry-run a group-restricted workflow they can't see.
     if !repository::user_can_access(Repos.pool(), auth.user.id, id).await? {
-        return Err::<_, (StatusCode, AppError)>(
-            AppError::not_found("Workflow").into(),
-        );
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Workflow").into());
     }
     let wf = repository::find_by_id(Repos.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
 
     let wf_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
-    let content = tokio::fs::read_to_string(&wf_path).await.map_err(|e| {
-        AppError::internal_error(format!("dry-run: read workflow.yaml: {e}"))
-    })?;
+    let content = tokio::fs::read_to_string(&wf_path)
+        .await
+        .map_err(|e| AppError::internal_error(format!("dry-run: read workflow.yaml: {e}")))?;
     let workflow_def = validate::parse_workflow_yaml(&content)?;
 
     // Validate + bind inputs against workflow.inputs[].
@@ -1104,9 +1094,7 @@ pub async fn test_workflow(
     let pool = Repos.pool().clone();
     // H-2: same access gate as get/run/dry_run (ownership + group restriction).
     if !repository::user_can_access(&pool, auth.user.id, id).await? {
-        return Err::<_, (StatusCode, AppError)>(
-            AppError::not_found("Workflow").into(),
-        );
+        return Err::<_, (StatusCode, AppError)>(AppError::not_found("Workflow").into());
     }
     let wf = repository::find_by_id(&pool, id)
         .await?
@@ -1114,9 +1102,9 @@ pub async fn test_workflow(
 
     // Parse the on-disk workflow.yaml.
     let wf_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
-    let content = tokio::fs::read_to_string(&wf_path).await.map_err(|e| {
-        AppError::internal_error(format!("test: read workflow.yaml: {e}"))
-    })?;
+    let content = tokio::fs::read_to_string(&wf_path)
+        .await
+        .map_err(|e| AppError::internal_error(format!("test: read workflow.yaml: {e}")))?;
     let workflow_def = validate::parse_workflow_yaml(&content)?;
 
     // Load fixtures from <extracted_path>/tests/*.yaml.
@@ -1377,7 +1365,12 @@ async fn resolve_test_model(
         .ok()
         .flatten()?;
     let model_id = conv.model_id?;
-    let model = crate::core::Repos.llm_model.get_by_id(model_id).await.ok().flatten()?;
+    let model = crate::core::Repos
+        .llm_model
+        .get_by_id(model_id)
+        .await
+        .ok()
+        .flatten()?;
     let (provider, _name, _mid, _pid, _params, _caps) =
         crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
             .await
@@ -1397,8 +1390,8 @@ async fn run_one_fixture(
     user_id: Uuid,
     started: std::time::Instant,
 ) -> FixtureResult {
-    let fail = |output_name: &str, assertion: &str, expected: String, actual: String| {
-        FixtureResult {
+    let fail =
+        |output_name: &str, assertion: &str, expected: String, actual: String| FixtureResult {
             name: name.to_string(),
             passed: false,
             skipped: false,
@@ -1409,8 +1402,7 @@ async fn run_one_fixture(
                 expected,
                 actual_preview: actual,
             }),
-        }
-    };
+        };
 
     // ci mode: every llm/llm_map step MUST be mocked.
     if fixture.mode == FixtureMode::Ci {
@@ -1490,7 +1482,9 @@ async fn run_one_fixture(
     };
 
     if outcome.status != crate::modules::workflow::models::WorkflowRunStatus::Completed {
-        let err = outcome.error.unwrap_or_else(|| "run did not complete".into());
+        let err = outcome
+            .error
+            .unwrap_or_else(|| "run did not complete".into());
         // real_llm runs that fail because no provider is configured are
         // reported skipped, not failed (plan §3 + §7).
         if fixture.mode == FixtureMode::RealLlm
@@ -1669,7 +1663,7 @@ pub fn workspace_export_docs(op: TransformOperation) -> TransformOperation {
 #[cfg(test)]
 mod def_bundle_tests {
     use super::*;
-    use crate::modules::hub::bundle::{extract_tarball_bytes, BundleKind};
+    use crate::modules::hub::bundle::{BundleKind, extract_tarball_bytes};
     use crate::modules::workflow::validate::parse_workflow_yaml;
 
     const SAMPLE_YAML: &str = r#"inputs:
@@ -1687,7 +1681,9 @@ outputs:
     #[tokio::test]
     async fn def_to_bundle_bytes_materializes_a_faithful_roundtrip() {
         let def = parse_workflow_yaml(SAMPLE_YAML).expect("parse sample def");
-        let bytes = def_to_bundle_bytes(&def).await.expect("materialize bundle bytes");
+        let bytes = def_to_bundle_bytes(&def)
+            .await
+            .expect("materialize bundle bytes");
 
         // Unpack via the real install extract path (not a hand-rolled tar reader).
         let target = std::env::temp_dir().join(format!("ziee-wf-def-test-{}", Uuid::new_v4()));

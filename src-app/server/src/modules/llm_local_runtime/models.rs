@@ -1,9 +1,9 @@
 // Request/response models for local runtime API
 
+use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use schemars::JsonSchema;
-use chrono::{DateTime, Utc};
 
 // =====================================================
 // Instance Management Models
@@ -80,9 +80,7 @@ pub struct ProviderInstancesResponse {
 #[serde(tag = "type")]
 pub enum DeploymentConfig {
     #[serde(rename = "local")]
-    Local {
-        binary_path: Option<String>,
-    },
+    Local { binary_path: Option<String> },
 }
 
 // =====================================================

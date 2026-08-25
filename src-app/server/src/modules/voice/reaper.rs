@@ -133,7 +133,8 @@ async fn monitor_health() {
 
     let base_url = format!("http://127.0.0.1:{port}");
     let healthy = dep.health_check(&base_url).await.unwrap_or(false);
-    if let Some((from, to)) = auto_start::report_health(healthy, "whisper-server / probe failed").await
+    if let Some((from, to)) =
+        auto_start::report_health(healthy, "whisper-server / probe failed").await
     {
         persist_health_state(&to).await;
         tracing::debug!("voice::reaper: health state {from} -> {to}");

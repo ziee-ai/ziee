@@ -17,9 +17,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::memory::permissions::MemoryAdminRead;
-use crate::modules::sync::{
-    Audience, SyncAction, SyncEntity, publish as sync_publish,
-};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
 use pgvector::HalfVector;
 
 const REBUILD_BATCH_SIZE: i64 = 100;
@@ -207,9 +205,7 @@ async fn run(
             last_id = id;
             let user_id = row.user_id;
             let content = row.content;
-            match crate::modules::memory::engine::dispatch::embed(new_model_id, &content)
-                .await
-            {
+            match crate::modules::memory::engine::dispatch::embed(new_model_id, &content).await {
                 Ok(vec) => {
                     if !embedding_dim_matches(vec.len(), target_dimensions) {
                         tracing::warn!(
@@ -264,7 +260,6 @@ pub(crate) fn embedding_dim_matches(actual_len: usize, expected_dim: i32) -> boo
 mod embed_skip_tests {
     use super::embedding_dim_matches;
 
-
     /// Memory embedding skip path (gap 3cdb397a5069): a model returning a
     /// wrong-dimension vector (e.g. after a model swap) is skipped, while a
     /// correct-dimension vector is written. Guards the inline mismatch check
@@ -272,7 +267,10 @@ mod embed_skip_tests {
     #[test]
     fn mismatched_embedding_dim_is_skipped() {
         assert!(embedding_dim_matches(768, 768));
-        assert!(!embedding_dim_matches(1536, 768), "wrong-dim vector skipped");
+        assert!(
+            !embedding_dim_matches(1536, 768),
+            "wrong-dim vector skipped"
+        );
         assert!(!embedding_dim_matches(0, 768), "empty vector skipped");
     }
 }
@@ -281,7 +279,6 @@ mod tests {
     use super::*;
 
     use sqlx::postgres::PgPoolOptions;
-
 
     /// Drives the REAL `reembed_all` worker against an embedding model id that
     /// does not resolve, so `dispatch::embed` returns `Err` for the seeded row

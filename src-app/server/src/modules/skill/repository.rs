@@ -5,7 +5,6 @@
 //! both the chat extension's listing-only injection AND
 //! `skill_mcp::list_tools` — see plan §3 + §4.6 for the SQL.
 
-
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -78,11 +77,7 @@ impl SkillRepository {
         delete(&self.pool, id).await
     }
 
-    pub async fn update(
-        &self,
-        id: Uuid,
-        request: UpdateSkill,
-    ) -> Result<Skill, AppError> {
+    pub async fn update(&self, id: Uuid, request: UpdateSkill) -> Result<Skill, AppError> {
         update(&self.pool, id, request).await
     }
 
@@ -147,11 +142,7 @@ impl SkillRepository {
     /// Check accessibility: a user can read a skill iff they own it
     /// (user-scope) OR it's a system skill without group restrictions
     /// OR it's a system skill assigned to one of their groups.
-    pub async fn user_can_read(
-        &self,
-        user_id: Uuid,
-        skill_id: Uuid,
-    ) -> Result<bool, AppError> {
+    pub async fn user_can_read(&self, user_id: Uuid, skill_id: Uuid) -> Result<bool, AppError> {
         user_can_read(&self.pool, user_id, skill_id).await
     }
 
@@ -225,11 +216,7 @@ impl SkillRepository {
     /// transaction. The previous read-diff-then-N-writes flow left the
     /// assignment set partially updated if any write failed midway; doing
     /// the delete + inserts atomically removes that window.
-    pub async fn set_skill_groups(
-        &self,
-        skill_id: Uuid,
-        desired: &[Uuid],
-    ) -> Result<(), AppError> {
+    pub async fn set_skill_groups(&self, skill_id: Uuid, desired: &[Uuid]) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
         // Drop memberships that are no longer desired.
         sqlx::query!(
@@ -259,10 +246,7 @@ impl SkillRepository {
     /// Used by the user-delete path to rm the bundle dirs before the rows
     /// cascade away (the FK is `ON DELETE CASCADE`, so this MUST be read
     /// before the user row is deleted).
-    pub async fn list_owned_extracted_paths(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Vec<String>, AppError> {
+    pub async fn list_owned_extracted_paths(&self, user_id: Uuid) -> Result<Vec<String>, AppError> {
         let rows = sqlx::query!(
             "SELECT extracted_path FROM skills WHERE scope = 'user' AND owner_user_id = $1",
             user_id
@@ -443,7 +427,6 @@ pub async fn upsert_builtin(pool: &PgPool, request: CreateSkill) -> Result<Skill
     Ok(row)
 }
 
-
 /// H1: owner-scoped (name, version) lookup. NULL `owner_user_id` matches
 /// the system row; a non-NULL value matches that user's row only.
 pub async fn find_by_name_version_owner(
@@ -542,7 +525,6 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Skill>, AppErr
     Ok(row)
 }
 
-
 /// M5: name → the row the caller can read, preferring the user's own copy.
 /// Same access predicate as `user_can_read` (user-owned OR accessible
 /// system), ordered so the user's own copy wins over a system copy, then by
@@ -610,11 +592,7 @@ pub async fn find_accessible_by_name(
     Ok(row)
 }
 
-pub async fn update(
-    pool: &PgPool,
-    id: Uuid,
-    request: UpdateSkill,
-) -> Result<Skill, AppError> {
+pub async fn update(pool: &PgPool, id: Uuid, request: UpdateSkill) -> Result<Skill, AppError> {
     let row = sqlx::query_as!(
         Skill,
         r#"
@@ -861,11 +839,7 @@ pub async fn clear_hidden_in_conversation(
 
 /// Same union as `list_accessible` but bool-evaluated for a single
 /// skill — used as the access-check shared by skill_mcp + REST get/edit/delete.
-pub async fn user_can_read(
-    pool: &PgPool,
-    user_id: Uuid,
-    skill_id: Uuid,
-) -> Result<bool, AppError> {
+pub async fn user_can_read(pool: &PgPool, user_id: Uuid, skill_id: Uuid) -> Result<bool, AppError> {
     let count = sqlx::query_scalar!(
         r#"
         SELECT COUNT(*) as "count!"
@@ -903,7 +877,6 @@ pub async fn get_skill_groups(pool: &PgPool, skill_id: Uuid) -> Result<Vec<Uuid>
     .map_err(AppError::database_error)?;
     Ok(rows)
 }
-
 
 pub async fn remove_skill_from_group(
     pool: &PgPool,

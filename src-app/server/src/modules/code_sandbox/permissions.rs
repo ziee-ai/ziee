@@ -21,7 +21,8 @@ pub struct CodeSandboxExecute;
 impl PermissionCheck for CodeSandboxExecute {
     const NAME: &'static str = "CodeSandboxExecute";
     const PERMISSION: &'static str = "code_sandbox::execute";
-    const DESCRIPTION: &'static str = "Invoke code_sandbox tools (read/write/execute in the sandbox)";
+    const DESCRIPTION: &'static str =
+        "Invoke code_sandbox tools (read/write/execute in the sandbox)";
     const MODULE: &'static str = "code_sandbox";
 }
 
@@ -34,8 +35,7 @@ pub struct CodeSandboxEnvironmentsRead;
 impl PermissionCheck for CodeSandboxEnvironmentsRead {
     const NAME: &'static str = "CodeSandboxEnvironmentsRead";
     const PERMISSION: &'static str = "code_sandbox::environments::read";
-    const DESCRIPTION: &'static str =
-        "List rootfs versions and watch install progress.";
+    const DESCRIPTION: &'static str = "List rootfs versions and watch install progress.";
     const MODULE: &'static str = "code_sandbox";
 }
 
@@ -60,8 +60,7 @@ pub struct CodeSandboxResourceLimitsRead;
 impl PermissionCheck for CodeSandboxResourceLimitsRead {
     const NAME: &'static str = "CodeSandboxResourceLimitsRead";
     const PERMISSION: &'static str = "code_sandbox::resource_limits::read";
-    const DESCRIPTION: &'static str =
-        "Read the sandbox resource limits configuration.";
+    const DESCRIPTION: &'static str = "Read the sandbox resource limits configuration.";
     const MODULE: &'static str = "code_sandbox";
 }
 

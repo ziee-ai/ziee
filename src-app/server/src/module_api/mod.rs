@@ -5,7 +5,7 @@
 // `use crate::module_api::{…}` + `#[distributed_slice(MODULE_ENTRIES)]`
 // registration site is unchanged and links into the framework's one slice.
 
-pub use ziee_framework::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+pub use ziee_framework::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
 use crate::core::config::Config;
 use std::sync::Arc;

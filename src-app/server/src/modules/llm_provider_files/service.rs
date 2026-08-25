@@ -4,7 +4,7 @@ use super::{models::*, repository};
 use crate::{
     common::AppError,
     modules::{
-        file::{storage::FileStorage, FileRepository},
+        file::{FileRepository, storage::FileStorage},
         llm_provider::models::LlmProvider,
     },
 };
@@ -45,21 +45,15 @@ pub async fn get_or_upload_provider_file(
     if !ai_provider.supports_file_api() {
         return Err(AppError::bad_request(
             "PROVIDER_NO_FILE_API",
-            format!(
-                "Provider '{}' does not support file uploads",
-                provider.name
-            ),
+            format!("Provider '{}' does not support file uploads", provider.name),
         ));
     }
 
     // Extract API key early — needed for the key-rotation fingerprint
     // comparison on cache hit AND for the upload path on cache miss.
-    let api_key = provider
-        .api_key
-        .as_ref()
-        .ok_or_else(|| {
-            AppError::bad_request("PROVIDER_NO_API_KEY", "Provider has no API key configured")
-        })?;
+    let api_key = provider.api_key.as_ref().ok_or_else(|| {
+        AppError::bad_request("PROVIDER_NO_API_KEY", "Provider has no API key configured")
+    })?;
 
     let current_key_fingerprint = api_key_fingerprint(api_key);
 
@@ -84,12 +78,13 @@ pub async fn get_or_upload_provider_file(
             != Some(&current_key_fingerprint);
 
         if cached_mapping_reusable(is_expired, key_rotated, mapping.upload_status)
-            && let Some(provider_file_id) = mapping.provider_file_id {
-                // Valid mapping exists - return it
-                // Note: If provider returns "not found" error later, the caller
-                // should handle re-upload (test-and-validate approach)
-                return Ok(provider_file_id);
-            }
+            && let Some(provider_file_id) = mapping.provider_file_id
+        {
+            // Valid mapping exists - return it
+            // Note: If provider returns "not found" error later, the caller
+            // should handle re-upload (test-and-validate approach)
+            return Ok(provider_file_id);
+        }
     }
 
     // 3. No valid mapping - need to upload
@@ -128,15 +123,19 @@ pub async fn get_or_upload_provider_file(
         "openai" => Some("https://api.openai.com/v1"),
         _ => None,
     };
-    let base_url = provider.base_url.as_deref().or(default_base).ok_or_else(|| {
-        AppError::bad_request(
-            "PROVIDER_BASE_URL_MISSING",
-            format!(
-                "provider type '{}' has no default upload endpoint; set base_url",
-                provider.provider_type
-            ),
-        )
-    })?;
+    let base_url = provider
+        .base_url
+        .as_deref()
+        .or(default_base)
+        .ok_or_else(|| {
+            AppError::bad_request(
+                "PROVIDER_BASE_URL_MISSING",
+                format!(
+                    "provider type '{}' has no default upload endpoint; set base_url",
+                    provider.provider_type
+                ),
+            )
+        })?;
 
     // SSRF hardening: this upload POSTs the file + provider api_key to base_url.
     // Reject a base_url that resolves to loopback / RFC1918 / cloud metadata
@@ -148,7 +147,9 @@ pub async fn get_or_upload_provider_file(
         &files_url,
         &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
     )
-    .map_err(|e| AppError::bad_request("PROVIDER_URL_BLOCKED", format!("blocked upload url: {e}")))?;
+    .map_err(|e| {
+        AppError::bad_request("PROVIDER_URL_BLOCKED", format!("blocked upload url: {e}"))
+    })?;
 
     // Upload to provider
     let upload_response = ai_provider
@@ -231,7 +232,6 @@ fn cached_mapping_reusable(is_expired: bool, key_rotated: bool, status: UploadSt
 mod tests {
     use super::*;
 
-
     // ── get_or_upload_provider_file early-guard error paths ──────────────
     //
     // These two guards return BEFORE any DB / storage access, so they're unit-
@@ -250,7 +250,6 @@ mod tests {
 
     use std::pin::Pin;
 
-
     #[test]
     fn test_get_extension() {
         assert_eq!(get_extension("test.pdf"), "pdf");
@@ -262,17 +261,28 @@ mod tests {
         assert_eq!(get_extension("noext"), "noext");
     }
 
-
     #[test]
     fn cached_mapping_reusable_only_when_fresh_completed_and_same_key() {
         // Happy path: fresh, completed, same key → reuse.
-        assert!(cached_mapping_reusable(false, false, UploadStatus::Completed));
+        assert!(cached_mapping_reusable(
+            false,
+            false,
+            UploadStatus::Completed
+        ));
 
         // Expired (e.g. Gemini 48h TTL) → must re-upload.
-        assert!(!cached_mapping_reusable(true, false, UploadStatus::Completed));
+        assert!(!cached_mapping_reusable(
+            true,
+            false,
+            UploadStatus::Completed
+        ));
 
         // API key rotated → cached id belongs to another account → re-upload.
-        assert!(!cached_mapping_reusable(false, true, UploadStatus::Completed));
+        assert!(!cached_mapping_reusable(
+            false,
+            true,
+            UploadStatus::Completed
+        ));
 
         // Not completed → never reuse a half-finished/failed upload.
         for status in [
@@ -287,9 +297,12 @@ mod tests {
         }
 
         // Expiry/rotation both dominate even a completed upload.
-        assert!(!cached_mapping_reusable(true, true, UploadStatus::Completed));
+        assert!(!cached_mapping_reusable(
+            true,
+            true,
+            UploadStatus::Completed
+        ));
     }
-
 
     #[test]
     fn api_key_rotation_changes_fingerprint_and_invalidates_cached_id() {
@@ -346,11 +359,9 @@ mod tests {
         ));
     }
 
-
     struct MockProvider {
         supports_file_api: bool,
     }
-
 
     #[async_trait]
     impl AIProvider for MockProvider {
@@ -381,7 +392,6 @@ mod tests {
         }
     }
 
-
     fn provider(api_key: Option<&str>) -> LlmProvider {
         LlmProvider {
             id: Uuid::new_v4(),
@@ -398,7 +408,6 @@ mod tests {
         }
     }
 
-
     async fn unused_deps() -> (PgPool, FileRepository, Arc<dyn FileStorage>) {
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(1)
@@ -406,13 +415,10 @@ mod tests {
             .expect("lazy pool");
         let repo = FileRepository::new(pool.clone());
         let storage: Arc<dyn FileStorage> = Arc::new(
-            crate::modules::file::storage::filesystem::FilesystemStorage::new(
-                std::env::temp_dir(),
-            ),
+            crate::modules::file::storage::filesystem::FilesystemStorage::new(std::env::temp_dir()),
         );
         (pool, repo, storage)
     }
-
 
     #[tokio::test]
     async fn upload_rejects_provider_without_file_api() {
@@ -436,7 +442,6 @@ mod tests {
         assert_eq!(err.error_code(), "PROVIDER_NO_FILE_API");
         assert_eq!(err.status_code(), 400);
     }
-
 
     #[tokio::test]
     async fn upload_rejects_provider_with_no_api_key() {
@@ -462,7 +467,6 @@ mod tests {
         assert_eq!(err.status_code(), 400);
     }
 
-
     // ── API-key rotation detection (cached provider_file_id invalidation) ──────
 
     #[test]
@@ -474,9 +478,12 @@ mod tests {
         assert_eq!(api_key_fingerprint(k), api_key_fingerprint(k));
         // SHA-256 hex is 64 chars.
         assert_eq!(api_key_fingerprint(k).len(), 64);
-        assert!(api_key_fingerprint(k).bytes().all(|b| b.is_ascii_hexdigit()));
+        assert!(
+            api_key_fingerprint(k)
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit())
+        );
     }
-
 
     #[test]
     fn api_key_fingerprint_differs_after_rotation() {
@@ -487,6 +494,9 @@ mod tests {
         let new = api_key_fingerprint("sk-new-account-key");
         assert_ne!(old, new, "rotation must change the fingerprint");
         // The comparison the service uses: stored != current ⇒ invalidate.
-        assert!(old != new, "stored fingerprint != current ⇒ cache invalidated");
+        assert!(
+            old != new,
+            "stored fingerprint != current ⇒ cache invalidated"
+        );
     }
 }

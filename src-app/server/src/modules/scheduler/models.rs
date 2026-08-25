@@ -270,7 +270,10 @@ mod tests {
         assert_eq!(parsed.len(), 2);
         assert_eq!(
             parsed[0],
-            AllowedTool { server_id: srv1, tool_name: None },
+            AllowedTool {
+                server_id: srv1,
+                tool_name: None
+            },
             "a missing tool_name = whole-server grant"
         );
         assert_eq!(

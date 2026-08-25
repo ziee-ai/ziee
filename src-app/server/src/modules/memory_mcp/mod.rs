@@ -53,7 +53,8 @@ pub async fn register_builtin_server(pool: &PgPool) -> Result<(), crate::common:
         return Ok(());
     };
     let repo = repository::MemoryMcpRepository::new(pool.clone());
-    repo.upsert_builtin_server(memory_mcp_server_id(), url).await
+    repo.upsert_builtin_server(memory_mcp_server_id(), url)
+        .await
 }
 
 #[distributed_slice(MODULE_ENTRIES)]
@@ -120,11 +121,9 @@ impl AppModule for MemoryMcpModule {
             // lit_search / bio_mcp / code_sandbox gate on deploy-level
             // Config entries, adapted for a DB-only toggle since
             // there is no MemoryConfig in Config.
-            match sqlx::query_scalar::<_, Option<bool>>(
-                "SELECT enabled FROM memory_admin_settings"
-            )
-            .fetch_one(&*pool)
-            .await
+            match sqlx::query_scalar::<_, Option<bool>>("SELECT enabled FROM memory_admin_settings")
+                .fetch_one(&*pool)
+                .await
             {
                 Ok(Some(true)) => {
                     // enabled — proceed with registration
@@ -151,9 +150,7 @@ impl AppModule for MemoryMcpModule {
                 Ok(()) => tracing::info!(
                     "memory_mcp: built-in server {server_id} registered at {upsert_url}"
                 ),
-                Err(e) => tracing::error!(
-                    "memory_mcp: upsert_builtin_server failed: {e:?}"
-                ),
+                Err(e) => tracing::error!("memory_mcp: upsert_builtin_server failed: {e:?}"),
             }
         });
 

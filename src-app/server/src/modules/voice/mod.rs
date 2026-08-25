@@ -109,8 +109,7 @@ impl AppModule for VoiceModule {
         // transfer cannot — and nothing else ever would, so an orphan is both
         // invisible (the library list is DB-backed) and permanent, at up to
         // 5 GiB each. See `model::sweep_stale_temps`.
-        let reclaimed =
-            model::sweep_stale_temps(&model::models_dir(), model::STALE_TEMP_MIN_AGE);
+        let reclaimed = model::sweep_stale_temps(&model::models_dir(), model::STALE_TEMP_MIN_AGE);
         if reclaimed > 0 {
             tracing::info!("voice: reclaimed {reclaimed} stale model temp file(s)");
         }

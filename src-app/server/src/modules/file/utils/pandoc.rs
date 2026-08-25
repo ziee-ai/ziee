@@ -81,7 +81,10 @@ pub async fn convert_to(input_path: &PathBuf, output_path: &PathBuf) -> Result<(
             ));
         }
         Ok(Err(e)) => {
-            return Err(AppError::internal_error(format!("Failed to run Pandoc: {}", e)));
+            return Err(AppError::internal_error(format!(
+                "Failed to run Pandoc: {}",
+                e
+            )));
         }
         Ok(Ok(output)) => output,
     };
@@ -98,10 +101,7 @@ pub async fn convert_to(input_path: &PathBuf, output_path: &PathBuf) -> Result<(
 }
 
 /// Convert document to PDF using Pandoc
-pub async fn convert_to_pdf(
-    input_path: &PathBuf,
-    output_path: &PathBuf,
-) -> Result<(), AppError> {
+pub async fn convert_to_pdf(input_path: &PathBuf, output_path: &PathBuf) -> Result<(), AppError> {
     let pandoc_path = find_pandoc()?;
 
     // ENGINE: use typst (not pdflatex / xelatex). pdflatex's default

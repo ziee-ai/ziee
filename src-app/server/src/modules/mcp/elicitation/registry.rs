@@ -33,8 +33,16 @@ static ELICITATION_REGISTRY: Lazy<Mutex<HashMap<Uuid, ElicitationEntry>>> =
 /// owner_user_id is None at first; the chat extension calls
 /// `bind_owner` after the notification fires so the respond handler
 /// can verify the responder. See 02-permissions F-04.
-pub fn register(elicitation_id: Uuid, tx: oneshot::Sender<ElicitationResponse>, content_id: Option<Uuid>) {
-    let entry = ElicitationEntry { tx, content_id, owner_user_id: None };
+pub fn register(
+    elicitation_id: Uuid,
+    tx: oneshot::Sender<ElicitationResponse>,
+    content_id: Option<Uuid>,
+) {
+    let entry = ElicitationEntry {
+        tx,
+        content_id,
+        owner_user_id: None,
+    };
     match ELICITATION_REGISTRY.lock() {
         Ok(mut map) => {
             map.insert(elicitation_id, entry);
@@ -121,11 +129,12 @@ mod tests {
 
     use crate::modules::mcp::elicitation::models::ElicitationResponse;
 
-
     fn resp() -> ElicitationResponse {
-        ElicitationResponse { action: "accept".to_string(), content: None }
+        ElicitationResponse {
+            action: "accept".to_string(),
+            content: None,
+        }
     }
-
 
     /// respond() returns the DB content_id so the handler (handlers.rs:71-85)
     /// can persist the user's answer to the right message_contents row.
@@ -145,7 +154,6 @@ mod tests {
         assert!(!found2, "respond must consume the entry");
     }
 
-
     /// content_id mismatch / unknown elicitation: respond() on an id never
     /// registered returns (false, None) so the handler 404s instead of
     /// updating an unrelated DB row.
@@ -156,7 +164,6 @@ mod tests {
         assert!(!found);
         assert_eq!(content_id, None);
     }
-
 
     /// An elicitation started without a message_id has content_id == None;
     /// respond() reports found but no DB row to persist into.
@@ -169,7 +176,6 @@ mod tests {
         assert!(found);
         assert_eq!(content_id, None);
     }
-
 
     /// owner_matches enforces the per-user binding the handler relies on.
     #[test]
@@ -190,11 +196,12 @@ mod tests {
         let _ = respond(eid, resp());
     }
 
-
     fn decline() -> ElicitationResponse {
-        ElicitationResponse { action: "decline".into(), content: None }
+        ElicitationResponse {
+            action: "decline".into(),
+            content: None,
+        }
     }
-
 
     /// The owner-binding contract the chat-extension notification handler
     /// (mcp.rs `execute_approved_tools_sync`) relies on for F-04:
@@ -227,7 +234,6 @@ mod tests {
         let _ = respond(id, decline());
     }
 
-
     /// `respond` delivers the answer to the waiting receiver exactly once and
     /// removes the entry; a second respond / owner check no longer finds it.
     #[test]
@@ -245,9 +251,12 @@ mod tests {
 
         // Entry is gone now.
         assert_eq!(owner_matches(id, Uuid::new_v4()), None);
-        assert_eq!(respond(id, decline()).0, false, "second respond finds nothing");
+        assert_eq!(
+            respond(id, decline()).0,
+            false,
+            "second respond finds nothing"
+        );
     }
-
 
     /// `remove` (the cancellation path) drops the entry and returns its
     /// content_id so the caller can mark the DB row cancelled; binding a

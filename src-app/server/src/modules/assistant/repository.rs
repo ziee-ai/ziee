@@ -44,14 +44,7 @@ impl AssistantRepository {
         request: CreateAssistantRequest,
         hub_id: &str,
         hub_version: Option<&str>,
-    ) -> Result<
-        (
-            Assistant,
-            Vec<Uuid>,
-            crate::modules::hub::models::HubEntity,
-        ),
-        AppError,
-    > {
+    ) -> Result<(Assistant, Vec<Uuid>, crate::modules::hub::models::HubEntity), AppError> {
         use crate::modules::hub::models::{HubCategory, HubEntityType};
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
         let mut deleted = Vec::new();
@@ -155,8 +148,10 @@ fn row_to_assistant(
         is_template,
         is_default,
         enabled,
-        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
-        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0)
+            .unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0)
+            .unwrap_or_else(Utc::now),
     }
 }
 

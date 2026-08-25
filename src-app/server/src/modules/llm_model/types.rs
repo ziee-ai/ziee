@@ -39,8 +39,7 @@ pub struct CreateLlmModelRequest {
 }
 
 /// Request to update an existing LLM model
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct UpdateLlmModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,

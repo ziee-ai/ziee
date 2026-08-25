@@ -2,7 +2,7 @@
 
 use crate::core::Repos;
 use aide::transform::TransformOperation;
-use axum::{debug_handler, extract::Query, http::StatusCode, Json};
+use axum::{Json, debug_handler, extract::Query, http::StatusCode};
 
 use crate::{
     common::{ApiResult, AppError, DEFAULT_PAGE_SIZE, PAGINATION_MAX_PER_PAGE},
@@ -48,10 +48,7 @@ pub async fn get_user_llm_providers(
 
     for provider in providers {
         // Get all models for this provider
-        let all_models = Repos
-            .llm_model
-            .list_by_provider(provider.id)
-            .await?;
+        let all_models = Repos.llm_model.list_by_provider(provider.id).await?;
 
         // Filter to only enabled models
         let enabled_models: Vec<_> = all_models

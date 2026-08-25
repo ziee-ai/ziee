@@ -39,7 +39,10 @@ pub struct LitSearchExtension {
 
 impl LitSearchExtension {
     pub fn new(pool: PgPool, config_enabled: bool) -> Self {
-        Self { pool, config_enabled }
+        Self {
+            pool,
+            config_enabled,
+        }
     }
 
     /// True when literature search is enabled (all default sources work keyless,
@@ -119,7 +122,9 @@ fn apply_lit_search_attach(
         0,
         ChatMessage {
             role: Role::System,
-            content: vec![ContentBlock::Text { text: LIT_SEARCH_NUDGE.to_string() }],
+            content: vec![ContentBlock::Text {
+                text: LIT_SEARCH_NUDGE.to_string(),
+            }],
         },
     );
 }

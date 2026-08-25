@@ -84,10 +84,22 @@ pub struct Resolved {
 
 impl Resolved {
     fn not_oa() -> Self {
-        Self { status: STATUS_NOT_OA.into(), text: None, source: None, license: None, version: None }
+        Self {
+            status: STATUS_NOT_OA.into(),
+            text: None,
+            source: None,
+            license: None,
+            version: None,
+        }
     }
     fn not_found() -> Self {
-        Self { status: STATUS_NOT_FOUND.into(), text: None, source: None, license: None, version: None }
+        Self {
+            status: STATUS_NOT_FOUND.into(),
+            text: None,
+            source: None,
+            license: None,
+            version: None,
+        }
     }
     fn full(text: String, source: &str) -> Self {
         Self {
@@ -291,10 +303,7 @@ async fn pdf_to_text(client: &reqwest::Client, url: &str, timeout: Duration) -> 
 
     // Guard against HTML landing pages (Unpaywall's `url` can be a page, not a
     // file): only feed real PDFs to pdfium. `%PDF` may follow a few leading bytes.
-    let looks_like_pdf = bytes
-        .windows(5)
-        .take(1024)
-        .any(|w| w == b"%PDF-");
+    let looks_like_pdf = bytes.windows(5).take(1024).any(|w| w == b"%PDF-");
     if !looks_like_pdf {
         return None;
     }
@@ -353,9 +362,18 @@ mod tests {
         assert_eq!(parse_id("10.1/abc").doi.as_deref(), Some("10.1/abc"));
         assert_eq!(parse_id("PMC123456").pmcid.as_deref(), Some("PMC123456"));
         assert_eq!(parse_id("31634902").pmid.as_deref(), Some("31634902"));
-        assert_eq!(parse_id("arXiv:2201.00001").arxiv_id.as_deref(), Some("2201.00001"));
-        assert_eq!(parse_id("2201.00001").arxiv_id.as_deref(), Some("2201.00001"));
-        assert_eq!(parse_id("https://doi.org/10.1/X").doi.as_deref(), Some("10.1/x"));
+        assert_eq!(
+            parse_id("arXiv:2201.00001").arxiv_id.as_deref(),
+            Some("2201.00001")
+        );
+        assert_eq!(
+            parse_id("2201.00001").arxiv_id.as_deref(),
+            Some("2201.00001")
+        );
+        assert_eq!(
+            parse_id("https://doi.org/10.1/X").doi.as_deref(),
+            Some("10.1/x")
+        );
     }
 
     #[test]

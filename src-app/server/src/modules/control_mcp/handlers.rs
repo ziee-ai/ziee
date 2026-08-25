@@ -144,7 +144,11 @@ pub async fn jsonrpc_handler(
                 Err(e) => error_response(id, StatusCode::OK, JsonRpcError::from_app_error(&e)),
             }
         }
-        _ => error_response(id, StatusCode::OK, JsonRpcError::method_not_found(&req.method)),
+        _ => error_response(
+            id,
+            StatusCode::OK,
+            JsonRpcError::method_not_found(&req.method),
+        ),
     }
 }
 
@@ -455,7 +459,11 @@ fn retain_known_terms(indexes: &[OpIndex], terms: &[String]) -> Vec<String> {
         .filter(|t| indexes.iter().any(|ix| ix.term_score(t, false) > 0))
         .cloned()
         .collect();
-    if kept.is_empty() { terms.to_vec() } else { kept }
+    if kept.is_empty() {
+        terms.to_vec()
+    } else {
+        kept
+    }
 }
 
 /// Relevance of an operation for ALL `terms` given its prebuilt index, or `None`
@@ -520,7 +528,9 @@ fn rank_matching_ops<'a>(
         })
         .collect();
     scored.sort_by(|(sa, ua, a), (sb, ub, b)| {
-        sb.cmp(sa).then_with(|| ua.cmp(ub)).then_with(|| a.operation_id.cmp(&b.operation_id))
+        sb.cmp(sa)
+            .then_with(|| ua.cmp(ub))
+            .then_with(|| a.operation_id.cmp(&b.operation_id))
     });
     scored.into_iter().map(|(_, _, op)| op).collect()
 }
@@ -578,7 +588,10 @@ fn list_capabilities(
         }
     );
     for op in &matched {
-        text.push_str(&format!("- {} [{}] — {}\n", op.operation_id, op.method, op.summary));
+        text.push_str(&format!(
+            "- {} [{}] — {}\n",
+            op.operation_id, op.method, op.summary
+        ));
     }
     // A bare "0 operation(s)" told the model nothing about WHY, and it flailed
     // (a real session repeated the same call, then a `describe_capability` for an
@@ -591,7 +604,8 @@ fn list_capabilities(
              FEWER, more specific keywords (e.g. \"create project\", \"memory settings\"), \
              drop the `tag` filter, or call list_capabilities with no query to browse.\n",
             terms.join(", "),
-            tag.map(|t| format!(", filtered to tag \"{t}\"")).unwrap_or_default()
+            tag.map(|t| format!(", filtered to tag \"{t}\""))
+                .unwrap_or_default()
         ));
     }
     Ok(text_result(text, Some(structured)))
@@ -656,7 +670,10 @@ fn describe_capability(
         "schema_truncated": inlined.as_ref().map(|i| i.truncated),
         "summary": op.summary,
     });
-    let parameters = structured["parameters"].as_array().cloned().unwrap_or_default();
+    let parameters = structured["parameters"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     Ok(text_result(
         render_describe_digest(op, &parameters, inlined.as_ref()),
         Some(structured),
@@ -761,7 +778,11 @@ fn render_describe_digest(
     let query = render_query_params(parameters);
     out.push_str(&format!(
         "Query parameters: {}\n",
-        if query.is_empty() { "(none)".to_string() } else { query }
+        if query.is_empty() {
+            "(none)".to_string()
+        } else {
+            query
+        }
     ));
 
     match inlined {
@@ -892,10 +913,7 @@ fn collect_fields(
         let field = follow_defs(field, defs);
         let path = format!("{prefix}{name}");
         let indent = "  ".repeat(depth + 1);
-        let mut line = format!(
-            "{indent}- {path} ({})",
-            schema_type_label(&field)
-        );
+        let mut line = format!("{indent}- {path} ({})", schema_type_label(&field));
         if required.contains(&name.as_str()) {
             line.push_str(" REQUIRED");
         }
@@ -1107,10 +1125,12 @@ fn default_violates_constraints(default: &Value, schema: &Value) -> bool {
 
 /// `"a", "b", "c" (+2 more)` for an `enum`, including the array-of-enum shape.
 fn enum_options(schema: &Value) -> Option<String> {
-    let values = schema
-        .get("enum")
-        .and_then(|e| e.as_array())
-        .or_else(|| schema.get("items").and_then(|i| i.get("enum")).and_then(|e| e.as_array()))?;
+    let values = schema.get("enum").and_then(|e| e.as_array()).or_else(|| {
+        schema
+            .get("items")
+            .and_then(|i| i.get("enum"))
+            .and_then(|e| e.as_array())
+    })?;
     if values.is_empty() {
         return None;
     }
@@ -1249,7 +1269,10 @@ async fn invoke_capability(
     let mut request = client.request(method, url);
 
     // Forward the caller's bearer so the real route re-authorizes as this user.
-    if let Some(auth_header) = headers.get("authorization").or_else(|| headers.get("Authorization")) {
+    if let Some(auth_header) = headers
+        .get("authorization")
+        .or_else(|| headers.get("Authorization"))
+    {
         request = request.header(reqwest::header::AUTHORIZATION, auth_header);
     }
     // NOTE: we intentionally do NOT forward `x-sync-connection-id`. A control
@@ -1496,8 +1519,12 @@ mod tests {
     #[test]
     fn validate_body_rejects_unknown_field() {
         let c = json!({});
-        let err = validate_body(&schema_obj(), &json!({"username": "a", "role": "admin"}), &c)
-            .unwrap_err();
+        let err = validate_body(
+            &schema_obj(),
+            &json!({"username": "a", "role": "admin"}),
+            &c,
+        )
+        .unwrap_err();
         assert!(err.contains("role"));
     }
 
@@ -1583,8 +1610,16 @@ mod tests {
     #[test]
     fn reads_never_need_approval() {
         let cat = approval_fixture();
-        assert!(!needs_approval_decision(tools::LIST_CAPABILITIES, &json!({}), Some(&cat)));
-        assert!(!needs_approval_decision(tools::DESCRIBE_CAPABILITY, &json!({}), Some(&cat)));
+        assert!(!needs_approval_decision(
+            tools::LIST_CAPABILITIES,
+            &json!({}),
+            Some(&cat)
+        ));
+        assert!(!needs_approval_decision(
+            tools::DESCRIBE_CAPABILITY,
+            &json!({}),
+            Some(&cat)
+        ));
         // invoke of a GET op → read-only, no approval.
         assert!(!needs_approval_decision(
             tools::INVOKE_CAPABILITY,
@@ -1613,7 +1648,11 @@ mod tests {
             Some(&cat)
         ));
         // Missing operation_id.
-        assert!(needs_approval_decision(tools::INVOKE_CAPABILITY, &json!({}), Some(&cat)));
+        assert!(needs_approval_decision(
+            tools::INVOKE_CAPABILITY,
+            &json!({}),
+            Some(&cat)
+        ));
         // No catalog at all.
         assert!(needs_approval_decision(
             tools::INVOKE_CAPABILITY,
@@ -1719,13 +1758,18 @@ mod tests {
 
         // The bug, encoded: the shipped whole-phrase matcher finds NOTHING.
         assert_eq!(
-            cat.iter().filter(|op| legacy_whole_phrase_match(op, "create project")).count(),
+            cat.iter()
+                .filter(|op| legacy_whole_phrase_match(op, "create project"))
+                .count(),
             0,
             "precondition: the shipped whole-phrase matcher is what returned 0 results"
         );
 
         let hits = ranked(&cat, "create project");
-        assert!(!hits.is_empty(), "'create project' must match at least one operation");
+        assert!(
+            !hits.is_empty(),
+            "'create project' must match at least one operation"
+        );
         assert_eq!(
             hits.first().map(String::as_str),
             Some("Project.create"),
@@ -1770,7 +1814,9 @@ mod tests {
         // Includes SHORT terms: `MIN_SUBSTRING_TERM_LEN` must not apply to a
         // single-term query, or `"mcp"`/`"set"`-style lookups silently regress
         // against the design's "single-term behavior at least as good as today".
-        for term in ["project", "create", "PROJECT", "Create", "workflow", "mcp", "set", "up"] {
+        for term in [
+            "project", "create", "PROJECT", "Create", "workflow", "mcp", "set", "up",
+        ] {
             let legacy: std::collections::BTreeSet<String> = cat
                 .iter()
                 .filter(|op| legacy_whole_phrase_match(op, term))
@@ -1791,11 +1837,22 @@ mod tests {
 
         // Blank query ⇒ no filter (every op), in the previous alphabetical order.
         let all: Vec<String> = ranked(&cat, "");
-        assert_eq!(all.len(), cat.len(), "an empty query must not filter anything");
+        assert_eq!(
+            all.len(),
+            cat.len(),
+            "an empty query must not filter anything"
+        );
         let mut sorted = all.clone();
         sorted.sort();
-        assert_eq!(all, sorted, "with no query the order must stay operation_id ASC");
-        assert_eq!(ranked(&cat, "   ").len(), cat.len(), "whitespace-only is also no filter");
+        assert_eq!(
+            all, sorted,
+            "with no query the order must stay operation_id ASC"
+        );
+        assert_eq!(
+            ranked(&cat, "   ").len(),
+            cat.len(),
+            "whitespace-only is also no filter"
+        );
     }
 
     /// Punctuation and politeness must not empty a good query.
@@ -1857,7 +1914,10 @@ mod tests {
         let cat = search_fixture();
 
         // Short but an exact id SEGMENT — matches in both shapes.
-        assert_eq!(ranked(&cat, "mcp"), vec!["Project.updateMcpSettings".to_string()]);
+        assert_eq!(
+            ranked(&cat, "mcp"),
+            vec!["Project.updateMcpSettings".to_string()]
+        );
         assert_eq!(
             ranked(&cat, "mcp settings"),
             vec!["Project.updateMcpSettings".to_string()],
@@ -1974,13 +2034,10 @@ mod tests {
             id_segments("Project.updateMcpSettings"),
             vec!["project", "update", "mcp", "settings"]
         );
-        assert_eq!(id_segments("Hub.createWorkflowFromHub"), vec![
-            "hub",
-            "create",
-            "workflow",
-            "from",
-            "hub"
-        ]);
+        assert_eq!(
+            id_segments("Hub.createWorkflowFromHub"),
+            vec!["hub", "create", "workflow", "from", "hub"]
+        );
     }
 
     // ── describe_capability digest (ITEM-4 / INV-6) ───────────────────────────
@@ -2051,7 +2108,11 @@ mod tests {
 
     fn digest_of(schema: Value) -> String {
         let inlined = schema_inline::inline_schema(&schema, &json!({}));
-        render_describe_digest(&describe_op(Some(schema)), &inlined_params(), Some(&inlined))
+        render_describe_digest(
+            &describe_op(Some(schema)),
+            &inlined_params(),
+            Some(&inlined),
+        )
     }
 
     /// TEST-15 — each top-level field is rendered with its type, requiredness,
@@ -2083,7 +2144,10 @@ mod tests {
     #[test]
     fn acceptance_inv6_digest_names_nested_and_array_item_fields() {
         let d = digest_of(nested_body_schema());
-        assert!(d.contains("settings.loop_limit"), "nested object field: {d}");
+        assert!(
+            d.contains("settings.loop_limit"),
+            "nested object field: {d}"
+        );
         assert!(d.contains("settings.quiet"), "nested object field: {d}");
         assert!(d.contains("members[].user_id"), "array item field: {d}");
         assert!(d.contains("members[].role"), "array item field: {d}");
@@ -2091,7 +2155,10 @@ mod tests {
         // Nested requiredness survives the walk.
         assert!(d.contains("members[].user_id (string) REQUIRED"), "{d}");
         // And the nested default is carried, since that is what pre-fills a form.
-        assert!(d.contains("settings.loop_limit (integer) default=10"), "{d}");
+        assert!(
+            d.contains("settings.loop_limit (integer) default=10"),
+            "{d}"
+        );
     }
 
     /// TEST-19 (acceptance, INV-6) — the digest never REPLACES the schema. The
@@ -2101,10 +2168,16 @@ mod tests {
     fn acceptance_inv6_exact_json_schema_is_always_emitted_alongside_the_digest() {
         let schema = nested_body_schema();
         let inlined = schema_inline::inline_schema(&schema, &json!({}));
-        let d = render_describe_digest(&describe_op(Some(schema)), &inlined_params(), Some(&inlined));
+        let d = render_describe_digest(
+            &describe_op(Some(schema)),
+            &inlined_params(),
+            Some(&inlined),
+        );
 
         let marker = "JSON Schema (exact — use this to build the body):\n";
-        let idx = d.find(marker).expect(&format!("schema block must be present: {d}"));
+        let idx = d
+            .find(marker)
+            .expect(&format!("schema block must be present: {d}"));
         let block = &d[idx + marker.len()..];
         let parsed: Value = serde_json::from_str(block.trim())
             .unwrap_or_else(|e| panic!("schema block must re-parse ({e}): {block}"));
@@ -2128,10 +2201,17 @@ mod tests {
         }});
         let schema = json!({ "$ref": "#/components/schemas/Node" });
         let inlined = schema_inline::inline_schema(&schema, &components);
-        let d = render_describe_digest(&describe_op(Some(schema)), &inlined_params(), Some(&inlined));
+        let d = render_describe_digest(
+            &describe_op(Some(schema)),
+            &inlined_params(),
+            Some(&inlined),
+        );
         assert!(d.contains("- label (string)"), "{d}");
         // The recursive edge resolves through $defs rather than dead-ending.
-        assert!(d.contains("child.label"), "$defs pointer must be followed: {d}");
+        assert!(
+            d.contains("child.label"),
+            "$defs pointer must be followed: {d}"
+        );
     }
 
     /// An operation with no JSON body says so plainly rather than emitting an
@@ -2142,7 +2222,6 @@ mod tests {
         assert!(d.contains("Request body: (none"), "{d}");
         assert!(!d.contains("JSON Schema"), "{d}");
     }
-
 
     // ── stringified object arguments (the ask_user twin) ─────────────────────
 
@@ -2199,7 +2278,10 @@ mod tests {
                 .expect_err("a non-object body must be refused");
             let msg = format!("{err}");
             assert!(msg.contains("body"), "must name the argument: {msg}");
-            assert!(msg.contains("JSON object"), "must say what is expected: {msg}");
+            assert!(
+                msg.contains("JSON object"),
+                "must say what is expected: {msg}"
+            );
             assert!(
                 msg.contains(INVOKE_BODY_EXAMPLE),
                 "must carry a copyable example: {msg}"
@@ -2218,7 +2300,10 @@ mod tests {
         let c = json!({});
         let err = validate_body(&Value::Null, &json!("{\"name\":\"x\"}"), &c).unwrap_err();
         assert!(err.contains("JSON object"), "got: {err}");
-        assert!(err.contains(INVOKE_BODY_EXAMPLE), "must show a body to copy: {err}");
+        assert!(
+            err.contains(INVOKE_BODY_EXAMPLE),
+            "must show a body to copy: {err}"
+        );
 
         // No regression: a well-formed object body against a schema-less
         // operation still passes, and so does an array.
@@ -2235,8 +2320,8 @@ mod tests {
     /// objects. (TEST-41)
     #[test]
     fn invoke_body_passes_the_shared_argument_conformance_battery() {
-        use crate::common::tool_args::conformance::{assert_arg_conformance, ArgSite};
         use crate::common::tool_args::ArgShape;
+        use crate::common::tool_args::conformance::{ArgSite, assert_arg_conformance};
 
         assert_arg_conformance(ArgSite {
             site: "invoke_capability.body",

@@ -18,9 +18,7 @@ use crate::modules::file::handlers::upload::upload_file_inner;
 use crate::modules::file::models::File as FileEntity;
 use crate::modules::file::permissions::FilesUpload;
 use crate::modules::file::project_extension::events::FileProjectEvent;
-use crate::modules::file::project_extension::models::{
-    AttachFileRequest, ProjectFileListResponse,
-};
+use crate::modules::file::project_extension::models::{AttachFileRequest, ProjectFileListResponse};
 use crate::modules::file::project_extension::repository::PROJECT_MAX_FILES;
 use crate::modules::permissions::{extractors::RequirePermissions, with_permission};
 use crate::modules::project::permissions::{ProjectsEdit, ProjectsRead};
@@ -245,40 +243,40 @@ impl Drop for OrphanFileCleanup {
         // core/database/mod.rs::run_cleanup_blocking.
         tokio::task::block_in_place(move || {
             handle.block_on(async move {
-            tracing::info!(
-                %file_id, %user_id,
-                "OrphanFileCleanup: deleting orphaned file (attach failed or future cancelled)"
-            );
-            let row_ok = match Repos.file.delete(file_id, user_id).await {
-                Ok(_) => true,
-                Err(e) => {
-                    tracing::warn!(
-                        %file_id, %user_id, error = ?e,
-                        "OrphanFileCleanup: failed to delete file row"
-                    );
-                    false
-                }
-            };
-            let storage_ok = match crate::modules::file::storage::manager::get_file_storage()
-                .delete_all(user_id, file_id)
-                .await
-            {
-                Ok(_) => true,
-                Err(e) => {
-                    tracing::warn!(
-                        %file_id, %user_id, error = ?e,
-                        "OrphanFileCleanup: failed to delete storage artifacts"
-                    );
-                    false
-                }
-            };
-            if row_ok && storage_ok {
                 tracing::info!(
                     %file_id, %user_id,
-                    "OrphanFileCleanup: orphaned file deleted successfully"
+                    "OrphanFileCleanup: deleting orphaned file (attach failed or future cancelled)"
                 );
-            }
-        });
+                let row_ok = match Repos.file.delete(file_id, user_id).await {
+                    Ok(_) => true,
+                    Err(e) => {
+                        tracing::warn!(
+                            %file_id, %user_id, error = ?e,
+                            "OrphanFileCleanup: failed to delete file row"
+                        );
+                        false
+                    }
+                };
+                let storage_ok = match crate::modules::file::storage::manager::get_file_storage()
+                    .delete_all(user_id, file_id)
+                    .await
+                {
+                    Ok(_) => true,
+                    Err(e) => {
+                        tracing::warn!(
+                            %file_id, %user_id, error = ?e,
+                            "OrphanFileCleanup: failed to delete storage artifacts"
+                        );
+                        false
+                    }
+                };
+                if row_ok && storage_ok {
+                    tracing::info!(
+                        %file_id, %user_id,
+                        "OrphanFileCleanup: orphaned file deleted successfully"
+                    );
+                }
+            });
         });
     }
 }
@@ -287,8 +285,7 @@ impl Drop for OrphanFileCleanup {
 /// so the size-cap copy stays cap-agnostic (the per-file cap is configurable via
 /// `config.server.max_file_upload_mb`) and a unit test can guard against the
 /// stale hardcoded-limit copy reappearing.
-const UPLOAD_AND_ATTACH_DESCRIPTION: &str =
-    "**Multipart/form-data** upload. Send the file bytes in a part named `file` with a \
+const UPLOAD_AND_ATTACH_DESCRIPTION: &str = "**Multipart/form-data** upload. Send the file bytes in a part named `file` with a \
      filename (Content-Disposition: form-data; name=\"file\"; filename=\"<name>\"). The \
      server creates the file row + storage artifacts AND attaches the new file to the \
      project in one round-trip. Failures roll back the upload via a Drop-guard so no \

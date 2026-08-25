@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use super::types;
 use crate::common::AppError;
-use crate::core::events::{AppEvent, EventHandler};
 use crate::core::Repos;
+use crate::core::events::{AppEvent, EventHandler};
 use crate::modules::user::events::UserEvent;
 
 /// Clones enabled default template assistants to newly created users
@@ -41,11 +41,13 @@ impl EventHandler for CloneTemplateAssistantsHandler {
                 );
 
                 // Get all template assistants
-                let templates = Repos.assistant.list(
-                    None, true, // Only templates
-                    1, 100, // Get up to 100 templates
-                )
-                .await?;
+                let templates = Repos
+                    .assistant
+                    .list(
+                        None, true, // Only templates
+                        1, 100, // Get up to 100 templates
+                    )
+                    .await?;
 
                 let mut cloned_count = 0;
 

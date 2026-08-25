@@ -91,9 +91,15 @@ mod tests {
     // TEST-2 (ITEM-2): the reranker gate keys strictly on `capabilities.rerank`.
     #[test]
     fn rerank_gate_requires_rerank_capability() {
-        let with = ModelCapabilities { rerank: Some(true), ..Default::default() };
+        let with = ModelCapabilities {
+            rerank: Some(true),
+            ..Default::default()
+        };
         assert_eq!(rerank_unsupported_reason("bge-reranker", &with), None);
-        let without = ModelCapabilities { rerank: Some(false), ..Default::default() };
+        let without = ModelCapabilities {
+            rerank: Some(false),
+            ..Default::default()
+        };
         let r = rerank_unsupported_reason("gpt-chat", &without)
             .expect("a non-rerank model must be rejected");
         assert!(r.contains("gpt-chat"), "reason names the model: {r}");
@@ -108,8 +114,14 @@ mod tests {
     fn embedding_only_model_is_rejected() {
         let reason = generation_unsupported_reason("nomic-embed", &caps(Some(true), None));
         let reason = reason.expect("embedding-only model must be rejected");
-        assert!(reason.contains("nomic-embed"), "reason names the model: {reason}");
-        assert!(reason.contains("embedding"), "reason mentions embedding: {reason}");
+        assert!(
+            reason.contains("nomic-embed"),
+            "reason names the model: {reason}"
+        );
+        assert!(
+            reason.contains("embedding"),
+            "reason mentions embedding: {reason}"
+        );
     }
 
     #[test]
@@ -163,8 +175,14 @@ mod tests {
     fn chat_model_is_rejected_as_embedding_model() {
         let reason = embedding_unsupported_reason("claude-haiku", &caps(None, Some(true)))
             .expect("a chat-only model must be rejected as an embedding model");
-        assert!(reason.contains("claude-haiku"), "reason names the model: {reason}");
-        assert!(reason.contains("text_embedding"), "reason mentions the capability: {reason}");
+        assert!(
+            reason.contains("claude-haiku"),
+            "reason names the model: {reason}"
+        );
+        assert!(
+            reason.contains("text_embedding"),
+            "reason mentions the capability: {reason}"
+        );
     }
 
     #[test]

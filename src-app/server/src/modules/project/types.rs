@@ -68,9 +68,7 @@ pub struct UpdateProjectRequest {
 /// custom deserializer serde collapses both cases to `None`, so the
 /// "clear" arm is unreachable. Mirrors
 /// `chat::core::types::deserialize_nullable_field`.
-fn deserialize_nullable_field<'de, D, T>(
-    deserializer: D,
-) -> Result<Option<Option<T>>, D::Error>
+fn deserialize_nullable_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: serde::Deserialize<'de>,

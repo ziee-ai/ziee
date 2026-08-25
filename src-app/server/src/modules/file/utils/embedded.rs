@@ -15,9 +15,18 @@ macro_rules! embed_compressed {
 // Platform-specific embedded binaries
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod binaries {
-    pub const PANDOC: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-unknown-linux-gnu/pandoc/pandoc"));
-    pub const PDFIUM: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-unknown-linux-gnu/pdfium/libpdfium.so"));
-    pub const TYPST: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-unknown-linux-gnu/typst/typst"));
+    pub const PANDOC: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-unknown-linux-gnu/pandoc/pandoc"
+    ));
+    pub const PDFIUM: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-unknown-linux-gnu/pdfium/libpdfium.so"
+    ));
+    pub const TYPST: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-unknown-linux-gnu/typst/typst"
+    ));
     pub const PANDOC_NAME: &str = "pandoc";
     pub const PDFIUM_NAME: &str = "libpdfium.so";
     pub const TYPST_NAME: &str = "typst";
@@ -25,9 +34,18 @@ mod binaries {
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod binaries {
-    pub const PANDOC: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-apple-darwin/pandoc/pandoc"));
-    pub const PDFIUM: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-apple-darwin/pdfium/libpdfium.dylib"));
-    pub const TYPST: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-apple-darwin/typst/typst"));
+    pub const PANDOC: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-apple-darwin/pandoc/pandoc"
+    ));
+    pub const PDFIUM: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-apple-darwin/pdfium/libpdfium.dylib"
+    ));
+    pub const TYPST: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-apple-darwin/typst/typst"
+    ));
     pub const PANDOC_NAME: &str = "pandoc";
     pub const PDFIUM_NAME: &str = "libpdfium.dylib";
     pub const TYPST_NAME: &str = "typst";
@@ -35,9 +53,18 @@ mod binaries {
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod binaries {
-    pub const PANDOC: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/aarch64-apple-darwin/pandoc/pandoc"));
-    pub const PDFIUM: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/aarch64-apple-darwin/pdfium/libpdfium.dylib"));
-    pub const TYPST: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/aarch64-apple-darwin/typst/typst"));
+    pub const PANDOC: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/aarch64-apple-darwin/pandoc/pandoc"
+    ));
+    pub const PDFIUM: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/aarch64-apple-darwin/pdfium/libpdfium.dylib"
+    ));
+    pub const TYPST: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/aarch64-apple-darwin/typst/typst"
+    ));
     pub const PANDOC_NAME: &str = "pandoc";
     pub const PDFIUM_NAME: &str = "libpdfium.dylib";
     pub const TYPST_NAME: &str = "typst";
@@ -45,9 +72,18 @@ mod binaries {
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 mod binaries {
-    pub const PANDOC: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-pc-windows-msvc/pandoc/pandoc.exe"));
-    pub const PDFIUM: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-pc-windows-msvc/pdfium/pdfium.dll"));
-    pub const TYPST: &[u8] = embed_compressed!(concat!(env!("CARGO_MANIFEST_DIR"), "/binaries/x86_64-pc-windows-msvc/typst/typst.exe"));
+    pub const PANDOC: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-pc-windows-msvc/pandoc/pandoc.exe"
+    ));
+    pub const PDFIUM: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-pc-windows-msvc/pdfium/pdfium.dll"
+    ));
+    pub const TYPST: &[u8] = embed_compressed!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/binaries/x86_64-pc-windows-msvc/typst/typst.exe"
+    ));
     pub const PANDOC_NAME: &str = "pandoc.exe";
     pub const PDFIUM_NAME: &str = "pdfium.dll";
     pub const TYPST_NAME: &str = "typst.exe";
@@ -105,7 +141,9 @@ pub fn ensure_binaries_extracted() -> Result<(), AppError> {
 }
 
 fn get_extracted_paths() -> Result<&'static ExtractedPaths, AppError> {
-    EXTRACTED_PATHS.get().ok_or_else(|| AppError::internal_error("Binaries not extracted yet"))
+    EXTRACTED_PATHS
+        .get()
+        .ok_or_else(|| AppError::internal_error("Binaries not extracted yet"))
 }
 
 pub fn get_pandoc_path() -> Result<&'static PathBuf, AppError> {

@@ -49,7 +49,9 @@ impl MemoryChatRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(AppError::database_error)?;
-        Ok(row.map(|(m,)| m).unwrap_or_else(|| DEFAULT_MEMORY_MODE.to_string()))
+        Ok(row
+            .map(|(m,)| m)
+            .unwrap_or_else(|| DEFAULT_MEMORY_MODE.to_string()))
     }
 
     /// Set the per-conversation memory mode. Writing `'inherit'`
@@ -66,13 +68,11 @@ impl MemoryChatRepository {
         mode: &str,
     ) -> Result<(), AppError> {
         if mode == DEFAULT_MEMORY_MODE {
-            sqlx::query(
-                "DELETE FROM conversation_memory_settings WHERE conversation_id = $1",
-            )
-            .bind(conversation_id)
-            .execute(&self.pool)
-            .await
-            .map_err(AppError::database_error)?;
+            sqlx::query("DELETE FROM conversation_memory_settings WHERE conversation_id = $1")
+                .bind(conversation_id)
+                .execute(&self.pool)
+                .await
+                .map_err(AppError::database_error)?;
         } else {
             sqlx::query(
                 r#"
@@ -116,6 +116,8 @@ impl MemoryChatRepository {
         if !owns.unwrap_or(false) {
             return Ok(None);
         }
-        Ok(Some(self.get_conversation_memory_mode(conversation_id).await?))
+        Ok(Some(
+            self.get_conversation_memory_mode(conversation_id).await?,
+        ))
     }
 }

@@ -115,16 +115,16 @@ pub async fn enforce_on_create(
             // the user's server already exists + is enabled; a
             // transient DB hiccup here shouldn't block the success
             // path. Log + continue.
-            if let Err(e) = Repos.mcp.record_health_check(server.id, "healthy", None).await {
+            if let Err(e) = Repos
+                .mcp
+                .record_health_check(server.id, "healthy", None)
+                .await
+            {
                 tracing::warn!(error = ?e, server_id = %server.id, "mcp::health: failed to record healthy status (non-fatal)");
             }
             // Re-fetch so the response carries the recorded health
             // timestamp + status fields.
-            let refetched = Repos
-                .mcp
-                .get_any_server(server.id)
-                .await?
-                .unwrap_or(server);
+            let refetched = Repos.mcp.get_any_server(server.id).await?.unwrap_or(server);
             Ok(McpServerWithHealthWarning {
                 server: refetched,
                 connection_warning: None,
@@ -144,20 +144,17 @@ pub async fn enforce_on_create(
             {
                 tracing::warn!(error = ?e, server_id = %server.id, "mcp::health: failed to record unhealthy status (non-fatal)");
             }
-            event_bus.emit_async(
-                super::events::McpServerEvent::auto_disabled(
-                    server.id,
-                    failure.reason.clone(),
-                ),
-            );
+            event_bus.emit_async(super::events::McpServerEvent::auto_disabled(
+                server.id,
+                failure.reason.clone(),
+            ));
             // Re-fetch so the response carries the canonical state
             // (enabled=false, updated_at bumped, health columns
             // populated).
-            let refetched = Repos
-                .mcp
-                .get_any_server(server.id)
-                .await?
-                .ok_or_else(|| AppError::internal_error("Server vanished after auto-disable"))?;
+            let refetched =
+                Repos.mcp.get_any_server(server.id).await?.ok_or_else(|| {
+                    AppError::internal_error("Server vanished after auto-disable")
+                })?;
             Ok(McpServerWithHealthWarning {
                 server: refetched,
                 connection_warning: Some(failure),
@@ -214,7 +211,11 @@ pub async fn enforce_on_update_transition(
             // Re-fetch so the response carries the new health
             // columns; otherwise the in-memory `persisted` is stale
             // by one record_health_check tick.
-            let refetched = Repos.mcp.get_any_server(persisted.id).await?.unwrap_or(persisted);
+            let refetched = Repos
+                .mcp
+                .get_any_server(persisted.id)
+                .await?
+                .unwrap_or(persisted);
             Ok(refetched)
         }
         Err(failure) => {
@@ -231,12 +232,10 @@ pub async fn enforce_on_update_transition(
             {
                 tracing::warn!(error = ?e, server_id = %persisted.id, "mcp::health: failed to record unhealthy status (non-fatal)");
             }
-            event_bus.emit_async(
-                super::events::McpServerEvent::auto_disabled(
-                    persisted.id,
-                    failure.reason.clone(),
-                ),
-            );
+            event_bus.emit_async(super::events::McpServerEvent::auto_disabled(
+                persisted.id,
+                failure.reason.clone(),
+            ));
             Err(AppError::bad_request(
                 "MCP_ENABLE_FAILED_HEALTH_CHECK",
                 format!(
@@ -376,7 +375,10 @@ pub async fn run_startup_health_check(pool: PgPool) {
                         "mcp::health: failed to auto-disable server",
                     );
                 }
-                if let Err(e) = record_health_check_on(&pool, server_id, "unhealthy", Some(&failure.reason)).await {
+                if let Err(e) =
+                    record_health_check_on(&pool, server_id, "unhealthy", Some(&failure.reason))
+                        .await
+                {
                     tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record unhealthy status (non-fatal)");
                 }
             }
@@ -388,10 +390,7 @@ pub async fn run_startup_health_check(pool: PgPool) {
 /// `update_*_mcp_server` paths require the full request shape and
 /// run additional validation that's unnecessary for this internal
 /// auto-disable.
-async fn disable_for_health_failure(
-    pool: &PgPool,
-    server_id: Uuid,
-) -> Result<(), AppError> {
+async fn disable_for_health_failure(pool: &PgPool, server_id: Uuid) -> Result<(), AppError> {
     sqlx::query!(
         "UPDATE mcp_servers SET enabled = false, updated_at = NOW() WHERE id = $1",
         server_id,
@@ -499,7 +498,10 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert!(enabled_before, "precondition: seeded server must be enabled");
+        assert!(
+            enabled_before,
+            "precondition: seeded server must be enabled"
+        );
 
         // Simulate the boot recovery pass.
         run_startup_health_check(pool.clone()).await;

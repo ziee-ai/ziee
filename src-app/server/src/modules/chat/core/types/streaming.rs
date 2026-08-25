@@ -67,16 +67,10 @@ pub struct ChatStreamChunk {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlockDelta {
     /// Text content delta
-    TextDelta {
-        index: usize,
-        delta: String,
-    },
+    TextDelta { index: usize, delta: String },
 
     /// Thinking content delta
-    ThinkingDelta {
-        index: usize,
-        delta: String,
-    },
+    ThinkingDelta { index: usize, delta: String },
 }
 
 impl ContentBlockDelta {
@@ -435,9 +429,15 @@ impl SSEChatStreamEvent {
                     variant_name
                         .chars()
                         .enumerate()
-                        .map(|(i, c)| if i == 0 { c.to_lowercase().to_string() } else { c.to_string() })
+                        .map(|(i, c)| {
+                            if i == 0 {
+                                c.to_lowercase().to_string()
+                            } else {
+                                c.to_string()
+                            }
+                        })
                         .collect::<String>()
-                        .into_boxed_str()
+                        .into_boxed_str(),
                 )
             }
         }
@@ -500,9 +500,7 @@ mod tasklist_frame {
     //! serializes to the exact shape the FE adapter (`taskItemsFromFrame`)
     //! reads — internally `type`-tagged, snake_case `run_id` / `active_form`,
     //! and the snake_case status token (`in_progress`).
-    use super::{
-        SSEChatStreamEvent, SSEChatStreamTaskListChangedData, TaskListItemDto,
-    };
+    use super::{SSEChatStreamEvent, SSEChatStreamTaskListChangedData, TaskListItemDto};
     use uuid::Uuid;
 
     #[test]
@@ -562,9 +560,7 @@ mod subagent_activity_frame {
     //! (`subAgentActivityFromChildren`) reads — internally `type`-tagged,
     //! snake_case `run_id` / per-child `{id,label,status}`, and the snake_case
     //! status tokens (`running` / `completed` / `failed` / `pending`).
-    use super::{
-        SSEChatStreamEvent, SSEChatStreamSubAgentActivityData, SubAgentActivityChildDto,
-    };
+    use super::{SSEChatStreamEvent, SSEChatStreamSubAgentActivityData, SubAgentActivityChildDto};
     use uuid::Uuid;
 
     #[test]

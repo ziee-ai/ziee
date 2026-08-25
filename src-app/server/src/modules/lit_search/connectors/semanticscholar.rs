@@ -86,8 +86,14 @@ struct S2Pdf {
 fn map_paper(p: S2Paper) -> Option<LitRecord> {
     let title = p.title.filter(|t| !t.trim().is_empty())?;
     let ids = p.external_ids;
-    let doi = ids.as_ref().and_then(|i| i.doi.clone()).filter(|d| !d.is_empty());
-    let pmid = ids.as_ref().and_then(|i| i.pubmed.clone()).filter(|p| !p.is_empty());
+    let doi = ids
+        .as_ref()
+        .and_then(|i| i.doi.clone())
+        .filter(|d| !d.is_empty());
+    let pmid = ids
+        .as_ref()
+        .and_then(|i| i.pubmed.clone())
+        .filter(|p| !p.is_empty());
     // Emptiness-filtered like doi/pmid: an `"ArXiv": ""` must NOT flag a
     // preprint (it would bias dedup's is_preprint merge + the digest label).
     let is_arxiv = ids
@@ -159,7 +165,8 @@ fn s2_paper_id(raw: &str) -> Option<String> {
         // S2 accepts the `PMCID:` paper-id form (e.g. PMCID:PMC1234567).
         Some(format!("PMCID:{}", encode_path_id(&pmc)))
     } else {
-        ids.arxiv_id.map(|a| format!("ARXIV:{}", encode_path_id(&a)))
+        ids.arxiv_id
+            .map(|a| format!("ARXIV:{}", encode_path_id(&a)))
     }
 }
 
@@ -187,7 +194,9 @@ pub async fn fetch_references(
         if out.len() >= limit {
             break;
         }
-        let Some(s2id) = s2_paper_id(raw) else { continue };
+        let Some(s2id) = s2_paper_id(raw) else {
+            continue;
+        };
         let per = (limit - out.len()).min(100).to_string();
         let url = format!("{base}/{s2id}/{path}");
         let mut req = client
@@ -220,7 +229,11 @@ pub async fn fetch_references(
             }
         };
         for item in parsed.data {
-            let paper = if forward { item.citing_paper } else { item.cited_paper };
+            let paper = if forward {
+                item.citing_paper
+            } else {
+                item.cited_paper
+            };
             if let Some(rec) = paper.and_then(map_paper) {
                 out.push(rec);
             }
@@ -341,13 +354,22 @@ mod tests {
     #[test]
     fn s2_paper_id_prefixes_by_kind_and_keeps_slash() {
         // DOI (with a literal slash, which the S2 path tolerates) → DOI:<encoded>.
-        assert_eq!(s2_paper_id("10.1038/abc").as_deref(), Some("DOI:10.1038/abc"));
+        assert_eq!(
+            s2_paper_id("10.1038/abc").as_deref(),
+            Some("DOI:10.1038/abc")
+        );
         // Bare digits → PMID.
         assert_eq!(s2_paper_id("12345").as_deref(), Some("PMID:12345"));
         // arXiv id → ARXIV: (the new-style id is kept verbatim; '.' is unreserved).
-        assert_eq!(s2_paper_id("arxiv:2201.00001").as_deref(), Some("ARXIV:2201.00001"));
+        assert_eq!(
+            s2_paper_id("arxiv:2201.00001").as_deref(),
+            Some("ARXIV:2201.00001")
+        );
         // PMCID → PMCID: (S2 accepts the PMC… form).
-        assert_eq!(s2_paper_id("PMC1234567").as_deref(), Some("PMCID:PMC1234567"));
+        assert_eq!(
+            s2_paper_id("PMC1234567").as_deref(),
+            Some("PMCID:PMC1234567")
+        );
     }
 
     #[test]

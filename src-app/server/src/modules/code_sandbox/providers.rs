@@ -20,7 +20,7 @@ use crate::modules::code_sandbox::{runtime_fetch, runtime_mount};
 
 use ziee_sandbox::provider::{
     EnsureOutcome, EvictOutcome, Extracted, FetchError, FetchOutcome, FetchProgress,
-    GuestAgentProvider, ResourceLimitsProvider, RootfsProvider, RootfsFormat,
+    GuestAgentProvider, ResourceLimitsProvider, RootfsFormat, RootfsProvider,
 };
 
 /// Rootfs lifecycle provider. Holds what the (now explicit-field) `runtime_mount`

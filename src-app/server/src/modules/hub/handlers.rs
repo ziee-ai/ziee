@@ -70,7 +70,9 @@ async fn resolve_entry_version(
         .items
         .iter()
         .find(|it| it.category == category && it.name == name)?;
-    item.version.clone().or_else(|| Some(catalog.hub_version.clone()))
+    item.version
+        .clone()
+        .or_else(|| Some(catalog.hub_version.clone()))
 }
 
 /// Look up the human display title for a hub item via the catalog's
@@ -243,10 +245,7 @@ pub async fn get_hub_mcp_servers(
     let mut mcp_servers = hub_data.mcp_servers;
     for server in &mut mcp_servers {
         server.created_ids = created_map.get(&server.name).cloned().unwrap_or_default();
-        server.created_system_ids = system_map
-            .get(&server.name)
-            .cloned()
-            .unwrap_or_default();
+        server.created_system_ids = system_map.get(&server.name).cloned().unwrap_or_default();
     }
 
     Ok((StatusCode::OK, Json(mcp_servers)))
@@ -592,12 +591,7 @@ pub async fn create_assistant_from_hub(
     }
 
     event_bus.emit_async(
-        HubEvent::assistant_created_from_hub(
-            assistant.id,
-            request.hub_id.clone(),
-            false,
-        )
-        .into(),
+        HubEvent::assistant_created_from_hub(assistant.id, request.hub_id.clone(), false).into(),
     );
 
     // Notify the user's other devices so the newly installed assistant
@@ -737,12 +731,7 @@ pub async fn create_assistant_template_from_hub(
     };
 
     event_bus.emit_async(
-        HubEvent::assistant_created_from_hub(
-            assistant.id,
-            request.hub_id.clone(),
-            true,
-        )
-        .into(),
+        HubEvent::assistant_created_from_hub(assistant.id, request.hub_id.clone(), true).into(),
     );
 
     // Notify every device so the new template appears in their template
@@ -894,22 +883,15 @@ async fn build_mcp_server_create_from_hub(
     // Resolve the human display fallback from the catalog's IndexItem
     // title (set by the publisher's `_hub_curation.title`). Falls back
     // to the slug if the catalog has no title.
-    let display_fallback = resolve_entry_title(
-        &hub_manager,
-        HubCategory::McpServer,
-        &hub_server.name,
-    )
-    .await;
+    let display_fallback =
+        resolve_entry_title(&hub_manager, HubCategory::McpServer, &hub_server.name).await;
 
     let create_request = crate::modules::mcp::CreateMcpServerRequest {
         // Server slug — must match `^[a-z0-9-]+$`; derived from the
         // reverse-DNS leaf. Request override (manual rename at install
         // time) wins if provided.
         name: request.name.clone().unwrap_or(derived_slug),
-        display_name: request
-            .display_name
-            .clone()
-            .unwrap_or(display_fallback),
+        display_name: request.display_name.clone().unwrap_or(display_fallback),
         description: hub_server.description.clone(),
         // Hub installs ALWAYS land disabled — most hub servers ship
         // with placeholder secrets the user has to configure before
@@ -1013,18 +995,12 @@ pub async fn create_mcp_server_from_hub(
     // delete loop so a rejection by policy doesn't wipe the prior
     // install.
     let policy = crate::modules::mcp::user_policy::load(Repos.pool()).await?;
-    crate::modules::mcp::user_policy::enforce_on_user_create(
-        &mut plan.create_request,
-        &policy,
-    )?;
+    crate::modules::mcp::user_policy::enforce_on_user_create(&mut plan.create_request, &policy)?;
 
     // Same tiered command + flavor validation the native create path runs
     // (hub installs are user-owned → host tier). Done before the transaction
     // so a validation failure never touches the DB.
-    crate::modules::mcp::handlers::validate_sandbox_fields_create(
-        false,
-        &plan.create_request,
-    )?;
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(false, &plan.create_request)?;
 
     // Wrap the whole replace flow (delete prior installs + create + track) in
     // ONE transaction: a mid-failure can no longer leave installs deleted with
@@ -1037,7 +1013,11 @@ pub async fn create_mcp_server_from_hub(
     for existing_id in &existing_ids {
         // Tolerate "already deleted" — racy with a concurrent delete
         // (admin page in another tab). Any other DB error surfaces (rolls back).
-        match Repos.mcp.delete_user_server_in_tx(&mut tx, *existing_id, auth.user.id).await {
+        match Repos
+            .mcp
+            .delete_user_server_in_tx(&mut tx, *existing_id, auth.user.id)
+            .await
+        {
             Ok(()) => deleted_ids.push(*existing_id),
             Err(e) if e.status_code() == 404 => (),
             Err(e) => return Err(e.into()),
@@ -1067,10 +1047,9 @@ pub async fn create_mcp_server_from_hub(
     // Emit events only AFTER the commit succeeds.
     for id in deleted_ids {
         event_bus
-            .emit(crate::modules::mcp::events::McpServerEvent::user_server_deleted(
-                id,
-                auth.user.id,
-            ))
+            .emit(
+                crate::modules::mcp::events::McpServerEvent::user_server_deleted(id, auth.user.id),
+            )
             .await;
         // Drop the replaced install from the user's other devices.
         sync_publish(
@@ -1082,12 +1061,7 @@ pub async fn create_mcp_server_from_hub(
         );
     }
     event_bus.emit_async(
-        HubEvent::mcp_server_created_from_hub(
-            server.id,
-            request.hub_id.clone(),
-            false,
-        )
-        .into(),
+        HubEvent::mcp_server_created_from_hub(server.id, request.hub_id.clone(), false).into(),
     );
 
     // Notify the user's other devices so the installed server appears
@@ -1165,8 +1139,7 @@ pub async fn create_system_mcp_server_from_hub(
             plan.create_request.run_in_sandbox = Some(prior.run_in_sandbox);
             plan.create_request.sandbox_flavor = Some(prior.sandbox_flavor.clone());
             plan.create_request.usage_mode = Some(prior.usage_mode);
-            plan.create_request.max_concurrent_sessions =
-                prior.max_concurrent_sessions;
+            plan.create_request.max_concurrent_sessions = prior.max_concurrent_sessions;
             plan.create_request.timeout_seconds = Some(prior.timeout_seconds);
             // MERGE (not replace) — start with the helper-seeded
             // entries (catalog defaults + placeholders for any NEW
@@ -1290,10 +1263,7 @@ pub async fn create_system_mcp_server_from_hub(
     // server with no replacement. Same gate runs again after the
     // delete (line ~1124) — defensive duplication so the gate fires
     // in BOTH orderings.
-    crate::modules::mcp::handlers::validate_sandbox_fields_create(
-        true,
-        &plan.create_request,
-    )?;
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(true, &plan.create_request)?;
 
     // Validation passed — now delete the prior system server (if any)
     // and emit `McpServerEvent::SystemServerDeleted` so the hub
@@ -1303,10 +1273,7 @@ pub async fn create_system_mcp_server_from_hub(
     // event-driven.
     // Same tiered command + flavor validation the native create path runs.
     // Done before the transaction so a validation failure never touches the DB.
-    crate::modules::mcp::handlers::validate_sandbox_fields_create(
-        true,
-        &plan.create_request,
-    )?;
+    crate::modules::mcp::handlers::validate_sandbox_fields_create(true, &plan.create_request)?;
 
     // Wrap delete-prior + create + track in ONE transaction. The track-409
     // backstop (uniq_hub_system_mcp_install, migration 80) now rolls back the
@@ -1319,7 +1286,11 @@ pub async fn create_system_mcp_server_from_hub(
     if let Some(existing_id) = existing_id {
         // Tolerate "already deleted" — racy with the admin MCP page deleting
         // the same row in another tab. Any other DB error rolls back.
-        match Repos.mcp.delete_system_server_in_tx(&mut tx, existing_id).await {
+        match Repos
+            .mcp
+            .delete_system_server_in_tx(&mut tx, existing_id)
+            .await
+        {
             Ok(()) => deleted_id = Some(existing_id),
             Err(e) if e.status_code() == 404 => (),
             Err(e) => return Err(e.into()),
@@ -1389,12 +1360,7 @@ pub async fn create_system_mcp_server_from_hub(
         );
     }
     event_bus.emit_async(
-        HubEvent::mcp_server_created_from_hub(
-            server.id,
-            request.hub_id.clone(),
-            true,
-        )
-        .into(),
+        HubEvent::mcp_server_created_from_hub(server.id, request.hub_id.clone(), true).into(),
     );
 
     // Creating a system MCP server changes BOTH the admin table AND every
@@ -1557,10 +1523,7 @@ pub async fn create_model_from_hub(
             )
         })?
         .ok_or_else(|| {
-            AppError::not_found(&format!(
-                "Repository with URL '{}' not found",
-                registry_url
-            ))
+            AppError::not_found(&format!("Repository with URL '{}' not found", registry_url))
         })?;
 
     // 4a. Block when the source repository is disabled. Mirrors the
@@ -1650,44 +1613,46 @@ pub async fn create_model_from_hub(
     //    commit / tag). Engine fields are dropped from the manifest
     //    — the install path no longer carries `recommended_engine` /
     //    `recommended_engine_settings`.
-    let download_request = crate::modules::llm_model::handlers::uploads::DownloadFromRepositoryRequest {
-        provider_id: request.provider_id,
-        repository_id: repository.id,
-        repository_path,
-        repository_branch: if source.version.is_empty() {
-            None
-        } else {
-            Some(source.version.clone())
-        },
-        name: hub_model.name.clone(),
-        display_name: request
-            .display_name
-            .unwrap_or_else(|| hub_model.display_name.clone()),
-        description: hub_model.description.clone(),
-        file_format,
-        main_filename: quantization.main_file.clone(),
-        capabilities,
-        parameters: hub_model
-            .recommended_parameters
-            .and_then(|p| serde_json::from_value(p).ok()),
-        // No model-wide engine hints. `runtime_hint` lives on the
-        // source but is purely informational today — the engine is
-        // picked downstream from the file format.
-        engine_type: None,
-        engine_settings: None,
-    };
+    let download_request =
+        crate::modules::llm_model::handlers::uploads::DownloadFromRepositoryRequest {
+            provider_id: request.provider_id,
+            repository_id: repository.id,
+            repository_path,
+            repository_branch: if source.version.is_empty() {
+                None
+            } else {
+                Some(source.version.clone())
+            },
+            name: hub_model.name.clone(),
+            display_name: request
+                .display_name
+                .unwrap_or_else(|| hub_model.display_name.clone()),
+            description: hub_model.description.clone(),
+            file_format,
+            main_filename: quantization.main_file.clone(),
+            capabilities,
+            parameters: hub_model
+                .recommended_parameters
+                .and_then(|p| serde_json::from_value(p).ok()),
+            // No model-wide engine hints. `runtime_hint` lives on the
+            // source but is purely informational today — the engine is
+            // picked downstream from the file format.
+            engine_type: None,
+            engine_settings: None,
+        };
 
     // 8. Initiate the actual download (this creates the download instance AND spawns the background task)
-    let download = crate::modules::llm_model::handlers::uploads::initiate_repository_download_internal(
-        download_request,
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_with_id(format!("initiate download: {e}")),
+    let download =
+        crate::modules::llm_model::handlers::uploads::initiate_repository_download_internal(
+            download_request,
         )
-    })?;
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_with_id(format!("initiate download: {e}")),
+            )
+        })?;
 
     // 9. Track in hub_entities (stamp the entry's per-entry version
     //    — see resolve_entry_version above).
@@ -1746,17 +1711,12 @@ async fn build_skill_create_from_hub(
         .ensure_installable(HubCategory::Skill, hub_id)
         .await?;
 
-    let hub_version =
-        resolve_entry_version(&hub_manager, HubCategory::Skill, hub_id).await;
+    let hub_version = resolve_entry_version(&hub_manager, HubCategory::Skill, hub_id).await;
 
     let manifest = hub_manager.manifest(HubCategory::Skill, hub_id).await?;
-    let hub_skill = manifest
-        .skill
-        .ok_or_else(|| {
-            AppError::internal_error(format!(
-                "hub: manifest for '{hub_id}' is not a skill"
-            ))
-        })?;
+    let hub_skill = manifest.skill.ok_or_else(|| {
+        AppError::internal_error(format!("hub: manifest for '{hub_id}' is not a skill"))
+    })?;
 
     // SEC-2: validate the manifest-supplied entry_point BEFORE it's
     // joined to the extracted dir or persisted. A malicious hub author
@@ -1791,16 +1751,19 @@ async fn build_skill_create_from_hub(
     // Parse SKILL.md frontmatter from the extracted bundle. Entry point
     // defaults to "SKILL.md" — honor whatever the manifest specifies in
     // case the publisher evolves the convention.
-    let skill_md_path = extraction.extracted_path.join(&hub_skill.bundle.entry_point);
-    let content = tokio::fs::read_to_string(&skill_md_path).await.map_err(|e| {
-        AppError::internal_error(format!(
-            "hub: read SKILL.md at {}: {}",
-            skill_md_path.display(),
-            e
-        ))
-    })?;
-    let (frontmatter_json, _body) =
-        skill::frontmatter::parse_skill_md_frontmatter(&content)?;
+    let skill_md_path = extraction
+        .extracted_path
+        .join(&hub_skill.bundle.entry_point);
+    let content = tokio::fs::read_to_string(&skill_md_path)
+        .await
+        .map_err(|e| {
+            AppError::internal_error(format!(
+                "hub: read SKILL.md at {}: {}",
+                skill_md_path.display(),
+                e
+            ))
+        })?;
+    let (frontmatter_json, _body) = skill::frontmatter::parse_skill_md_frontmatter(&content)?;
 
     let display_name = frontmatter_json
         .get("name")
@@ -1878,11 +1841,7 @@ pub async fn create_skill_from_hub(
     let create_version = plan.create_request.version.clone();
     if let Some(prior) = Repos
         .skill
-        .find_by_name_version_owner(
-            &create_name,
-            create_version.as_deref(),
-            Some(auth.user.id),
-        )
+        .find_by_name_version_owner(&create_name, create_version.as_deref(), Some(auth.user.id))
         .await?
     {
         Repos.skill.delete(prior.id).await?;
@@ -1928,7 +1887,13 @@ pub async fn create_skill_from_hub(
 
     skill::events::emit_user_skill(SyncAction::Create, skill.id, auth.user.id, origin.0);
 
-    Ok((StatusCode::CREATED, Json(SkillFromHubResponse { skill, hub_tracking })))
+    Ok((
+        StatusCode::CREATED,
+        Json(SkillFromHubResponse {
+            skill,
+            hub_tracking,
+        }),
+    ))
 }
 
 /// System-scope skill install. Permission: `skills::manage_system`.
@@ -1948,13 +1913,8 @@ pub async fn create_system_skill_from_hub(
     origin: SyncOrigin,
     Json(request): Json<CreateSystemSkillFromHubRequest>,
 ) -> ApiResult<Json<SkillFromHubResponse>> {
-    let plan = build_skill_create_from_hub(
-        &request.hub_id,
-        "system",
-        None,
-        Some(auth.user.id),
-    )
-    .await?;
+    let plan =
+        build_skill_create_from_hub(&request.hub_id, "system", None, Some(auth.user.id)).await?;
 
     let skill = match install_system_skill_tx(
         Repos.pool(),
@@ -2139,7 +2099,10 @@ pub async fn install_system_skill_tx(
     .map_err(AppError::database_error)?;
 
     tx.commit().await.map_err(AppError::database_error)?;
-    Ok(SystemSkillInstallResult { skill, hub_entity_id })
+    Ok(SystemSkillInstallResult {
+        skill,
+        hub_entity_id,
+    })
 }
 
 // =====================================================
@@ -2165,17 +2128,12 @@ async fn build_workflow_create_from_hub(
         .ensure_installable(HubCategory::Workflow, hub_id)
         .await?;
 
-    let hub_version =
-        resolve_entry_version(&hub_manager, HubCategory::Workflow, hub_id).await;
+    let hub_version = resolve_entry_version(&hub_manager, HubCategory::Workflow, hub_id).await;
 
     let manifest = hub_manager.manifest(HubCategory::Workflow, hub_id).await?;
-    let hub_workflow = manifest
-        .workflow
-        .ok_or_else(|| {
-            AppError::internal_error(format!(
-                "hub: manifest for '{hub_id}' is not a workflow"
-            ))
-        })?;
+    let hub_workflow = manifest.workflow.ok_or_else(|| {
+        AppError::internal_error(format!("hub: manifest for '{hub_id}' is not a workflow"))
+    })?;
 
     // SEC-2: validate the manifest-supplied entry_point before any join.
     super::bundle::validate_entry_point(&hub_workflow.bundle.entry_point)?;
@@ -2202,14 +2160,18 @@ async fn build_workflow_create_from_hub(
     // Parse + Layer 1+2+3 validate workflow.yaml. Rejects malformed
     // bundles before they touch the DB. Published workflows are NOT
     // is_dev → mock: in step defs is rejected here.
-    let workflow_yaml_path = extraction.extracted_path.join(&hub_workflow.bundle.entry_point);
-    let content = tokio::fs::read_to_string(&workflow_yaml_path).await.map_err(|e| {
-        AppError::internal_error(format!(
-            "hub: read workflow.yaml at {}: {}",
-            workflow_yaml_path.display(),
-            e
-        ))
-    })?;
+    let workflow_yaml_path = extraction
+        .extracted_path
+        .join(&hub_workflow.bundle.entry_point);
+    let content = tokio::fs::read_to_string(&workflow_yaml_path)
+        .await
+        .map_err(|e| {
+            AppError::internal_error(format!(
+                "hub: read workflow.yaml at {}: {}",
+                workflow_yaml_path.display(),
+                e
+            ))
+        })?;
     let workflow_def = workflow::validate::parse_workflow_yaml(&content)?;
     // `_async`: a REAL bundle root, so this reads every `prompt_file:` from disk.
     workflow::validate::validate_for_install_async(
@@ -2223,8 +2185,7 @@ async fn build_workflow_create_from_hub(
     // 128-char composed-name cap (slug body > 87 chars) — otherwise the
     // workflow installs but can never surface as a workflow_mcp tool
     // (list_tools would silently drop it). Audit gap 4 / plan §4.
-    if let Err(e) =
-        crate::modules::workflow_mcp::tools::check_install_slug_len(&hub_workflow.name)
+    if let Err(e) = crate::modules::workflow_mcp::tools::check_install_slug_len(&hub_workflow.name)
     {
         let _ = tokio::fs::remove_dir_all(&extraction.extracted_path).await;
         return Err(e);
@@ -2291,11 +2252,7 @@ pub async fn create_workflow_from_hub(
     let create_version = plan.create_request.version.clone();
     if let Some(prior) = Repos
         .workflow
-        .find_by_name_version_owner(
-            &create_name,
-            create_version.as_deref(),
-            Some(auth.user.id),
-        )
+        .find_by_name_version_owner(&create_name, create_version.as_deref(), Some(auth.user.id))
         .await?
     {
         Repos.workflow.delete(prior.id).await?;
@@ -2333,12 +2290,7 @@ pub async fn create_workflow_from_hub(
         }
     };
 
-    workflow::events::emit_user_workflow(
-        SyncAction::Create,
-        workflow.id,
-        auth.user.id,
-        origin.0,
-    );
+    workflow::events::emit_user_workflow(SyncAction::Create, workflow.id, auth.user.id, origin.0);
 
     Ok((
         StatusCode::CREATED,
@@ -2358,13 +2310,8 @@ pub async fn create_system_workflow_from_hub(
     origin: SyncOrigin,
     Json(request): Json<CreateSystemWorkflowFromHubRequest>,
 ) -> ApiResult<Json<WorkflowFromHubResponse>> {
-    let plan = build_workflow_create_from_hub(
-        &request.hub_id,
-        "system",
-        None,
-        Some(auth.user.id),
-    )
-    .await?;
+    let plan =
+        build_workflow_create_from_hub(&request.hub_id, "system", None, Some(auth.user.id)).await?;
 
     let result = match install_system_workflow_tx(
         Repos.pool(),
@@ -2520,7 +2467,10 @@ pub async fn install_system_workflow_tx(
     .map_err(AppError::database_error)?;
 
     tx.commit().await.map_err(AppError::database_error)?;
-    Ok(SystemWorkflowInstallResult { workflow, hub_entity_id })
+    Ok(SystemWorkflowInstallResult {
+        workflow,
+        hub_entity_id,
+    })
 }
 
 // =====================================================
@@ -2646,9 +2596,7 @@ pub fn create_assistant_template_from_hub_docs(op: TransformOperation) -> Transf
         )
         .response::<201, Json<AssistantFromHubResponse>>()
         .response_with::<400, (), _>(|res| {
-            res.description(
-                "Validation error (empty name, oversized description / instructions)",
-            )
+            res.description("Validation error (empty name, oversized description / instructions)")
         })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
@@ -2807,19 +2755,26 @@ pub fn create_system_workflow_from_hub_docs(op: TransformOperation) -> Transform
 pub async fn get_hub_local_providers(
     _auth: RequirePermissions<(HubModelsCreate,)>,
 ) -> ApiResult<Json<HubLocalProvidersResponse>> {
-    let providers = Repos.llm_provider.list_local_providers().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::database_error(e),
-        )
-    })?;
+    let providers = Repos
+        .llm_provider
+        .list_local_providers()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::database_error(e),
+            )
+        })?;
 
     Ok((
         StatusCode::OK,
         Json(HubLocalProvidersResponse {
             providers: providers
                 .into_iter()
-                .map(|p| HubLocalProvider { id: p.id, name: p.name })
+                .map(|p| HubLocalProvider {
+                    id: p.id,
+                    name: p.name,
+                })
                 .collect(),
         }),
     ))
@@ -2932,12 +2887,17 @@ pub async fn refresh_hub_catalog(
         event_bus.emit_async(
             HubEvent::assistants_refreshed(prev.clone(), outcome.new_version.clone()).into(),
         );
-        event_bus.emit_async(
-            HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into(),
-        );
+        event_bus
+            .emit_async(HubEvent::mcp_servers_refreshed(prev, outcome.new_version.clone()).into());
     }
 
-    sync_publish(SyncEntity::HubSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<HubCatalogRead>(), origin.0);
+    sync_publish(
+        SyncEntity::HubSettings,
+        SyncAction::Update,
+        uuid::Uuid::nil(),
+        Audience::perm::<HubCatalogRead>(),
+        origin.0,
+    );
 
     Ok((
         StatusCode::OK,
@@ -2957,7 +2917,9 @@ pub fn refresh_hub_catalog_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<HubCatalogRefreshResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<500, (), _>(|res| {
-            res.description("Fetch / sha256 / cosign verify failure — previous catalog left in place")
+            res.description(
+                "Fetch / sha256 / cosign verify failure — previous catalog left in place",
+            )
         })
 }
 
@@ -2975,9 +2937,8 @@ pub async fn get_hub_installed(
     // inline (the union check needs both arrays). Same shape as the
     // `/api/auth/me` handler — JwtAuth gives us claims; we load the
     // rest from the DB.
-    let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
-        AppError::internal_with_id(format!("parse user id from token: {e}"))
-    })?;
+    let user_id = uuid::Uuid::parse_str(&auth.claims.sub)
+        .map_err(|e| AppError::internal_with_id(format!("parse user id from token: {e}")))?;
     let user = Repos
         .user
         .get_by_id(user_id)

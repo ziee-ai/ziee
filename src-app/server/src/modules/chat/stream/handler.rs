@@ -20,7 +20,9 @@ use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::auth::jwt::JwtService;
 use crate::modules::auth::jwt_extractor::verify_token_version;
-use crate::modules::permissions::{checker::check_permission_union, extractors::RequirePermissions, with_permission};
+use crate::modules::permissions::{
+    checker::check_permission_union, extractors::RequirePermissions, with_permission,
+};
 use crate::modules::user::permissions::ProfileRead;
 
 use super::event::{ChatStreamSseEvent, connected_event};
@@ -91,15 +93,14 @@ fn open_chat_stream(
     let (tx, mut rx) =
         tokio::sync::mpsc::channel::<Result<Event, axum::Error>>(CHAT_STREAM_CHANNEL_CAPACITY);
 
-    registry()
-        .register(
-            conn_id,
-            ChatConn {
-                user_id,
-                active_conversation: None,
-                sender: tx.clone(),
-            },
-        )?;
+    registry().register(
+        conn_id,
+        ChatConn {
+            user_id,
+            active_conversation: None,
+            sender: tx.clone(),
+        },
+    )?;
 
     // The slot is now OWNED by this guard — constructed eagerly the instant
     // registration succeeds (and only on success: the 429 path inserted
@@ -216,7 +217,8 @@ pub async fn set_chat_stream_subscription(
     // Defense in depth: don't let a connection subscribe to a conversation it
     // doesn't own (delivery is already owner-keyed, but verify ownership too).
     if let Some(conversation_id) = request.conversation_id {
-        Repos.chat
+        Repos
+            .chat
             .core
             .get_conversation(conversation_id, auth.user.id)
             .await?
@@ -271,14 +273,17 @@ pub fn chat_stream_router() -> ApiRouter {
         )
         .api_route(
             "/chat/stream/subscription",
-            put_with(set_chat_stream_subscription, set_chat_stream_subscription_docs),
+            put_with(
+                set_chat_stream_subscription,
+                set_chat_stream_subscription_docs,
+            ),
         )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::registry::ChatStreamLimits;
+    use super::*;
     use uuid::Uuid;
 
     /// BEHAVIOURAL proof of the slot-lifecycle contract on THIS handler: a

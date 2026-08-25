@@ -111,7 +111,10 @@ mod tests {
 
     #[test]
     fn str_replace_unique_match() {
-        assert_eq!(changed(str_replace("hello world", "world", "rust").unwrap()), "hello rust");
+        assert_eq!(
+            changed(str_replace("hello world", "world", "rust").unwrap()),
+            "hello rust"
+        );
     }
 
     #[test]
@@ -128,7 +131,10 @@ mod tests {
 
     #[test]
     fn str_replace_empty_old_invalid() {
-        assert_eq!(str_replace("x", "", "y").unwrap_err().error_code(), "INVALID_ARGS");
+        assert_eq!(
+            str_replace("x", "", "y").unwrap_err().error_code(),
+            "INVALID_ARGS"
+        );
     }
 
     #[test]
@@ -139,7 +145,10 @@ mod tests {
     #[test]
     fn str_replace_multibyte_safe() {
         // 'é' is multi-byte; replacen must not split a char boundary.
-        assert_eq!(changed(str_replace("café X", "X", "déjà").unwrap()), "café déjà");
+        assert_eq!(
+            changed(str_replace("café X", "X", "déjà").unwrap()),
+            "café déjà"
+        );
     }
 
     #[test]
@@ -157,27 +166,44 @@ mod tests {
 
     #[test]
     fn line_range_replace_middle() {
-        assert_eq!(changed(apply_line_range("a\nb\nc\n", 2, 2, "B").unwrap()), "a\nB\nc\n");
+        assert_eq!(
+            changed(apply_line_range("a\nb\nc\n", 2, 2, "B").unwrap()),
+            "a\nB\nc\n"
+        );
     }
 
     #[test]
     fn line_range_append_one_past_end() {
-        assert_eq!(changed(apply_line_range("a\nb\n", 3, 3, "c").unwrap()), "a\nb\nc\n");
+        assert_eq!(
+            changed(apply_line_range("a\nb\n", 3, 3, "c").unwrap()),
+            "a\nb\nc\n"
+        );
     }
 
     #[test]
     fn line_range_start_zero_invalid() {
-        assert_eq!(apply_line_range("a\n", 0, 1, "x").unwrap_err().error_code(), "INVALID_ARGS");
+        assert_eq!(
+            apply_line_range("a\n", 0, 1, "x").unwrap_err().error_code(),
+            "INVALID_ARGS"
+        );
     }
 
     #[test]
     fn line_range_past_end_invalid() {
-        assert_eq!(apply_line_range("a\nb\n", 5, 5, "x").unwrap_err().error_code(), "INVALID_ARGS");
+        assert_eq!(
+            apply_line_range("a\nb\n", 5, 5, "x")
+                .unwrap_err()
+                .error_code(),
+            "INVALID_ARGS"
+        );
     }
 
     #[test]
     fn line_range_preserves_no_trailing_newline() {
-        assert_eq!(changed(apply_line_range("a\nb", 1, 1, "Z").unwrap()), "Z\nb");
+        assert_eq!(
+            changed(apply_line_range("a\nb", 1, 1, "Z").unwrap()),
+            "Z\nb"
+        );
     }
 
     #[test]

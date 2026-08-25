@@ -16,7 +16,6 @@
 //! The synchronous `/test` path is the one exception: it keeps a fixed
 //! `RUN_WALL_CLOCK` cap (it mocks every step and must return promptly).
 
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,21 +33,17 @@ use crate::modules::workflow::dispatch::{
     ToolDispatcher,
 };
 use crate::modules::workflow::events::{
-    PerRunEmitter, ProgressEmitter, SSERunCancelledData,
-    SSERunCompletedData, SSERunFailedData, SSERunStartedData, SSEStepCompletedData,
-    SSEStepFailedData, SSEStepManifestItem, SSEStepStartedData, SSEWorkflowRunEvent,
+    PerRunEmitter, ProgressEmitter, SSERunCancelledData, SSERunCompletedData, SSERunFailedData,
+    SSERunStartedData, SSEStepCompletedData, SSEStepFailedData, SSEStepManifestItem,
+    SSEStepStartedData, SSEWorkflowRunEvent,
 };
 use crate::modules::workflow::file_io;
 use crate::modules::workflow::log_io::{self, StepTrace};
 use crate::modules::workflow::models::{CreateBackgroundRun, JobKind, WorkflowRunStatus};
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
-use crate::modules::workflow::types::{
-    ParsedAs, RunContext, StepKindTag, StepResult,
-};
-use crate::modules::workflow::validate::{
-    OutputDef, StepConfig, WorkflowDef, topo_sort_steps,
-};
+use crate::modules::workflow::types::{ParsedAs, RunContext, StepKindTag, StepResult};
+use crate::modules::workflow::validate::{OutputDef, StepConfig, WorkflowDef, topo_sort_steps};
 
 /// Default per-run wall-clock cap (30 min). Used when a workflow does NOT declare
 /// `max_runtime_secs`, and as the fixed cap on the `/test` path. The live cap is
@@ -257,15 +252,17 @@ pub async fn preflight(
     })
 }
 
-pub(crate) async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), AppError> {
+pub(crate) async fn copy_dir_recursive(
+    src: &std::path::Path,
+    dst: &std::path::Path,
+) -> Result<(), AppError> {
     use std::fs;
     tokio::task::block_in_place(|| -> Result<(), AppError> {
-        fs::create_dir_all(dst).map_err(|e| {
-            AppError::internal_error(format!("mkdir {}: {e}", dst.display()))
-        })?;
-        for entry in fs::read_dir(src).map_err(|e| {
-            AppError::internal_error(format!("read_dir {}: {e}", src.display()))
-        })? {
+        fs::create_dir_all(dst)
+            .map_err(|e| AppError::internal_error(format!("mkdir {}: {e}", dst.display())))?;
+        for entry in fs::read_dir(src)
+            .map_err(|e| AppError::internal_error(format!("read_dir {}: {e}", src.display())))?
+        {
             let entry = entry.map_err(|e| AppError::internal_error(format!("entry: {e}")))?;
             let from = entry.path();
             // FIX-4: use `symlink_metadata` (does NOT follow symlinks) and REJECT
@@ -289,7 +286,9 @@ pub(crate) async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::P
                 let mut stack = vec![(from, to)];
                 while let Some((s, d)) = stack.pop() {
                     std::fs::create_dir_all(&d).ok();
-                    for e in std::fs::read_dir(&s).map_err(|e| AppError::internal_error(format!("read_dir: {e}")))? {
+                    for e in std::fs::read_dir(&s)
+                        .map_err(|e| AppError::internal_error(format!("read_dir: {e}")))?
+                    {
                         let e = e.map_err(|e| AppError::internal_error(format!("entry: {e}")))?;
                         let f = e.path();
                         let m = std::fs::symlink_metadata(&f)
@@ -305,11 +304,20 @@ pub(crate) async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::P
                         if mft.is_dir() {
                             stack.push((f, t));
                         } else if mft.is_file() {
-                            std::fs::copy(&f, &t).map_err(|e| AppError::internal_error(format!("copy {} -> {}: {e}", f.display(), t.display())))?;
+                            std::fs::copy(&f, &t).map_err(|e| {
+                                AppError::internal_error(format!(
+                                    "copy {} -> {}: {e}",
+                                    f.display(),
+                                    t.display()
+                                ))
+                            })?;
                             #[cfg(unix)]
                             {
                                 use std::os::unix::fs::PermissionsExt;
-                                let _ = std::fs::set_permissions(&t, std::fs::Permissions::from_mode(m.permissions().mode()));
+                                let _ = std::fs::set_permissions(
+                                    &t,
+                                    std::fs::Permissions::from_mode(m.permissions().mode()),
+                                );
                             }
                         } else {
                             // Special file (fifo/socket/device) — reject rather than
@@ -332,14 +340,19 @@ pub(crate) async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::P
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let _ =
-                        fs::set_permissions(&to, fs::Permissions::from_mode(md.permissions().mode()));
+                    let _ = fs::set_permissions(
+                        &to,
+                        fs::Permissions::from_mode(md.permissions().mode()),
+                    );
                 }
             } else {
                 // Special file (fifo/socket/device) — reject rather than silently drop.
                 return Err(AppError::bad_request(
                     "WORKFLOW_WORKSPACE_SPECIAL_FILE",
-                    format!("unsupported non-regular file in bundle ({})", from.display()),
+                    format!(
+                        "unsupported non-regular file in bundle ({})",
+                        from.display()
+                    ),
                 ));
             }
         }
@@ -504,13 +517,8 @@ pub async fn run_workflow(
 
     match final_outcome {
         RunInnerOutcome::Completed { outputs_preview } => {
-            let _ = repository::mark_status(
-                &pool,
-                run_id,
-                WorkflowRunStatus::Completed,
-                None,
-            )
-            .await;
+            let _ =
+                repository::mark_status(&pool, run_id, WorkflowRunStatus::Completed, None).await;
             emit.emit(SSEWorkflowRunEvent::RunCompleted(SSERunCompletedData {
                 run_id,
                 outputs_preview,
@@ -524,9 +532,7 @@ pub async fn run_workflow(
                 None,
             );
         }
-        RunInnerOutcome::Cancelled {
-            cancelled_at_step,
-        } => {
+        RunInnerOutcome::Cancelled { cancelled_at_step } => {
             // The cancel handler may have already flipped status; this is idempotent.
             let _ = repository::mark_status(
                 &pool,
@@ -552,13 +558,8 @@ pub async fn run_workflow(
             error,
             failed_at_step,
         } => {
-            let _ = repository::mark_status(
-                &pool,
-                run_id,
-                WorkflowRunStatus::Failed,
-                Some(&error),
-            )
-            .await;
+            let _ = repository::mark_status(&pool, run_id, WorkflowRunStatus::Failed, Some(&error))
+                .await;
             emit.emit(SSEWorkflowRunEvent::RunFailed(SSERunFailedData {
                 run_id,
                 error,
@@ -616,13 +617,22 @@ pub async fn run_workflow(
 
 #[derive(Debug)]
 enum RunInnerOutcome {
-    Completed { outputs_preview: Value },
-    Cancelled { cancelled_at_step: Option<String> },
-    Failed { error: String, failed_at_step: Option<String> },
+    Completed {
+        outputs_preview: Value,
+    },
+    Cancelled {
+        cancelled_at_step: Option<String>,
+    },
+    Failed {
+        error: String,
+        failed_at_step: Option<String>,
+    },
     /// Durable resume: the run parked on an indefinite (`timeout_ms: 0`) elicit
     /// gate. The dispatcher already set status `waiting`; the runner exits
     /// WITHOUT a terminal transition and re-spawns (`resume_run`) on submit.
-    Suspended { at_step: String },
+    Suspended {
+        at_step: String,
+    },
 }
 
 /// Build the pipeline manifest for the live first-paint (Part 1, D4 Option B):
@@ -639,8 +649,7 @@ fn build_step_manifest(workflow: &WorkflowDef, ctx: &RunContext) -> Vec<SSEStepM
             id: s.id.clone(),
             kind: s.config.kind_str().to_string(),
             description: s.description.as_deref().map(|d| {
-                crate::modules::workflow::template::render(d, ctx)
-                    .unwrap_or_else(|_| d.to_string())
+                crate::modules::workflow::template::render(d, ctx).unwrap_or_else(|_| d.to_string())
             }),
         })
         .collect()
@@ -809,12 +818,16 @@ async fn run_inner(
         };
 
         match result {
-            StepResult::Completed { output, parsed_as, tokens_used, ms_elapsed } => {
+            StepResult::Completed {
+                output,
+                parsed_as,
+                tokens_used,
+                ms_elapsed,
+            } => {
                 // Persist meta (already wrote the file). Tally output bytes
                 // toward the per-run output+artifact cap.
                 if let Some(meta) = ctx.step_outputs.get(&step.id).cloned() {
-                    ctx.total_output_bytes =
-                        ctx.total_output_bytes.saturating_add(meta.size_bytes);
+                    ctx.total_output_bytes = ctx.total_output_bytes.saturating_add(meta.size_bytes);
                     let meta_json = serde_json::to_value(&meta).unwrap_or(Value::Null);
                     let _ = repository::persist_step_meta(
                         pool,
@@ -843,16 +856,11 @@ async fn run_inner(
                     if !artifacts.is_empty() {
                         // Tally artifact bytes toward the per-run cap.
                         let art_bytes: u64 = artifacts.iter().map(|a| a.size_bytes).sum();
-                        ctx.total_output_bytes =
-                            ctx.total_output_bytes.saturating_add(art_bytes);
+                        ctx.total_output_bytes = ctx.total_output_bytes.saturating_add(art_bytes);
                         let json = serde_json::to_value(&artifacts).unwrap_or(Value::Null);
-                        let _ = repository::persist_step_artifacts(
-                            pool,
-                            ctx.run_id,
-                            &step.id,
-                            &json,
-                        )
-                        .await;
+                        let _ =
+                            repository::persist_step_artifacts(pool, ctx.run_id, &step.id, &json)
+                                .await;
 
                         // A3: durable persistence. When launched standalone
                         // (REST /run → persist_artifacts=true) copy each collected
@@ -865,17 +873,16 @@ async fn run_inner(
                             for art in &artifacts {
                                 match tokio::fs::read(&art.host_path).await {
                                     Ok(bytes) => {
-                                        if let Err(e) =
-                                            crate::modules::file::ingest::ingest_bytes(
-                                                ctx.user_id,
-                                                &bytes,
-                                                &art.filename,
-                                                Some(art.mime_type.clone()),
-                                                "workflow",
-                                                None,
-                                                Some(ctx.run_id),
-                                            )
-                                            .await
+                                        if let Err(e) = crate::modules::file::ingest::ingest_bytes(
+                                            ctx.user_id,
+                                            &bytes,
+                                            &art.filename,
+                                            Some(art.mime_type.clone()),
+                                            "workflow",
+                                            None,
+                                            Some(ctx.run_id),
+                                        )
+                                        .await
                                         {
                                             tracing::warn!(
                                                 "workflow: persist artifact '{}' to file store failed: {e}",
@@ -895,13 +902,8 @@ async fn run_inner(
                 // Persist item progress if any.
                 if let Some(p) = ctx.step_item_progress.get(&step.id).cloned() {
                     let pj = serde_json::to_value(&p).unwrap_or(Value::Null);
-                    let _ = repository::persist_step_item_progress(
-                        pool,
-                        ctx.run_id,
-                        &step.id,
-                        &pj,
-                    )
-                    .await;
+                    let _ = repository::persist_step_item_progress(pool, ctx.run_id, &step.id, &pj)
+                        .await;
                 }
                 // Write per-step trace log.
                 let trace = StepTrace {
@@ -1014,10 +1016,7 @@ async fn run_inner(
     RunInnerOutcome::Completed { outputs_preview }
 }
 
-async fn resolve_outputs(
-    ctx: &mut RunContext,
-    outputs: &[OutputDef],
-) -> Result<Value, AppError> {
+async fn resolve_outputs(ctx: &mut RunContext, outputs: &[OutputDef]) -> Result<Value, AppError> {
     let mut map = serde_json::Map::new();
     for o in outputs {
         let rendered = crate::modules::workflow::template::render(&o.from, ctx)
@@ -1058,8 +1057,8 @@ pub async fn resolve_outputs_full(
     for o in outputs {
         let rendered = crate::modules::workflow::template::render(&o.from, ctx)
             .map_err(|e| AppError::internal_error(format!("output '{}': {e}", o.name)))?;
-        let value = serde_json::from_str::<Value>(&rendered)
-            .unwrap_or_else(|_| Value::String(rendered));
+        let value =
+            serde_json::from_str::<Value>(&rendered).unwrap_or_else(|_| Value::String(rendered));
         map.insert(o.name.clone(), value);
     }
     Ok(map)
@@ -1141,7 +1140,14 @@ pub async fn run_for_test(
     // intentionally ignored here.
     let outcome = tokio::time::timeout(
         RUN_WALL_CLOCK,
-        run_inner(pool, &mut ctx, workflow_def, Some(provider), handle.clone(), emit.clone()),
+        run_inner(
+            pool,
+            &mut ctx,
+            workflow_def,
+            Some(provider),
+            handle.clone(),
+            emit.clone(),
+        ),
     )
     .await;
 
@@ -1159,8 +1165,8 @@ pub async fn run_for_test(
             }
         }
         Ok(RunInnerOutcome::Failed { error, .. }) => {
-            let _ =
-                repository::mark_status(pool, run_id, WorkflowRunStatus::Failed, Some(&error)).await;
+            let _ = repository::mark_status(pool, run_id, WorkflowRunStatus::Failed, Some(&error))
+                .await;
             TestRunOutcome {
                 run_id,
                 status: WorkflowRunStatus::Failed,
@@ -1261,12 +1267,14 @@ pub async fn spawn_run(
 
     // Parse + validate the on-disk workflow.yaml.
     let wf_yaml_path = PathBuf::from(&workflow.extracted_path).join(&workflow.entry_point);
-    let content = tokio::fs::read_to_string(&wf_yaml_path).await.map_err(|e| {
-        AppError::internal_error(format!(
-            "workflow: read workflow.yaml at {}: {e}",
-            wf_yaml_path.display()
-        ))
-    })?;
+    let content = tokio::fs::read_to_string(&wf_yaml_path)
+        .await
+        .map_err(|e| {
+            AppError::internal_error(format!(
+                "workflow: read workflow.yaml at {}: {e}",
+                wf_yaml_path.display()
+            ))
+        })?;
     let workflow_def = crate::modules::workflow::validate::parse_workflow_yaml(&content)?;
     // `_async`: this validates against the REAL bundle, so it reads every
     // `prompt_file:` from disk — blocking work that must not run on the tokio
@@ -1283,10 +1291,12 @@ pub async fn spawn_run(
     // (fallback 8192) is used for llm requests — same as the chat path's
     // apply_model_params (the per-call cost cap is enforced post-call, NOT here:
     // hardcoding 50k exceeds many models' output limits and the provider rejects).
-    let require_model = workflow_def
-        .steps
-        .iter()
-        .any(|s| matches!(s.config, StepConfig::Llm { .. } | StepConfig::LlmMap { .. } | StepConfig::Agent { .. }));
+    let require_model = workflow_def.steps.iter().any(|s| {
+        matches!(
+            s.config,
+            StepConfig::Llm { .. } | StepConfig::LlmMap { .. } | StepConfig::Agent { .. }
+        )
+    });
     let (model_id, model_name, model_max_tokens) =
         resolve_run_model(user_id, opts.model_id, conversation_id, require_model).await?;
 
@@ -1576,12 +1586,14 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
 
     // Parse + validate the on-disk workflow.yaml (same as spawn_run).
     let wf_yaml_path = PathBuf::from(&workflow.extracted_path).join(&workflow.entry_point);
-    let content = tokio::fs::read_to_string(&wf_yaml_path).await.map_err(|e| {
-        AppError::internal_error(format!(
-            "workflow resume: read workflow.yaml at {}: {e}",
-            wf_yaml_path.display()
-        ))
-    })?;
+    let content = tokio::fs::read_to_string(&wf_yaml_path)
+        .await
+        .map_err(|e| {
+            AppError::internal_error(format!(
+                "workflow resume: read workflow.yaml at {}: {e}",
+                wf_yaml_path.display()
+            ))
+        })?;
     let workflow_def = crate::modules::workflow::validate::parse_workflow_yaml(&content)?;
     // `_async`: this validates against the REAL bundle, so it reads every
     // `prompt_file:` from disk — blocking work that must not run on the tokio
@@ -1595,12 +1607,19 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
 
     // The run's model was chosen at launch; re-resolve it (re-checks provider
     // access — a model that became inaccessible can't be resumed).
-    let require_model = workflow_def
-        .steps
-        .iter()
-        .any(|s| matches!(s.config, StepConfig::Llm { .. } | StepConfig::LlmMap { .. } | StepConfig::Agent { .. }));
-    let (model_id, model_name, model_max_tokens) =
-        resolve_run_model(run.user_id, run.model_id, run.conversation_id, require_model).await?;
+    let require_model = workflow_def.steps.iter().any(|s| {
+        matches!(
+            s.config,
+            StepConfig::Llm { .. } | StepConfig::LlmMap { .. } | StepConfig::Agent { .. }
+        )
+    });
+    let (model_id, model_name, model_max_tokens) = resolve_run_model(
+        run.user_id,
+        run.model_id,
+        run.conversation_id,
+        require_model,
+    )
+    .await?;
 
     let sandbox_flavor = workflow_def.sandbox.as_ref().map(|s| s.flavor.clone());
 
@@ -1663,11 +1682,9 @@ pub async fn resume_run(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
 fn rehydrate_ctx(ctx: &mut RunContext, run: &crate::modules::workflow::models::WorkflowRun) {
     if let Value::Object(map) = &run.step_outputs_json {
         for (step_id, meta_json) in map {
-            if let Ok(meta) =
-                serde_json::from_value::<crate::modules::workflow::types::OutputMeta>(
-                    meta_json.clone(),
-                )
-            {
+            if let Ok(meta) = serde_json::from_value::<crate::modules::workflow::types::OutputMeta>(
+                meta_json.clone(),
+            ) {
                 ctx.total_output_bytes = ctx.total_output_bytes.saturating_add(meta.size_bytes);
                 ctx.step_outputs.insert(step_id.clone(), meta);
             }
@@ -1855,9 +1872,8 @@ mod tests {
 
     #[test]
     fn per_run_output_byte_cap_trips() {
-        let err =
-            check_step_caps("gen", 1, 1, PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES + 1)
-                .expect_err("per-run byte cap should trip");
+        let err = check_step_caps("gen", 1, 1, PER_RUN_OUTPUT_ARTIFACT_CAP_BYTES + 1)
+            .expect_err("per-run byte cap should trip");
         assert!(err.contains("output+artifact byte cap"), "got: {err}");
     }
 

@@ -1,11 +1,10 @@
 //! `GET /api/workflow-runs/{run_id}/artifact/{step_id}/{filename}` —
 //! stream an artifact file's bytes.
 
-
 use aide::transform::TransformOperation;
 use axum::body::Body;
 use axum::extract::Path as AxumPath;
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::response::Response;
 use uuid::Uuid;
 
@@ -31,11 +30,14 @@ pub async fn read_artifact(
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
     if row.user_id != auth.user.id {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_RUN_FORBIDDEN",
-            "workflow run is owned by another user",
-        )).into());
+        return Err::<_, (StatusCode, AppError)>(
+            (AppError::new(
+                StatusCode::FORBIDDEN,
+                "WORKFLOW_RUN_FORBIDDEN",
+                "workflow run is owned by another user",
+            ))
+            .into(),
+        );
     }
     // The artifact must have been collected (declared/`collect: all`) — the
     // persisted list is the allow-list; we never serve an arbitrary on-disk

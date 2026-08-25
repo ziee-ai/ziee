@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use serde_json::Value;
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::common::AppError;
 
@@ -95,8 +95,16 @@ pub trait McpClient: Send + Sync {
         name: &str,
         arguments: Value,
         message_id: Option<uuid::Uuid>,
-        sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
-        elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
+        sse_tx: Option<
+            tokio::sync::mpsc::UnboundedSender<
+                Result<axum::response::sse::Event, std::convert::Infallible>,
+            >,
+        >,
+        elicit_notify_tx: Option<
+            tokio::sync::mpsc::UnboundedSender<
+                crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
+            >,
+        >,
     ) -> Result<ToolResult, AppError>;
 
     /// List available resources

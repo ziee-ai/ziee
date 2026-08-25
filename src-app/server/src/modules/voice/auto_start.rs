@@ -401,7 +401,9 @@ pub async fn ensure_running() -> Result<InstanceHandle, AppError> {
                 ));
             }
             Transition::Restart { next_at, .. } if std::time::Instant::now() < next_at => {
-                return Err(not_ready("voice runtime is in restart backoff; retry shortly"));
+                return Err(not_ready(
+                    "voice runtime is in restart backoff; retry shortly",
+                ));
             }
             _ => {}
         }

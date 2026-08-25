@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 // Re-export types for desktop/external use
 pub use core::config::{Config, CorsConfig, HttpServerConfig, JwtConfig};
-pub use core::{Repos, EventBus, EventHandler, AppEvent};
+pub use core::{AppEvent, EventBus, EventHandler, Repos};
 // Chunk BG-3: the desktop-consumer boot path (ziee-desktop's `ServerBoot` impl +
 // `ensure_desktop_admin`) threads the `BootHandle.pool` into repositories rather
 // than reaching the global `Repos`. `AppRepository` is the app-side owner-create
@@ -48,23 +48,25 @@ pub use core::secrets::{init_storage_key, storage_key};
 // directly against the spawned server's DB pool (idempotent re-run + reconcile
 // assertions in tests/seed/).
 #[doc(hidden)]
-pub use ziee_seed;
-#[doc(hidden)]
-pub use core::seed::{run as run_seed, seed_config, DEFAULT_SEED_YAML};
+pub use core::seed::{DEFAULT_SEED_YAML, run as run_seed, seed_config};
 pub use module_api::ModuleContext as ServerContext;
-pub use modules::auth::{AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, hash_password};
 pub use modules::auth::jwt::JwtSettings;
 pub use modules::auth::jwt_extractor::JwtAuth;
 pub use modules::auth::refresh_tokens;
-pub use modules::user::models::User;
-pub use modules::llm_provider::events::LlmProviderEvent;
+pub use modules::auth::{
+    AuthRepository, AuthResponse, JwtService, SessionSettingsRepository, hash_password,
+};
 pub use modules::llm_provider::UserKeyRepository;
+pub use modules::llm_provider::events::LlmProviderEvent;
 pub use modules::mcp::events::McpServerEvent;
 /// The columns `list_calls_for_user` narrows on. Re-exported for the
 /// integration-test crate, which owns the authoritative owner-leading index
 /// guard (`tests/mcp/tool_call_index_test.rs`) and must read the SAME list the
 /// query is pinned to rather than a copy of it.
 pub use modules::mcp::tool_calls::repository::FILTERED_LOOKUP_COLUMNS;
+pub use modules::user::models::User;
+#[doc(hidden)]
+pub use ziee_seed;
 // Re-exported so integration tests can drive the REAL retention reaper tick
 // (`memory::reaper::run_once`) instead of mirroring its SQL.
 pub use modules::memory::reaper::run_once as memory_reaper_run_once;
@@ -94,12 +96,12 @@ pub mod llm_repository_health {
 pub mod memory_test_api {
     pub use crate::modules::memory::engine::prompts::EXTRACTION_PROMPT;
 }
-pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
 pub use common::{ApiResult, AppError};
+pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
 // Re-export the at-rest secret helpers so out-of-crate consumers
 // (notably the desktop tauri crate's remote_access module) can
 // encrypt/decrypt rows without re-implementing pgcrypto plumbing.
-pub use common::secret::{decrypt_secret, encrypt_secret, resolve_optional_secret, SecretView};
+pub use common::secret::{SecretView, decrypt_secret, encrypt_secret, resolve_optional_secret};
 // Re-export password helpers so the desktop crate's remote_access
 // module can validate + hash passwords without reaching into private
 // auth internals.
@@ -112,31 +114,29 @@ pub mod password {
 // their HTTP handlers with `RequirePermissions<(...)>` and define
 // their own `PermissionCheck` permission types.
 pub mod permissions {
-    pub use crate::modules::permissions::{RequirePermissions, with_permission};
     pub use crate::modules::permissions::types::{PermissionCheck, PermissionList};
+    pub use crate::modules::permissions::{RequirePermissions, with_permission};
 }
 // Re-export async_trait for consistent EventHandler implementations
 pub use async_trait::async_trait;
 
 // Re-export MCP client types for integration tests
-pub use modules::mcp::client::http::{HeaderParseError, HttpMcpClient, parse_header_map};
-pub use modules::mcp::client::stdio::StdioMcpClient;
+pub use ai_providers::Provider as AiProvider;
 pub use modules::mcp::client::auth::{
     OAuthClientConfig, StoredToken, refresh_token as oauth_refresh_token,
 };
+pub use modules::mcp::client::http::{HeaderParseError, HttpMcpClient, parse_header_map};
+pub use modules::mcp::client::stdio::StdioMcpClient;
 pub use modules::mcp::client::traits::McpClient;
-pub use modules::mcp::{McpServer, TransportType, UsageMode};
 pub use modules::mcp::sampling::handler::{ChatSamplingHandler, SamplingHandler};
 pub use modules::mcp::sampling::models::{
     SamplingContent, SamplingCreateMessageRequest, SamplingCreateMessageResult,
 };
-pub use ai_providers::Provider as AiProvider;
+pub use modules::mcp::{McpServer, TransportType, UsageMode};
 
 // Re-export elicitation primitives for integration tests.
 #[doc(hidden)]
-pub use modules::mcp::elicitation::models::{
-    ElicitationResponse, ElicitationStartedNotification,
-};
+pub use modules::mcp::elicitation::models::{ElicitationResponse, ElicitationStartedNotification};
 #[doc(hidden)]
 pub use modules::mcp::elicitation::registry as elicitation_registry;
 
@@ -168,7 +168,7 @@ pub use core::{get_server_addr, set_server_addr};
 // to drive tier-4 hardening tests through the same backend the prod
 // code uses (instead of `Command::new("bwrap")` directly).
 #[doc(hidden)]
-pub use modules::code_sandbox::backend::{active as sandbox_backend, RawExecResult};
+pub use modules::code_sandbox::backend::{RawExecResult, active as sandbox_backend};
 
 // Re-export MCP content types for integration tests
 #[doc(hidden)]
@@ -184,7 +184,7 @@ pub use modules::mcp::chat_extension::content::{McpContentData, ResourceLink, Ri
 pub use modules::file::storage::manager::{get_file_storage, init_file_storage};
 #[doc(hidden)]
 pub use modules::mcp::resource_link::{
-    persist_links, result_link_trusted_hosts, PersistOutcome, PersistedArtifact,
+    PersistOutcome, PersistedArtifact, persist_links, result_link_trusted_hosts,
 };
 
 // Re-export memory + summarization engines for integration tests
@@ -203,13 +203,13 @@ pub mod summarization_engine {
 #[doc(hidden)]
 pub mod code_sandbox {
     pub use crate::modules::code_sandbox::{
-        code_sandbox_server_id, loopback_host, CodeSandboxRepository,
+        CodeSandboxRepository, code_sandbox_server_id, loopback_host,
     };
     // Generic mount-provider seam (feature #3, Part B0). The desktop crate's
     // `host_mount` module registers a provider here at boot to inject host
     // folder mounts without the server core knowing about host folders.
     pub use crate::modules::code_sandbox::mount_provider::{
-        has_providers, register_sandbox_mount_provider, MountSpec, SandboxMountProvider,
+        MountSpec, SandboxMountProvider, has_providers, register_sandbox_mount_provider,
     };
     pub use crate::modules::code_sandbox::types::SandboxContext;
     pub use crate::modules::code_sandbox::workflow_staging::StageMode;
@@ -244,7 +244,7 @@ pub mod workflow_mcp {
 // restart/re-register idempotency test (mirrors the workflow_mcp block above).
 #[doc(hidden)]
 pub mod web_search {
-    pub use crate::modules::web_search::{web_search_server_id, WebSearchRepository};
+    pub use crate::modules::web_search::{WebSearchRepository, web_search_server_id};
 }
 
 // Re-export the bio_mcp supervisor shutdown for the sidecar death+respawn
@@ -260,9 +260,9 @@ pub mod bio_mcp {
 // FilesystemStorage blob + a mock AIProvider that fails-then-succeeds.
 #[doc(hidden)]
 pub mod llm_provider_files_test_api {
-    pub use crate::modules::file::storage::filesystem::FilesystemStorage;
-    pub use crate::modules::file::storage::FileStorage;
     pub use crate::modules::file::FileRepository;
+    pub use crate::modules::file::storage::FileStorage;
+    pub use crate::modules::file::storage::filesystem::FilesystemStorage;
     pub use crate::modules::llm_provider::models::{LlmProvider, ProxySettings};
     pub use crate::modules::llm_provider_files::repository::get_provider_file_mapping;
     pub use crate::modules::llm_provider_files::service::get_or_upload_provider_file;
@@ -280,7 +280,7 @@ pub mod memory {
 // exercises checksum dedup through the REAL upload+attach flow.
 #[doc(hidden)]
 pub mod file_available {
-    pub use crate::modules::file::available_files::{resolve_available_files, AvailableFile};
+    pub use crate::modules::file::available_files::{AvailableFile, resolve_available_files};
 }
 
 // Re-export the provider file-routing entrypoint for the integration test that
@@ -322,9 +322,15 @@ pub mod file_rag_search {
 pub mod workflow {
     pub use crate::modules::workflow::models::WorkflowRunStatus;
     pub use crate::modules::workflow::repository::{
-        cancel_cas, heartbeat, insert_run, mark_running, mark_status, persist_step_meta,
-        append_agent_activity, AGENT_ACTIVITY_MAX_ENTRIES,
+        AGENT_ACTIVITY_MAX_ENTRIES, append_agent_activity, cancel_cas, get_background_run_detail,
+        heartbeat, insert_run, insert_subagent_child_run, list_subagent_children, mark_running,
+        mark_status, persist_step_meta, set_run_status,
     };
+    // The shared persist-only activity sink (ITEM-1/2) + the chat fan-out child
+    // factory (ITEM-7), so the integration tests can drive the real
+    // persist → read path deterministically without a live LLM.
+    pub use crate::modules::chat::agent_host::child_sink::ChatChildSinkFactory;
+    pub use crate::modules::workflow::activity_sink::PersistingActivitySink;
     pub use crate::modules::workflow::models::CreateWorkflowRun;
     // The run staging root, so a test can delete a run's on-disk logs to
     // exercise read_log's durable step_logs_json fallback (A7 GC recovery).
@@ -356,8 +362,8 @@ pub mod test_internals {
     pub use ai_providers::{ChatMessage, ContentBlock, Role};
     // Chat repository surface for the DB-level append_content tests
     // (Tier-2 monotonic / collision-free under concurrent appends).
-    pub use crate::modules::chat::core::repository::ChatCoreRepository;
     pub use crate::modules::chat::core::models::MessageContentData;
+    pub use crate::modules::chat::core::repository::ChatCoreRepository;
     // Local-runtime proxy token surface, so integration tests can drive the
     // boot-time reseed (which mints + persists a proxy token for keyless local
     // providers) and assert against the in-memory token cache.
@@ -412,20 +418,22 @@ pub mod test_internals {
 }
 
 // Re-export axum types for route building
-pub use axum::{Extension, Json, extract::State, http::StatusCode};
-pub use axum::routing::{get, post};
 pub use axum::Router;
+pub use axum::routing::{get, post};
+pub use axum::{Extension, Json, extract::State, http::StatusCode};
 
 // Re-export aide types for route building with OpenAPI
 pub use aide::axum::ApiRouter;
-pub use aide::axum::routing::{get_with, post_with, put_with, delete_with};
+pub use aide::axum::routing::{delete_with, get_with, post_with, put_with};
 pub use aide::transform::TransformOperation;
 
 // Re-export app_builder functions for desktop OpenAPI generation
 // and for desktop crates that need to re-apply CORS / security-header
 // layers to their own merged-in routes (axum's `.merge()` does NOT
 // propagate parent layers onto merged routes).
-pub use core::app_builder::{create_cors_layer, create_modules, build_api_router, initialize_modules};
+pub use core::app_builder::{
+    build_api_router, create_cors_layer, create_modules, initialize_modules,
+};
 pub use core::database::initialize_database;
 pub use core::{init_repositories, is_repos_initialized};
 pub use module_api::AppModule;
@@ -448,8 +456,8 @@ fn init_tracing(config: &Config) {
         .as_ref()
         .map(|l| l.level.as_str())
         .unwrap_or("info");
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(config_level));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(config_level));
 
     let format = config
         .logging
@@ -516,12 +524,7 @@ async fn setup_server(
     tracing::info!("Global repository factory initialized");
 
     // Initialize at-rest secret storage key — see core::secrets.
-    core::secrets::init_storage_key(
-        config
-            .secrets
-            .as_ref()
-            .and_then(|s| s.storage_key.clone()),
-    );
+    core::secrets::init_storage_key(config.secrets.as_ref().and_then(|s| s.storage_key.clone()));
 
     // Run the declarative config-as-code seed (ziee-seed engine). The schema
     // exists (migrations ran in build/boot), repositories + the storage key are
@@ -550,10 +553,7 @@ async fn setup_server(
     core::app_builder::initialize_modules(&mut modules, &module_context)?;
 
     // Register event handlers from all modules
-    let mut event_bus = core::app_builder::register_event_handlers(
-        &modules,
-        pool.clone(),
-    );
+    let mut event_bus = core::app_builder::register_event_handlers(&modules, pool.clone());
 
     // Register additional handlers (e.g., from desktop app)
     for handler in additional_handlers {
@@ -577,11 +577,10 @@ async fn setup_server(
     // the server never boots with a known signer. Closes 01-auth F-10
     // + 14-core F-03.
     let jwt_service = Arc::new(
-        modules::auth::JwtService::try_new(config.jwt.clone())
-            .map_err(|e| {
-                tracing::error!("Failed to initialize JWT service: {}", e);
-                e
-            })?,
+        modules::auth::JwtService::try_new(config.jwt.clone()).map_err(|e| {
+            tracing::error!("Failed to initialize JWT service: {}", e);
+            e
+        })?,
     );
     tracing::info!("JWT service initialized");
 
@@ -629,31 +628,46 @@ async fn setup_server(
     // Build the control MCP catalog from the now-fully-populated OpenAPI doc
     // (embedded/desktop bootstrap path — mirrors main.rs). Skipped when the
     // deploy kill-switch is off (§16).
-    if config.control_mcp.as_ref().map(|c| c.enabled).unwrap_or(true) {
+    if config
+        .control_mcp
+        .as_ref()
+        .map(|c| c.enabled)
+        .unwrap_or(true)
+    {
         crate::modules::control_mcp::catalog::init_from_openapi(&api_doc);
     }
     let app = core::app_builder::apply_rate_limit_layer(app, &config, None);
     let app = app
-        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("x-content-type-options"),
-            axum::http::HeaderValue::from_static("nosniff"),
-        ))
-        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("x-frame-options"),
-            axum::http::HeaderValue::from_static("DENY"),
-        ))
-        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("referrer-policy"),
-            axum::http::HeaderValue::from_static("no-referrer"),
-        ))
-        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("permissions-policy"),
-            axum::http::HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
-        ))
-        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
-            axum::http::header::HeaderName::from_static("strict-transport-security"),
-            axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
-        ))
+        .layer(
+            tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("x-content-type-options"),
+                axum::http::HeaderValue::from_static("nosniff"),
+            ),
+        )
+        .layer(
+            tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("x-frame-options"),
+                axum::http::HeaderValue::from_static("DENY"),
+            ),
+        )
+        .layer(
+            tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("referrer-policy"),
+                axum::http::HeaderValue::from_static("no-referrer"),
+            ),
+        )
+        .layer(
+            tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("permissions-policy"),
+                axum::http::HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
+            ),
+        )
+        .layer(
+            tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+                axum::http::header::HeaderName::from_static("strict-transport-security"),
+                axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+            ),
+        )
         // Chunk BG: the per-request auth/user dependency handle — pool + the
         // installed event/sync/outbound sinks — so those handlers no longer
         // reach `Repos` / `EventBus` / `sync::publish` / `url_validator`.
@@ -668,10 +682,9 @@ async fn setup_server(
         // the file store repository + ziee's `FileEvents` seam impl + the
         // download-token signer — so those handlers no longer reach `Repos.file`
         // / the file-module JWT global / `sync::publish`.
-        .layer(axum::Extension(crate::modules::file::ingest::build_file_context(
-            pool.clone(),
-            &config.jwt,
-        )))
+        .layer(axum::Extension(
+            crate::modules::file::ingest::build_file_context(pool.clone(), &config.jwt),
+        ))
         // Chunk B3: the framework's permission extractors pull this injected
         // resolver (backed by Repos + the JWT service above) from the request
         // extensions to authenticate + authorize, so enforcement stays generic.
@@ -699,10 +712,7 @@ async fn run_server(
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     let local_addr = listener.local_addr()?;
 
-    tracing::info!(
-        "ziee backend server started successfully on {}",
-        local_addr
-    );
+    tracing::info!("ziee backend server started successfully on {}", local_addr);
 
     tokio::spawn(async move {
         // into_make_service_with_connect_info surfaces the TCP peer
@@ -712,8 +722,8 @@ async fn run_server(
             listener,
             app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
-            .await
-            .expect("Failed to run server");
+        .await
+        .expect("Failed to run server");
     });
 
     Ok(local_addr)

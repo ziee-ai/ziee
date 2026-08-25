@@ -19,9 +19,7 @@ use uuid::Uuid;
 use crate::common::AppError;
 use crate::core::Repos;
 use crate::modules::memory::models::is_valid_kind;
-use crate::modules::sync::{
-    Audience, SyncAction, SyncEntity, publish as sync_publish,
-};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
 
 /// One extraction op emitted by the LLM.
 #[derive(Debug, Deserialize)]
@@ -59,8 +57,13 @@ pub async fn extract_and_persist(
     assistant_message_text: String,
     source_message_id: Option<Uuid>,
 ) {
-    if let Err(e) =
-        run(user_id, user_message_text, assistant_message_text, source_message_id).await
+    if let Err(e) = run(
+        user_id,
+        user_message_text,
+        assistant_message_text,
+        source_message_id,
+    )
+    .await
     {
         tracing::warn!("memory.extract: pipeline error: {e}");
     }
@@ -257,27 +260,31 @@ async fn run(
     for op in ops {
         let outcome = match op.op.to_ascii_uppercase().as_str() {
             "NOOP" => Ok(()),
-            "ADD" => apply_add(
-                &pool,
-                user_id,
-                daily_quota,
-                op.content,
-                op.importance,
-                op.kind,
-                source_message_id,
-                embedding_model_id,
-            )
-            .await,
-            "UPDATE" => apply_update(
-                &pool,
-                user_id,
-                op.memory_id,
-                op.content,
-                op.importance,
-                op.kind,
-                embedding_model_id,
-            )
-            .await,
+            "ADD" => {
+                apply_add(
+                    &pool,
+                    user_id,
+                    daily_quota,
+                    op.content,
+                    op.importance,
+                    op.kind,
+                    source_message_id,
+                    embedding_model_id,
+                )
+                .await
+            }
+            "UPDATE" => {
+                apply_update(
+                    &pool,
+                    user_id,
+                    op.memory_id,
+                    op.content,
+                    op.importance,
+                    op.kind,
+                    embedding_model_id,
+                )
+                .await
+            }
             "DELETE" => apply_delete(user_id, op.memory_id).await,
             other => {
                 tracing::warn!("memory.extract: unknown op {other:?}; ignoring");

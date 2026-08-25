@@ -31,22 +31,18 @@ pub const MAX_DESCRIPTION_PLUS_WHEN_TO_USE: usize = 1536;
 ///   exceed 1536 chars.
 ///
 /// On the happy path, returns `(frontmatter_object, body_string)`.
-pub fn parse_skill_md_frontmatter(
-    content: &str,
-) -> Result<(serde_json::Value, String), AppError> {
+pub fn parse_skill_md_frontmatter(content: &str) -> Result<(serde_json::Value, String), AppError> {
     // Strip an optional UTF-8 BOM so an editor-saved SKILL.md doesn't
     // fail the opening-fence check.
     let content = content.strip_prefix('\u{feff}').unwrap_or(content);
 
     // Tolerate LF / CRLF / CR line endings.
-    let (head, rest) = content
-        .split_once('\n')
-        .ok_or_else(|| {
-            AppError::bad_request(
-                "SKILL_FRONTMATTER_MISSING",
-                "SKILL.md must start with a YAML frontmatter block fenced by '---'",
-            )
-        })?;
+    let (head, rest) = content.split_once('\n').ok_or_else(|| {
+        AppError::bad_request(
+            "SKILL_FRONTMATTER_MISSING",
+            "SKILL.md must start with a YAML frontmatter block fenced by '---'",
+        )
+    })?;
     if head.trim_end_matches('\r') != "---" {
         return Err(AppError::bad_request(
             "SKILL_FRONTMATTER_MISSING",
@@ -100,12 +96,8 @@ pub fn parse_skill_md_frontmatter(
             format!("SKILL.md frontmatter is not valid YAML: {e}"),
         )
     })?;
-    let frontmatter_json =
-        serde_json::to_value(&parsed).map_err(|e| {
-            AppError::internal_error(format!(
-                "skill: convert YAML to JSON: {e}"
-            ))
-        })?;
+    let frontmatter_json = serde_json::to_value(&parsed)
+        .map_err(|e| AppError::internal_error(format!("skill: convert YAML to JSON: {e}")))?;
     if !frontmatter_json.is_object() {
         return Err(AppError::bad_request(
             "SKILL_FRONTMATTER_NOT_OBJECT",
@@ -175,9 +167,7 @@ mod tests {
     fn rejects_oversize_description_plus_when_to_use() {
         let desc = "a".repeat(1500);
         let when = "b".repeat(100);
-        let md = format!(
-            "---\ndescription: \"{desc}\"\nwhen_to_use: \"{when}\"\n---\nbody"
-        );
+        let md = format!("---\ndescription: \"{desc}\"\nwhen_to_use: \"{when}\"\n---\nbody");
         let err = parse_skill_md_frontmatter(&md).unwrap_err();
         assert!(err.to_string().contains("exceeds"));
     }

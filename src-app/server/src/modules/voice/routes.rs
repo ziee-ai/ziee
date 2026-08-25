@@ -26,20 +26,32 @@ fn voice_model_router() -> ApiRouter {
     ApiRouter::new()
         .api_route(
             "/voice/models",
-            get_with(model_handlers::list_models, model_handlers::list_models_docs),
+            get_with(
+                model_handlers::list_models,
+                model_handlers::list_models_docs,
+            ),
         )
         .api_route(
             "/voice/models/catalog",
-            get_with(model_handlers::get_catalog, model_handlers::get_catalog_docs),
+            get_with(
+                model_handlers::get_catalog,
+                model_handlers::get_catalog_docs,
+            ),
         )
         .api_route(
             "/voice/models/download",
-            post_with(model_handlers::download_model, model_handlers::download_model_docs),
+            post_with(
+                model_handlers::download_model,
+                model_handlers::download_model_docs,
+            ),
         )
         .api_route(
             "/voice/models/upload",
-            post_with(model_handlers::upload_model, model_handlers::upload_model_docs)
-                .layer(DefaultBodyLimit::max(VOICE_MODEL_UPLOAD_BODY_LIMIT)),
+            post_with(
+                model_handlers::upload_model,
+                model_handlers::upload_model_docs,
+            )
+            .layer(DefaultBodyLimit::max(VOICE_MODEL_UPLOAD_BODY_LIMIT)),
         )
         .api_route(
             "/voice/models/downloads",
@@ -50,7 +62,10 @@ fn voice_model_router() -> ApiRouter {
         )
         .api_route(
             "/voice/models/downloads/{key}",
-            get_with(model_handlers::get_model_download, model_handlers::get_model_download_docs),
+            get_with(
+                model_handlers::get_model_download,
+                model_handlers::get_model_download_docs,
+            ),
         )
         .api_route(
             "/voice/models/downloads/{key}/events",
@@ -68,7 +83,10 @@ fn voice_model_router() -> ApiRouter {
         )
         .api_route(
             "/voice/models/{id}/activate",
-            post_with(model_handlers::activate_model, model_handlers::activate_model_docs),
+            post_with(
+                model_handlers::activate_model,
+                model_handlers::activate_model_docs,
+            ),
         )
         .api_route(
             "/voice/models/{id}",

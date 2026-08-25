@@ -85,7 +85,10 @@ fn build_series_seed(task_name: &str, runs: &[ScheduledTaskRun]) -> SeedPlan {
             .and_then(|v| v.get("new_count"))
             .and_then(|n| n.as_i64())
             .unwrap_or(0);
-        let preview = r.result_preview.as_deref().unwrap_or("(no result captured)");
+        let preview = r
+            .result_preview
+            .as_deref()
+            .unwrap_or("(no result captured)");
         let delta = if new_count > 0 {
             format!(" — {new_count} new")
         } else {
@@ -124,8 +127,7 @@ async fn resolve_run_result(
         if let Ok(Some(conv)) = Repos.chat.core.get_conversation(src_conv, user_id).await {
             if let Some(bid) = conv.active_branch_id {
                 if let Ok(history) = Repos.chat.core.get_conversation_history(bid).await {
-                    if let Some(last) =
-                        history.iter().rev().find(|m| m.message.role == "assistant")
+                    if let Some(last) = history.iter().rev().find(|m| m.message.role == "assistant")
                     {
                         let text = last
                             .contents
@@ -187,7 +189,13 @@ async fn seed_conversation(
     Repos
         .chat
         .core
-        .append_content(umsg.id, "text", MessageContentData::Text { text: plan.user_text })
+        .append_content(
+            umsg.id,
+            "text",
+            MessageContentData::Text {
+                text: plan.user_text,
+            },
+        )
         .await?;
 
     // Assistant turn carrying the REAL result (DEC-23).
@@ -202,7 +210,9 @@ async fn seed_conversation(
         .append_content(
             amsg.id,
             "text",
-            MessageContentData::Text { text: plan.assistant_text },
+            MessageContentData::Text {
+                text: plan.assistant_text,
+            },
         )
         .await?;
 
@@ -278,7 +288,9 @@ mod tests {
             conversation_id: None,
             skipped_tools: serde_json::json!([]),
             result_preview: preview.map(|s| s.to_string()),
-            change_summary_json: Some(serde_json::json!({ "changed": new_count > 0, "new_count": new_count })),
+            change_summary_json: Some(
+                serde_json::json!({ "changed": new_count > 0, "new_count": new_count }),
+            ),
             fired_at: Utc::now(),
             finished_at: None,
         }
@@ -290,9 +302,21 @@ mod tests {
     #[test]
     fn build_run_seed_carries_real_result_and_artifacts() {
         let fid = Uuid::new_v4();
-        let plan = build_run_seed("Morning brief", "completed", "3 new papers on X.", vec![fid]);
-        assert_eq!(plan.assistant_text, "3 new papers on X.", "assistant turn = real result");
-        assert_eq!(plan.file_ids, vec![fid], "artifact ids carried to the assistant turn");
+        let plan = build_run_seed(
+            "Morning brief",
+            "completed",
+            "3 new papers on X.",
+            vec![fid],
+        );
+        assert_eq!(
+            plan.assistant_text, "3 new papers on X.",
+            "assistant turn = real result"
+        );
+        assert_eq!(
+            plan.file_ids,
+            vec![fid],
+            "artifact ids carried to the assistant turn"
+        );
         assert!(plan.title.contains("Morning brief"));
 
         let empty = build_run_seed("W", "completed", "   ", vec![]);
@@ -312,10 +336,20 @@ mod tests {
             run_with("no_change", Some("no change"), 0),
         ];
         let plan = build_series_seed("Lit watch", &runs);
-        assert!(plan.assistant_text.contains("last 2 runs"), "count: {}", plan.assistant_text);
+        assert!(
+            plan.assistant_text.contains("last 2 runs"),
+            "count: {}",
+            plan.assistant_text
+        );
         assert!(plan.assistant_text.contains("2 papers on base editing"));
-        assert!(plan.assistant_text.contains("— 2 new"), "delta shown for a changed run");
-        assert!(plan.assistant_text.contains("[no_change]"), "each run's status shown");
+        assert!(
+            plan.assistant_text.contains("— 2 new"),
+            "delta shown for a changed run"
+        );
+        assert!(
+            plan.assistant_text.contains("[no_change]"),
+            "each run's status shown"
+        );
         // First run listed before the second (newest-first order preserved).
         let i_new = plan.assistant_text.find("base editing").unwrap();
         let i_nochange = plan.assistant_text.find("[no_change]").unwrap();

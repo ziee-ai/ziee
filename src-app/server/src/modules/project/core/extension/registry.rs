@@ -11,9 +11,8 @@
 // leave the project module compiling and running normally — the
 // distributed slice simply collects zero entries from that module.
 
-
-use aide::axum::ApiRouter;
 use ai_providers::ContentBlock;
+use aide::axum::ApiRouter;
 use async_trait::async_trait;
 use linkme::distributed_slice;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -247,7 +246,9 @@ impl ProjectExtensionRegistry {
         tx: &mut Transaction<'_, Postgres>,
     ) -> Result<(), AppError> {
         self.0
-            .fire_in_tx(tx, |ext, tx| ext.on_conversation_detached(conversation_id, tx))
+            .fire_in_tx(tx, |ext, tx| {
+                ext.on_conversation_detached(conversation_id, tx)
+            })
             .await
     }
 

@@ -1,14 +1,14 @@
 // Text image generation - creates preview images from text files
 // Uses advanced rendering with rusttype for better text display
 
+use ab_glyph::{FontRef, PxScale};
 use async_trait::async_trait;
 use encoding_rs::*;
 use image::{ImageBuffer, Rgb, RgbImage};
 use imageproc::drawing::draw_text_mut;
-use ab_glyph::{FontRef, PxScale};
 
-use crate::common::AppError;
 use super::{ProcessingResult, traits::ImageGenerator};
+use crate::common::AppError;
 
 const MAX_CHARS_PER_PAGE: usize = 2000;
 const IMAGE_WIDTH: u32 = 800;
@@ -25,8 +25,7 @@ impl TextImageGenerator {
         const THUMBNAIL_SIZE: u32 = 300;
 
         // Decode JPEG
-        let img = image::load_from_memory(image_data)
-            .map_err(|e| AppError::internal_with_id(e))?;
+        let img = image::load_from_memory(image_data).map_err(|e| AppError::internal_with_id(e))?;
 
         // Convert to RGB first (to ensure resize returns RGB)
         let rgb_img = img.to_rgb8();
@@ -44,7 +43,7 @@ impl TextImageGenerator {
             &rgb_img,
             new_width,
             new_height,
-            image::imageops::FilterType::Lanczos3
+            image::imageops::FilterType::Lanczos3,
         );
 
         // Convert to DynamicImage for encoding
@@ -52,7 +51,11 @@ impl TextImageGenerator {
 
         // Encode to JPEG
         let mut jpeg_data = Vec::new();
-        thumbnail.write_to(&mut std::io::Cursor::new(&mut jpeg_data), image::ImageFormat::Jpeg)
+        thumbnail
+            .write_to(
+                &mut std::io::Cursor::new(&mut jpeg_data),
+                image::ImageFormat::Jpeg,
+            )
             .map_err(|e| AppError::internal_with_id(e))?;
 
         Ok(jpeg_data)
@@ -97,10 +100,16 @@ impl TextImageGenerator {
         }
 
         // Check content for code patterns
-        let code_indicators = ["{", "}", "function", "class", "import", "export", "const", "let", "var"];
+        let code_indicators = [
+            "{", "}", "function", "class", "import", "export", "const", "let", "var",
+        ];
         let first_1000_chars = &content.chars().take(1000).collect::<String>();
 
-        code_indicators.iter().filter(|&indicator| first_1000_chars.contains(indicator)).count() >= 3
+        code_indicators
+            .iter()
+            .filter(|&indicator| first_1000_chars.contains(indicator))
+            .count()
+            >= 3
     }
 
     /// Wrap text into lines that fit within the image width
@@ -130,11 +139,7 @@ impl TextImageGenerator {
     }
 
     /// Create a text preview image
-    fn create_text_image(
-        text: &str,
-        page_number: u32,
-        is_code: bool,
-    ) -> Result<Vec<u8>, AppError> {
+    fn create_text_image(text: &str, page_number: u32, is_code: bool) -> Result<Vec<u8>, AppError> {
         // Create white background
         let mut img: RgbImage = ImageBuffer::new(IMAGE_WIDTH, IMAGE_HEIGHT);
         for pixel in img.pixels_mut() {
@@ -142,9 +147,11 @@ impl TextImageGenerator {
         }
 
         // Load embedded DejaVuSansMono font (monospace, good for both code and text)
-        let font_data = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/fonts/DejaVuSansMono.ttf"));
-        let font = FontRef::try_from_slice(font_data)
-            .map_err(|e| AppError::internal_with_id(e))?;
+        let font_data = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/resources/fonts/DejaVuSansMono.ttf"
+        ));
+        let font = FontRef::try_from_slice(font_data).map_err(|e| AppError::internal_with_id(e))?;
 
         let scale = PxScale::from(FONT_SIZE);
         let text_color = if is_code {

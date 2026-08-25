@@ -230,8 +230,7 @@ mod tests {
     fn stdio_update_rejected_when_sandbox_disabled() {
         let mut r = upd();
         let p = policy(&["http", "stdio"], Some("full"));
-        let err =
-            enforce_on_user_transport_change(&mut r, &TransportType::Stdio, &p).unwrap_err();
+        let err = enforce_on_user_transport_change(&mut r, &TransportType::Stdio, &p).unwrap_err();
         assert_eq!(err.error_code(), "MCP_SANDBOX_DISABLED");
     }
 

@@ -1,3 +1,10 @@
+//! TEST-11 (subagent-transcripts, INV-5) — the new `ChildSink` port is a
+//! domain-free seam: `agent-core` still depends only on `ai-providers` +
+//! `ziee-core` + `ziee-identity` and reaches into NO server/DB crate, so
+//! child-activity persistence carries zero DB dependency into the crate. This is
+//! the SAME boundary the assertion below enforces; the added citation binds
+//! TEST-11 to it.
+//!
 //! TEST-36 (INV-8) — the `agent-core` crate's DIRECT dependency set is the port
 //! boundary: it may depend on `ai-providers` + `ziee-core` + `ziee-identity` (the
 //! shared value/error/identity types), and MUST NOT depend on the `ziee` server

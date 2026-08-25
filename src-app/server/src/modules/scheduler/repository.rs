@@ -125,10 +125,7 @@ pub async fn get_for_user(
 }
 
 /// A user's tasks, newest-first.
-pub async fn list_for_user(
-    pool: &PgPool,
-    user_id: Uuid,
-) -> Result<Vec<ScheduledTask>, AppError> {
+pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<ScheduledTask>, AppError> {
     let rows = sqlx::query_as!(
         ScheduledTask,
         r#"
@@ -460,10 +457,7 @@ pub async fn arm_self_paced(
 /// `run_now`) — the goal-seeking turn counter. Compared against
 /// `goal_seek_max_turns` in the goal-seeking write-back. The current firing's
 /// run row is inserted BEFORE the write-back, so this count includes it.
-pub async fn count_scheduled_runs_for_task(
-    pool: &PgPool,
-    task_id: Uuid,
-) -> Result<i64, AppError> {
+pub async fn count_scheduled_runs_for_task(pool: &PgPool, task_id: Uuid) -> Result<i64, AppError> {
     let row = sqlx::query!(
         r#"SELECT count(*) AS "n!" FROM scheduled_task_runs
            WHERE scheduled_task_id = $1 AND trigger <> 'run_now'"#,
@@ -548,10 +542,7 @@ pub async fn insert_run(pool: &PgPool, run: NewTaskRun) -> Result<Uuid, AppError
 /// prune). Returns rows deleted. Reuses the admin `notification_retention_days`
 /// window (migration 144's documented-but-unimplemented "pruned alongside
 /// notifications" intent).
-pub async fn prune_runs_older_than(
-    pool: &PgPool,
-    cutoff: DateTime<Utc>,
-) -> Result<u64, AppError> {
+pub async fn prune_runs_older_than(pool: &PgPool, cutoff: DateTime<Utc>) -> Result<u64, AppError> {
     let res = sqlx::query!(
         r#"DELETE FROM scheduled_task_runs WHERE fired_at < $1"#,
         to_offset(cutoff),
@@ -689,14 +680,13 @@ mod tests {
     async fn seed_user(pool: &PgPool) -> Uuid {
         let uniq = Uuid::new_v4().to_string();
         let short = &uniq[..8];
-        let id: Uuid = sqlx::query_scalar(
-            "INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id",
-        )
-        .bind(format!("sched_repo_{short}"))
-        .bind(format!("sched_repo_{short}@example.test"))
-        .fetch_one(pool)
-        .await
-        .expect("seed user");
+        let id: Uuid =
+            sqlx::query_scalar("INSERT INTO users (username, email) VALUES ($1, $2) RETURNING id")
+                .bind(format!("sched_repo_{short}"))
+                .bind(format!("sched_repo_{short}@example.test"))
+                .fetch_one(pool)
+                .await
+                .expect("seed user");
         id
     }
 
@@ -704,14 +694,17 @@ mod tests {
     /// both CHECK constraints. `kind` ∈ {"once","recurring"}.
     async fn seed_prompt_task(pool: &PgPool, user_id: Uuid, kind: &str, enabled: bool) -> Uuid {
         let now = Utc::now();
-        let (run_at, cron, next): (Option<time::OffsetDateTime>, Option<String>, Option<time::OffsetDateTime>) =
-            match kind {
-                "once" => (Some(to_offset(now)), None, None),
-                // self_paced carries neither run_at nor cron (relaxed coherence);
-                // its first arm fires immediately.
-                "self_paced" => (None, None, Some(to_offset(now))),
-                _ => (None, Some("0 9 * * 1".to_string()), Some(to_offset(now))),
-            };
+        let (run_at, cron, next): (
+            Option<time::OffsetDateTime>,
+            Option<String>,
+            Option<time::OffsetDateTime>,
+        ) = match kind {
+            "once" => (Some(to_offset(now)), None, None),
+            // self_paced carries neither run_at nor cron (relaxed coherence);
+            // its first arm fires immediately.
+            "self_paced" => (None, None, Some(to_offset(now))),
+            _ => (None, Some("0 9 * * 1".to_string()), Some(to_offset(now))),
+        };
         let id: Uuid = sqlx::query_scalar(
             r#"
             INSERT INTO scheduled_tasks
@@ -747,7 +740,9 @@ mod tests {
             conversation_id: None,
             skipped_tools: Vec::new(),
             result_preview: Some("preview".to_string()),
-            change_summary: Some(serde_json::json!({"changed": true, "new_count": 0, "new_items": []})),
+            change_summary: Some(
+                serde_json::json!({"changed": true, "new_count": 0, "new_items": []}),
+            ),
             fired_at,
         }
     }
@@ -836,26 +831,43 @@ mod tests {
         let id = seed_prompt_task(&pool, user, "self_paced", true).await;
 
         // disarm: next_run_at NULL, still enabled (the tick's advance-before-dispatch).
-        disarm_self_paced(&pool, id, Utc::now()).await.expect("disarm");
+        disarm_self_paced(&pool, id, Utc::now())
+            .await
+            .expect("disarm");
         let t = get_for_user(&pool, user, id).await.unwrap().unwrap();
         assert!(t.next_run_at.is_none(), "disarm clears next_run_at");
         assert!(t.enabled, "disarm must NOT disable the task");
-        assert!(t.paused_reason.is_none(), "disarm leaves paused_reason untouched");
+        assert!(
+            t.paused_reason.is_none(),
+            "disarm leaves paused_reason untouched"
+        );
 
         // Fire: re-arm at a future instant, stays enabled.
         let next = Utc::now() + chrono::Duration::hours(1);
-        arm_self_paced(&pool, id, SelfPacedOutcome::Fire(next), Utc::now(), "completed")
-            .await
-            .expect("arm fire");
+        arm_self_paced(
+            &pool,
+            id,
+            SelfPacedOutcome::Fire(next),
+            Utc::now(),
+            "completed",
+        )
+        .await
+        .expect("arm fire");
         let t = get_for_user(&pool, user, id).await.unwrap().unwrap();
         assert!(t.next_run_at.is_some(), "Fire re-arms next_run_at");
         assert!(t.enabled, "Fire keeps the task enabled");
         assert!(t.paused_reason.is_none());
 
         // Disable: self-complete.
-        arm_self_paced(&pool, id, SelfPacedOutcome::Disable, Utc::now(), "completed")
-            .await
-            .expect("arm disable");
+        arm_self_paced(
+            &pool,
+            id,
+            SelfPacedOutcome::Disable,
+            Utc::now(),
+            "completed",
+        )
+        .await
+        .expect("arm disable");
         let t = get_for_user(&pool, user, id).await.unwrap().unwrap();
         assert!(t.next_run_at.is_none(), "Disable clears next_run_at");
         assert!(!t.enabled, "Disable disables the task");
@@ -895,9 +907,15 @@ mod tests {
         assert_eq!(n, 2, "count excludes the off-schedule run_now firing");
 
         // Incomplete self-stop: disabled, next_run_at NULL, reason 'incomplete'.
-        arm_self_paced(&pool, task, SelfPacedOutcome::Disable, Utc::now(), "incomplete")
-            .await
-            .expect("arm incomplete");
+        arm_self_paced(
+            &pool,
+            task,
+            SelfPacedOutcome::Disable,
+            Utc::now(),
+            "incomplete",
+        )
+        .await
+        .expect("arm incomplete");
         let t = get_for_user(&pool, user, task).await.unwrap().unwrap();
         assert!(!t.enabled, "an incomplete goal task is disabled");
         assert!(t.next_run_at.is_none());
@@ -919,7 +937,9 @@ mod tests {
 
         // A task bound to `conv`, plus an unbound task (both this user's).
         let bound = seed_prompt_task(&pool, user, "recurring", true).await;
-        set_bound_conversation(&pool, bound, conv).await.expect("bind");
+        set_bound_conversation(&pool, bound, conv)
+            .await
+            .expect("bind");
         let _unbound = seed_prompt_task(&pool, user, "recurring", true).await;
 
         let rows = list_for_user_by_conversation(&pool, user, conv)
@@ -961,8 +981,14 @@ mod tests {
             .await
             .expect("list runs");
         let ids: Vec<Uuid> = remaining.iter().map(|r| r.id).collect();
-        assert!(!ids.contains(&old_run), "the old run (fired_at < cutoff) is pruned");
-        assert!(ids.contains(&new_run), "the recent run (fired_at >= cutoff) is retained");
+        assert!(
+            !ids.contains(&old_run),
+            "the old run (fired_at < cutoff) is pruned"
+        );
+        assert!(
+            ids.contains(&new_run),
+            "the recent run (fired_at >= cutoff) is retained"
+        );
     }
 
     // TEST-43 (ITEM-41): `list_runs_for_task` pages newest-first with a correct total.
@@ -983,14 +1009,18 @@ mod tests {
         }
 
         // Page 1, per_page 2 → the two newest (r2, r1); total = 3.
-        let (page1, total) = list_runs_for_task(&pool, user, task, 1, 2).await.expect("page1");
+        let (page1, total) = list_runs_for_task(&pool, user, task, 1, 2)
+            .await
+            .expect("page1");
         assert_eq!(total, 3, "total counts all runs");
         assert_eq!(page1.len(), 2, "per_page bounds the page");
         assert_eq!(page1[0].id, ids[2], "newest first");
         assert_eq!(page1[1].id, ids[1]);
 
         // Page 2 → the remaining oldest run, no overlap.
-        let (page2, _t) = list_runs_for_task(&pool, user, task, 2, 2).await.expect("page2");
+        let (page2, _t) = list_runs_for_task(&pool, user, task, 2, 2)
+            .await
+            .expect("page2");
         assert_eq!(page2.len(), 1);
         assert_eq!(page2[0].id, ids[0], "oldest on the last page");
     }

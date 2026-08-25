@@ -22,7 +22,9 @@ pub struct ZieeFileProcessor;
 #[async_trait]
 impl FileProcessor for ZieeFileProcessor {
     async fn process(&self, bytes: &[u8], mime_type: &str) -> Result<ProcessingResult, AppError> {
-        ProcessingManager::new().process_file(bytes, mime_type).await
+        ProcessingManager::new()
+            .process_file(bytes, mime_type)
+            .await
     }
 }
 

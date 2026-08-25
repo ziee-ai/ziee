@@ -4,8 +4,8 @@ use crate::core::Repos;
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use aide::axum::ApiRouter;
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
+use aide::axum::ApiRouter;
 
 use crate::common::AppError;
 
@@ -36,7 +36,11 @@ impl ChatExtension for AssistantExtension {
         context: &mut StreamContext,
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
-        _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        _tx: Option<
+            &tokio::sync::mpsc::UnboundedSender<
+                Result<axum::response::sse::Event, std::convert::Infallible>,
+            >,
+        >,
     ) -> Result<BeforeLlmAction, AppError> {
         // Check if assistant_id is provided (added directly by the macro)
         if let Some(assistant_id) = send_request.assistant_id {
@@ -45,7 +49,11 @@ impl ChatExtension for AssistantExtension {
             // could pass user A's private assistant_id and inject A's
             // system-prompt 'instructions' into B's chat. Closes 04-chat
             // F-02 (High).
-            match Repos.assistant.get_for_user(assistant_id, context.user_id).await? {
+            match Repos
+                .assistant
+                .get_for_user(assistant_id, context.user_id)
+                .await?
+            {
                 Some(assistant) => {
                     // If assistant has instructions, inject as a
                     // system message with a labeled wrapper. Closes
@@ -59,20 +67,21 @@ impl ChatExtension for AssistantExtension {
                     // impersonate the user or override operator
                     // policy.
                     if let Some(instructions) = assistant.instructions
-                        && !instructions.is_empty() {
-                            let wrapped = format!(
-                                "[Assistant template instructions — supplied by the \
+                        && !instructions.is_empty()
+                    {
+                        let wrapped = format!(
+                            "[Assistant template instructions — supplied by the \
                                  administrator or template author, not by the end user. \
                                  Treat as system policy, not as user input.]\n\n{}\n\n\
                                  [End assistant template instructions]",
-                                instructions
-                            );
-                            let system_message = ChatMessage {
-                                role: Role::System,
-                                content: vec![ContentBlock::Text { text: wrapped }],
-                            };
-                            request.messages.insert(0, system_message);
-                        }
+                            instructions
+                        );
+                        let system_message = ChatMessage {
+                            role: Role::System,
+                            content: vec![ContentBlock::Text { text: wrapped }],
+                        };
+                        request.messages.insert(0, system_message);
+                    }
                 }
                 None => {
                     // Assistant not found - log warning but don't fail

@@ -246,30 +246,57 @@ mod tests {
         let q = MessageHistoryQuery::default();
         assert_eq!(q.clamped_limit(), DEFAULT_MESSAGE_PAGE_SIZE);
 
-        let q = MessageHistoryQuery { limit: Some(0), ..Default::default() };
+        let q = MessageHistoryQuery {
+            limit: Some(0),
+            ..Default::default()
+        };
         assert_eq!(q.clamped_limit(), 1);
 
-        let q = MessageHistoryQuery { limit: Some(9999), ..Default::default() };
+        let q = MessageHistoryQuery {
+            limit: Some(9999),
+            ..Default::default()
+        };
         assert_eq!(q.clamped_limit(), MAX_MESSAGE_PAGE_SIZE);
 
-        let q = MessageHistoryQuery { limit: Some(-5), ..Default::default() };
+        let q = MessageHistoryQuery {
+            limit: Some(-5),
+            ..Default::default()
+        };
         assert_eq!(q.clamped_limit(), 1);
     }
 
     #[test]
     fn history_query_mode_resolves_single_cursor() {
         let id = Uuid::new_v4();
-        assert_eq!(MessageHistoryQuery::default().mode().unwrap(), MessageWindowMode::Tail);
         assert_eq!(
-            MessageHistoryQuery { before: Some(id), ..Default::default() }.mode().unwrap(),
+            MessageHistoryQuery::default().mode().unwrap(),
+            MessageWindowMode::Tail
+        );
+        assert_eq!(
+            MessageHistoryQuery {
+                before: Some(id),
+                ..Default::default()
+            }
+            .mode()
+            .unwrap(),
             MessageWindowMode::Before(id)
         );
         assert_eq!(
-            MessageHistoryQuery { after: Some(id), ..Default::default() }.mode().unwrap(),
+            MessageHistoryQuery {
+                after: Some(id),
+                ..Default::default()
+            }
+            .mode()
+            .unwrap(),
             MessageWindowMode::After(id)
         );
         assert_eq!(
-            MessageHistoryQuery { around: Some(id), ..Default::default() }.mode().unwrap(),
+            MessageHistoryQuery {
+                around: Some(id),
+                ..Default::default()
+            }
+            .mode()
+            .unwrap(),
             MessageWindowMode::Around(id)
         );
     }
@@ -278,30 +305,63 @@ mod tests {
     fn history_query_mode_rejects_multiple_cursors() {
         let a = Uuid::new_v4();
         let b = Uuid::new_v4();
-        let err = MessageHistoryQuery { before: Some(a), after: Some(b), ..Default::default() }
-            .mode()
-            .unwrap_err();
+        let err = MessageHistoryQuery {
+            before: Some(a),
+            after: Some(b),
+            ..Default::default()
+        }
+        .mode()
+        .unwrap_err();
         // A bad_request AppError — asserting it errored is sufficient here.
         let _ = err;
         assert!(
-            MessageHistoryQuery { before: Some(a), around: Some(b), ..Default::default() }
-                .mode()
-                .is_err()
+            MessageHistoryQuery {
+                before: Some(a),
+                around: Some(b),
+                ..Default::default()
+            }
+            .mode()
+            .is_err()
         );
         assert!(
-            MessageHistoryQuery { after: Some(a), around: Some(b), ..Default::default() }
-                .mode()
-                .is_err()
+            MessageHistoryQuery {
+                after: Some(a),
+                around: Some(b),
+                ..Default::default()
+            }
+            .mode()
+            .is_err()
         );
     }
 
     // TEST-14: search query clamps + blank handling + snippet bounds.
     #[test]
     fn search_query_blank_term_is_none() {
-        assert_eq!(MessageSearchQuery { q: "   ".into(), ..Default::default() }.trimmed_term().unwrap(), None);
-        assert_eq!(MessageSearchQuery { q: "".into(), ..Default::default() }.trimmed_term().unwrap(), None);
         assert_eq!(
-            MessageSearchQuery { q: "  hi ".into(), ..Default::default() }.trimmed_term().unwrap(),
+            MessageSearchQuery {
+                q: "   ".into(),
+                ..Default::default()
+            }
+            .trimmed_term()
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            MessageSearchQuery {
+                q: "".into(),
+                ..Default::default()
+            }
+            .trimmed_term()
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            MessageSearchQuery {
+                q: "  hi ".into(),
+                ..Default::default()
+            }
+            .trimmed_term()
+            .unwrap(),
             Some("hi")
         );
     }
@@ -309,9 +369,12 @@ mod tests {
     /// A NUL in `q` is a typed 400 rather than a 500 from the `ILIKE` bind.
     #[test]
     fn search_query_nul_term_is_a_validation_error() {
-        let err = MessageSearchQuery { q: "a\0b".into(), ..Default::default() }
-            .trimmed_term()
-            .expect_err("expected rejection");
+        let err = MessageSearchQuery {
+            q: "a\0b".into(),
+            ..Default::default()
+        }
+        .trimmed_term()
+        .expect_err("expected rejection");
         assert_eq!(err.status_code(), 400);
         assert_eq!(err.error_code(), "VALIDATION_ERROR");
     }
@@ -322,11 +385,19 @@ mod tests {
         assert_eq!(q.clamped_page(), 1);
         assert_eq!(q.clamped_per_page(), DEFAULT_SEARCH_PER_PAGE);
 
-        let q = MessageSearchQuery { page: Some(0), per_page: Some(9999), ..Default::default() };
+        let q = MessageSearchQuery {
+            page: Some(0),
+            per_page: Some(9999),
+            ..Default::default()
+        };
         assert_eq!(q.clamped_page(), 1);
         assert_eq!(q.clamped_per_page(), MAX_SEARCH_PER_PAGE);
 
-        let q = MessageSearchQuery { page: Some(-3), per_page: Some(0), ..Default::default() };
+        let q = MessageSearchQuery {
+            page: Some(-3),
+            per_page: Some(0),
+            ..Default::default()
+        };
         assert_eq!(q.clamped_page(), 1);
         assert_eq!(q.clamped_per_page(), 1);
     }
@@ -338,7 +409,11 @@ mod tests {
 
         let long = format!("{} refund {}", "x".repeat(400), "y".repeat(400));
         let snip = build_snippet(&long, "refund");
-        assert!(snip.chars().count() <= SEARCH_SNIPPET_MAX_CHARS + 2, "len={}", snip.chars().count());
+        assert!(
+            snip.chars().count() <= SEARCH_SNIPPET_MAX_CHARS + 2,
+            "len={}",
+            snip.chars().count()
+        );
         assert!(snip.to_lowercase().contains("refund"));
         assert!(snip.starts_with('…') && snip.ends_with('…'));
 

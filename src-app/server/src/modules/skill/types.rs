@@ -4,7 +4,6 @@
 //! create/list types defined here are the minimum to compile the
 //! install handlers (B2) + the chat extension + skill_mcp (B3).
 
-
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

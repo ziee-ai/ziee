@@ -60,7 +60,10 @@ mod tests {
 
     #[test]
     fn permission_descriptions_are_non_empty() {
-        for desc in [FileRagAdminRead::DESCRIPTION, FileRagAdminManage::DESCRIPTION] {
+        for desc in [
+            FileRagAdminRead::DESCRIPTION,
+            FileRagAdminManage::DESCRIPTION,
+        ] {
             assert!(!desc.is_empty(), "permission DESCRIPTION must be non-empty");
         }
     }

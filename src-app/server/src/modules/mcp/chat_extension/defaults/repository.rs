@@ -66,10 +66,12 @@ pub async fn upsert_user_defaults(
         })?),
         None => None,
     };
-    let disabled_servers_json = serde_json::to_value(disabled_servers)
-        .map_err(|e| AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e)))?;
-    let loop_settings_json = serde_json::to_value(loop_settings)
-        .map_err(|e| AppError::internal_error(format!("Failed to serialize loop_settings: {}", e)))?;
+    let disabled_servers_json = serde_json::to_value(disabled_servers).map_err(|e| {
+        AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e))
+    })?;
+    let loop_settings_json = serde_json::to_value(loop_settings).map_err(|e| {
+        AppError::internal_error(format!("Failed to serialize loop_settings: {}", e))
+    })?;
 
     let defaults = sqlx::query_as!(
         UserMcpDefaults,
@@ -102,4 +104,3 @@ pub async fn upsert_user_defaults(
 
     Ok(defaults)
 }
-

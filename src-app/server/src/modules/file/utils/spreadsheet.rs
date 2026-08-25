@@ -1,6 +1,6 @@
 // Spreadsheet utilities for text extraction and CSV conversion
 
-use calamine::{open_workbook, Ods, Reader, Xls, Xlsx};
+use calamine::{Ods, Reader, Xls, Xlsx, open_workbook};
 use std::path::Path;
 
 fn escape_csv_cell(cell_str: &str) -> String {
@@ -104,4 +104,3 @@ pub fn convert_ods_to_pages(
 
     Ok(pages)
 }
-

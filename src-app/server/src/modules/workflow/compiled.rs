@@ -19,13 +19,14 @@
 //! noted in the plan as optional). Recompute on every install + on any
 //! workflow definition change.
 
-
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::modules::workflow::cost;
-use crate::modules::workflow::type_infer::{infer_input_type, infer_step_output_type, InferredType};
+use crate::modules::workflow::type_infer::{
+    InferredType, infer_input_type, infer_step_output_type,
+};
 use crate::modules::workflow::validate::{StepConfig, WorkflowDef};
 
 /// Schema version of the IR payload — lets the runner / future readers
@@ -61,7 +62,10 @@ impl From<&InferredType> for IrType {
             },
             InferredType::ArrayUnknown => IrType::ArrayUnknown,
             InferredType::Object(fields) => IrType::Object {
-                fields: fields.iter().map(|(k, v)| (k.clone(), IrType::from(v))).collect(),
+                fields: fields
+                    .iter()
+                    .map(|(k, v)| (k.clone(), IrType::from(v)))
+                    .collect(),
             },
             InferredType::ObjectUnknown => IrType::ObjectUnknown,
             InferredType::Unknown => IrType::Unknown,
@@ -152,9 +156,9 @@ pub fn compile(workflow: &WorkflowDef) -> WorkflowIr {
                 StepConfig::Llm { .. } => 1u64,
                 StepConfig::LlmMap { max_parallel, .. } => *max_parallel as u64,
                 StepConfig::Agent { max_steps, .. } => *max_steps as u64,
-                StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } | StepConfig::Tool { .. } => {
-                    0u64
-                }
+                StepConfig::Sandbox { .. }
+                | StepConfig::Elicit { .. }
+                | StepConfig::Tool { .. } => 0u64,
             };
             est_total_calls += est_calls;
             IrStep {

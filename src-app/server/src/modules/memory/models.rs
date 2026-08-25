@@ -128,8 +128,20 @@ pub struct MemoryAdminSettings {
 /// `ALTER TABLE ... GENERATED AS ...`). NEVER interpolate dictionary names
 /// directly from a request body — only from this list, after `is_valid_fts_dictionary`.
 pub const VALID_FTS_DICTIONARIES: &[&str] = &[
-    "simple", "english", "french", "german", "spanish", "italian", "portuguese",
-    "russian", "dutch", "norwegian", "swedish", "danish", "finnish", "hungarian",
+    "simple",
+    "english",
+    "french",
+    "german",
+    "spanish",
+    "italian",
+    "portuguese",
+    "russian",
+    "dutch",
+    "norwegian",
+    "swedish",
+    "danish",
+    "finnish",
+    "hungarian",
     "turkish",
 ];
 
@@ -248,9 +260,7 @@ pub struct FtsRebuildStatus {
 ///   "field": null → Some(None) ("clear to NULL")
 ///   "field": v    → Some(Some(v))
 /// Mirrors `chat::core::types::deserialize_nullable_field`.
-fn deserialize_nullable_field<'de, D, T>(
-    deserializer: D,
-) -> Result<Option<Option<T>>, D::Error>
+fn deserialize_nullable_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: serde::Deserialize<'de>,

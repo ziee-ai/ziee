@@ -36,7 +36,10 @@ pub enum ModelDownloadStatus {
 
 impl ModelDownloadStatus {
     fn is_terminal(self) -> bool {
-        matches!(self, ModelDownloadStatus::Completed | ModelDownloadStatus::Failed)
+        matches!(
+            self,
+            ModelDownloadStatus::Completed | ModelDownloadStatus::Failed
+        )
     }
 }
 
@@ -229,9 +232,9 @@ fn spawn_runner(spec: ModelDownloadSpec, key: &str) -> Arc<ModelDownloadTask> {
             if !guard.status.is_terminal() {
                 guard.status = ModelDownloadStatus::Failed;
                 guard.error = Some(msg.clone());
-                let _ = panic_task
-                    .events
-                    .send(SSEModelDownloadEvent::Failed(SSEModelDownloadFailedData { error: msg }));
+                let _ = panic_task.events.send(SSEModelDownloadEvent::Failed(
+                    SSEModelDownloadFailedData { error: msg },
+                ));
             }
         }
     });
@@ -245,7 +248,13 @@ async fn run_download(task: Arc<ModelDownloadTask>, spec: ModelDownloadSpec) {
 
     let task_for_cb = task.clone();
     let cb = move |received: u64, total: Option<u64>| {
-        let percent = total.map(|t| if t == 0 { 0.0 } else { (received as f32 / t as f32) * 100.0 });
+        let percent = total.map(|t| {
+            if t == 0 {
+                0.0
+            } else {
+                (received as f32 / t as f32) * 100.0
+            }
+        });
         if let Ok(mut guard) = task_for_cb.state.try_lock() {
             guard.status = ModelDownloadStatus::Downloading;
             guard.bytes_received = received;
@@ -295,7 +304,11 @@ async fn run_download(task: Arc<ModelDownloadTask>, spec: ModelDownloadSpec) {
                     &name,
                     &dl.filename,
                     source,
-                    if matches!(source, VoiceModelSource::Upload) { None } else { Some(source_url.as_str()) },
+                    if matches!(source, VoiceModelSource::Upload) {
+                        None
+                    } else {
+                        Some(source_url.as_str())
+                    },
                     dl.size_bytes as i64,
                     Some(&dl.sha256),
                     dl.verified,
@@ -332,7 +345,9 @@ fn fail(task: &Arc<ModelDownloadTask>, guard: &mut ModelTaskState, msg: String) 
     guard.error = Some(msg.clone());
     let _ = task
         .events
-        .send(SSEModelDownloadEvent::Failed(SSEModelDownloadFailedData { error: msg }));
+        .send(SSEModelDownloadEvent::Failed(SSEModelDownloadFailedData {
+            error: msg,
+        }));
 }
 
 fn spec_source(spec: &ModelDownloadSpec) -> VoiceModelSource {

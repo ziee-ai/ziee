@@ -24,7 +24,10 @@ use std::sync::Arc;
 
 use linkme::distributed_slice;
 use sqlx::PgPool;
-use ziee_seed::{GenericSingleton, Kind, SeedConfig, SeedEntry, SeedProvider, SingletonSeedProvider, SEED_PROVIDERS};
+use ziee_seed::{
+    GenericSingleton, Kind, SEED_PROVIDERS, SeedConfig, SeedEntry, SeedProvider,
+    SingletonSeedProvider,
+};
 
 /// ziee's embedded Layer-0 default seed, baked into the binary.
 pub const DEFAULT_SEED_YAML: &str = include_str!("../../resources/seed/default.yaml");
@@ -58,7 +61,12 @@ fn singleton(
     pk_where: &'static str,
     columns: &'static [(&'static str, Kind)],
 ) -> Arc<dyn SeedProvider> {
-    Arc::new(SingletonSeedProvider(GenericSingleton { section, table, pk_where, columns }))
+    Arc::new(SingletonSeedProvider(GenericSingleton {
+        section,
+        table,
+        pk_where,
+        columns,
+    }))
 }
 
 // web_search_settings — BOOLEAN pk (id = TRUE). Full migration-verified whitelist
@@ -76,7 +84,14 @@ const WEB_SEARCH_COLS: &[(&str, Kind)] = &[
 static S_WEB_SEARCH: SeedEntry = SeedEntry {
     section: "web_search_settings",
     order: 52,
-    factory: || singleton("web_search_settings", "web_search_settings", "id = TRUE", WEB_SEARCH_COLS),
+    factory: || {
+        singleton(
+            "web_search_settings",
+            "web_search_settings",
+            "id = TRUE",
+            WEB_SEARCH_COLS,
+        )
+    },
 };
 
 // code_sandbox_settings — BOOLEAN pk (id = TRUE). Operator-tunable resource caps.
@@ -92,7 +107,14 @@ const CODE_SANDBOX_COLS: &[(&str, Kind)] = &[
 static S_CODE_SANDBOX: SeedEntry = SeedEntry {
     section: "code_sandbox_settings",
     order: 50,
-    factory: || singleton("code_sandbox_settings", "code_sandbox_settings", "id = TRUE", CODE_SANDBOX_COLS),
+    factory: || {
+        singleton(
+            "code_sandbox_settings",
+            "code_sandbox_settings",
+            "id = TRUE",
+            CODE_SANDBOX_COLS,
+        )
+    },
 };
 
 // session_settings — BOOLEAN pk (id = TRUE), owned by ziee-auth's schema. Token
@@ -105,5 +127,12 @@ const SESSION_COLS: &[(&str, Kind)] = &[
 static S_SESSION: SeedEntry = SeedEntry {
     section: "session_settings",
     order: 51,
-    factory: || singleton("session_settings", "session_settings", "id = TRUE", SESSION_COLS),
+    factory: || {
+        singleton(
+            "session_settings",
+            "session_settings",
+            "id = TRUE",
+            SESSION_COLS,
+        )
+    },
 };

@@ -1,11 +1,10 @@
 //! `GET /api/workflow-runs/{run_id}/output/{step_id}` — stream a step
 //! output file's content as text.
 
-
 use aide::transform::TransformOperation;
 use axum::body::Body;
 use axum::extract::Path as AxumPath;
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::response::Response;
 use uuid::Uuid;
 
@@ -24,11 +23,14 @@ pub async fn read_output(
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
     if row.user_id != auth.user.id {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_RUN_FORBIDDEN",
-            "workflow run is owned by another user",
-        )).into());
+        return Err::<_, (StatusCode, AppError)>(
+            (AppError::new(
+                StatusCode::FORBIDDEN,
+                "WORKFLOW_RUN_FORBIDDEN",
+                "workflow run is owned by another user",
+            ))
+            .into(),
+        );
     }
     let meta_json = row
         .step_outputs_json

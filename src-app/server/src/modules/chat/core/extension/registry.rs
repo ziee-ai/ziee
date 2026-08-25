@@ -54,9 +54,7 @@ pub enum ExtensionAction {
     /// Used when a tool result is already a final user-facing answer
     /// (signaled by MCP-spec `annotations.audience: ["user"]` on a content block).
     /// The text is streamed as a text delta and appended to the assistant message in the DB.
-    CompleteWithContent {
-        text: String,
-    },
+    CompleteWithContent { text: String },
 }
 
 /// Action returned by extensions BEFORE LLM call
@@ -72,9 +70,7 @@ pub enum BeforeLlmAction {
     /// Used when an approved tool returns content with MCP-spec
     /// `annotations.audience: ["user"]` — the text is streamed as a text
     /// delta and appended to the assistant message in the DB.
-    CompleteWithContent {
-        text: String,
-    },
+    CompleteWithContent { text: String },
 }
 
 /// Context passed to extension hooks during streaming
@@ -398,10 +394,15 @@ impl ExtensionRegistry {
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
         for ext in self.inner.iter() {
-            let action = ext.before_llm_call(context, request, send_request, tx).await?;
+            let action = ext
+                .before_llm_call(context, request, send_request, tx)
+                .await?;
 
             // If any extension returns Complete or CompleteWithContent, stop iterating and return it
-            if matches!(action, BeforeLlmAction::Complete | BeforeLlmAction::CompleteWithContent { .. }) {
+            if matches!(
+                action,
+                BeforeLlmAction::Complete | BeforeLlmAction::CompleteWithContent { .. }
+            ) {
                 tracing::info!("Extension {} requested to skip LLM call", ext.name());
                 return Ok(action);
             }
@@ -695,7 +696,6 @@ impl ExtensionRegistry {
         }
         None
     }
-
 }
 
 impl Default for ExtensionRegistry {
@@ -912,9 +912,7 @@ mod after_llm_call_tests {
             }));
         }
 
-        registry
-            .call_after_llm_skipped(&context(pool), None)
-            .await;
+        registry.call_after_llm_skipped(&context(pool), None).await;
 
         assert_eq!(
             *log.lock().unwrap(),
@@ -952,9 +950,7 @@ mod after_llm_call_tests {
         }));
 
         // Returns unit: there is deliberately no error for the caller to handle.
-        registry
-            .call_after_llm_skipped(&context(pool), None)
-            .await;
+        registry.call_after_llm_skipped(&context(pool), None).await;
 
         assert_eq!(
             *log.lock().unwrap(),
@@ -976,9 +972,7 @@ mod after_llm_call_tests {
             order_log: log.clone(),
         }));
 
-        registry
-            .call_after_llm_skipped(&context(pool), None)
-            .await;
+        registry.call_after_llm_skipped(&context(pool), None).await;
 
         assert_eq!(
             *log.lock().unwrap(),

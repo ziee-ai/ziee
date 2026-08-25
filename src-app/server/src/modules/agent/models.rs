@@ -12,12 +12,10 @@ use uuid::Uuid;
 use crate::common::AppError;
 
 /// Sandbox modes admins may pick for unattended runs (Codex `SandboxMode`).
-pub const VALID_SANDBOX_MODES: &[&str] =
-    &["read-only", "workspace-write", "danger-full-access"];
+pub const VALID_SANDBOX_MODES: &[&str] = &["read-only", "workspace-write", "danger-full-access"];
 
 /// Unattended-run approval policies (Codex `ApprovalMode`).
-pub const VALID_APPROVAL_POLICIES: &[&str] =
-    &["untrusted", "on-failure", "on-request", "never"];
+pub const VALID_APPROVAL_POLICIES: &[&str] = &["untrusted", "on-failure", "on-request", "never"];
 
 /// Cap on the free-text `reviewer_policy` (matches the DB CHECK).
 pub const MAX_REVIEWER_POLICY_LEN: usize = 32_768;
@@ -184,9 +182,7 @@ impl UpdateAgentAdminSettingsRequest {
 /// Distinguish "missing key" from "key present but null" so the PUT handler
 /// treats null as "clear this column" and absent as "leave it alone." Local
 /// copy matches `summarization::models` / `memory::models`.
-fn deserialize_nullable_field<'de, D, T>(
-    deserializer: D,
-) -> Result<Option<Option<T>>, D::Error>
+fn deserialize_nullable_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: serde::Deserialize<'de>,
@@ -200,7 +196,11 @@ mod tests {
 
     #[test]
     fn empty_patch_validates() {
-        assert!(UpdateAgentAdminSettingsRequest::default().validate().is_ok());
+        assert!(
+            UpdateAgentAdminSettingsRequest::default()
+                .validate()
+                .is_ok()
+        );
     }
 
     #[test]
@@ -226,24 +226,36 @@ mod tests {
     #[test]
     fn numeric_bounds() {
         assert!(
-            UpdateAgentAdminSettingsRequest { default_max_steps: Some(0), ..Default::default() }
-                .validate()
-                .is_err()
+            UpdateAgentAdminSettingsRequest {
+                default_max_steps: Some(0),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
         );
         assert!(
-            UpdateAgentAdminSettingsRequest { default_max_steps: Some(30), ..Default::default() }
-                .validate()
-                .is_ok()
+            UpdateAgentAdminSettingsRequest {
+                default_max_steps: Some(30),
+                ..Default::default()
+            }
+            .validate()
+            .is_ok()
         );
         assert!(
-            UpdateAgentAdminSettingsRequest { default_max_steps: Some(1001), ..Default::default() }
-                .validate()
-                .is_err()
+            UpdateAgentAdminSettingsRequest {
+                default_max_steps: Some(1001),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
         );
         assert!(
-            UpdateAgentAdminSettingsRequest { fan_out_max_threads: Some(65), ..Default::default() }
-                .validate()
-                .is_err()
+            UpdateAgentAdminSettingsRequest {
+                fan_out_max_threads: Some(65),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
         );
         assert!(
             UpdateAgentAdminSettingsRequest {
@@ -270,25 +282,37 @@ mod tests {
             .is_ok()
         );
         assert!(
-            UpdateAgentAdminSettingsRequest { per_run_token_cap: Some(999), ..Default::default() }
-                .validate()
-                .is_err()
+            UpdateAgentAdminSettingsRequest {
+                per_run_token_cap: Some(999),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
         );
         // ITEM-24 / DEC-62: goal_seek_max_turns is 1..=50.
         assert!(
-            UpdateAgentAdminSettingsRequest { goal_seek_max_turns: Some(0), ..Default::default() }
-                .validate()
-                .is_err()
+            UpdateAgentAdminSettingsRequest {
+                goal_seek_max_turns: Some(0),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
         );
         assert!(
-            UpdateAgentAdminSettingsRequest { goal_seek_max_turns: Some(51), ..Default::default() }
-                .validate()
-                .is_err()
+            UpdateAgentAdminSettingsRequest {
+                goal_seek_max_turns: Some(51),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
         );
         assert!(
-            UpdateAgentAdminSettingsRequest { goal_seek_max_turns: Some(10), ..Default::default() }
-                .validate()
-                .is_ok()
+            UpdateAgentAdminSettingsRequest {
+                goal_seek_max_turns: Some(10),
+                ..Default::default()
+            }
+            .validate()
+            .is_ok()
         );
     }
 

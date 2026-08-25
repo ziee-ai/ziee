@@ -8,8 +8,8 @@
 // bundle) and the POST here merge on the same path. Route paths + operationIds
 // are byte-identical to the pre-move single router.
 
-use aide::axum::routing::{get_with, post_with};
 use aide::axum::ApiRouter;
+use aide::axum::routing::{get_with, post_with};
 use axum::extract::DefaultBodyLimit;
 
 use super::deliverables::{
@@ -42,7 +42,10 @@ pub fn file_router() -> ApiRouter {
                 .layer(DefaultBodyLimit::max(file_upload_body_limit_bytes())),
         )
         // User-facing export (pandoc) — stays ziee-side (processing).
-        .api_route("/files/{file_id}/export", get_with(export_file, export_file_docs))
+        .api_route(
+            "/files/{file_id}/export",
+            get_with(export_file, export_file_docs),
+        )
         // Unauthenticated token download — re-verifies identity by user-id
         // (identity-recheck), stays ziee-side.
         .api_route(

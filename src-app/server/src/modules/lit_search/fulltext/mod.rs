@@ -54,7 +54,12 @@ pub async fn fetch_paper_fulltext(
     // Only link into a view for a conversation the caller owns.
     let view_conversation = match conversation_id {
         Some(cid) => {
-            let owner = Repos.code_sandbox.get_conversation_user_id(cid).await.ok().flatten();
+            let owner = Repos
+                .code_sandbox
+                .get_conversation_user_id(cid)
+                .await
+                .ok()
+                .flatten();
             (owner == Some(user_id)).then_some(cid)
         }
         None => None,

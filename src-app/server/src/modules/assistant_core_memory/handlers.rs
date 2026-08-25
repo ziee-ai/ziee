@@ -7,9 +7,7 @@ use super::permissions::{CoreMemoryRead, CoreMemoryWrite};
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::permissions::{RequirePermissions, with_permission};
-use crate::modules::sync::{
-    Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
-};
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 
 const MAX_BLOCK_LABEL_LEN: usize = 64;
 const MAX_CONTENT_LEN: usize = 50_000;
@@ -55,18 +53,14 @@ pub async fn upsert_block(
         .into());
     }
     if body.content.len() > MAX_CONTENT_LEN {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "content exceeds 50000 char limit",
-        )
-        .into());
+        return Err(
+            AppError::bad_request("VALIDATION_ERROR", "content exceeds 50000 char limit").into(),
+        );
     }
     if !(1..=50_000).contains(&body.char_limit) {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "char_limit must be 1..=50000",
-        )
-        .into());
+        return Err(
+            AppError::bad_request("VALIDATION_ERROR", "char_limit must be 1..=50000").into(),
+        );
     }
 
     let row = Repos

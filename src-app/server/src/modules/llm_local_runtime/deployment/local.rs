@@ -130,7 +130,14 @@ impl LocalDeployment {
         cmd.env_clear();
         // Preserve only the variables the engine genuinely needs to find
         // shared libraries and respect locale / timezone.
-        for var in &["PATH", "HOME", "LANG", "LC_ALL", "TZ", "CUDA_VISIBLE_DEVICES"] {
+        for var in &[
+            "PATH",
+            "HOME",
+            "LANG",
+            "LC_ALL",
+            "TZ",
+            "CUDA_VISIBLE_DEVICES",
+        ] {
             if let Ok(val) = std::env::var(var) {
                 cmd.env(var, val);
             }
@@ -167,7 +174,8 @@ impl LocalDeployment {
     /// top-level `embeddings: true` for embedder models, which is read at
     /// the call site (the struct has no such field).
     fn parse_llamacpp_settings(config: &serde_json::Value) -> LlamaCppSettings {
-        let engine: ModelEngineSettings = serde_json::from_value(config.clone()).unwrap_or_default();
+        let engine: ModelEngineSettings =
+            serde_json::from_value(config.clone()).unwrap_or_default();
         let s = engine.llamacpp.unwrap_or_default();
         if let Err(e) = s.validate() {
             tracing::warn!("llamacpp: invalid engine_settings ({e}); using defaults");
@@ -177,7 +185,8 @@ impl LocalDeployment {
     }
 
     fn parse_mistralrs_settings(config: &serde_json::Value) -> MistralRsSettings {
-        let engine: ModelEngineSettings = serde_json::from_value(config.clone()).unwrap_or_default();
+        let engine: ModelEngineSettings =
+            serde_json::from_value(config.clone()).unwrap_or_default();
         let s = engine.mistralrs.unwrap_or_default();
         if let Err(e) = s.validate() {
             tracing::warn!("mistralrs: invalid engine_settings ({e}); using defaults");
@@ -245,7 +254,12 @@ impl LocalDeployment {
         }
         push_opt(&mut a, "--main-gpu", s.main_gpu);
         push_str_arg(&mut a, "--split-mode", "split_mode", s.split_mode.as_ref())?;
-        push_str_arg(&mut a, "--tensor-split", "tensor_split", s.tensor_split.as_ref())?;
+        push_str_arg(
+            &mut a,
+            "--tensor-split",
+            "tensor_split",
+            s.tensor_split.as_ref(),
+        )?;
         // Explicit device IDs → `--device CUDA0,CUDA1`. Only CUDA's
         // `CUDA<n>` naming is emitted here (the one we can name without a
         // live `--list-devices`); other backends rely on n_gpu_layers /
@@ -267,11 +281,26 @@ impl LocalDeployment {
         // RoPE / scaling.
         push_opt(&mut a, "--rope-freq-base", s.rope_freq_base);
         push_opt(&mut a, "--rope-freq-scale", s.rope_freq_scale);
-        push_str_arg(&mut a, "--rope-scaling", "rope_scaling", s.rope_scaling.as_ref())?;
+        push_str_arg(
+            &mut a,
+            "--rope-scaling",
+            "rope_scaling",
+            s.rope_scaling.as_ref(),
+        )?;
 
         // KV cache types + misc.
-        push_str_arg(&mut a, "--cache-type-k", "cache_type_k", s.cache_type_k.as_ref())?;
-        push_str_arg(&mut a, "--cache-type-v", "cache_type_v", s.cache_type_v.as_ref())?;
+        push_str_arg(
+            &mut a,
+            "--cache-type-k",
+            "cache_type_k",
+            s.cache_type_k.as_ref(),
+        )?;
+        push_str_arg(
+            &mut a,
+            "--cache-type-v",
+            "cache_type_v",
+            s.cache_type_v.as_ref(),
+        )?;
         push_opt(&mut a, "--seed", s.seed);
         push_str_arg(&mut a, "--numa", "numa", s.numa.as_ref())?;
 
@@ -306,7 +335,11 @@ impl LocalDeployment {
     /// Excluded by hardening: `serve_ip` (forced), `token_source`,
     /// `interactive_mode`, `log_file`, `chat_template`, `jinja_explicit`,
     /// `tokenizer_json`, `weight_file`, `enable_search`, `search_bert_model`.
-    fn mistralrs_argv(model_path: &str, port: i32, s: &MistralRsSettings) -> AppResult<Vec<String>> {
+    fn mistralrs_argv(
+        model_path: &str,
+        port: i32,
+        s: &MistralRsSettings,
+    ) -> AppResult<Vec<String>> {
         let mut a = vec![
             "--serve-ip".to_string(),
             "127.0.0.1".to_string(),
@@ -507,9 +540,8 @@ impl LocalDeployment {
         const PROC_PIDFDSOCKETINFO: libc::c_int = 3;
 
         // 1) Size then read the pid's fd table.
-        let needed = unsafe {
-            libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0)
-        };
+        let needed =
+            unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0) };
         if needed <= 0 {
             return None; // can't list fds (dead pid / EPERM) → try lsof
         }
@@ -610,7 +642,15 @@ impl LocalDeployment {
         // output, one field per line; 'n' rows carry the socket name, e.g.
         //   n127.0.0.1:8080   n*:8080 (0.0.0.0)   n[::1]:8080
         let out = std::process::Command::new("lsof")
-            .args(["-nP", "-a", "-p", &pid.to_string(), "-iTCP", "-sTCP:LISTEN", "-Fn"])
+            .args([
+                "-nP",
+                "-a",
+                "-p",
+                &pid.to_string(),
+                "-iTCP",
+                "-sTCP:LISTEN",
+                "-Fn",
+            ])
             .output()
             .ok()?; // spawn failed (no lsof) → None → caller treats as unverifiable
         let text = String::from_utf8_lossy(&out.stdout);
@@ -702,7 +742,11 @@ impl LocalDeployment {
         use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 
         let want_pid = pid as u32;
-        let af: u32 = if ipv6 { AF_INET6 as u32 } else { AF_INET as u32 };
+        let af: u32 = if ipv6 {
+            AF_INET6 as u32
+        } else {
+            AF_INET as u32
+        };
 
         // Two-call idiom: size the buffer, then fill it. The table can grow
         // between calls, so loop until the size stops changing.
@@ -753,7 +797,8 @@ impl LocalDeployment {
         if ipv6 {
             let table = buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID;
             let n = unsafe { (*table).dwNumEntries } as isize;
-            let rows = unsafe { core::ptr::addr_of!((*table).table) } as *const MIB_TCP6ROW_OWNER_PID;
+            let rows =
+                unsafe { core::ptr::addr_of!((*table).table) } as *const MIB_TCP6ROW_OWNER_PID;
             for i in 0..n {
                 let row = unsafe { &*rows.offset(i) };
                 if row.dwOwningPid != want_pid || decode_port(row.dwLocalPort) != port {
@@ -775,7 +820,8 @@ impl LocalDeployment {
         } else {
             let table = buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID;
             let n = unsafe { (*table).dwNumEntries } as isize;
-            let rows = unsafe { core::ptr::addr_of!((*table).table) } as *const MIB_TCPROW_OWNER_PID;
+            let rows =
+                unsafe { core::ptr::addr_of!((*table).table) } as *const MIB_TCPROW_OWNER_PID;
             for i in 0..n {
                 let row = unsafe { &*rows.offset(i) };
                 if row.dwOwningPid != want_pid || decode_port(row.dwLocalPort) != port {
@@ -805,11 +851,7 @@ impl LocalDeployment {
         Ok(None)
     }
 
-    #[cfg(not(any(
-        target_os = "linux",
-        target_os = "windows",
-        target_os = "macos"
-    )))]
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     pub(crate) fn verify_loopback_bind(_pid: i32, _port: i32) -> bool {
         // Best-effort — the spawn args already force --host 127.0.0.1.
         true
@@ -857,9 +899,6 @@ impl LocalDeployment {
             });
         }
     }
-
-
-
 }
 
 /// Push `flag VALUE` onto the argv when `v` is `Some` (numeric/float
@@ -880,12 +919,7 @@ fn push_bool_flag(a: &mut Vec<String>, flag: &str, on: Option<bool>) {
 
 /// Push `flag VALUE` for a user-supplied string after argv-injection
 /// validation (08-llm-local-runtime F-02). No-op when `None`.
-fn push_str_arg(
-    a: &mut Vec<String>,
-    flag: &str,
-    label: &str,
-    v: Option<&String>,
-) -> AppResult<()> {
+fn push_str_arg(a: &mut Vec<String>, flag: &str, label: &str, v: Option<&String>) -> AppResult<()> {
     if let Some(v) = v {
         LocalDeployment::validate_argv_value(label, v)?;
         a.push(flag.to_string());
@@ -970,7 +1004,7 @@ impl Deployment for LocalDeployment {
                 return Err(AppError::bad_request(
                     "UNSUPPORTED_ENGINE",
                     format!("Unsupported engine type: {}", engine_type),
-                ))
+                ));
             }
         };
 
@@ -1055,9 +1089,7 @@ impl Deployment for LocalDeployment {
         Self::apply_hardening(&mut cmd);
 
         // Spawn the process
-        let mut child = cmd.spawn().map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        let mut child = cmd.spawn().map_err(|e| AppError::internal_with_id(e))?;
 
         // Register the per-instance bearer only after the spawn succeeds, so an
         // argv-build or spawn failure above doesn't leave a stale token mapped
@@ -1122,11 +1154,7 @@ impl Deployment for LocalDeployment {
         }
 
         // Wait for process to exit (with timeout)
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            proc_info.child.wait(),
-        )
-        .await
+        match tokio::time::timeout(std::time::Duration::from_secs(10), proc_info.child.wait()).await
         {
             Ok(Ok(_)) => {
                 tracing::info!("Process for model {} stopped gracefully", model_id);
@@ -1255,7 +1283,8 @@ mod tests {
             numa: Some("distribute".into()),
             ..Default::default()
         };
-        let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 18080, &s, "tok", false, false).unwrap();
+        let a =
+            LocalDeployment::llamacpp_argv("/m/x.gguf", 18080, &s, "tok", false, false).unwrap();
         // Forced hardening flags.
         assert!(pair(&a, "--model", "/m/x.gguf"));
         assert!(pair(&a, "--host", "127.0.0.1"));
@@ -1288,11 +1317,17 @@ mod tests {
 
     #[test]
     fn llamacpp_argv_flash_attn_on_off_and_embeddings() {
-        let on = LlamaCppSettings { flash_attn: Some(true), ..Default::default() };
+        let on = LlamaCppSettings {
+            flash_attn: Some(true),
+            ..Default::default()
+        };
         let a = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &on, "t", true, false).unwrap();
         assert!(pair(&a, "--flash-attn", "on"));
         assert!(has(&a, "--embeddings")); // driven by the capabilities arg
-        let off = LlamaCppSettings { flash_attn: Some(false), ..Default::default() };
+        let off = LlamaCppSettings {
+            flash_attn: Some(false),
+            ..Default::default()
+        };
         let b = LocalDeployment::llamacpp_argv("/m/x.gguf", 1, &off, "t", false, false).unwrap();
         assert!(pair(&b, "--flash-attn", "off"));
         assert!(!b.join(" ").contains("--embeddings"));

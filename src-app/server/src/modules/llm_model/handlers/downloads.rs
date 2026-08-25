@@ -74,9 +74,7 @@ impl From<&DownloadInstance> for DownloadProgressUpdate {
                 .unwrap_or(DownloadPhase::Created),
             current: download.progress_data.as_ref().map(|p| p.current),
             total: download.progress_data.as_ref().map(|p| p.total),
-            message: download
-                .progress_data
-                .as_ref().map(|p| p.message.clone()),
+            message: download.progress_data.as_ref().map(|p| p.message.clone()),
             speed_bps: download.progress_data.as_ref().map(|p| p.speed_bps),
             eta_seconds: download.progress_data.as_ref().map(|p| p.eta_seconds),
             error_message: download.error_message.clone(),
@@ -123,7 +121,6 @@ lazy_static::lazy_static! {
 pub async fn list_all_downloads(
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
     Query(params): Query<DownloadPaginationQuery>,
-    
 ) -> ApiResult<Json<DownloadInstanceListResponse>> {
     let page = params.page.unwrap_or(1);
     let per_page = params.per_page.unwrap_or(20);
@@ -134,7 +131,8 @@ pub async fn list_all_downloads(
         .as_ref()
         .and_then(|s| DownloadStatus::from_str(s));
 
-    let response = Repos.download_instance
+    let response = Repos
+        .download_instance
         .list(page, per_page, status_filter)
         .await
         .map_err(|e| {
@@ -161,9 +159,9 @@ pub fn list_all_downloads_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_download(
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
     Path(download_id): Path<Uuid>,
-    
 ) -> ApiResult<Json<DownloadInstance>> {
-    let download = Repos.download_instance
+    let download = Repos
+        .download_instance
         .get_by_id(download_id)
         .await
         .map_err(|e| {
@@ -192,10 +190,10 @@ pub fn get_download_docs(op: TransformOperation) -> TransformOperation {
 pub async fn cancel_download(
     _auth: RequirePermissions<(LlmModelsDownloadsCancel,)>,
     Path(download_id): Path<Uuid>,
-    
 ) -> ApiResult<StatusCode> {
     // Verify the download exists and user has access
-    let download = Repos.download_instance
+    let download = Repos
+        .download_instance
         .get_by_id(download_id)
         .await
         .map_err(|e| {
@@ -237,7 +235,8 @@ pub async fn cancel_download(
         model_id: None,
     };
 
-    let _updated = Repos.download_instance
+    let _updated = Repos
+        .download_instance
         .update_status(download_id, cancel_request)
         .await
         .map_err(|e| {
@@ -298,13 +297,13 @@ pub fn cancel_download_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_download(
     _auth: RequirePermissions<(LlmModelsDownloadsDelete,)>,
     Path(download_id): Path<Uuid>,
-    
 ) -> ApiResult<StatusCode> {
     // DELETE is idempotent: a row that is already absent — never existed, or
     // concurrently removed by the boot-time retention prune loop (prune.rs)
     // between this lookup and the delete — yields 204, not a confusing 404. We
     // only 400 when the row is present AND still active.
-    let download = Repos.download_instance
+    let download = Repos
+        .download_instance
         .get_by_id(download_id)
         .await
         .map_err(|e| {
@@ -329,10 +328,14 @@ pub async fn delete_download(
     // Ignore the deleted flag: if the row vanished between the lookup above and
     // here (prune loop / concurrent delete), the post-condition "row is gone"
     // still holds, so the DELETE succeeds idempotently.
-    Repos.download_instance.delete(download_id).await.map_err(|e| {
-        tracing::error!("Failed to delete download {}: {}", download_id, e);
-        AppError::internal_error("Failed to delete download").to_api_error()
-    })?;
+    Repos
+        .download_instance
+        .delete(download_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete download {}: {}", download_id, e);
+            AppError::internal_error("Failed to delete download").to_api_error()
+        })?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -354,7 +357,6 @@ pub fn delete_download_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn subscribe_download_progress(
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
-    
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
     let client_id = Uuid::new_v4();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -442,7 +444,8 @@ async fn start_download_monitoring() {
             if client_count == 0 {
                 // No clients connected, stop monitoring
                 tracing::info!("No clients connected, stopping download monitoring");
-                let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+                let mut monitoring_active =
+                    MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
                 *monitoring_active = false;
                 break;
             }
@@ -460,7 +463,8 @@ async fn start_download_monitoring() {
                         broadcast_event(complete_event.into()).await;
 
                         tracing::info!("All downloads completed, stopping download monitoring");
-                        let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut monitoring_active =
+                            MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
                         *monitoring_active = false;
                         break;
                     } else {
@@ -484,7 +488,8 @@ async fn start_download_monitoring() {
                     broadcast_event(error_event.into()).await;
 
                     // Stop monitoring on error
-                    let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut monitoring_active =
+                        MONITORING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
                     *monitoring_active = false;
                     break;
                 }

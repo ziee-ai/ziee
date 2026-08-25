@@ -24,7 +24,11 @@ impl JsToolRepository {
     /// Idempotent upsert of the built-in `run_js` MCP server row. On conflict
     /// only re-asserts identity + the live loopback port (mirrors memory_mcp);
     /// admin-editable columns (enabled/display_name/…) are left untouched.
-    pub async fn upsert_builtin_server(&self, server_id: Uuid, loopback_url: &str) -> Result<(), AppError> {
+    pub async fn upsert_builtin_server(
+        &self,
+        server_id: Uuid,
+        loopback_url: &str,
+    ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
         sqlx::query!(
             r#"

@@ -34,6 +34,7 @@ pub struct MemoryAdminManage;
 impl PermissionCheck for MemoryAdminManage {
     const NAME: &'static str = "MemoryAdminManage";
     const PERMISSION: &'static str = "memory::admin::manage";
-    const DESCRIPTION: &'static str = "Update memory admin settings (embedding model, enable/disable).";
+    const DESCRIPTION: &'static str =
+        "Update memory admin settings (embedding model, enable/disable).";
     const MODULE: &'static str = "memory";
 }

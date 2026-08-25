@@ -28,10 +28,7 @@ pub async fn embed(model_id: Uuid, text: &str) -> Result<Vec<f32>, AppError> {
 
 /// Batched embedding. Local engine batches via repeated calls (llama
 /// server is single-input); remote providers may accept native arrays.
-pub async fn embed_batch(
-    model_id: Uuid,
-    texts: &[String],
-) -> Result<Vec<Vec<f32>>, AppError> {
+pub async fn embed_batch(model_id: Uuid, texts: &[String]) -> Result<Vec<Vec<f32>>, AppError> {
     if texts.is_empty() {
         return Ok(Vec::new());
     }
@@ -153,11 +150,17 @@ pub async fn rerank(
 
     let api_key = provider.api_key.as_deref().unwrap_or("");
     let base_url = provider.base_url.as_deref().ok_or_else(|| {
-        AppError::internal_error(format!("Provider '{}' has no base_url configured", provider.name))
+        AppError::internal_error(format!(
+            "Provider '{}' has no base_url configured",
+            provider.name
+        ))
     })?;
 
     let ai_provider = Provider::new(&provider.provider_type, api_key, base_url).map_err(|e| {
-        AppError::internal_error(format!("create reranker provider '{}': {e}", provider.provider_type))
+        AppError::internal_error(format!(
+            "create reranker provider '{}': {e}",
+            provider.provider_type
+        ))
     })?;
 
     let request = RerankRequest {
@@ -195,15 +198,12 @@ async fn embed_remote(
     texts: &[String],
 ) -> Result<Vec<Vec<f32>>, AppError> {
     let api_key = provider.api_key.as_deref().unwrap_or("");
-    let base_url = provider
-        .base_url
-        .as_deref()
-        .ok_or_else(|| {
-            AppError::internal_error(format!(
-                "Provider '{}' has no base_url configured",
-                provider.name
-            ))
-        })?;
+    let base_url = provider.base_url.as_deref().ok_or_else(|| {
+        AppError::internal_error(format!(
+            "Provider '{}' has no base_url configured",
+            provider.name
+        ))
+    })?;
 
     let ai_provider = Provider::new(&provider.provider_type, api_key, base_url).map_err(|e| {
         AppError::internal_error(format!(

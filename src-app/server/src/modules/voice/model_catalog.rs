@@ -126,7 +126,11 @@ pub fn name_from_filename(filename: &str) -> Option<String> {
         .strip_prefix("ggml-")?
         .strip_suffix(".bin")
         .or_else(|| filename.strip_prefix("ggml-")?.strip_suffix(".gguf"))?;
-    if stem.is_empty() { None } else { Some(stem.to_string()) }
+    if stem.is_empty() {
+        None
+    } else {
+        Some(stem.to_string())
+    }
 }
 
 fn detect_quantization(name: &str) -> Option<String> {
@@ -182,7 +186,11 @@ pub async fn fetch_catalog(source_repo: &str) -> (Vec<CatalogEntry>, bool) {
     {
         let guard = CATALOG_CACHE.lock().unwrap();
         if let Some(c) = guard.as_ref() {
-            let ttl = if c.reachable { CATALOG_TTL_OK } else { CATALOG_TTL_ERR };
+            let ttl = if c.reachable {
+                CATALOG_TTL_OK
+            } else {
+                CATALOG_TTL_ERR
+            };
             if c.repo == source_repo && c.at.elapsed() < ttl {
                 return (c.entries.clone(), c.reachable);
             }
@@ -258,12 +266,18 @@ mod tests {
         let entries = parse_tree(SAMPLE);
         assert_eq!(entries.len(), 3, "only the three ggml-*.bin files");
         let base = entries.iter().find(|e| e.name == "base").unwrap();
-        assert_eq!(base.sha256.as_deref(), Some("60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"));
+        assert_eq!(
+            base.sha256.as_deref(),
+            Some("60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe")
+        );
         assert!(!base.english_only);
         assert!(base.quantization.is_none());
         let en = entries.iter().find(|e| e.name == "base.en").unwrap();
         assert!(en.english_only);
-        let q = entries.iter().find(|e| e.name == "large-v3-turbo-q5_0").unwrap();
+        let q = entries
+            .iter()
+            .find(|e| e.name == "large-v3-turbo-q5_0")
+            .unwrap();
         assert_eq!(q.quantization.as_deref(), Some("q5_0"));
     }
 
@@ -275,7 +289,10 @@ mod tests {
 
     #[test]
     fn name_from_filename_strips_affixes() {
-        assert_eq!(name_from_filename("ggml-small.en.bin").as_deref(), Some("small.en"));
+        assert_eq!(
+            name_from_filename("ggml-small.en.bin").as_deref(),
+            Some("small.en")
+        );
         assert_eq!(name_from_filename("other.bin"), None);
     }
 

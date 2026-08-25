@@ -86,14 +86,44 @@ impl ModelCapabilities {
 /// we don't want to block a freshly-supported model on stale data.
 /// Unknown → "unknown" (not rejected; operator can override).
 pub const LLAMACPP_SUPPORTED: &[&str] = &[
-    "llama", "mistral", "qwen2", "qwen2_moe", "qwen3", "phi3", "phi2", "gemma", "gemma2",
-    "command-r", "stablelm", "starcoder2", "deepseek", "deepseek2", "internlm2", "minicpm",
-    "olmo", "rwkv6", "exaone", "gpt2", "falcon", "baichuan", "mpt",
+    "llama",
+    "mistral",
+    "qwen2",
+    "qwen2_moe",
+    "qwen3",
+    "phi3",
+    "phi2",
+    "gemma",
+    "gemma2",
+    "command-r",
+    "stablelm",
+    "starcoder2",
+    "deepseek",
+    "deepseek2",
+    "internlm2",
+    "minicpm",
+    "olmo",
+    "rwkv6",
+    "exaone",
+    "gpt2",
+    "falcon",
+    "baichuan",
+    "mpt",
 ];
 
 pub const MISTRALRS_SUPPORTED: &[&str] = &[
-    "llama", "mistral", "qwen2", "qwen3", "phi3", "phi2", "gemma", "gemma2", "starcoder2",
-    "deepseek", "deepseek2", "minicpm",
+    "llama",
+    "mistral",
+    "qwen2",
+    "qwen3",
+    "phi3",
+    "phi2",
+    "gemma",
+    "gemma2",
+    "starcoder2",
+    "deepseek",
+    "deepseek2",
+    "minicpm",
 ];
 
 pub fn engine_supports(engine: EngineType, architecture: &str) -> &'static str {
@@ -115,7 +145,10 @@ pub fn engine_supports(engine: EngineType, architecture: &str) -> &'static str {
 /// Public entry point: file-vs-dir + extension drives which parser.
 /// On any error returns a `detection_failed` capabilities row; the
 /// model is still creatable.
-pub fn extract_model_capabilities(path: &Path, engine_type: EngineType) -> Result<ModelCapabilities> {
+pub fn extract_model_capabilities(
+    path: &Path,
+    engine_type: EngineType,
+) -> Result<ModelCapabilities> {
     let mut caps = if path.is_dir() {
         extract_from_safetensors_dir(path).unwrap_or_else(ModelCapabilities::detection_failed)
     } else if path.is_file() {
@@ -176,7 +209,10 @@ struct HfConfigJson {
 pub fn extract_from_safetensors_dir(path: &Path) -> std::result::Result<ModelCapabilities, String> {
     let config_path = path.join("config.json");
     if !config_path.exists() {
-        return Err(format!("config.json not found at {}", config_path.display()));
+        return Err(format!(
+            "config.json not found at {}",
+            config_path.display()
+        ));
     }
     let file = std::fs::File::open(&config_path)
         .map_err(|e| format!("open {}: {e}", config_path.display()))?;
@@ -442,10 +478,7 @@ pub fn extract_from_gguf(path: &Path) -> std::result::Result<ModelCapabilities, 
 
     let magic = r.read(4)?;
     if magic != b"GGUF" {
-        return Err(format!(
-            "not a GGUF file (magic = {:02X?})",
-            magic
-        ));
+        return Err(format!("not a GGUF file (magic = {:02X?})", magic));
     }
     let version = r.u32_le()?;
     if !(1..=3).contains(&version) {
@@ -631,8 +664,14 @@ mod tests {
         assert_eq!(engine_supports(EngineType::Llamacpp, "llama"), "ok");
         assert_eq!(engine_supports(EngineType::Mistralrs, "llama"), "ok");
         assert_eq!(engine_supports(EngineType::Llamacpp, "rwkv6"), "ok");
-        assert_eq!(engine_supports(EngineType::Mistralrs, "rwkv6"), "unsupported");
-        assert_eq!(engine_supports(EngineType::Llamacpp, "random-arch"), "unsupported");
+        assert_eq!(
+            engine_supports(EngineType::Mistralrs, "rwkv6"),
+            "unsupported"
+        );
+        assert_eq!(
+            engine_supports(EngineType::Llamacpp, "random-arch"),
+            "unsupported"
+        );
     }
 
     #[test]
@@ -649,7 +688,10 @@ mod tests {
         assert_eq!(hf_architecture_to_engine_arch("Qwen2ForCausalLM"), "qwen2");
         assert_eq!(hf_architecture_to_engine_arch("Qwen3ForCausalLM"), "qwen3");
         assert_eq!(hf_architecture_to_engine_arch("Phi3ForCausalLM"), "phi3");
-        assert_eq!(hf_architecture_to_engine_arch("Gemma2ForCausalLM"), "gemma2");
+        assert_eq!(
+            hf_architecture_to_engine_arch("Gemma2ForCausalLM"),
+            "gemma2"
+        );
         assert_eq!(hf_architecture_to_engine_arch("PhiForCausalLM"), "phi2");
         assert_eq!(hf_architecture_to_engine_arch("RandomModel"), "RandomModel");
     }

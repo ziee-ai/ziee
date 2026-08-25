@@ -30,7 +30,10 @@ fn coverage(query_terms: &[String], text: &str) -> f32 {
         return 0.0;
     }
     let hay = text.to_lowercase();
-    let hits = query_terms.iter().filter(|t| hay.contains(t.as_str())).count();
+    let hits = query_terms
+        .iter()
+        .filter(|t| hay.contains(t.as_str()))
+        .count();
     hits as f32 / query_terms.len() as f32
 }
 
@@ -101,20 +104,36 @@ mod tests {
     #[test]
     fn title_match_outranks_abstract_match() {
         let mut v = vec![
-            rec("unrelated heading", Some("crispr base editing here"), Some(2022), None),
+            rec(
+                "unrelated heading",
+                Some("crispr base editing here"),
+                Some(2022),
+                None,
+            ),
             rec("crispr base editing", None, Some(2022), None),
         ];
         rank(&mut v, "crispr base editing", 2024);
-        assert_eq!(v[0].title, "crispr base editing", "title hit should rank first");
+        assert_eq!(
+            v[0].title, "crispr base editing",
+            "title hit should rank first"
+        );
         assert!(v[0].relevance > v[1].relevance);
     }
 
     #[test]
     fn missing_abstract_does_not_bury_a_title_match() {
         // A record with NO abstract but a full title match must still score well.
-        let mut v = vec![rec("crispr base editing off target", None, Some(2023), None)];
+        let mut v = vec![rec(
+            "crispr base editing off target",
+            None,
+            Some(2023),
+            None,
+        )];
         rank(&mut v, "crispr base editing", 2024);
-        assert!(v[0].relevance >= W_TITLE * 0.99, "full title coverage should dominate");
+        assert!(
+            v[0].relevance >= W_TITLE * 0.99,
+            "full title coverage should dominate"
+        );
     }
 
     #[test]

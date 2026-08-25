@@ -3,8 +3,8 @@
 // Extensions self-register using the CHAT_EXTENSIONS distributed slice
 // and are initialized here in order based on their metadata.order value
 
-use std::sync::Arc;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 use crate::core::config::Config;
 use crate::modules::chat::core::extension::{CHAT_EXTENSIONS, ExtensionRegistry};
@@ -26,7 +26,6 @@ pub fn auto_register_extensions(pool: PgPool, config: Arc<Config>) -> ExtensionR
 mod tests {
     use super::CHAT_EXTENSIONS;
 
-
     /// Reproduce the production pipeline ordering exactly as
     /// `auto_register_extensions` does (sort the linkme-collected
     /// `CHAT_EXTENSIONS` slice by `order`) and read back the resulting
@@ -37,7 +36,6 @@ mod tests {
         entries.sort_by_key(|e| e.order);
         entries.iter().map(|e| e.name).collect()
     }
-
 
     /// Cross-module ordering contract (audit all-6907cfab0cd8):
     /// summarization (order 24) must run BEFORE memory (order 25) in the
@@ -58,7 +56,8 @@ mod tests {
         let mem_pos = names.iter().position(|&n| n == "memory");
 
         // Both extensions must actually be registered into the pipeline.
-        let summ_pos = summ_pos.expect("summarization extension must be registered in CHAT_EXTENSIONS");
+        let summ_pos =
+            summ_pos.expect("summarization extension must be registered in CHAT_EXTENSIONS");
         let mem_pos = mem_pos.expect("memory extension must be registered in CHAT_EXTENSIONS");
 
         // The defining contract: summarization precedes memory in the
@@ -77,7 +76,6 @@ mod tests {
             "memory must immediately follow summarization (no extension interposed); order = {names:?}",
         );
     }
-
 
     /// Guard the underlying `order` values that produce the relation above,
     /// read from the actual registered entries (not literals in this test).
@@ -99,7 +97,6 @@ mod tests {
             "summarization order ({summ}) must be < memory order ({mem})",
         );
     }
-
 
     /// The summarization (order 24) and memory (order 25) chat extensions have
     /// a load-bearing ordering: summarization MUST run before memory so the
@@ -129,7 +126,10 @@ mod tests {
             entries[summ].order,
             entries[mem].order,
         );
-        assert_eq!(entries[summ].order, 24, "summarization order is the documented 24");
+        assert_eq!(
+            entries[summ].order, 24,
+            "summarization order is the documented 24"
+        );
         assert_eq!(entries[mem].order, 25, "memory order is the documented 25");
     }
 }

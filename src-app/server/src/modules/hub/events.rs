@@ -92,11 +92,7 @@ impl HubEvent {
     }
 
     /// Create an McpServerCreatedFromHub event
-    pub fn mcp_server_created_from_hub(
-        server_id: Uuid,
-        hub_id: String,
-        is_system: bool,
-    ) -> Self {
+    pub fn mcp_server_created_from_hub(server_id: Uuid, hub_id: String, is_system: bool) -> Self {
         Self::McpServerCreatedFromHub {
             server_id,
             hub_id,

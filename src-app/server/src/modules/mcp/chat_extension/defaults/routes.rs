@@ -1,6 +1,9 @@
 //! User MCP defaults routes
 
-use aide::axum::{routing::{get_with, put_with}, ApiRouter};
+use aide::axum::{
+    ApiRouter,
+    routing::{get_with, put_with},
+};
 
 use super::handlers::*;
 

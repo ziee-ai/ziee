@@ -144,10 +144,7 @@ impl ProjectFilesRepository {
     /// newest-first (recent uploads at the top) — matches how the chat
     /// conversation list and other recency-driven UI surfaces order
     /// their rows.
-    pub async fn list_files(
-        &self,
-        project_id: Uuid,
-    ) -> Result<ProjectFileListResponse, AppError> {
+    pub async fn list_files(&self, project_id: Uuid) -> Result<ProjectFileListResponse, AppError> {
         let rows = sqlx::query!(
             r#"
             SELECT
@@ -182,7 +179,9 @@ impl ProjectFilesRepository {
                 has_thumbnail: r.has_thumbnail,
                 preview_page_count: r.preview_page_count,
                 text_page_count: r.text_page_count,
-                processing_metadata: r.processing_metadata.unwrap_or_else(|| serde_json::json!({})),
+                processing_metadata: r
+                    .processing_metadata
+                    .unwrap_or_else(|| serde_json::json!({})),
                 created_by: r.created_by,
                 created_at: chrono::DateTime::from_timestamp(r.created_at.unix_timestamp(), 0)
                     .unwrap(),

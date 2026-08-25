@@ -67,12 +67,20 @@ struct ESearchResult {
 
 /// Parse the year from a PubMed `pubdate` like "2021 Mar 15" / "2021".
 fn parse_year(pubdate: &str) -> Option<i32> {
-    pubdate.split_whitespace().next().and_then(|y| y.parse::<i32>().ok())
+    pubdate
+        .split_whitespace()
+        .next()
+        .and_then(|y| y.parse::<i32>().ok())
 }
 
 /// Map one esummary entry (a JSON object) to a LitRecord.
 fn map_summary(uid: &str, entry: &Value) -> Option<LitRecord> {
-    let title = entry.get("title").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let title = entry
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
     if title.is_empty() {
         return None;
     }
@@ -224,7 +232,11 @@ fn map_esummary(body: &Value) -> Vec<LitRecord> {
     let uids: Vec<String> = result
         .get("uids")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|u| u.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|u| u.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     uids.iter()
         .filter_map(|uid| result.get(uid).and_then(|e| map_summary(uid, e)))
@@ -429,7 +441,10 @@ mod tests {
         let a = map.get("222").expect("222 present");
         assert!(a.contains("BACKGROUND: Cells divide."), "got: {a}");
         assert!(a.contains("RESULTS: They divided faster."), "got: {a}");
-        assert_eq!(map.get("333").map(|s| s.as_str()), Some("A plain abstract."));
+        assert_eq!(
+            map.get("333").map(|s| s.as_str()),
+            Some("A plain abstract.")
+        );
         assert!(!map.contains_key("999"), "reference PMID must not be keyed");
     }
 
@@ -457,7 +472,13 @@ mod tests {
         let a = map.get("555").expect("555 present");
         assert!(a.contains("BACKGROUND: Real background."), "got: {a}");
         assert!(a.contains("CONCLUSIONS: Real conclusion."), "got: {a}");
-        assert!(!a.contains("METHODS:"), "empty section must not emit a label: {a}");
-        assert!(!a.contains("RESULTS:"), "whitespace-only section must not emit a label: {a}");
+        assert!(
+            !a.contains("METHODS:"),
+            "empty section must not emit a label: {a}"
+        );
+        assert!(
+            !a.contains("RESULTS:"),
+            "whitespace-only section must not emit a label: {a}"
+        );
     }
 }

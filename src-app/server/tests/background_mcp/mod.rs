@@ -22,6 +22,7 @@ mod resume;
 mod nul_query_param_test;
 mod run_notes;
 mod runs;
+mod transcript_test;
 // Argument-CONTRACT tests for `spawn_background` (tool-argument-contracts):
 // nested-`kind` resolution, unadvertised `spec` keys, and the advertised
 // `flavor` enum. Rootfs-free — the default TestServer has code_sandbox

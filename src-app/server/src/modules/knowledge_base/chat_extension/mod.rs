@@ -7,8 +7,8 @@
 //! to the conversation, and injects a one-line note listing the attached KBs +
 //! the grounded-answer nudge.
 
-mod knowledge_base;
 pub mod extension;
+mod knowledge_base;
 
 /// Shared flag const (producer here, consumer in `mcp::chat_extension`).
 pub const ATTACH_FLAG: &str = "attach_knowledge_base_mcp";

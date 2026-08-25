@@ -13,7 +13,6 @@
 //! output file with it. (The sweep removes orphan run DIRECTORIES, not
 //! individual files.)
 
-
 use std::path::PathBuf;
 
 use serde_json::Value;
@@ -80,9 +79,9 @@ pub async fn write_step_output(
     parsed_as: ParsedAs,
     kind: StepKindTag,
 ) -> Result<OutputMeta, AppError> {
-    tokio::fs::create_dir_all(&ctx.outputs_dir).await.map_err(|e| {
-        AppError::internal_error(format!("workflow file_io: mkdir outputs: {e}"))
-    })?;
+    tokio::fs::create_dir_all(&ctx.outputs_dir)
+        .await
+        .map_err(|e| AppError::internal_error(format!("workflow file_io: mkdir outputs: {e}")))?;
 
     let dest = ctx.step_output_host_path(step_id, parsed_as);
     let bytes = match parsed_as {
@@ -226,8 +225,9 @@ mod tests {
         let tmp = tempdir().unwrap();
         let ctx = fake_ctx(tmp.path().to_path_buf());
         let v = serde_json::json!({"a": 1});
-        let meta =
-            write_step_output(&ctx, "s1", &v, ParsedAs::Json, StepKindTag::Llm).await.unwrap();
+        let meta = write_step_output(&ctx, "s1", &v, ParsedAs::Json, StepKindTag::Llm)
+            .await
+            .unwrap();
         assert!(meta.path.exists());
         assert!(meta.path.to_string_lossy().ends_with("s1.json"));
         let back = read_output_value(&meta).unwrap();
@@ -239,8 +239,9 @@ mod tests {
         let tmp = tempdir().unwrap();
         let ctx = fake_ctx(tmp.path().to_path_buf());
         let v = serde_json::json!("hello world");
-        let meta =
-            write_step_output(&ctx, "g", &v, ParsedAs::Text, StepKindTag::Llm).await.unwrap();
+        let meta = write_step_output(&ctx, "g", &v, ParsedAs::Text, StepKindTag::Llm)
+            .await
+            .unwrap();
         assert!(meta.path.to_string_lossy().ends_with("g.txt"));
         assert_eq!(meta.size_bytes, 11);
     }
@@ -251,9 +252,13 @@ mod tests {
         let ctx = fake_ctx(tmp.path().to_path_buf());
         let big = "x".repeat((STEP_OUTPUT_CAP_BYTES + 1) as usize);
         let v = Value::String(big);
-        let err =
-            write_step_output(&ctx, "big", &v, ParsedAs::Text, StepKindTag::Llm).await.unwrap_err();
-        assert!(err.to_string().contains("oversize") || err.to_string().contains("OVERSIZE")
-            || err.to_string().contains("byte cap"));
+        let err = write_step_output(&ctx, "big", &v, ParsedAs::Text, StepKindTag::Llm)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("oversize")
+                || err.to_string().contains("OVERSIZE")
+                || err.to_string().contains("byte cap")
+        );
     }
 }

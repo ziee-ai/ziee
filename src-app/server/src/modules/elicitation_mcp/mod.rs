@@ -33,7 +33,6 @@ pub mod repository;
 pub mod routes;
 pub mod tools;
 
-
 /// Deterministic UUID for the built-in elicitation MCP server row.
 /// Stable across deployments (mirrors `memory_mcp_server_id`).
 pub fn elicitation_mcp_server_id() -> Uuid {
@@ -98,9 +97,7 @@ impl AppModule for ElicitationMcpModule {
                 Ok(()) => tracing::info!(
                     "elicitation_mcp: built-in server {server_id} registered at {upsert_url}"
                 ),
-                Err(e) => tracing::error!(
-                    "elicitation_mcp: upsert_builtin_server failed: {e:?}"
-                ),
+                Err(e) => tracing::error!("elicitation_mcp: upsert_builtin_server failed: {e:?}"),
             }
         });
 

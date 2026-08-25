@@ -4,15 +4,14 @@
 //! Admin (`/system/*`): list / delete + group assignment.
 //! `/validate`, `/import`, `/dry-run`, `/test` (B6) live in `dev.rs`.
 
-
 pub mod dev;
 pub mod system;
 
 use aide::transform::TransformOperation;
+use axum::Json;
 use axum::extract::Path as AxumPath;
 use axum::extract::Query;
 use axum::http::StatusCode;
-use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -23,9 +22,7 @@ use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::with_permission;
 use crate::modules::sync::{SyncAction, SyncOrigin};
 use crate::modules::workflow::models::{UpdateWorkflow, Workflow, WorkflowRun};
-use crate::modules::workflow::permissions::{
-    WorkflowsExecute, WorkflowsManage, WorkflowsRead,
-};
+use crate::modules::workflow::permissions::{WorkflowsExecute, WorkflowsManage, WorkflowsRead};
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{
@@ -67,8 +64,7 @@ pub async fn list_user_workflows(
         .unwrap_or(DEFAULT_PAGE_SIZE as i64)
         .clamp(1, PAGINATION_MAX_PER_PAGE as i64);
     let offset = q.offset.unwrap_or(0).max(0);
-    let workflows =
-        repository::list_for_user(Repos.pool(), auth.user.id, limit, offset).await?;
+    let workflows = repository::list_for_user(Repos.pool(), auth.user.id, limit, offset).await?;
     Ok((StatusCode::OK, Json(WorkflowListResponse { workflows })))
 }
 
@@ -121,7 +117,10 @@ pub async fn get_workflow_definition(
     }
     let wf_path = std::path::PathBuf::from(&wf.extracted_path).join(&wf.entry_point);
     let content = tokio::fs::read_to_string(&wf_path).await.map_err(|e| {
-        AppError::internal_error(format!("failed to read workflow.yaml at {}: {e}", wf_path.display()))
+        AppError::internal_error(format!(
+            "failed to read workflow.yaml at {}: {e}",
+            wf_path.display()
+        ))
     })?;
     let def = validate::parse_workflow_yaml(&content)?;
     Ok((StatusCode::OK, Json(def)))
@@ -170,16 +169,19 @@ async fn cleanup_run_artifacts(user_id: Uuid, run_id: Uuid, conversation_id: Opt
 pub async fn delete_user_workflow(
     auth: RequirePermissions<(WorkflowsManage,)>,
     AxumPath(id): AxumPath<Uuid>,
-) -> ApiResult<()>  {
+) -> ApiResult<()> {
     let wf = repository::find_by_id(Repos.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
     if wf.scope != "user" || wf.owner_user_id != Some(auth.user.id) {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_FORBIDDEN",
-            "cannot delete non-owned workflow",
-        )).into());
+        return Err::<_, (StatusCode, AppError)>(
+            (AppError::new(
+                StatusCode::FORBIDDEN,
+                "WORKFLOW_FORBIDDEN",
+                "cannot delete non-owned workflow",
+            ))
+            .into(),
+        );
     }
     // Clean up each run's on-disk artifacts BEFORE the workflow_runs rows
     // cascade away — the `file_workflow_runs` join rows CASCADE-delete with the
@@ -323,7 +325,9 @@ pub fn run_workflow_docs(op: TransformOperation) -> TransformOperation {
         .id("Workflow.run")
         .tag("Workflows - Runs")
         .summary("Kick off a workflow run")
-        .description("Synchronously returns {run_id}; progress streams via the per-run SSE endpoint.")
+        .description(
+            "Synchronously returns {run_id}; progress streams via the per-run SSE endpoint.",
+        )
         .response::<202, Json<WorkflowRunStartResponse>>()
 }
 
@@ -337,11 +341,14 @@ pub async fn cancel_run(
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
     if row.user_id != auth.user.id {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_RUN_FORBIDDEN",
-            "workflow run is owned by another user",
-        )).into());
+        return Err::<_, (StatusCode, AppError)>(
+            (AppError::new(
+                StatusCode::FORBIDDEN,
+                "WORKFLOW_RUN_FORBIDDEN",
+                "workflow run is owned by another user",
+            ))
+            .into(),
+        );
     }
     let prior = repository::cancel_cas(pool, run_id).await?;
     let _ = registry::cancel(run_id);
@@ -401,12 +408,14 @@ pub async fn set_run_timeout(
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
     if row.user_id != auth.user.id {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_RUN_FORBIDDEN",
-            "workflow run is owned by another user",
-        ))
-        .into());
+        return Err::<_, (StatusCode, AppError)>(
+            (AppError::new(
+                StatusCode::FORBIDDEN,
+                "WORKFLOW_RUN_FORBIDDEN",
+                "workflow run is owned by another user",
+            ))
+            .into(),
+        );
     }
     // Clamp to the engine ceiling (0 = unbounded stays 0) — guards the
     // `deadline_watcher` Instant arithmetic against a pathological value.
@@ -427,7 +436,11 @@ pub async fn set_run_timeout(
         );
     }
     let body = RunActionAck {
-        status: if applied { "updated".into() } else { "already_terminal".into() },
+        status: if applied {
+            "updated".into()
+        } else {
+            "already_terminal".into()
+        },
         run_id,
     };
     Ok((StatusCode::OK, Json(body)))
@@ -449,11 +462,14 @@ pub async fn get_run(
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
     if row.user_id != auth.user.id {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_RUN_FORBIDDEN",
-            "workflow run is owned by another user",
-        )).into());
+        return Err::<_, (StatusCode, AppError)>(
+            (AppError::new(
+                StatusCode::FORBIDDEN,
+                "WORKFLOW_RUN_FORBIDDEN",
+                "workflow run is owned by another user",
+            ))
+            .into(),
+        );
     }
     Ok((StatusCode::OK, Json(row)))
 }
@@ -505,23 +521,27 @@ pub async fn delete_run(
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
     if row.user_id != auth.user.id {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::FORBIDDEN,
-            "WORKFLOW_RUN_FORBIDDEN",
-            "workflow run is owned by another user",
-        ))
-        .into());
+        return Err::<_, (StatusCode, AppError)>(
+            (AppError::new(
+                StatusCode::FORBIDDEN,
+                "WORKFLOW_RUN_FORBIDDEN",
+                "workflow run is owned by another user",
+            ))
+            .into(),
+        );
     }
     // Only terminal runs are deletable — cancel an in-flight run first.
     let terminal = crate::modules::workflow::models::WorkflowRunStatus::from_db_str(&row.status)
         .is_some_and(|s| s.is_terminal());
     if !terminal {
-        return Err::<_, (StatusCode, AppError)>((AppError::new(
-            StatusCode::CONFLICT,
-            "WORKFLOW_RUN_NOT_TERMINAL",
-            "cancel the run before deleting it",
-        ))
-        .into());
+        return Err::<_, (StatusCode, AppError)>(
+            (AppError::new(
+                StatusCode::CONFLICT,
+                "WORKFLOW_RUN_NOT_TERMINAL",
+                "cancel the run before deleting it",
+            ))
+            .into(),
+        );
     }
     // Cascade artifacts ONLY for a run with no conversation. The run owns (and
     // deletes) the files IT created (created_by="workflow" + workflow_run_id);
@@ -614,5 +634,3 @@ mod tests {
         assert!(!gone.exists());
     }
 }
-
-

@@ -140,11 +140,12 @@ async fn create_model_with_files(
         .map_err(|e| AppError::internal_with_id(e))?;
 
     // Validate provider exists and is of type 'local'
-    let provider =
-        Repos.llm_provider.get_by_id(request.provider_id)
-            .await
-            .map_err(|e| AppError::internal_error(e.to_string()))?
-            .ok_or_else(|| AppError::bad_request("NOT_FOUND", "Provider not found"))?;
+    let provider = Repos
+        .llm_provider
+        .get_by_id(request.provider_id)
+        .await
+        .map_err(|e| AppError::internal_error(e.to_string()))?
+        .ok_or_else(|| AppError::bad_request("NOT_FOUND", "Provider not found"))?;
 
     if provider.provider_type.as_str() != "local" {
         return Err(AppError::bad_request(
@@ -166,9 +167,7 @@ async fn create_model_with_files(
     storage
         .create_model_directory(&request.provider_id, &model_id)
         .await
-        .map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        .map_err(|e| AppError::internal_with_id(e))?;
 
     tracing::debug!(
         "Source directory for model files: {}",
@@ -179,15 +178,15 @@ async fn create_model_with_files(
     let source_files = match tokio::fs::read_dir(&request.source_dir).await {
         Ok(mut entries) => {
             let mut files = Vec::new();
-            while let Some(entry) = entries.next_entry().await.map_err(|e| {
-                AppError::internal_with_id(e)
-            })? {
+            while let Some(entry) = entries
+                .next_entry()
+                .await
+                .map_err(|e| AppError::internal_with_id(e))?
+            {
                 if entry
                     .file_type()
                     .await
-                    .map_err(|e| {
-                        AppError::internal_with_id(e)
-                    })?
+                    .map_err(|e| AppError::internal_with_id(e))?
                     .is_file()
                 {
                     files.push(entry.file_name().to_string_lossy().to_string());
@@ -239,9 +238,7 @@ async fn create_model_with_files(
         // Copy the file
         tokio::fs::copy(&source_path, &dest_path)
             .await
-            .map_err(|e| {
-                AppError::internal_with_id(e)
-            })?;
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         // Collect file information for database insertion later
         let file_type = determine_model_file_type(filename).to_string();
@@ -324,9 +321,9 @@ async fn create_model_with_files(
     let new_dir = storage.get_model_path(&request.provider_id, &model_db.id);
 
     if old_dir != new_dir {
-        tokio::fs::rename(&old_dir, &new_dir).await.map_err(|e| {
-            AppError::internal_with_id(e)
-        })?;
+        tokio::fs::rename(&old_dir, &new_dir)
+            .await
+            .map_err(|e| AppError::internal_with_id(e))?;
         tracing::debug!(
             "Renamed model directory from {} to {}",
             old_dir.display(),
@@ -343,7 +340,10 @@ async fn create_model_with_files(
     // capabilities (P1.i). Non-blocking — the upload returns
     // immediately; the model card shows "Validating…" until the
     // worker transitions it to valid / validation_warning.
-    if matches!(model_db.engine_type, EngineType::Llamacpp | EngineType::Mistralrs) {
+    if matches!(
+        model_db.engine_type,
+        EngineType::Llamacpp | EngineType::Mistralrs
+    ) {
         crate::modules::llm_local_runtime::validator::enqueue(
             model_db.id,
             crate::modules::llm_local_runtime::validator::ValidationTier::Tier2,
@@ -457,16 +457,18 @@ pub async fn upload_multiple_files_and_commit(
             ),
         )
     })? {
-        let field_name = field.name().ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                AppError::bad_request(
-                    "INVALID_INPUT",
-                    "Multipart field missing name attribute",
-                ),
-            )
-        })?
-        .to_string();
+        let field_name = field
+            .name()
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    AppError::bad_request(
+                        "INVALID_INPUT",
+                        "Multipart field missing name attribute",
+                    ),
+                )
+            })?
+            .to_string();
 
         match field_name.as_str() {
             "files" => {
@@ -899,9 +901,10 @@ fn validate_file_content(filename: &str, file_data: &[u8]) -> Vec<String> {
         }
         ModelFileType::TokenizerFile => {
             if filename_lower == "tokenizer.json"
-                && serde_json::from_slice::<serde_json::Value>(file_data).is_err() {
-                    issues.push("Tokenizer file is not valid JSON".to_string());
-                }
+                && serde_json::from_slice::<serde_json::Value>(file_data).is_err()
+            {
+                issues.push("Tokenizer file is not valid JSON".to_string());
+            }
         }
         _ => {}
     }
@@ -976,10 +979,12 @@ pub async fn initiate_repository_download_internal(
     }
 
     // Get repository information
-    let repository = Repos.llm_repository.get_by_id(request.repository_id)
-    .await
-    .map_err(|e| format!("Database error: {}", e))?
-    .ok_or_else(|| format!("Repository with ID {} not found", request.repository_id))?;
+    let repository = Repos
+        .llm_repository
+        .get_by_id(request.repository_id)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+        .ok_or_else(|| format!("Repository with ID {} not found", request.repository_id))?;
 
     // Create download instance in the database
     let download_request = CreateDownloadInstanceRequest {
@@ -1037,21 +1042,21 @@ pub async fn initiate_repository_download_internal(
     // correctly (libgit2 Basic auth = base64("username:password")). For
     // api_key/bearer_token the secret is a token paired with a host-default
     // username, so auth_username stays None and the token path is unchanged.
-    let (auth_username, auth_token): (Option<String>, Option<String>) =
-        match repository.auth_type.as_str() {
-            "api_key" => (None, repository.auth_config.api_key.clone()),
-            "bearer_token" => (None, repository.auth_config.token.clone()),
-            "basic_auth" => match (
-                &repository.auth_config.username,
-                &repository.auth_config.password,
-            ) {
-                (Some(username), Some(password)) => {
-                    (Some(username.clone()), Some(password.clone()))
-                }
-                _ => (None, None),
-            },
-            "none" | _ => (None, None),
-        };
+    let (auth_username, auth_token): (Option<String>, Option<String>) = match repository
+        .auth_type
+        .as_str()
+    {
+        "api_key" => (None, repository.auth_config.api_key.clone()),
+        "bearer_token" => (None, repository.auth_config.token.clone()),
+        "basic_auth" => match (
+            &repository.auth_config.username,
+            &repository.auth_config.password,
+        ) {
+            (Some(username), Some(password)) => (Some(username.clone()), Some(password.clone())),
+            _ => (None, None),
+        },
+        "none" | _ => (None, None),
+    };
 
     // Create cancellation token for this download
     let cancellation_token =
@@ -1060,7 +1065,8 @@ pub async fn initiate_repository_download_internal(
     // Spawn background task to handle the download
     let download_handle = tokio::spawn(async move {
         // Update status to downloading
-        if let Err(e) = Repos.download_instance
+        if let Err(e) = Repos
+            .download_instance
             .update_status(
                 download_id,
                 types::UpdateDownloadStatusRequest {
@@ -1119,7 +1125,8 @@ pub async fn initiate_repository_download_internal(
                     _ => None,
                 };
 
-                let _ = Repos.download_instance
+                let _ = Repos
+                    .download_instance
                     .update_progress(
                         download_id_progress,
                         types::UpdateDownloadProgressRequest {
@@ -1160,7 +1167,8 @@ pub async fn initiate_repository_download_internal(
         match clone_result {
             Ok(cache_path) => {
                 // Update progress: Analyzing files
-                let _ = Repos.download_instance
+                let _ = Repos
+                    .download_instance
                     .update_progress(
                         download_id,
                         types::UpdateDownloadProgressRequest {
@@ -1191,7 +1199,8 @@ pub async fn initiate_repository_download_internal(
                         tracing::error!("Failed to read repository directory: {}", e);
                         crate::utils::cancellation::remove_download_tracking(download_id).await;
 
-                        let _ = Repos.download_instance
+                        let _ = Repos
+                            .download_instance
                             .update_status(
                                 download_id,
                                 types::UpdateDownloadStatusRequest {
@@ -1222,7 +1231,8 @@ pub async fn initiate_repository_download_internal(
                             tracing::error!("Failed to determine files to copy: {}", e);
                             crate::utils::cancellation::remove_download_tracking(download_id).await;
 
-                            let _ = Repos.download_instance
+                            let _ = Repos
+                                .download_instance
                                 .update_status(
                                     download_id,
                                     types::UpdateDownloadStatusRequest {
@@ -1240,7 +1250,8 @@ pub async fn initiate_repository_download_internal(
                     };
 
                 // Update progress: Downloading LFS files
-                let _ = Repos.download_instance
+                let _ = Repos
+                    .download_instance
                     .update_progress(
                         download_id,
                         types::UpdateDownloadProgressRequest {
@@ -1288,7 +1299,8 @@ pub async fn initiate_repository_download_internal(
 
                     crate::utils::cancellation::remove_download_tracking(download_id).await;
 
-                    let _ = Repos.download_instance
+                    let _ = Repos
+                        .download_instance
                         .update_status(
                             download_id,
                             types::UpdateDownloadStatusRequest {
@@ -1302,7 +1314,8 @@ pub async fn initiate_repository_download_internal(
                 }
 
                 // Update progress: Creating model
-                let _ = Repos.download_instance
+                let _ = Repos
+                    .download_instance
                     .update_progress(
                         download_id,
                         types::UpdateDownloadProgressRequest {
@@ -1346,7 +1359,8 @@ pub async fn initiate_repository_download_internal(
                         );
 
                         // Update download as completed with model ID
-                        let _ = Repos.download_instance
+                        let _ = Repos
+                            .download_instance
                             .update_status(
                                 download_id,
                                 types::UpdateDownloadStatusRequest {
@@ -1380,7 +1394,8 @@ pub async fn initiate_repository_download_internal(
                         tracing::error!("Failed to create model: {}", e);
                         crate::utils::cancellation::remove_download_tracking(download_id).await;
 
-                        let _ = Repos.download_instance
+                        let _ = Repos
+                            .download_instance
                             .update_status(
                                 download_id,
                                 types::UpdateDownloadStatusRequest {
@@ -1428,7 +1443,8 @@ pub async fn initiate_repository_download_internal(
                     error_msg
                 );
 
-                if let Err(e) = Repos.download_instance
+                if let Err(e) = Repos
+                    .download_instance
                     .update_status(
                         download_id,
                         types::UpdateDownloadStatusRequest {
@@ -1512,10 +1528,7 @@ pub async fn initiate_repository_download(
             // errors today; map by content prefix until the function
             // is refactored to return AppError.
             if e.contains("not found") {
-                (
-                    StatusCode::NOT_FOUND,
-                    AppError::not_found("Repository"),
-                )
+                (StatusCode::NOT_FOUND, AppError::not_found("Repository"))
             } else {
                 tracing::error!(error = %e, "initiate_repository_download_internal failed");
                 (

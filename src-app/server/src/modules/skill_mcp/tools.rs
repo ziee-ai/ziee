@@ -7,7 +7,6 @@
 //! `skills::read`) before calling these; the tools themselves
 //! re-verify per-skill access and per-conversation visibility.
 
-
 use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
@@ -83,7 +82,10 @@ pub async fn load_skill(
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     let name = args.name.trim();
     if name.is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "name must not be empty"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "name must not be empty",
+        ));
     }
 
     let skill = lookup_accessible(user_id, conversation_id, name).await?;
@@ -103,10 +105,16 @@ pub async fn read_skill_file(
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     let name = args.name.trim();
     if name.is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "name must not be empty"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "name must not be empty",
+        ));
     }
     if args.path.trim().is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "path must not be empty"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "path must not be empty",
+        ));
     }
 
     let skill = lookup_accessible(user_id, conversation_id, name).await?;

@@ -137,8 +137,9 @@ pub async fn store(
                 .map_err(|e| AppError::internal_error(format!("lit-cache mkdir failed: {e}")))?;
             let path = blob_path(&hash);
             if !path.exists() {
-                std::fs::write(&path, t)
-                    .map_err(|e| AppError::internal_error(format!("lit-cache write failed: {e}")))?;
+                std::fs::write(&path, t).map_err(|e| {
+                    AppError::internal_error(format!("lit-cache write failed: {e}"))
+                })?;
             }
             (Some(hash), t.len() as i64)
         }
@@ -221,7 +222,8 @@ pub async fn store(
             // Lost the insert race — loop once more; the re-find finds the row.
             Err(e)
                 if attempt == 0
-                    && e.as_database_error().is_some_and(|d| d.is_unique_violation()) =>
+                    && e.as_database_error()
+                        .is_some_and(|d| d.is_unique_violation()) =>
             {
                 continue;
             }
@@ -259,8 +261,9 @@ pub fn link_into_view(
         // Fall back to a copy if hard-linking is unsupported (cross-device).
         Err(_) => match read_blob(hash) {
             Some(text) => {
-                std::fs::write(&dest, text)
-                    .map_err(|e| AppError::internal_error(format!("lit-cache view write failed: {e}")))?;
+                std::fs::write(&dest, text).map_err(|e| {
+                    AppError::internal_error(format!("lit-cache view write failed: {e}"))
+                })?;
                 Ok(filename)
             }
             None => Ok(filename),
@@ -295,10 +298,20 @@ pub fn cleanup_conversation_view(conversation_id: Uuid) {
 fn sanitize(name: &str) -> String {
     let s: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '.' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let s = s.trim_matches('_');
-    if s.is_empty() { "paper".to_string() } else { s.chars().take(120).collect() }
+    if s.is_empty() {
+        "paper".to_string()
+    } else {
+        s.chars().take(120).collect()
+    }
 }
 
 /// Size-bounded LRU eviction: delete the least-recently-accessed entries (and

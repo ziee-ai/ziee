@@ -306,9 +306,7 @@ pub async fn find_raw_tool_use_input(
     // A block with no `input` key yields SQL NULL; one with `"input": null` yields
     // JSON null. Neither is a revealable value, so both degrade to the recorded
     // arguments rather than reporting `raw: true` with nothing in it.
-    Ok(row
-        .and_then(|r| r.input)
-        .filter(|v| !v.is_null()))
+    Ok(row.and_then(|r| r.input).filter(|v| !v.is_null()))
 }
 
 /// Delete every row older than `cutoff` (the retention prune). Returns the
@@ -369,7 +367,8 @@ mod tests {
                 continue;
             }
             assert!(
-                sql.contains("WHERE user_id = $1") || sql.contains("WHERE id = $1 AND user_id = $2"),
+                sql.contains("WHERE user_id = $1")
+                    || sql.contains("WHERE id = $1 AND user_id = $2"),
                 "every read of mcp_tool_calls must be owner-scoped in SQL: {sql}"
             );
         }
@@ -381,9 +380,16 @@ mod tests {
             .iter()
             .filter(|s| s.contains("WHERE user_id = $1"))
             .collect();
-        assert_eq!(listing.len(), 2, "expected exactly the page + count statements");
+        assert_eq!(
+            listing.len(),
+            2,
+            "expected exactly the page + count statements"
+        );
         for sql in listing {
-            assert!(sql.contains("WHERE user_id = $1"), "owner predicate present: {sql}");
+            assert!(
+                sql.contains("WHERE user_id = $1"),
+                "owner predicate present: {sql}"
+            );
             assert!(
                 sql.contains("($2::uuid IS NULL OR server_id = $2)"),
                 "server filter preserved: {sql}"
@@ -413,7 +419,11 @@ mod tests {
                 .unwrap()
                 .trim_end()
                 .trim_end_matches(|c: char| c.is_whitespace());
-            for line in filter_section.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            for line in filter_section
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+            {
                 assert!(
                     line.starts_with("AND "),
                     "filter `{line}` must AND-narrow under the owner predicate"
@@ -433,9 +443,18 @@ mod tests {
             .filter_map(|chunk| chunk.split("\"#").next())
             .find(|s| s.contains("content_type = 'tool_use'"))
             .expect("the raw tool_use lookup must exist");
-        assert!(sql.contains("JOIN branch_messages"), "joins the branch: {sql}");
-        assert!(sql.contains("JOIN conversations"), "joins the conversation: {sql}");
-        assert!(sql.contains("c.user_id = $3"), "owner-scoped on the conversation: {sql}");
+        assert!(
+            sql.contains("JOIN branch_messages"),
+            "joins the branch: {sql}"
+        );
+        assert!(
+            sql.contains("JOIN conversations"),
+            "joins the conversation: {sql}"
+        );
+        assert!(
+            sql.contains("c.user_id = $3"),
+            "owner-scoped on the conversation: {sql}"
+        );
         assert!(
             !sql.contains("arguments_json"),
             "the reveal must NOT read the pre-redacted mcp_tool_calls column: {sql}"
@@ -482,7 +501,9 @@ mod tests {
             .find("FROM mcp_tool_calls")
             .expect("locate the list query");
         let rest = &src[start..];
-        let end = rest.find("ORDER BY").expect("locate the end of the WHERE clause");
+        let end = rest
+            .find("ORDER BY")
+            .expect("locate the end of the WHERE clause");
         let where_clause = &rest[..end];
 
         // Parse EVERY optional narrowing, wherever it sits.
@@ -494,7 +515,10 @@ mod tests {
         // `WHERE user_id = $1` line, and two narrowings on one line. Split on the
         // `AND (` TOKEN instead, and require every fragment to parse.
         let mut found: Vec<String> = Vec::new();
-        let flat = where_clause.split_whitespace().collect::<Vec<_>>().join(" ");
+        let flat = where_clause
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         for frag in flat.split("AND (").skip(1) {
             let predicate = frag.split(')').next().unwrap_or_default();
             let col = predicate
@@ -536,5 +560,4 @@ mod tests {
              here silently narrows a security guard"
         );
     }
-
 }

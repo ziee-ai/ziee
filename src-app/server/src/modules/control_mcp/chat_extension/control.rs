@@ -145,7 +145,10 @@ mod tests {
         let ContentBlock::Text { text } = &msgs[0].content[0] else {
             panic!("expected a text content block");
         };
-        assert!(text.contains("ask_user"), "nudge must name the tool: {text}");
+        assert!(
+            text.contains("ask_user"),
+            "nudge must name the tool: {text}"
+        );
         assert!(
             text.contains("default"),
             "nudge must ask for pre-filled defaults: {text}"

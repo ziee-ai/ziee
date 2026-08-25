@@ -1,8 +1,8 @@
 //! Database repository for runtime versions
 
-use sqlx::PgPool;
 use crate::modules::llm_local_runtime::runtime_version::models::RuntimeVersion;
 use chrono::DateTime;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 /// Create a new runtime version record
@@ -40,15 +40,13 @@ pub async fn create(
         backend: record.backend,
         binary_path: record.binary_path,
         is_system_default: record.is_system_default,
-        created_at: DateTime::from_timestamp(record.created_at.unix_timestamp(), 0).unwrap_or_default(),
+        created_at: DateTime::from_timestamp(record.created_at.unix_timestamp(), 0)
+            .unwrap_or_default(),
     })
 }
 
 /// Get runtime version by ID
-pub async fn get_by_id(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<Option<RuntimeVersion>, sqlx::Error> {
+pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Option<RuntimeVersion>, sqlx::Error> {
     let record = sqlx::query!(
         r#"SELECT id, engine, version, platform, arch, backend, binary_path,
                   is_system_default, created_at
@@ -136,7 +134,8 @@ pub async fn list_all(
             backend: r.backend,
             binary_path: r.binary_path,
             is_system_default: r.is_system_default,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0)
+                .unwrap_or_default(),
         })
         .collect())
 }
@@ -175,7 +174,8 @@ pub async fn list_by_engine(
             backend: r.backend,
             binary_path: r.binary_path,
             is_system_default: r.is_system_default,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_default(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0)
+                .unwrap_or_default(),
         })
         .collect())
 }

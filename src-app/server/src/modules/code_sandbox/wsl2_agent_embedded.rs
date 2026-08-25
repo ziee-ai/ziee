@@ -206,7 +206,10 @@ mod tests {
     #[test]
     fn is_supported_matches_blob_state() {
         if AGENT_BYTES.is_empty() {
-            assert!(!is_supported(), "placeholder build should report unsupported");
+            assert!(
+                !is_supported(),
+                "placeholder build should report unsupported"
+            );
         } else {
             assert!(is_supported(), "real-bundle build should report supported");
         }

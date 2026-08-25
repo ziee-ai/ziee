@@ -22,7 +22,7 @@ use crate::modules::mcp::{
     CreateMcpServerRequest, HeaderEntry, TransportType, UpdateMcpServerRequest, UsageMode,
 };
 use ziee_seed::{
-    SeedCtx, SeedEntry, SeedError, SeedMode, SeedOutcome, SeedProvider, SeedSection, SEED_PROVIDERS,
+    SEED_PROVIDERS, SeedCtx, SeedEntry, SeedError, SeedMode, SeedOutcome, SeedProvider, SeedSection,
 };
 
 const SECTION: &str = "mcp_servers";
@@ -105,7 +105,10 @@ impl ServerItem {
 }
 
 /// A system server has `user_id IS NULL`. This tree has no repo by-name accessor.
-async fn find_system_server_by_name(pool: &sqlx::PgPool, name: &str) -> Result<Option<Uuid>, SeedError> {
+async fn find_system_server_by_name(
+    pool: &sqlx::PgPool,
+    name: &str,
+) -> Result<Option<Uuid>, SeedError> {
     Ok(sqlx::query_scalar!(
         "SELECT id FROM mcp_servers WHERE name = $1 AND user_id IS NULL ORDER BY created_at LIMIT 1",
         name
@@ -115,7 +118,13 @@ async fn find_system_server_by_name(pool: &sqlx::PgPool, name: &str) -> Result<O
 }
 
 impl McpServersSeedProvider {
-    async fn assign(&self, server_id: Uuid, item: &ServerItem, mode: SeedMode, ctx: &SeedCtx) -> Result<(), SeedError> {
+    async fn assign(
+        &self,
+        server_id: Uuid,
+        item: &ServerItem,
+        mode: SeedMode,
+        ctx: &SeedCtx,
+    ) -> Result<(), SeedError> {
         for gname in &item.groups {
             let Some(group) = Repos.group.get_by_name(gname).await? else {
                 tracing::warn!(server = %item.name, group = %gname, "seed: group not found; server not assigned");
@@ -123,7 +132,11 @@ impl McpServersSeedProvider {
             };
             Repos.mcp.assign_to_group(group.id, server_id).await?;
             ctx.ledger
-                .record(ASSIGN_SECTION, &format!("{}:{}", item.name, gname), Some(group.id))
+                .record(
+                    ASSIGN_SECTION,
+                    &format!("{}:{}", item.name, gname),
+                    Some(group.id),
+                )
                 .await?;
         }
 
@@ -154,7 +167,13 @@ impl McpServersSeedProvider {
         Ok(())
     }
 
-    async fn delete_owned(&self, name: &str, id: Option<Uuid>, ctx: &SeedCtx, o: &mut SeedOutcome) -> Result<(), SeedError> {
+    async fn delete_owned(
+        &self,
+        name: &str,
+        id: Option<Uuid>,
+        ctx: &SeedCtx,
+        o: &mut SeedOutcome,
+    ) -> Result<(), SeedError> {
         if let Some(id) = id {
             Repos.mcp.delete_system_server(id).await?;
         }
@@ -182,7 +201,9 @@ impl SeedProvider for McpServersSeedProvider {
         ctx: &SeedCtx,
     ) -> Result<SeedOutcome, SeedError> {
         let mut outcome = SeedOutcome::default();
-        let Some(section) = section else { return Ok(outcome) };
+        let Some(section) = section else {
+            return Ok(outcome);
+        };
         let mut declared: HashSet<String> = HashSet::new();
 
         for raw in &section.items {
@@ -212,7 +233,8 @@ impl SeedProvider for McpServersSeedProvider {
             let server_id = match (existing, seeded) {
                 (Some(id), true) => {
                     if mode == SeedMode::Reconcile {
-                        Repos.mcp
+                        Repos
+                            .mcp
                             .update_system_server(
                                 id,
                                 UpdateMcpServerRequest {
@@ -222,9 +244,17 @@ impl SeedProvider for McpServersSeedProvider {
                                     enabled: item.enabled,
                                     command: item.command.clone(),
                                     args: item.args.clone(),
-                                    environment_variables_entries: if envs.is_empty() { None } else { Some(envs) },
+                                    environment_variables_entries: if envs.is_empty() {
+                                        None
+                                    } else {
+                                        Some(envs)
+                                    },
                                     url: item.url.clone(),
-                                    headers_entries: if headers.is_empty() { None } else { Some(headers) },
+                                    headers_entries: if headers.is_empty() {
+                                        None
+                                    } else {
+                                        Some(headers)
+                                    },
                                     timeout_seconds: item.timeout_seconds,
                                     supports_sampling: item.supports_sampling,
                                     usage_mode: Some(UsageMode::Auto),
@@ -246,7 +276,8 @@ impl SeedProvider for McpServersSeedProvider {
                     id
                 }
                 (None, _) => {
-                    let created = Repos.mcp
+                    let created = Repos
+                        .mcp
                         .create_system_server(CreateMcpServerRequest {
                             name: item.name.clone(),
                             display_name: item.display_name.clone(),
@@ -255,9 +286,17 @@ impl SeedProvider for McpServersSeedProvider {
                             transport_type: item.transport(),
                             command: item.command.clone(),
                             args: item.args.clone(),
-                            environment_variables_entries: if envs.is_empty() { None } else { Some(envs) },
+                            environment_variables_entries: if envs.is_empty() {
+                                None
+                            } else {
+                                Some(envs)
+                            },
                             url: item.url.clone(),
-                            headers_entries: if headers.is_empty() { None } else { Some(headers) },
+                            headers_entries: if headers.is_empty() {
+                                None
+                            } else {
+                                Some(headers)
+                            },
                             timeout_seconds: item.timeout_seconds,
                             supports_sampling: item.supports_sampling,
                             usage_mode: Some(UsageMode::Auto),
@@ -267,7 +306,9 @@ impl SeedProvider for McpServersSeedProvider {
                             hub_id: None,
                         })
                         .await?;
-                    ctx.ledger.record(SECTION, &item.name, Some(created.id)).await?;
+                    ctx.ledger
+                        .record(SECTION, &item.name, Some(created.id))
+                        .await?;
                     outcome.created += 1;
                     created.id
                 }
@@ -278,13 +319,15 @@ impl SeedProvider for McpServersSeedProvider {
 
         for name in &section.remove {
             if let Some(row) = ctx.ledger.lookup(SECTION, name).await? {
-                self.delete_owned(name, row.entity_id, ctx, &mut outcome).await?;
+                self.delete_owned(name, row.entity_id, ctx, &mut outcome)
+                    .await?;
             }
         }
         if mode == SeedMode::Reconcile {
             for owned in ctx.ledger.list_owned(SECTION).await? {
                 if !declared.contains(&owned.natural_key) {
-                    self.delete_owned(&owned.natural_key, owned.entity_id, ctx, &mut outcome).await?;
+                    self.delete_owned(&owned.natural_key, owned.entity_id, ctx, &mut outcome)
+                        .await?;
                 }
             }
         }
@@ -309,15 +352,24 @@ impl SeedProvider for McpServersSeedProvider {
             let mut obj = serde_json::Map::new();
             obj.insert("name".into(), r.name.clone().into());
             obj.insert("display_name".into(), r.display_name.into());
-            if let Some(d) = r.description { obj.insert("description".into(), d.into()); }
-            if let Some(u) = r.url { obj.insert("url".into(), u.into()); }
+            if let Some(d) = r.description {
+                obj.insert("description".into(), d.into());
+            }
+            if let Some(u) = r.url {
+                obj.insert("url".into(), u.into());
+            }
             obj.insert("enabled".into(), r.enabled.into());
             // Secret headers emitted as ${…} placeholders, never values.
             let keys = r.headers_secret_keys;
             if !keys.is_empty() {
                 let hdrs: serde_json::Map<String, serde_json::Value> = keys
                     .iter()
-                    .map(|k| (k.clone(), serde_json::Value::from(format!("${{{}}}", k.to_uppercase()))))
+                    .map(|k| {
+                        (
+                            k.clone(),
+                            serde_json::Value::from(format!("${{{}}}", k.to_uppercase())),
+                        )
+                    })
                     .collect();
                 obj.insert("headers".into(), serde_json::Value::Object(hdrs));
             }
@@ -328,11 +380,16 @@ impl SeedProvider for McpServersSeedProvider {
             .fetch_all(&ctx.pool)
             .await?;
             if !groups.is_empty() {
-                obj.insert("groups".into(), serde_json::Value::Array(groups.into_iter().map(Into::into).collect()));
+                obj.insert(
+                    "groups".into(),
+                    serde_json::Value::Array(groups.into_iter().map(Into::into).collect()),
+                );
             }
             items.push(serde_json::Value::Object(obj));
         }
-        Ok(Some(serde_norway::to_value(serde_json::json!({ "items": items }))
-            .map_err(|e| SeedError::Other(e.to_string()))?))
+        Ok(Some(
+            serde_norway::to_value(serde_json::json!({ "items": items }))
+                .map_err(|e| SeedError::Other(e.to_string()))?,
+        ))
     }
 }

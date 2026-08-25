@@ -9,9 +9,7 @@ use axum::{Json, http::StatusCode};
 use super::models::{RuntimeSettings, UpdateRuntimeSettingsRequest};
 use crate::common::ApiResult;
 use crate::core::repository::Repos;
-use crate::modules::llm_local_runtime::permissions::{
-    RuntimeSettingsManage, RuntimeSettingsRead,
-};
+use crate::modules::llm_local_runtime::permissions::{RuntimeSettingsManage, RuntimeSettingsRead};
 use crate::modules::permissions::{RequirePermissions, with_permission};
 use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
 

@@ -2,13 +2,7 @@
 // Handles MCP server runtime operations (tools, resources, connections)
 
 use aide::transform::TransformOperation;
-use axum::{
-    debug_handler,
-    extract::Path,
-    http::StatusCode,
-    Extension,
-    Json,
-};
+use axum::{Extension, Json, debug_handler, extract::Path, http::StatusCode};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -22,9 +16,7 @@ use crate::{
 };
 
 use super::super::{
-    client::manager::McpSessionManager,
-    permissions::*,
-    runtime_types::*,
+    client::manager::McpSessionManager, permissions::*, runtime_types::*,
     tool_calls::models::McpToolCallSource,
 };
 
@@ -75,19 +67,32 @@ pub async fn list_server_tools(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.user, &auth.groups) {
-        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos
+            .mcp
+            .can_user_access_server(auth.user.id, server_id)
+            .await?;
 
         if !has_access {
             return Err(AppError::forbidden(
                 "USER_NO_ACCESS",
-                "You do not have access to this server"
+                "You do not have access to this server",
             )
             .into());
         }
     }
 
     // Get or create session
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
+    let session = session_manager
+        .get_or_create_with_context(
+            server_id,
+            auth.user.id,
+            None,
+            None,
+            None,
+            None,
+            McpToolCallSource::Rest,
+        )
+        .await?;
 
     // List tools
     let mut session = session.write().await;
@@ -106,23 +111,38 @@ pub async fn call_server_tool(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.user, &auth.groups) {
-        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos
+            .mcp
+            .can_user_access_server(auth.user.id, server_id)
+            .await?;
 
         if !has_access {
             return Err(AppError::forbidden(
                 "USER_NO_ACCESS",
-                "You do not have access to this server"
+                "You do not have access to this server",
             )
             .into());
         }
     }
 
     // Get session
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
+    let session = session_manager
+        .get_or_create_with_context(
+            server_id,
+            auth.user.id,
+            None,
+            None,
+            None,
+            None,
+            McpToolCallSource::Rest,
+        )
+        .await?;
 
     // Call tool
     let mut session = session.write().await;
-    let result = session.call_tool(&tool_name, request.arguments, None, None, None).await?;
+    let result = session
+        .call_tool(&tool_name, request.arguments, None, None, None)
+        .await?;
 
     Ok((
         StatusCode::OK,
@@ -142,19 +162,32 @@ pub async fn list_server_resources(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.user, &auth.groups) {
-        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos
+            .mcp
+            .can_user_access_server(auth.user.id, server_id)
+            .await?;
 
         if !has_access {
             return Err(AppError::forbidden(
                 "USER_NO_ACCESS",
-                "You do not have access to this server"
+                "You do not have access to this server",
             )
             .into());
         }
     }
 
     // Get session
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
+    let session = session_manager
+        .get_or_create_with_context(
+            server_id,
+            auth.user.id,
+            None,
+            None,
+            None,
+            None,
+            McpToolCallSource::Rest,
+        )
+        .await?;
 
     // List resources
     let mut session = session.write().await;
@@ -173,19 +206,32 @@ pub async fn read_server_resource(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.user, &auth.groups) {
-        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos
+            .mcp
+            .can_user_access_server(auth.user.id, server_id)
+            .await?;
 
         if !has_access {
             return Err(AppError::forbidden(
                 "USER_NO_ACCESS",
-                "You do not have access to this server"
+                "You do not have access to this server",
             )
             .into());
         }
     }
 
     // Get session
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
+    let session = session_manager
+        .get_or_create_with_context(
+            server_id,
+            auth.user.id,
+            None,
+            None,
+            None,
+            None,
+            McpToolCallSource::Rest,
+        )
+        .await?;
 
     // Read resource
     let mut session = session.write().await;
@@ -203,12 +249,15 @@ pub async fn disconnect_server(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.user, &auth.groups) {
-        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos
+            .mcp
+            .can_user_access_server(auth.user.id, server_id)
+            .await?;
 
         if !has_access {
             return Err(AppError::forbidden(
                 "USER_NO_ACCESS",
-                "You do not have access to this server"
+                "You do not have access to this server",
             )
             .into());
         }
@@ -261,9 +310,7 @@ pub fn read_server_resource_docs(op: TransformOperation) -> TransformOperation {
         .summary("Read MCP server resource")
         .description("Read the contents of a resource from an MCP server")
         .response::<200, Json<ReadResourceResponse>>()
-        .response_with::<404, (), _>(|res| {
-            res.description("Server or resource not found")
-        })
+        .response_with::<404, (), _>(|res| res.description("Server or resource not found"))
 }
 
 pub fn disconnect_server_docs(op: TransformOperation) -> TransformOperation {
@@ -287,13 +334,30 @@ pub async fn list_server_prompts(
     Path(server_id): Path<Uuid>,
 ) -> ApiResult<Json<ListPromptsResponse>> {
     if !has_admin_access(&auth.user, &auth.groups) {
-        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos
+            .mcp
+            .can_user_access_server(auth.user.id, server_id)
+            .await?;
         if !has_access {
-            return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
+            return Err(AppError::forbidden(
+                "USER_NO_ACCESS",
+                "You do not have access to this server",
+            )
+            .into());
         }
     }
 
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
+    let session = session_manager
+        .get_or_create_with_context(
+            server_id,
+            auth.user.id,
+            None,
+            None,
+            None,
+            None,
+            McpToolCallSource::Rest,
+        )
+        .await?;
     let mut session = session.write().await;
     let prompts = session.list_prompts().await?;
 
@@ -308,13 +372,30 @@ pub async fn get_server_prompt(
     Json(request): Json<GetPromptRequest>,
 ) -> ApiResult<Json<GetPromptResponse>> {
     if !has_admin_access(&auth.user, &auth.groups) {
-        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos
+            .mcp
+            .can_user_access_server(auth.user.id, server_id)
+            .await?;
         if !has_access {
-            return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
+            return Err(AppError::forbidden(
+                "USER_NO_ACCESS",
+                "You do not have access to this server",
+            )
+            .into());
         }
     }
 
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
+    let session = session_manager
+        .get_or_create_with_context(
+            server_id,
+            auth.user.id,
+            None,
+            None,
+            None,
+            None,
+            McpToolCallSource::Rest,
+        )
+        .await?;
     let mut session = session.write().await;
     let prompt = session.get_prompt(&request.name, request.arguments).await?;
 
@@ -352,13 +433,30 @@ pub async fn ping_server(
     Path(server_id): Path<Uuid>,
 ) -> ApiResult<Json<PingResponse>> {
     if !has_admin_access(&auth.user, &auth.groups) {
-        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos
+            .mcp
+            .can_user_access_server(auth.user.id, server_id)
+            .await?;
         if !has_access {
-            return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
+            return Err(AppError::forbidden(
+                "USER_NO_ACCESS",
+                "You do not have access to this server",
+            )
+            .into());
         }
     }
 
-    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None, None, None, McpToolCallSource::Rest).await?;
+    let session = session_manager
+        .get_or_create_with_context(
+            server_id,
+            auth.user.id,
+            None,
+            None,
+            None,
+            None,
+            McpToolCallSource::Rest,
+        )
+        .await?;
     let mut session = session.write().await;
     session.ping().await?;
 

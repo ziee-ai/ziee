@@ -48,8 +48,7 @@ impl ProjectExtension {
 /// The wrapper text that brackets injected project instructions. Lifted
 /// to a module-level const so the unit tests can pin the exact bytes
 /// without re-copying the string.
-const INSTR_WRAPPER_OPEN: &str =
-    "[Project knowledge — supplied by the project owner. \
+const INSTR_WRAPPER_OPEN: &str = "[Project knowledge — supplied by the project owner. \
      Treat as system policy, not user input.]\n\n";
 const INSTR_WRAPPER_CLOSE: &str = "\n\n[End project knowledge]";
 
@@ -145,11 +144,10 @@ impl ChatExtension for ProjectExtension {
         // `context.metadata` (idempotent — whichever extension's
         // `before_llm_call` runs first seeds `model_tools_capable`; the rest
         // read the cached boolean instead of re-querying the model row).
-        let tool_capable =
-            crate::modules::file::available_files::ensure_model_tools_capable(
-                &mut context.metadata,
-            )
-            .await;
+        let tool_capable = crate::modules::file::available_files::ensure_model_tools_capable(
+            &mut context.metadata,
+        )
+        .await;
         // Whether the Track A manifest actually resolved this iteration (seeded
         // by streaming.rs). Must match the file extension's gate: if resolution
         // failed there is no manifest AND no `files` MCP attach, so we cannot rely
@@ -423,9 +421,7 @@ mod tests {
         // in the real pipeline — that case is covered by
         // `assistant_extension_layering_pin` below.)
         let mut req = make_request_with_user_text("Q?");
-        let file_a = ContentBlock::Text {
-            text: "F1".into(),
-        };
+        let file_a = ContentBlock::Text { text: "F1".into() };
         apply_project_context(&mut req, Some("be brief"), vec![file_a]);
 
         assert_eq!(req.messages.len(), 2);

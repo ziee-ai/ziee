@@ -138,7 +138,9 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
             Ok(v) => v,
             Err(e) => {
                 // Leave the rest NULL (FTS still works); admin can retry.
-                tracing::warn!("file_rag.embed_worker: embed batch failed ({e}); aborting re-embed");
+                tracing::warn!(
+                    "file_rag.embed_worker: embed batch failed ({e}); aborting re-embed"
+                );
                 break;
             }
         };
@@ -157,7 +159,11 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
             // Log-and-continue on a single bad write rather than aborting the
             // whole rebuild; the `updated == 0` guard still terminates a batch
             // that makes no progress.
-            match Repos.file_rag.set_chunk_embedding(*id, *uid, &hv, &model_tag).await {
+            match Repos
+                .file_rag
+                .set_chunk_embedding(*id, *uid, &hv, &model_tag)
+                .await
+            {
                 Ok(()) => {
                     updated += 1;
                     total += 1;
@@ -177,13 +183,14 @@ async fn run(pool: PgPool, model_id: Uuid, target_dimensions: i32) -> Result<(),
             break;
         }
     }
-    tracing::info!("file_rag.embed_worker: re-embedded {total} chunks with model {model_id} (dim {target_dimensions})");
+    tracing::info!(
+        "file_rag.embed_worker: re-embedded {total} chunks with model {model_id} (dim {target_dimensions})"
+    );
     Ok(())
 }
 #[cfg(test)]
 mod dim_guard_tests {
     use super::embedding_dim_matches;
-
 
     /// Model-swap stale-chunk guard (gap f41785a24732): after swapping to a
     /// new embedding model the column is ALTERed to the new dimension; a vector
@@ -195,7 +202,10 @@ mod dim_guard_tests {
         assert!(embedding_dim_matches(768, 768), "exact match writes");
         assert!(embedding_dim_matches(3072, 3072));
         // Stale chunk from the previous model (old dim) after a swap to 3072.
-        assert!(!embedding_dim_matches(768, 3072), "old-dim vector must be skipped");
+        assert!(
+            !embedding_dim_matches(768, 3072),
+            "old-dim vector must be skipped"
+        );
         // Model returns a shorter-than-expected vector.
         assert!(!embedding_dim_matches(512, 768));
         // Degenerate: empty vector is never writable.
@@ -206,7 +216,6 @@ mod dim_guard_tests {
 mod tests {
     use super::*;
 
-
     /// All assertions live in ONE test fn because they mutate the
     /// process-global `REBUILD_IN_PROGRESS` static; splitting them into
     /// separate `#[test]` fns would let cargo's parallel runner interleave
@@ -216,10 +225,7 @@ mod tests {
     #[test]
     fn rebuild_guard_single_flight_and_raii_clear() {
         // Precondition: nothing in flight at the start of the test.
-        assert!(
-            !is_in_progress(),
-            "REBUILD_IN_PROGRESS must start cleared"
-        );
+        assert!(!is_in_progress(), "REBUILD_IN_PROGRESS must start cleared");
 
         // --- RAII guard sets the flag on construction-equivalent and clears
         //     it on drop (the panic-safety contract reembed_all relies on). ---

@@ -12,17 +12,19 @@
 // resolve unchanged.
 
 use aide::transform::TransformOperation;
-use axum::extract::{Path, Query};
-use axum::http::{header, StatusCode};
-use axum::response::{IntoResponse, Response};
 use axum::Json;
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use axum::extract::{Path, Query};
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::file::config::get_jwt_config;
 use crate::modules::file::storage::manager::get_file_storage;
-use crate::modules::file::types::{DOWNLOAD_TOKEN_AUDIENCE, DownloadTokenClaims, DownloadTokenQuery};
+use crate::modules::file::types::{
+    DOWNLOAD_TOKEN_AUDIENCE, DownloadTokenClaims, DownloadTokenQuery,
+};
 use uuid::Uuid;
 
 // Re-export the moved helper so existing intra- and cross-module paths
@@ -81,10 +83,7 @@ pub async fn download_with_token(
     }
     // Re-verify FilesDownload via the same checker the extractor uses,
     // pulling in the user's current group permissions.
-    let groups = Repos
-        .user
-        .get_user_groups(user.id)
-        .await?;
+    let groups = Repos.user.get_user_groups(user.id).await?;
     if !user.is_admin
         && !crate::modules::permissions::checker::check_permission_union(
             &user,
@@ -92,11 +91,14 @@ pub async fn download_with_token(
             "files::download",
         )
     {
-        return Err(AppError::forbidden("PERMISSION_REVOKED", "files::download no longer granted").into());
+        return Err(
+            AppError::forbidden("PERMISSION_REVOKED", "files::download no longer granted").into(),
+        );
     }
 
     // Get file (this query already filters by user ownership).
-    let file = Repos.file
+    let file = Repos
+        .file
         .get_by_id_and_user(file_id, user_id)
         .await?
         .ok_or_else(|| AppError::not_found("File"))?;
@@ -147,7 +149,10 @@ pub async fn download_with_token(
         // Private, bounded cache so reloads reuse bytes without a round-trip
         // while still re-checking access after the max-age window. See
         // FILE_CONTENT_CACHE_CONTROL.
-        (header::CACHE_CONTROL, FILE_CONTENT_CACHE_CONTROL.to_string()),
+        (
+            header::CACHE_CONTROL,
+            FILE_CONTENT_CACHE_CONTROL.to_string(),
+        ),
     ];
 
     Ok((StatusCode::OK, (headers, file_data).into_response()))

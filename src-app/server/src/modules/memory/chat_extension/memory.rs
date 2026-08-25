@@ -21,10 +21,10 @@ const MEMORY_SAVE_NUDGE: &str = "## Saving memories\n\
 
 use crate::common::AppError;
 use crate::core::Repos;
+use crate::modules::chat::core::extension::request::SendMessageRequest;
 use crate::modules::chat::core::extension::{
     BeforeLlmAction, ChatExtension, ExtensionAction, StreamContext,
 };
-use crate::modules::chat::core::extension::request::SendMessageRequest;
 use crate::modules::chat::core::models::Message;
 use crate::modules::chat::core::models::content::MessageContent;
 use crate::modules::chat::core::types::MessageWithContent;
@@ -148,7 +148,11 @@ impl ChatExtension for MemoryExtension {
     ) -> Result<ExtensionAction, AppError> {
         // Collect the last user + assistant message text. If we can't
         // extract enough text from the recent history, skip.
-        let history = Repos.chat.core.get_conversation_history(context.branch_id).await?;
+        let history = Repos
+            .chat
+            .core
+            .get_conversation_history(context.branch_id)
+            .await?;
 
         let assistant_text = extract_text_from_message(final_message.id, &history);
         let user_text = history
@@ -199,10 +203,7 @@ impl ChatExtension for MemoryExtension {
     }
 }
 
-fn extract_text_from_message(
-    target_id: uuid::Uuid,
-    history: &[MessageWithContent],
-) -> String {
+fn extract_text_from_message(target_id: uuid::Uuid, history: &[MessageWithContent]) -> String {
     history
         .iter()
         .find(|m| m.message.id == target_id)
@@ -220,8 +221,12 @@ fn extract_text_from_message(
 fn collect_text(contents: &[MessageContent]) -> String {
     let mut buf = String::new();
     for c in contents {
-        let Ok(data) = c.parse_content() else { continue };
-        let Ok(value) = serde_json::to_value(&data) else { continue };
+        let Ok(data) = c.parse_content() else {
+            continue;
+        };
+        let Ok(value) = serde_json::to_value(&data) else {
+            continue;
+        };
         if value.get("type").and_then(|t| t.as_str()) == Some("text") {
             if let Some(text) = value.get("text").and_then(|t| t.as_str()) {
                 if !buf.is_empty() {

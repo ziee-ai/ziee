@@ -12,7 +12,9 @@ use serde::Deserialize;
 
 use super::{SearchHit, SearchProvider};
 use crate::common::AppError;
-use crate::utils::url_validator::{OutboundUrlPolicy, build_validated_client, validate_outbound_url};
+use crate::utils::url_validator::{
+    OutboundUrlPolicy, build_validated_client, validate_outbound_url,
+};
 
 /// Trusted-endpoint policy: http+https, private + loopback allowed (the admin
 /// chose this host). Still rejects bad schemes / embedded credentials.

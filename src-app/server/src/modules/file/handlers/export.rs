@@ -5,7 +5,7 @@
 
 use aide::transform::TransformOperation;
 use axum::extract::{Path, Query};
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use schemars::JsonSchema;
 use serde::Deserialize;

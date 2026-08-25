@@ -237,7 +237,9 @@ impl Walker<'_> {
             // OpenAPI 3.0 / draft-07 tuple ARRAY form.
             "items" | "additionalItems" | "unevaluatedItems" | "contains" | "not" | "if"
             | "then" | "else" | "propertyNames" => match value {
-                Value::Array(a) => Value::Array(a.iter().map(|v| self.walk(v, depth + 1)).collect()),
+                Value::Array(a) => {
+                    Value::Array(a.iter().map(|v| self.walk(v, depth + 1)).collect())
+                }
                 Value::Object(_) => self.walk(value, depth + 1),
                 other => other.clone(),
             },
@@ -296,7 +298,9 @@ impl Walker<'_> {
 
         self.expansions += 1;
         self.stack.push(name.to_string());
-        let target = component(self.components, name).cloned().unwrap_or(Value::Null);
+        let target = component(self.components, name)
+            .cloned()
+            .unwrap_or(Value::Null);
         let mut expanded = self.walk(&target, depth + 1);
         self.stack.pop();
 
@@ -560,7 +564,10 @@ mod tests {
             &components(),
         );
         let settings = &out.schema["properties"]["settings"];
-        assert!(settings.get("$ref").is_none(), "nested ref must be expanded");
+        assert!(
+            settings.get("$ref").is_none(),
+            "nested ref must be expanded"
+        );
         assert_eq!(settings["properties"]["loop_limit"]["default"], 10);
     }
 
@@ -580,15 +587,36 @@ mod tests {
         });
         let out = inline_schema(&src, &c);
         let s = text(&out.schema);
-        assert!(!s.contains(COMPONENT_PREFIX), "no component pointer may survive: {s}");
+        assert!(
+            !s.contains(COMPONENT_PREFIX),
+            "no component pointer may survive: {s}"
+        );
         // Each container expanded to the target's property.
-        assert_eq!(out.schema["properties"]["list"]["items"]["properties"]["server_id"]["type"], "string");
-        assert_eq!(out.schema["properties"]["map"]["additionalProperties"]["properties"]["server_id"]["type"], "string");
-        assert_eq!(out.schema["properties"]["pat"]["patternProperties"]["^x"]["properties"]["server_id"]["type"], "string");
-        assert_eq!(out.schema["properties"]["tuple"]["prefixItems"][0]["properties"]["server_id"]["type"], "string");
-        assert_eq!(out.schema["properties"]["banned"]["not"]["properties"]["server_id"]["type"], "string");
+        assert_eq!(
+            out.schema["properties"]["list"]["items"]["properties"]["server_id"]["type"],
+            "string"
+        );
+        assert_eq!(
+            out.schema["properties"]["map"]["additionalProperties"]["properties"]["server_id"]["type"],
+            "string"
+        );
+        assert_eq!(
+            out.schema["properties"]["pat"]["patternProperties"]["^x"]["properties"]["server_id"]["type"],
+            "string"
+        );
+        assert_eq!(
+            out.schema["properties"]["tuple"]["prefixItems"][0]["properties"]["server_id"]["type"],
+            "string"
+        );
+        assert_eq!(
+            out.schema["properties"]["banned"]["not"]["properties"]["server_id"]["type"],
+            "string"
+        );
         // A boolean `additionalProperties` is left alone.
-        let b = inline_schema(&json!({ "type": "object", "additionalProperties": false }), &c);
+        let b = inline_schema(
+            &json!({ "type": "object", "additionalProperties": false }),
+            &c,
+        );
         assert_eq!(b.schema["additionalProperties"], json!(false));
     }
 
@@ -608,10 +636,22 @@ mod tests {
         });
         let out = inline_schema(&src, &c);
         assert!(!text(&out.schema).contains(COMPONENT_PREFIX));
-        assert_eq!(out.schema["properties"]["nullable"]["anyOf"][0]["properties"]["server_id"]["type"], "string");
-        assert_eq!(out.schema["properties"]["nullable"]["anyOf"][1]["type"], "null");
-        assert_eq!(out.schema["properties"]["either"]["oneOf"][0]["properties"]["flag"]["type"], "boolean");
-        assert_eq!(out.schema["properties"]["merged"]["allOf"][1]["properties"]["flag"]["type"], "boolean");
+        assert_eq!(
+            out.schema["properties"]["nullable"]["anyOf"][0]["properties"]["server_id"]["type"],
+            "string"
+        );
+        assert_eq!(
+            out.schema["properties"]["nullable"]["anyOf"][1]["type"],
+            "null"
+        );
+        assert_eq!(
+            out.schema["properties"]["either"]["oneOf"][0]["properties"]["flag"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            out.schema["properties"]["merged"]["allOf"][1]["properties"]["flag"]["type"],
+            "boolean"
+        );
     }
 
     /// TEST-5 (acceptance, INV-1) — the whole point: a multi-level schema whose
@@ -632,7 +672,10 @@ mod tests {
             "no #/components/ pointer may survive: {s}"
         );
         for leaf in ["name", "settings", "loop_limit", "servers", "server_id"] {
-            assert!(s.contains(&format!("\"{leaf}\"")), "missing leaf `{leaf}` in {s}");
+            assert!(
+                s.contains(&format!("\"{leaf}\"")),
+                "missing leaf `{leaf}` in {s}"
+            );
         }
         assert_eq!(out.form, SchemaForm::Inline);
         assert!(!out.truncated);
@@ -656,14 +699,20 @@ mod tests {
 
         let foreign = json!({ "$ref": "https://example.test/schema.json#/Thing" });
         let out2 = inline_schema(&foreign, &c);
-        assert_eq!(out2.schema, foreign, "a pointer we do not own is left alone");
+        assert_eq!(
+            out2.schema, foreign,
+            "a pointer we do not own is left alone"
+        );
     }
 
     /// TEST-7 (acceptance, INV-3) — a SELF-referential component terminates and
     /// is expressed as a real `$defs` self-reference, not truncated away.
     #[test]
     fn acceptance_inv3_self_recursive_schema_terminates() {
-        let out = inline_schema(&json!({ "$ref": "#/components/schemas/Node" }), &components());
+        let out = inline_schema(
+            &json!({ "$ref": "#/components/schemas/Node" }),
+            &components(),
+        );
         assert_eq!(out.form, SchemaForm::Defs);
         // The recursive edge became a $defs pointer...
         assert_eq!(
@@ -706,13 +755,23 @@ mod tests {
         let c = components();
         let src = json!({ "$ref": "#/components/schemas/CreateProjectRequest" });
 
-        let shallow = Budget { max_depth: 2, ..DEFAULT_BUDGET };
+        let shallow = Budget {
+            max_depth: 2,
+            ..DEFAULT_BUDGET
+        };
         let out = inline_schema_with(&src, &c, &shallow);
         assert_eq!(out.form, SchemaForm::Defs);
         assert!(!text(&out.schema).contains(COMPONENT_PREFIX));
-        assert!(out.schema["$defs"].as_object().is_some_and(|d| !d.is_empty()));
+        assert!(
+            out.schema["$defs"]
+                .as_object()
+                .is_some_and(|d| !d.is_empty())
+        );
 
-        let narrow = Budget { max_expansions: 1, ..DEFAULT_BUDGET };
+        let narrow = Budget {
+            max_expansions: 1,
+            ..DEFAULT_BUDGET
+        };
         let out2 = inline_schema_with(&src, &c, &narrow);
         assert_eq!(out2.form, SchemaForm::Defs);
         // Exactly one expansion happened: the root. Its nested ref was deferred.
@@ -742,7 +801,10 @@ mod tests {
         let src = json!({ "type": "object", "properties": Value::Object(props) });
 
         let naive = inline_schema(&src, &c);
-        let tight = Budget { max_bytes: 900, ..DEFAULT_BUDGET };
+        let tight = Budget {
+            max_bytes: 900,
+            ..DEFAULT_BUDGET
+        };
         let out = inline_schema_with(&src, &c, &tight);
 
         assert_eq!(out.form, SchemaForm::Defs);
@@ -784,10 +846,17 @@ mod tests {
         };
         let out = inline_schema_with(&src, &c, &tiny);
         assert_eq!(out.form, SchemaForm::Defs);
-        assert!(out.truncated, "elision must be reported: {}", text(&out.schema));
+        assert!(
+            out.truncated,
+            "elision must be reported: {}",
+            text(&out.schema)
+        );
 
         let s = text(&out.schema);
-        assert!(serde_json::from_str::<Value>(&s).is_ok(), "still valid JSON: {s}");
+        assert!(
+            serde_json::from_str::<Value>(&s).is_ok(),
+            "still valid JSON: {s}"
+        );
         assert!(!s.contains(COMPONENT_PREFIX), "{s}");
         let defs = out.schema["$defs"].as_object().expect("$defs");
         // Entries are NAMED even when elided — the model still learns the type

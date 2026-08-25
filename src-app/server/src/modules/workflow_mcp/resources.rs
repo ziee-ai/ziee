@@ -20,7 +20,6 @@
 //! base64 for binary). 404 when cleaned up or `expose_logs: never`
 //! excludes a log.
 
-
 use base64::Engine as _;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -30,7 +29,9 @@ use crate::modules::workflow::models::WorkflowRun;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::runner::workflow_workspace_root;
 use crate::modules::workflow::types::{ArtifactMeta, OutputMeta};
-use crate::modules::workflow::validate::{ExposeLogs, ExposeMode, WorkflowDef, parse_workflow_yaml};
+use crate::modules::workflow::validate::{
+    ExposeLogs, ExposeMode, WorkflowDef, parse_workflow_yaml,
+};
 
 use super::tools::INLINE_FULL_CAP_BYTES;
 
@@ -110,10 +111,7 @@ pub async fn resources_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value,
         // 1. Outputs that resolve to artifact (explicit or auto-promoted).
         if let Some(obj) = run.final_output_json.as_ref().and_then(|v| v.as_object()) {
             for (name, meta) in obj {
-                let size_bytes = meta
-                    .get("size_bytes")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
+                let size_bytes = meta.get("size_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
                 let expose = def
                     .as_ref()
                     .and_then(|d| d.outputs.iter().find(|o| &o.name == name))
@@ -219,14 +217,14 @@ pub async fn resources_read(
             // from the output name, so we need the def to resolve the
             // backing step file (mirrors tools::read_full_output_value).
             let def = workflow_def_for_run(pool, &run)
-            .await
-            .inspect_err(|e| {
-                tracing::warn!(
-                    "workflow_mcp.resources: failed to load workflow def for run {}: {e}",
-                    run.id
-                )
-            })
-            .ok();
+                .await
+                .inspect_err(|e| {
+                    tracing::warn!(
+                        "workflow_mcp.resources: failed to load workflow def for run {}: {e}",
+                        run.id
+                    )
+                })
+                .ok();
             // Honor `expose: hidden` — resources/list never advertises a
             // hidden output, so resources/read (reachable via a guessed URI)
             // must refuse it too, or the Hidden intent is bypassed.
@@ -250,20 +248,18 @@ pub async fn resources_read(
             }
             read_output(&run, def.as_ref(), &name)?
         }
-        ResourceKind::Artifact { step_id, filename } => {
-            read_artifact(&run, &step_id, &filename)?
-        }
+        ResourceKind::Artifact { step_id, filename } => read_artifact(&run, &step_id, &filename)?,
         ResourceKind::Log { step_id, kind } => {
             // Gate by expose_logs.
             let def = workflow_def_for_run(pool, &run)
-            .await
-            .inspect_err(|e| {
-                tracing::warn!(
-                    "workflow_mcp.resources: failed to load workflow def for run {}: {e}",
-                    run.id
-                )
-            })
-            .ok();
+                .await
+                .inspect_err(|e| {
+                    tracing::warn!(
+                        "workflow_mcp.resources: failed to load workflow def for run {}: {e}",
+                        run.id
+                    )
+                })
+                .ok();
             if !logs_surfaceable(def.as_ref(), &step_id) {
                 // Refusal, not a missing resource — the log may well exist on
                 // disk; the workflow's `expose_logs` policy forbids surfacing it
@@ -376,11 +372,7 @@ fn read_artifact(
     Ok((bytes, meta.mime_type))
 }
 
-fn read_log(
-    run: &WorkflowRun,
-    step_id: &str,
-    kind: &str,
-) -> Result<(Vec<u8>, String), AppError> {
+fn read_log(run: &WorkflowRun, step_id: &str, kind: &str) -> Result<(Vec<u8>, String), AppError> {
     if !LOG_KINDS.contains(&kind) {
         return Err(AppError::bad_request(
             "WORKFLOW_LOG_BAD_KIND",
@@ -492,12 +484,11 @@ pub fn parse_uri(uri: &str) -> Result<ParsedResourceUri, AppError> {
         )
     })?;
     let mut parts = rest.split('/');
-    let run_str = parts.next().ok_or_else(|| {
-        AppError::bad_request("WORKFLOW_URI_INVALID", "missing run id")
-    })?;
-    let run_id = Uuid::parse_str(run_str).map_err(|_| {
-        AppError::bad_request("WORKFLOW_URI_INVALID", "run id is not a uuid")
-    })?;
+    let run_str = parts
+        .next()
+        .ok_or_else(|| AppError::bad_request("WORKFLOW_URI_INVALID", "missing run id"))?;
+    let run_id = Uuid::parse_str(run_str)
+        .map_err(|_| AppError::bad_request("WORKFLOW_URI_INVALID", "run id is not a uuid"))?;
     let category = parts.next().ok_or_else(|| {
         AppError::bad_request("WORKFLOW_URI_INVALID", "missing resource category")
     })?;
@@ -736,7 +727,10 @@ mod tests {
         // (a) binary mime → blob (PNG magic bytes).
         let png = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
         let v = encode_resource_content("ziee://r/outputs/img", png.clone(), "image/png");
-        assert!(v["text"].is_null(), "binary must not use the text channel: {v}");
+        assert!(
+            v["text"].is_null(),
+            "binary must not use the text channel: {v}"
+        );
         assert_eq!(
             v["blob"].as_str().unwrap(),
             base64::engine::general_purpose::STANDARD.encode(&png),
@@ -750,8 +744,12 @@ mod tests {
         assert!(t["blob"].is_null());
 
         // (c) text mime but NON-UTF8 bytes → falls back to blob.
-        let bad = encode_resource_content("ziee://r/outputs/x", vec![0xff, 0xfe, 0x00], "text/plain");
-        assert!(bad["text"].is_null(), "invalid UTF-8 must fall back to blob: {bad}");
+        let bad =
+            encode_resource_content("ziee://r/outputs/x", vec![0xff, 0xfe, 0x00], "text/plain");
+        assert!(
+            bad["text"].is_null(),
+            "invalid UTF-8 must fall back to blob: {bad}"
+        );
         assert!(bad["blob"].is_string());
     }
 
@@ -767,7 +765,10 @@ mod tests {
         assert!(sanitize_uri_component("x", "a\0b").is_err());
         // A normal segment passes.
         assert_eq!(sanitize_uri_component("x", "step1").unwrap(), "step1");
-        assert_eq!(sanitize_uri_component("x", "report.md").unwrap(), "report.md");
+        assert_eq!(
+            sanitize_uri_component("x", "report.md").unwrap(),
+            "report.md"
+        );
     }
 
     #[test]
@@ -786,7 +787,10 @@ mod tests {
     fn parse_uri_rejects_dotdot_in_artifact_step_id() {
         let run = Uuid::new_v4();
         let bad = format!("ziee://workflow-runs/{run}/artifacts/../report.md");
-        assert!(parse_uri(&bad).is_err(), "must reject `..` artifact step id");
+        assert!(
+            parse_uri(&bad).is_err(),
+            "must reject `..` artifact step id"
+        );
     }
 
     #[test]
@@ -798,7 +802,10 @@ mod tests {
         let bad = format!("ziee://workflow-runs/{run}/artifacts/step1/..");
         assert!(parse_uri(&bad).is_err(), "must reject `..` filename");
         let bad2 = format!("ziee://workflow-runs/{run}/artifacts/step1/a/../b");
-        assert!(parse_uri(&bad2).is_err(), "must reject multi-segment filename");
+        assert!(
+            parse_uri(&bad2).is_err(),
+            "must reject multi-segment filename"
+        );
     }
 
     #[test]

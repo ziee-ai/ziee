@@ -379,34 +379,40 @@ impl ModelParameters {
     /// Validate the parameters and return errors if any
     pub fn validate(&self) -> Result<(), String> {
         if let Some(temp) = self.temperature
-            && !(0.0..=2.0).contains(&temp) {
-                return Err("temperature must be between 0.0 and 2.0".to_string());
-            }
+            && !(0.0..=2.0).contains(&temp)
+        {
+            return Err("temperature must be between 0.0 and 2.0".to_string());
+        }
 
         if let Some(top_p) = self.top_p
-            && !(0.0..=1.0).contains(&top_p) {
-                return Err("top_p must be between 0.0 and 1.0".to_string());
-            }
+            && !(0.0..=1.0).contains(&top_p)
+        {
+            return Err("top_p must be between 0.0 and 1.0".to_string());
+        }
 
         if let Some(min_p) = self.min_p
-            && !(0.0..=1.0).contains(&min_p) {
-                return Err("min_p must be between 0.0 and 1.0".to_string());
-            }
+            && !(0.0..=1.0).contains(&min_p)
+        {
+            return Err("min_p must be between 0.0 and 1.0".to_string());
+        }
 
         if let Some(repeat_penalty) = self.repeat_penalty
-            && !(0.0..=2.0).contains(&repeat_penalty) {
-                return Err("repeat_penalty must be between 0.0 and 2.0".to_string());
-            }
+            && !(0.0..=2.0).contains(&repeat_penalty)
+        {
+            return Err("repeat_penalty must be between 0.0 and 2.0".to_string());
+        }
 
         if let Some(presence_penalty) = self.presence_penalty
-            && !(-2.0..=2.0).contains(&presence_penalty) {
-                return Err("presence_penalty must be between -2.0 and 2.0".to_string());
-            }
+            && !(-2.0..=2.0).contains(&presence_penalty)
+        {
+            return Err("presence_penalty must be between -2.0 and 2.0".to_string());
+        }
 
         if let Some(frequency_penalty) = self.frequency_penalty
-            && !(-2.0..=2.0).contains(&frequency_penalty) {
-                return Err("frequency_penalty must be between -2.0 and 2.0".to_string());
-            }
+            && !(-2.0..=2.0).contains(&frequency_penalty)
+        {
+            return Err("frequency_penalty must be between -2.0 and 2.0".to_string());
+        }
 
         if let Some(stop) = &self.stop {
             if stop.len() > 4 {
@@ -573,19 +579,22 @@ impl MistralRsSettings {
         }
 
         if let Some(usage) = self.paged_attn_gpu_mem_usage
-            && (!(0.0..1.0).contains(&usage) || usage == 0.0) {
-                return Err("paged_attn_gpu_mem_usage must be between 0 and 1".to_string());
-            }
+            && (!(0.0..1.0).contains(&usage) || usage == 0.0)
+        {
+            return Err("paged_attn_gpu_mem_usage must be between 0 and 1".to_string());
+        }
 
         if let Some(prefix_cache_n) = self.prefix_cache_n
-            && prefix_cache_n == 0 {
-                return Err("prefix_cache_n must be greater than 0".to_string());
-            }
+            && prefix_cache_n == 0
+        {
+            return Err("prefix_cache_n must be greater than 0".to_string());
+        }
 
         if let Some(max_seq_len) = self.max_seq_len
-            && max_seq_len > 131072 {
-                return Err("max_seq_len should not exceed 131072 tokens".to_string());
-            }
+            && max_seq_len > 131072
+        {
+            return Err("max_seq_len should not exceed 131072 tokens".to_string());
+        }
 
         Ok(())
     }
@@ -668,9 +677,10 @@ impl LlamaCppSettings {
         }
 
         if let Some(batch_size) = self.batch_size
-            && batch_size <= 0 {
-                return Err("batch_size must be greater than 0".to_string());
-            }
+            && batch_size <= 0
+        {
+            return Err("batch_size must be greater than 0".to_string());
+        }
 
         if let Some(parallel) = self.parallel {
             if parallel <= 0 {
@@ -682,14 +692,16 @@ impl LlamaCppSettings {
         }
 
         if let Some(n_gpu_layers) = self.n_gpu_layers
-            && n_gpu_layers < 0 {
-                return Err("n_gpu_layers must be non-negative".to_string());
-            }
+            && n_gpu_layers < 0
+        {
+            return Err("n_gpu_layers must be non-negative".to_string());
+        }
 
         if let Some(main_gpu) = self.main_gpu
-            && main_gpu < 0 {
-                return Err("main_gpu must be non-negative".to_string());
-            }
+            && main_gpu < 0
+        {
+            return Err("main_gpu must be non-negative".to_string());
+        }
 
         if let Some(split_mode) = &self.split_mode {
             match split_mode.as_str() {
@@ -961,14 +973,21 @@ mod download_status_tests {
             assert_eq!(v.as_str(), s, "as_str must invert from_str for {s}");
         }
         // The in-progress state a reboot needs to detect survives the round-trip.
-        assert_eq!(DownloadStatus::from_str("downloading"), Some(DownloadStatus::Downloading));
+        assert_eq!(
+            DownloadStatus::from_str("downloading"),
+            Some(DownloadStatus::Downloading)
+        );
     }
 
     #[test]
     fn download_status_rejects_unknown() {
         assert_eq!(DownloadStatus::from_str("in_progress"), None);
         assert_eq!(DownloadStatus::from_str(""), None);
-        assert_eq!(DownloadStatus::from_str("DOWNLOADING"), None, "case-sensitive");
+        assert_eq!(
+            DownloadStatus::from_str("DOWNLOADING"),
+            None,
+            "case-sensitive"
+        );
     }
 }
 

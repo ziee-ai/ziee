@@ -58,6 +58,7 @@ mod conversation_elicit;
 mod test_endpoint;
 mod diamond_dag;
 mod agent_step_test;
+mod subagent_runs_test;
 mod agent_step_resume_test;
 mod group_widget_endpoints;
 

@@ -141,9 +141,7 @@ pub async fn check_for_updates() -> Result<AvailableUpdatesResponse, AppError> {
             let size_bytes = recommended_backend
                 .as_deref()
                 .or_else(|| avail.first().map(|s| s.as_str()))
-                .and_then(|backend| {
-                    asset_size_for_backend(&platform, &arch, backend, &r.assets)
-                });
+                .and_then(|backend| asset_size_for_backend(&platform, &arch, backend, &r.assets));
             AvailableVersion {
                 version: r.version,
                 installed: !installed_backends.is_empty(),
@@ -169,7 +167,9 @@ pub async fn check_for_updates() -> Result<AvailableUpdatesResponse, AppError> {
 /// binary that lacks one. Returns the number of rows created.
 pub async fn sync_cache() -> Result<usize, AppError> {
     let downloader = WhisperDownloader::new().map_err(AppError::internal_with_id)?;
-    let cached = downloader.list_binaries().map_err(AppError::internal_with_id)?;
+    let cached = downloader
+        .list_binaries()
+        .map_err(AppError::internal_with_id)?;
 
     let pool = crate::core::Repos.pool();
     let mut synced = 0usize;

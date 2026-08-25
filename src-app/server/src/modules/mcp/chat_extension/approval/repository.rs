@@ -5,10 +5,10 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 
-use crate::modules::mcp::chat_extension::defaults::models::LoopSettings;
 use super::models::{
     ApprovalMode, AutoApprovedServer, ConversationMcpSettings, DisabledServer, ToolUseApproval,
 };
+use crate::modules::mcp::chat_extension::defaults::models::LoopSettings;
 
 // ============================================================================
 // Conversation MCP Settings
@@ -90,10 +90,12 @@ pub async fn upsert_conversation_settings(
         })?),
         None => None,
     };
-    let disabled_servers_json = serde_json::to_value(disabled_servers)
-        .map_err(|e| AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e)))?;
-    let loop_settings_json = serde_json::to_value(loop_settings)
-        .map_err(|e| AppError::internal_error(format!("Failed to serialize loop_settings: {}", e)))?;
+    let disabled_servers_json = serde_json::to_value(disabled_servers).map_err(|e| {
+        AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e))
+    })?;
+    let loop_settings_json = serde_json::to_value(loop_settings).map_err(|e| {
+        AppError::internal_error(format!("Failed to serialize loop_settings: {}", e))
+    })?;
 
     let settings = sqlx::query_as!(
         ConversationMcpSettings,
@@ -325,9 +327,7 @@ pub async fn approve_tool_use(
     )
     .fetch_optional(pool)
     .await?
-    .ok_or_else(|| {
-        AppError::not_found("Approval not found or already processed")
-    })?;
+    .ok_or_else(|| AppError::not_found("Approval not found or already processed"))?;
 
     Ok(approval)
 }
@@ -364,9 +364,7 @@ pub async fn deny_tool_use(
     )
     .fetch_optional(pool)
     .await?
-    .ok_or_else(|| {
-        AppError::not_found("Approval not found or already processed")
-    })?;
+    .ok_or_else(|| AppError::not_found("Approval not found or already processed"))?;
 
     Ok(approval)
 }

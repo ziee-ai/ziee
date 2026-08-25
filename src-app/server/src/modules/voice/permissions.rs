@@ -33,8 +33,7 @@ pub struct VoiceAdminManage;
 impl PermissionCheck for VoiceAdminManage {
     const NAME: &'static str = "VoiceAdminManage";
     const PERMISSION: &'static str = "voice::admin::manage";
-    const DESCRIPTION: &'static str =
-        "Update voice settings, manage whisper runtime versions and models, and control the instance.";
+    const DESCRIPTION: &'static str = "Update voice settings, manage whisper runtime versions and models, and control the instance.";
     const MODULE: &'static str = "voice";
 }
 

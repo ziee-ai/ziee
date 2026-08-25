@@ -139,7 +139,9 @@ pub enum VersionError {
     GitHubUnreachable(String),
     /// Pin is set but the corresponding GitHub release no longer exists
     /// (admin pinned a yanked version, or one was deleted upstream).
-    ReleaseMissing { version: String },
+    ReleaseMissing {
+        version: String,
+    },
     /// Pin is set + release exists, but the (arch, flavor, package)
     /// combination wasn't published. Surfaces as 422 in the admin UI.
     #[allow(dead_code)]
@@ -149,7 +151,10 @@ pub enum VersionError {
         flavor: String,
         package: String,
     },
-    Sha256Mismatch { expected: String, got: String },
+    Sha256Mismatch {
+        expected: String,
+        got: String,
+    },
     CosignFailed(String),
     Database(String),
     Io(String),
@@ -176,11 +181,15 @@ impl std::fmt::Display for VersionError {
                 write!(f, "could not reach GitHub to set the initial pin: {e}")
             }
             VersionError::GitHubUnreachable(e) => write!(f, "GitHub API unreachable: {e}"),
-            VersionError::ReleaseMissing { version } => write!(
-                f,
-                "pinned version v{version} no longer exists on GitHub"
-            ),
-            VersionError::AssetMissing { version, arch, flavor, package } => write!(
+            VersionError::ReleaseMissing { version } => {
+                write!(f, "pinned version v{version} no longer exists on GitHub")
+            }
+            VersionError::AssetMissing {
+                version,
+                arch,
+                flavor,
+                package,
+            } => write!(
                 f,
                 "release v{version} does not publish an artifact for \
                  ({arch}, {flavor}, {package})"
@@ -191,7 +200,12 @@ impl std::fmt::Display for VersionError {
             VersionError::CosignFailed(e) => write!(f, "cosign verification failed: {e}"),
             VersionError::Database(e) => write!(f, "database error: {e}"),
             VersionError::Io(e) => write!(f, "I/O error: {e}"),
-            VersionError::ArtifactInUse { version, arch, flavor, inflight } => write!(
+            VersionError::ArtifactInUse {
+                version,
+                arch,
+                flavor,
+                inflight,
+            } => write!(
                 f,
                 "artifact v{version} ({arch}-{flavor}) has {inflight} live session(s) — \
                  cannot delete until they drain"
@@ -210,10 +224,9 @@ impl VersionError {
             VersionError::ArtifactInUse { .. } => {
                 (StatusCode::CONFLICT, "SANDBOX_ROOTFS_ARTIFACT_IN_USE")
             }
-            VersionError::GitHubUnreachable(_) => (
-                StatusCode::BAD_GATEWAY,
-                "SANDBOX_ROOTFS_GITHUB_UNREACHABLE",
-            ),
+            VersionError::GitHubUnreachable(_) => {
+                (StatusCode::BAD_GATEWAY, "SANDBOX_ROOTFS_GITHUB_UNREACHABLE")
+            }
             VersionError::ReleaseMissing { .. } => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "SANDBOX_ROOTFS_VERSION_MISSING",
@@ -222,22 +235,17 @@ impl VersionError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "SANDBOX_ROOTFS_ASSET_MISSING",
             ),
-            VersionError::Sha256Mismatch { .. } => (
-                StatusCode::BAD_GATEWAY,
-                "SANDBOX_ROOTFS_SHA256_MISMATCH",
-            ),
-            VersionError::CosignFailed(_) => (
-                StatusCode::BAD_GATEWAY,
-                "SANDBOX_ROOTFS_COSIGN_FAILED",
-            ),
+            VersionError::Sha256Mismatch { .. } => {
+                (StatusCode::BAD_GATEWAY, "SANDBOX_ROOTFS_SHA256_MISMATCH")
+            }
+            VersionError::CosignFailed(_) => {
+                (StatusCode::BAD_GATEWAY, "SANDBOX_ROOTFS_COSIGN_FAILED")
+            }
             VersionError::Database(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "SANDBOX_ROOTFS_DATABASE_ERROR",
             ),
-            VersionError::Io(_) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "SANDBOX_ROOTFS_IO_ERROR",
-            ),
+            VersionError::Io(_) => (StatusCode::INTERNAL_SERVER_ERROR, "SANDBOX_ROOTFS_IO_ERROR"),
         };
         AppError::new(status, code, self.to_string())
     }
@@ -253,9 +261,8 @@ impl VersionError {
 // but keyed on the full (version, arch, flavor, package) tuple instead
 // of flavor alone.
 
-static DOWNLOAD_LOCKS: once_cell::sync::Lazy<
-    dashmap::DashMap<String, Arc<Mutex<()>>>,
-> = once_cell::sync::Lazy::new(dashmap::DashMap::new);
+static DOWNLOAD_LOCKS: once_cell::sync::Lazy<dashmap::DashMap<String, Arc<Mutex<()>>>> =
+    once_cell::sync::Lazy::new(dashmap::DashMap::new);
 
 fn download_lock_key(version: &str, arch: &str, flavor: &str, package: &str) -> String {
     format!("{version}/{arch}/{flavor}/{package}")
@@ -403,14 +410,10 @@ fn is_valid_semver_tag(tag: &str) -> bool {
                 if id.is_empty() {
                     return false;
                 }
-                if id.chars().all(|c| c.is_ascii_digit())
-                    && id.len() > 1
-                    && id.starts_with('0')
-                {
+                if id.chars().all(|c| c.is_ascii_digit()) && id.len() > 1 && id.starts_with('0') {
                     return false;
                 }
-                id.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-')
+                id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
             })
         }
     }
@@ -435,7 +438,11 @@ fn compare_semver(a: &str, b: &str) -> std::cmp::Ordering {
 
 fn parse_semver(v: &str) -> (u32, u32, u32) {
     let mut it = v.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
-    (it.next().unwrap_or(0), it.next().unwrap_or(0), it.next().unwrap_or(0))
+    (
+        it.next().unwrap_or(0),
+        it.next().unwrap_or(0),
+        it.next().unwrap_or(0),
+    )
 }
 
 // =====================================================================
@@ -489,9 +496,7 @@ pub async fn ensure_pin_initialized(pool: &PgPool) -> Result<Option<String>, Ver
     let releases = match list_releases().await {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!(
-                "code_sandbox: rootfs pin probe deferred — could not reach GitHub: {e}"
-            );
+            tracing::warn!("code_sandbox: rootfs pin probe deferred — could not reach GitHub: {e}");
             return Ok(None);
         }
     };
@@ -725,10 +730,7 @@ pub async fn delete_artifact(pool: &PgPool, id: Uuid) -> Result<(), VersionError
         }
     }
     for sidecar in [".sha256", ".zsync", ".cosign.bundle"] {
-        let mut name = path
-            .file_name()
-            .unwrap_or_default()
-            .to_os_string();
+        let mut name = path.file_name().unwrap_or_default().to_os_string();
         name.push(sidecar);
         let sidecar_path = path.with_file_name(name);
         let _ = std::fs::remove_file(sidecar_path);
@@ -778,10 +780,12 @@ pub async fn install_version(
     let url = build_download_url(&tag, &asset_name);
 
     let version_cache_dir = cache_dir.join(version);
-    std::fs::create_dir_all(&version_cache_dir).map_err(|e| VersionError::Io(format!(
-        "create cache dir {}: {e}",
-        version_cache_dir.display()
-    )))?;
+    std::fs::create_dir_all(&version_cache_dir).map_err(|e| {
+        VersionError::Io(format!(
+            "create cache dir {}: {e}",
+            version_cache_dir.display()
+        ))
+    })?;
     let out_path = version_cache_dir.join(&asset_name);
 
     // Pre-staged / air-gapped adoption: if the artifact file is already
@@ -819,7 +823,10 @@ pub async fn install_version(
         };
         let inserted = upsert_artifact(pool, &row).await?;
         tracing::info!(
-            version, arch, flavor, package,
+            version,
+            arch,
+            flavor,
+            package,
             "code_sandbox: adopted pre-staged rootfs artifact from cache (no download)"
         );
         return Ok((inserted, None));
@@ -842,7 +849,10 @@ pub async fn install_version(
         );
     }
 
-    progress(InstallProgress::Resolving { version: version.to_string(), asset: asset_name.clone() });
+    progress(InstallProgress::Resolving {
+        version: version.to_string(),
+        asset: asset_name.clone(),
+    });
     let pool_for_blocking = pool.clone();
     let version_owned = version.to_string();
     let arch_owned = arch.to_string();
@@ -884,7 +894,6 @@ pub async fn install_version(
     let inserted = upsert_artifact(&pool_for_blocking, &row).await?;
     Ok((inserted, Some(stats)))
 }
-
 
 /// Stats surfaced via `EnsureOutcome.fetch_info` for the chat UI.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -976,20 +985,26 @@ fn download_verify_blocking(
     let started = std::time::Instant::now();
     let tmp_path = out_path.with_extension(format!(
         "{}.tmp",
-        out_path.extension().and_then(|e| e.to_str()).unwrap_or("bin")
+        out_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("bin")
     ));
-    progress(InstallProgress::Downloading { url: url.to_string() });
+    progress(InstallProgress::Downloading {
+        url: url.to_string(),
+    });
 
     // Reuse the existing reqwest::blocking + sigstore primitives via
     // crate-public helpers in runtime_fetch. Defined here as a thin
     // wrapper to keep the interface narrow.
-    let bytes_downloaded = crate::modules::code_sandbox::runtime_fetch::download_blob_blocking(
-        url, &tmp_path, 3,
-    )
-    .map_err(|e| VersionError::Io(format!("download failed: {e}")))?;
+    let bytes_downloaded =
+        crate::modules::code_sandbox::runtime_fetch::download_blob_blocking(url, &tmp_path, 3)
+            .map_err(|e| VersionError::Io(format!("download failed: {e}")))?;
     if bytes_downloaded == 0 {
         let _ = std::fs::remove_file(&tmp_path);
-        return Err(VersionError::Io(format!("download returned 0 bytes from {url}")));
+        return Err(VersionError::Io(format!(
+            "download returned 0 bytes from {url}"
+        )));
     }
 
     progress(InstallProgress::VerifyingSha256);
@@ -1197,7 +1212,10 @@ fn host_package() -> String {
 /// shown, but `installed`/`pinned`/`draining` are empty and `availability`
 /// names the reason. Split from `available_only` so it is unit-testable without
 /// touching the network.
-fn build_degraded(availability: SandboxAvailability, available: Vec<RootfsRelease>) -> VersionStatus {
+fn build_degraded(
+    availability: SandboxAvailability,
+    available: Vec<RootfsRelease>,
+) -> VersionStatus {
     VersionStatus {
         pinned_version: None,
         installed: Vec::new(),
@@ -1514,17 +1532,17 @@ mod tests {
     #[test]
     fn semver_tag_regex_rejects_invalid() {
         for t in [
-            "0.1.0",                        // missing v
-            "v0.1",                         // 2 components
-            "v0.1.0+meta",                  // build metadata (we don't accept)
-            "v0.01.0",                      // leading zero on minor — audit B9
-            "v01.0.0",                      // leading zero on major
-            "v1.2.3-",                      // empty prerelease
-            "v1.2.3-rc..1",                 // empty prerelease identifier
-            "v1.2.3-rc.01",                 // numeric prerelease id with leading zero
-            "v1.2.3-rc/1",                  // invalid char in prerelease id
-            "vfoo",                         // non-numeric
-            "sandbox-rootfs-v1.r0-x86_64",  // legacy tag shape
+            "0.1.0",                       // missing v
+            "v0.1",                        // 2 components
+            "v0.1.0+meta",                 // build metadata (we don't accept)
+            "v0.01.0",                     // leading zero on minor — audit B9
+            "v01.0.0",                     // leading zero on major
+            "v1.2.3-",                     // empty prerelease
+            "v1.2.3-rc..1",                // empty prerelease identifier
+            "v1.2.3-rc.01",                // numeric prerelease id with leading zero
+            "v1.2.3-rc/1",                 // invalid char in prerelease id
+            "vfoo",                        // non-numeric
+            "sandbox-rootfs-v1.r0-x86_64", // legacy tag shape
         ] {
             assert!(!is_valid_semver_tag(t), "should reject {t}");
         }
@@ -1597,7 +1615,10 @@ mod tests {
     fn swap_policy_for_diff_picks_wipe_on_major_bump() {
         assert_eq!(swap_policy_for_diff("0.1.0", "0.1.1"), SwapPolicy::Preserve);
         assert_eq!(swap_policy_for_diff("0.1.0", "0.2.0"), SwapPolicy::Preserve);
-        assert_eq!(swap_policy_for_diff("0.9.9", "0.10.0"), SwapPolicy::Preserve);
+        assert_eq!(
+            swap_policy_for_diff("0.9.9", "0.10.0"),
+            SwapPolicy::Preserve
+        );
         assert_eq!(
             swap_policy_for_diff("0.1.0", "1.0.0"),
             SwapPolicy::WipeCachesOnDrain
@@ -1614,8 +1635,14 @@ mod tests {
         // (we never wipe just because a version string was malformed and
         // both sides land on the same major). Pins are validated semver in
         // practice, so these are defensive cases.
-        assert_eq!(swap_policy_for_diff("0.1.0", "not-a-version"), SwapPolicy::Preserve);
-        assert_eq!(swap_policy_for_diff("garbage", "also-garbage"), SwapPolicy::Preserve);
+        assert_eq!(
+            swap_policy_for_diff("0.1.0", "not-a-version"),
+            SwapPolicy::Preserve
+        );
+        assert_eq!(
+            swap_policy_for_diff("garbage", "also-garbage"),
+            SwapPolicy::Preserve
+        );
         // The policy keys off "majors differ", not direction or "major == 0":
         // a major DOWNGRADE wipes too, and an equal NON-ZERO major preserves.
         assert_eq!(
@@ -1638,8 +1665,7 @@ mod tests {
         unsafe { std::env::remove_var("CODE_SANDBOX_ROOTFS_MIRROR") };
         let url = build_download_url("v0.1.0", "x.squashfs");
         assert!(
-            url.contains("ziee-ai/sandbox-rootfs/releases/download")
-                || url.contains(ROOTFS_REPO),
+            url.contains("ziee-ai/sandbox-rootfs/releases/download") || url.contains(ROOTFS_REPO),
             "unexpected default URL: {url}"
         );
         assert!(url.ends_with("/v0.1.0/x.squashfs"));

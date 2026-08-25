@@ -387,7 +387,14 @@ mod tests {
         // catalog-or-installed EXISTENCE check moved to the async `update_settings`
         // handler (covered by the integration tests). So a well-formed name passes
         // here regardless of whether it's one of the 4 built-in defaults.
-        for m in ["tiny", "base", "base.en", "small", "large-v3", "large-v3-turbo-q5_0"] {
+        for m in [
+            "tiny",
+            "base",
+            "base.en",
+            "small",
+            "large-v3",
+            "large-v3-turbo-q5_0",
+        ] {
             let b = UpdateVoiceSettingsRequest {
                 model: Some(m.to_string()),
                 ..base()
@@ -411,77 +418,120 @@ mod tests {
     fn out_of_range_numeric_caps_rejected() {
         // idle_unload_secs: 0..=86400
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { idle_unload_secs: Some(-1), ..base() },
+            &UpdateVoiceSettingsRequest {
+                idle_unload_secs: Some(-1),
+                ..base()
+            },
             "idle below range",
         );
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { idle_unload_secs: Some(86_401), ..base() },
+            &UpdateVoiceSettingsRequest {
+                idle_unload_secs: Some(86_401),
+                ..base()
+            },
             "idle above range",
         );
         // auto_start_timeout_secs: 1..=600
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { auto_start_timeout_secs: Some(0), ..base() },
+            &UpdateVoiceSettingsRequest {
+                auto_start_timeout_secs: Some(0),
+                ..base()
+            },
             "auto-start below range",
         );
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { auto_start_timeout_secs: Some(601), ..base() },
+            &UpdateVoiceSettingsRequest {
+                auto_start_timeout_secs: Some(601),
+                ..base()
+            },
             "auto-start above range",
         );
         // drain_timeout_secs: 1..=600
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { drain_timeout_secs: Some(0), ..base() },
+            &UpdateVoiceSettingsRequest {
+                drain_timeout_secs: Some(0),
+                ..base()
+            },
             "drain below range",
         );
         // max_clip_seconds: 1..=3600
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { max_clip_seconds: Some(0), ..base() },
+            &UpdateVoiceSettingsRequest {
+                max_clip_seconds: Some(0),
+                ..base()
+            },
             "max_clip below range",
         );
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { max_clip_seconds: Some(3_601), ..base() },
+            &UpdateVoiceSettingsRequest {
+                max_clip_seconds: Some(3_601),
+                ..base()
+            },
             "max_clip above range",
         );
         // max_upload_bytes: 1024..=67108864
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { max_upload_bytes: Some(1_023), ..base() },
+            &UpdateVoiceSettingsRequest {
+                max_upload_bytes: Some(1_023),
+                ..base()
+            },
             "max_upload below range",
         );
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { max_upload_bytes: Some(67_108_865), ..base() },
+            &UpdateVoiceSettingsRequest {
+                max_upload_bytes: Some(67_108_865),
+                ..base()
+            },
             "max_upload above range",
         );
         // stream_interval_ms: 300..=10000 (TEST-1)
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { stream_interval_ms: Some(299), ..base() },
+            &UpdateVoiceSettingsRequest {
+                stream_interval_ms: Some(299),
+                ..base()
+            },
             "stream_interval below range",
         );
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { stream_interval_ms: Some(10_001), ..base() },
+            &UpdateVoiceSettingsRequest {
+                stream_interval_ms: Some(10_001),
+                ..base()
+            },
             "stream_interval above range",
         );
         // stream_max_decode_secs: 5..=600
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { stream_max_decode_secs: Some(4), ..base() },
+            &UpdateVoiceSettingsRequest {
+                stream_max_decode_secs: Some(4),
+                ..base()
+            },
             "max_decode below range",
         );
         assert_validation_400(
-            &UpdateVoiceSettingsRequest { stream_max_decode_secs: Some(601), ..base() },
+            &UpdateVoiceSettingsRequest {
+                stream_max_decode_secs: Some(601),
+                ..base()
+            },
             "max_decode above range",
         );
         // Boundary values are inclusive-OK.
-        assert!(validate_settings_patch(&UpdateVoiceSettingsRequest {
-            idle_unload_secs: Some(0),
-            max_clip_seconds: Some(3_600),
-            max_upload_bytes: Some(67_108_864),
-            stream_interval_ms: Some(300),
-            ..base()
-        })
-        .is_ok());
-        assert!(validate_settings_patch(&UpdateVoiceSettingsRequest {
-            stream_interval_ms: Some(10_000),
-            streaming_enabled: Some(false),
-            ..base()
-        })
-        .is_ok());
+        assert!(
+            validate_settings_patch(&UpdateVoiceSettingsRequest {
+                idle_unload_secs: Some(0),
+                max_clip_seconds: Some(3_600),
+                max_upload_bytes: Some(67_108_864),
+                stream_interval_ms: Some(300),
+                ..base()
+            })
+            .is_ok()
+        );
+        assert!(
+            validate_settings_patch(&UpdateVoiceSettingsRequest {
+                stream_interval_ms: Some(10_000),
+                streaming_enabled: Some(false),
+                ..base()
+            })
+            .is_ok()
+        );
     }
 }

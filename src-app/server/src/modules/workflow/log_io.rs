@@ -16,7 +16,6 @@
 //! threshold — the previously-declared (and unused) 64 KiB
 //! `SPILL_THRESHOLD_BYTES` has been removed to match actual behavior.
 
-
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -87,9 +86,9 @@ pub fn step_log_dir(ctx: &RunContext, step_id: &str) -> PathBuf {
 }
 
 pub async fn ensure_dir(dir: &Path) -> Result<(), AppError> {
-    tokio::fs::create_dir_all(dir).await.map_err(|e| {
-        AppError::internal_error(format!("log_io: mkdir {}: {e}", dir.display()))
-    })
+    tokio::fs::create_dir_all(dir)
+        .await
+        .map_err(|e| AppError::internal_error(format!("log_io: mkdir {}: {e}", dir.display())))
 }
 
 /// Write a text-shaped log (prompt / raw_output / stderr) and return
@@ -113,9 +112,9 @@ pub async fn write_text_log(
     let dir = step_log_dir(ctx, step_id);
     ensure_dir(&dir).await?;
     let dest = dir.join(kind);
-    tokio::fs::write(&dest, body.as_bytes()).await.map_err(|e| {
-        AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
-    })?;
+    tokio::fs::write(&dest, body.as_bytes())
+        .await
+        .map_err(|e| AppError::internal_error(format!("log_io: write {}: {e}", dest.display())))?;
     let size = body.len() as u64;
     let preview = body.chars().take(500).collect::<String>();
     // The full body is on disk (above); this returned meta is currently
@@ -143,9 +142,9 @@ pub async fn write_trace(
     let dest = dir.join("trace.json");
     let bytes = serde_json::to_vec_pretty(trace)
         .map_err(|e| AppError::internal_error(format!("log_io: serialize trace: {e}")))?;
-    tokio::fs::write(&dest, &bytes).await.map_err(|e| {
-        AppError::internal_error(format!("log_io: write {}: {e}", dest.display()))
-    })?;
+    tokio::fs::write(&dest, &bytes)
+        .await
+        .map_err(|e| AppError::internal_error(format!("log_io: write {}: {e}", dest.display())))?;
     let body_str = String::from_utf8_lossy(&bytes).into_owned();
     let preview = body_str.chars().take(500).collect::<String>();
     Ok(LogEntryMeta {
@@ -261,8 +260,9 @@ mod tests {
     async fn skips_text_log_when_level_off() {
         let tmp = tempdir().unwrap();
         let ctx = fake_ctx(tmp.path().to_path_buf());
-        let out =
-            write_text_log(&ctx, "s", "prompt", "hi", LogCapture::Off).await.unwrap();
+        let out = write_text_log(&ctx, "s", "prompt", "hi", LogCapture::Off)
+            .await
+            .unwrap();
         assert!(out.is_none());
     }
 
@@ -270,8 +270,9 @@ mod tests {
     async fn writes_stderr_at_stderr_level() {
         let tmp = tempdir().unwrap();
         let ctx = fake_ctx(tmp.path().to_path_buf());
-        let out =
-            write_text_log(&ctx, "s", "stderr", "boom", LogCapture::Stderr).await.unwrap();
+        let out = write_text_log(&ctx, "s", "stderr", "boom", LogCapture::Stderr)
+            .await
+            .unwrap();
         let meta = out.unwrap();
         assert_eq!(meta.size_bytes, 4);
         assert_eq!(meta.preview, "boom");
@@ -329,6 +330,10 @@ mod tests {
         // The snapshot persists the real body AND charges the per-run budget.
         let logs = snapshot_step_logs(&ctx, "s").await.expect("logs captured");
         assert_eq!(logs["prompt"]["body"].as_str(), Some("hello"), "{logs}");
-        assert!(ctx.total_log_bytes.load(std::sync::atomic::Ordering::Relaxed) >= 5);
+        assert!(
+            ctx.total_log_bytes
+                .load(std::sync::atomic::Ordering::Relaxed)
+                >= 5
+        );
     }
 }

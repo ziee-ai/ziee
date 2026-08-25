@@ -14,8 +14,7 @@ use super::models::{
     TransportType, UsageMode,
 };
 use super::types::{
-    CreateMcpServerRequest, EnvVarEntry, HeaderEntry, McpServerListResponse,
-    UpdateMcpServerRequest,
+    CreateMcpServerRequest, EnvVarEntry, HeaderEntry, McpServerListResponse, UpdateMcpServerRequest,
 };
 
 // =====================================================
@@ -44,13 +43,21 @@ struct EntryRef<'a> {
 
 impl<'a> From<&'a EnvVarEntry> for EntryRef<'a> {
     fn from(e: &'a EnvVarEntry) -> Self {
-        Self { key: &e.key, value: e.value.as_deref(), is_secret: e.is_secret }
+        Self {
+            key: &e.key,
+            value: e.value.as_deref(),
+            is_secret: e.is_secret,
+        }
     }
 }
 
 impl<'a> From<&'a HeaderEntry> for EntryRef<'a> {
     fn from(e: &'a HeaderEntry) -> Self {
-        Self { key: &e.key, value: e.value.as_deref(), is_secret: e.is_secret }
+        Self {
+            key: &e.key,
+            value: e.value.as_deref(),
+            is_secret: e.is_secret,
+        }
     }
 }
 
@@ -106,8 +113,9 @@ async fn split_entries_for_storage(
                     );
                 }
                 None => {
-                    if let Some(prior_val) =
-                        prior_encrypted.and_then(|v| v.as_object()).and_then(|o| o.get(entry.key))
+                    if let Some(prior_val) = prior_encrypted
+                        .and_then(|v| v.as_object())
+                        .and_then(|o| o.get(entry.key))
                     {
                         enc_map.insert(entry.key.to_string(), prior_val.clone());
                     }
@@ -172,9 +180,7 @@ async fn assemble_entries_from_storage(
     sk_sorted.sort();
     sk_sorted.dedup();
     for key in &sk_sorted {
-        let b64 = enc_obj
-            .and_then(|o| o.get(key))
-            .and_then(|v| v.as_str());
+        let b64 = enc_obj.and_then(|o| o.get(key)).and_then(|v| v.as_str());
         let decrypted = match b64 {
             Some(b64_str) => match B64.decode(b64_str) {
                 Ok(bytes) => match storage_key {
@@ -207,14 +213,22 @@ async fn assemble_entries_from_storage(
 fn views_to_env(views: Vec<(String, Option<String>, bool)>) -> Vec<EnvVarView> {
     views
         .into_iter()
-        .map(|(key, value, is_secret)| EnvVarView { key, value, is_secret })
+        .map(|(key, value, is_secret)| EnvVarView {
+            key,
+            value,
+            is_secret,
+        })
         .collect()
 }
 
 fn views_to_headers(views: Vec<(String, Option<String>, bool)>) -> Vec<HeaderView> {
     views
         .into_iter()
-        .map(|(key, value, is_secret)| HeaderView { key, value, is_secret })
+        .map(|(key, value, is_secret)| HeaderView {
+            key,
+            value,
+            is_secret,
+        })
         .collect()
 }
 
@@ -298,9 +312,9 @@ pub(crate) async fn assemble_mcp_server(
         max_concurrent_sessions: raw.max_concurrent_sessions,
         run_in_sandbox: raw.run_in_sandbox,
         sandbox_flavor: raw.sandbox_flavor,
-        last_health_check_at: raw.last_health_check_at.and_then(|t|
-            DateTime::from_timestamp(t.unix_timestamp(), 0)
-        ),
+        last_health_check_at: raw
+            .last_health_check_at
+            .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
         last_health_check_status: raw.last_health_check_status,
         last_health_check_reason: raw.last_health_check_reason,
         created_at: DateTime::from_timestamp(raw.created_at.unix_timestamp(), 0)
@@ -351,11 +365,7 @@ impl McpRepository {
         per_page: i64,
     ) -> Result<super::tool_calls::McpToolCallListResponse, AppError> {
         let (calls, total) = super::tool_calls::repository::list_calls_for_user(
-            &self.pool,
-            user_id,
-            filters,
-            page,
-            per_page,
+            &self.pool, user_id, filters, page, per_page,
         )
         .await?;
         let per_page = per_page.clamp(1, 200);
@@ -814,7 +824,11 @@ impl McpRepository {
     }
 
     // Check if user has access to a server (single query: ownership + group membership)
-    pub async fn can_user_access_server(&self, user_id: Uuid, server_id: Uuid) -> Result<bool, AppError> {
+    pub async fn can_user_access_server(
+        &self,
+        user_id: Uuid,
+        server_id: Uuid,
+    ) -> Result<bool, AppError> {
         let has_access = sqlx::query_scalar!(
             r#"SELECT EXISTS(
                 SELECT 1 FROM mcp_servers
@@ -880,10 +894,18 @@ pub async fn create_user_mcp_server_in_tx(
         .unwrap_or_default();
     let header_entries: Vec<HeaderEntry> = request.headers_entries.clone().unwrap_or_default();
     validate_header_entries(&header_entries)?;
-    let (env_plain, env_enc, env_secret_keys) =
-        split_entries_for_storage(pool, env_entries.iter().map(|e| EntryRef::from(e)).collect(), None).await?;
-    let (hdr_plain, hdr_enc, hdr_secret_keys) =
-        split_entries_for_storage(pool, header_entries.iter().map(|e| EntryRef::from(e)).collect(), None).await?;
+    let (env_plain, env_enc, env_secret_keys) = split_entries_for_storage(
+        pool,
+        env_entries.iter().map(|e| EntryRef::from(e)).collect(),
+        None,
+    )
+    .await?;
+    let (hdr_plain, hdr_enc, hdr_secret_keys) = split_entries_for_storage(
+        pool,
+        header_entries.iter().map(|e| EntryRef::from(e)).collect(),
+        None,
+    )
+    .await?;
 
     let supports_sampling = request.supports_sampling.unwrap_or(false);
     let usage_mode = request.usage_mode.clone().unwrap_or(UsageMode::Auto);
@@ -1273,7 +1295,10 @@ pub async fn update_user_mcp_server(
             .await?
         }
         None => (
-            prior.headers.clone().unwrap_or_else(|| serde_json::json!({})),
+            prior
+                .headers
+                .clone()
+                .unwrap_or_else(|| serde_json::json!({})),
             prior.headers_encrypted.clone(),
             prior.headers_secret_keys.clone(),
         ),
@@ -1460,10 +1485,18 @@ pub async fn create_system_mcp_server_in_tx(
         .unwrap_or_default();
     let header_entries: Vec<HeaderEntry> = request.headers_entries.clone().unwrap_or_default();
     validate_header_entries(&header_entries)?;
-    let (env_plain, env_enc, env_secret_keys) =
-        split_entries_for_storage(pool, env_entries.iter().map(|e| EntryRef::from(e)).collect(), None).await?;
-    let (hdr_plain, hdr_enc, hdr_secret_keys) =
-        split_entries_for_storage(pool, header_entries.iter().map(|e| EntryRef::from(e)).collect(), None).await?;
+    let (env_plain, env_enc, env_secret_keys) = split_entries_for_storage(
+        pool,
+        env_entries.iter().map(|e| EntryRef::from(e)).collect(),
+        None,
+    )
+    .await?;
+    let (hdr_plain, hdr_enc, hdr_secret_keys) = split_entries_for_storage(
+        pool,
+        header_entries.iter().map(|e| EntryRef::from(e)).collect(),
+        None,
+    )
+    .await?;
 
     let supports_sampling = request.supports_sampling.unwrap_or(false);
     let usage_mode = request.usage_mode.clone().unwrap_or(UsageMode::Auto);
@@ -1577,8 +1610,10 @@ fn oauth_row_to_model(
         client_secret,
         scopes,
         resource,
-        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
-        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0)
+            .unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0)
+            .unwrap_or_else(Utc::now),
     }
 }
 
@@ -1600,10 +1635,9 @@ pub async fn get_mcp_server_oauth_config(
 
     let Some(r) = row else { return Ok(None) };
     // Prefer the encrypted column; fall back to plaintext for legacy rows.
-    let client_secret =
-        resolve_optional_secret(pool, r.client_secret_encrypted, r.client_secret)
-            .await
-            .unwrap_or_default();
+    let client_secret = resolve_optional_secret(pool, r.client_secret_encrypted, r.client_secret)
+        .await
+        .unwrap_or_default();
     Ok(Some(oauth_row_to_model(
         r.server_id,
         r.client_id,
@@ -1661,8 +1695,13 @@ pub async fn set_mcp_server_oauth_config(
     // Return the in-memory model with the plaintext secret we just stored
     // (the caller redacts it via `to_response()` before sending to the API).
     Ok(oauth_row_to_model(
-        row.server_id, row.client_id, request.client_secret, row.scopes, row.resource,
-        row.created_at, row.updated_at,
+        row.server_id,
+        row.client_id,
+        request.client_secret,
+        row.scopes,
+        row.resource,
+        row.created_at,
+        row.updated_at,
     ))
 }
 
@@ -2055,7 +2094,10 @@ pub async fn update_system_mcp_server(
             .await?
         }
         None => (
-            prior.headers.clone().unwrap_or_else(|| serde_json::json!({})),
+            prior
+                .headers
+                .clone()
+                .unwrap_or_else(|| serde_json::json!({})),
             prior.headers_encrypted.clone(),
             prior.headers_secret_keys.clone(),
         ),
@@ -2188,7 +2230,10 @@ pub async fn delete_system_mcp_server_in_tx(
     .ok_or_else(|| AppError::not_found("Server"))?;
 
     if server.is_built_in {
-        return Err(AppError::bad_request("BUILT_IN_SERVER", "Cannot delete a built-in system server"));
+        return Err(AppError::bad_request(
+            "BUILT_IN_SERVER",
+            "Cannot delete a built-in system server",
+        ));
     }
 
     sqlx::query!(
@@ -2563,12 +2608,13 @@ fn validate_transport_update(
     match transport_type {
         TransportType::Stdio => {
             if let Some(command) = &request.command
-                && command.is_empty() {
-                    return Err(AppError::bad_request(
-                        "INVALID_TRANSPORT",
-                        "command cannot be empty for stdio transport",
-                    ));
-                }
+                && command.is_empty()
+            {
+                return Err(AppError::bad_request(
+                    "INVALID_TRANSPORT",
+                    "command cannot be empty for stdio transport",
+                ));
+            }
         }
         TransportType::Http | TransportType::Sse => {
             if let Some(url) = &request.url {
@@ -2611,7 +2657,10 @@ pub(crate) fn validate_header_entries(entries: &[HeaderEntry]) -> Result<(), App
     let mut probe = serde_json::Map::new();
     for entry in entries {
         if let Some(value) = entry.value.as_deref() {
-            probe.insert(entry.key.clone(), serde_json::Value::String(value.to_string()));
+            probe.insert(
+                entry.key.clone(),
+                serde_json::Value::String(value.to_string()),
+            );
         }
     }
     if probe.is_empty() {

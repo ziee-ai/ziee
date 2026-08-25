@@ -187,9 +187,7 @@ fn env_pairs_from_headers(headers: &serde_json::Value) -> Vec<(String, String)> 
 fn is_unsafe_env_name(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     const PROTECTED: &[&str] = &["PATH", "HOME", "LANG", "LC_ALL", "TZ"];
-    PROTECTED.contains(&upper.as_str())
-        || upper.starts_with("LD_")
-        || upper.starts_with("DYLD_")
+    PROTECTED.contains(&upper.as_str()) || upper.starts_with("LD_") || upper.starts_with("DYLD_")
 }
 
 /// Flap guard: after a failed spawn we refuse to re-spawn for `SPAWN_BACKOFF`.
@@ -362,8 +360,8 @@ pub async fn shutdown() {
 #[cfg(test)]
 mod tests {
     use super::{
-        current_env, env_pairs_from_headers, fingerprint, flap_backoff_active, is_unsafe_env_name,
-        shutdown, spawn_idle_reaper, SPAWN_BACKOFF, STATE,
+        SPAWN_BACKOFF, STATE, current_env, env_pairs_from_headers, fingerprint,
+        flap_backoff_active, is_unsafe_env_name, shutdown, spawn_idle_reaper,
     };
 
     use crate::modules::bio_mcp::{bio_mcp_server_id, repository::BioMcpRepository};
@@ -371,7 +369,6 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
 
     use std::time::{Duration, Instant};
-
 
     #[test]
     fn fingerprint_is_stable_and_value_sensitive() {
@@ -387,7 +384,6 @@ mod tests {
         d.push(("S2_API_KEY".to_string(), "k".to_string()));
         assert_ne!(fingerprint(&a), fingerprint(&d));
     }
-
 
     /// Env-fingerprint recycling (gap ca2a70a5189c): REMOVING a key (admin
     /// clears an API key) must change the fingerprint so the supervisor
@@ -405,10 +401,13 @@ mod tests {
             "removing a key must change the fingerprint (forces a recycle)"
         );
         let empty: Vec<(String, String)> = vec![];
-        assert_eq!(fingerprint(&empty), fingerprint(&[]), "empty env fp is stable");
+        assert_eq!(
+            fingerprint(&empty),
+            fingerprint(&[]),
+            "empty env fp is stable"
+        );
         assert_ne!(fingerprint(&empty), fingerprint(&removed));
     }
-
 
     /// The loader-hijack denylist (security control): PATH/HOME/LD_*/DYLD_* and
     /// friends are rejected as injectable sidecar env names (case-insensitive),
@@ -416,16 +415,26 @@ mod tests {
     #[test]
     fn is_unsafe_env_name_blocks_loader_hijack_vars() {
         for bad in [
-            "PATH", "path", "Home", "LD_PRELOAD", "ld_library_path",
-            "DYLD_INSERT_LIBRARIES", "LC_ALL", "TZ",
+            "PATH",
+            "path",
+            "Home",
+            "LD_PRELOAD",
+            "ld_library_path",
+            "DYLD_INSERT_LIBRARIES",
+            "LC_ALL",
+            "TZ",
         ] {
             assert!(is_unsafe_env_name(bad), "{bad} must be rejected");
         }
-        for ok in ["NCBI_API_KEY", "S2_API_KEY", "OPENFDA_API_KEY", "ONCOKB_TOKEN"] {
+        for ok in [
+            "NCBI_API_KEY",
+            "S2_API_KEY",
+            "OPENFDA_API_KEY",
+            "ONCOKB_TOKEN",
+        ] {
             assert!(!is_unsafe_env_name(ok), "{ok} must be allowed");
         }
     }
-
 
     /// The loader-hijack / whitelist-override env filter (security-critical: an
     /// admin must not inject these via the bio row's headers).
@@ -457,7 +466,6 @@ mod tests {
             assert!(!is_unsafe_env_name(n), "{n} must be allowed");
         }
     }
-
 
     /// The recycle decision (`env_fingerprint == fp` in `ensure_healthy`) must
     /// recycle the sidecar when a key is REMOVED and must NOT recycle on a mere
@@ -495,7 +503,6 @@ mod tests {
         let none: Vec<(String, String)> = Vec::new();
         assert_ne!(fingerprint(&one), fingerprint(&none));
     }
-
 
     /// Drives the REAL `current_env()` end-to-end against the bio row in the DB
     /// (the existing tests only cover its building blocks — the `is_unsafe_env_name`
@@ -557,7 +564,9 @@ mod tests {
             .await
             .expect("seed bio headers + enable");
 
-        let env = current_env().await.expect("current_env should succeed when enabled");
+        let env = current_env()
+            .await
+            .expect("current_env should succeed when enabled");
         // Denylisted (PATH, LD_PRELOAD) and empty (OPENFDA_API_KEY) are gone;
         // the legitimate keys survive, SORTED by name.
         assert_eq!(
@@ -575,7 +584,9 @@ mod tests {
             .execute(&pool)
             .await
             .expect("disable bio row");
-        let err = current_env().await.expect_err("disabled bio row must error");
+        let err = current_env()
+            .await
+            .expect_err("disabled bio row must error");
         assert_eq!(err.error_code(), "BIO_DISABLED");
 
         // Hygiene: leave the shared bio row re-enabled with empty headers so
@@ -586,7 +597,6 @@ mod tests {
             .await
             .ok();
     }
-
 
     /// The idle reaper's first `interval.tick()` fires immediately, so spawning
     /// it runs one iteration right away. Over an EMPTY state (no sidecar in this
@@ -610,7 +620,6 @@ mod tests {
         );
     }
 
-
     /// `shutdown()` is the graceful-shutdown hook: with no sidecar running it
     /// must be a safe no-op (no panic / no lock poisoning), idempotent across
     /// repeated calls, and leave the supervisor state with no `running` sidecar
@@ -627,17 +636,26 @@ mod tests {
         );
     }
 
-
     /// Flap guard: refuse re-spawn only while a recent failure is inside the
     /// SPAWN_BACKOFF window; no failure (None) or an old one never backs off.
     #[test]
     fn flap_backoff_window() {
-        assert!(!flap_backoff_active(None), "no prior failure → never back off");
-        assert!(flap_backoff_active(Some(Instant::now())), "a just-now failure must back off");
-        let old = Instant::now().checked_sub(SPAWN_BACKOFF + Duration::from_secs(1)).unwrap();
-        assert!(!flap_backoff_active(Some(old)), "a failure older than SPAWN_BACKOFF must NOT back off");
+        assert!(
+            !flap_backoff_active(None),
+            "no prior failure → never back off"
+        );
+        assert!(
+            flap_backoff_active(Some(Instant::now())),
+            "a just-now failure must back off"
+        );
+        let old = Instant::now()
+            .checked_sub(SPAWN_BACKOFF + Duration::from_secs(1))
+            .unwrap();
+        assert!(
+            !flap_backoff_active(Some(old)),
+            "a failure older than SPAWN_BACKOFF must NOT back off"
+        );
     }
-
 
     #[test]
     fn env_pairs_from_headers_filters_empty_and_unsafe_and_sorts() {
@@ -665,11 +683,16 @@ mod tests {
         );
         // None of the rejected names leak into the injected env.
         let names: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
-        for blocked in ["PATH", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "EMPTY_KEY", "NUMERIC"] {
+        for blocked in [
+            "PATH",
+            "LD_PRELOAD",
+            "DYLD_INSERT_LIBRARIES",
+            "EMPTY_KEY",
+            "NUMERIC",
+        ] {
             assert!(!names.contains(&blocked), "{blocked} must not be injected");
         }
     }
-
 
     #[test]
     fn env_pairs_from_headers_empty_object_is_empty() {

@@ -58,13 +58,21 @@ pub async fn jsonrpc_handler(
     let raw: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(e) => {
-            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::parse_error(e.to_string()))
+            return error_response(
+                None,
+                StatusCode::BAD_REQUEST,
+                JsonRpcError::parse_error(e.to_string()),
+            );
         }
     };
     let req: JsonRpcRequest = match serde_json::from_value(raw) {
         Ok(r) => r,
         Err(e) => {
-            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::invalid_request(e.to_string()))
+            return error_response(
+                None,
+                StatusCode::BAD_REQUEST,
+                JsonRpcError::invalid_request(e.to_string()),
+            );
         }
     };
     if req.id.is_none() {
@@ -88,15 +96,37 @@ pub async fn jsonrpc_handler(
             Ok(value) => ok_response(id, value),
             Err(e) => error_response(id, e.0, e.1),
         },
-        _ => error_response(id, StatusCode::OK, JsonRpcError::method_not_found(&req.method)),
+        _ => error_response(
+            id,
+            StatusCode::OK,
+            JsonRpcError::method_not_found(&req.method),
+        ),
     }
 }
 
 fn ok_response(id: Option<Value>, result: Value) -> Response {
-    (StatusCode::OK, Json(JsonRpcResponse { jsonrpc: "2.0", id, result: Some(result), error: None })).into_response()
+    (
+        StatusCode::OK,
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: Some(result),
+            error: None,
+        }),
+    )
+        .into_response()
 }
 fn error_response(id: Option<Value>, http: StatusCode, err: JsonRpcError) -> Response {
-    (http, Json(JsonRpcResponse { jsonrpc: "2.0", id, result: None, error: Some(err) })).into_response()
+    (
+        http,
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: None,
+            error: Some(err),
+        }),
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]
@@ -173,26 +203,44 @@ async fn search_knowledge(
     let kb_ids = match args.knowledge_base_ids {
         Some(ids) if !ids.is_empty() => ids,
         _ => match conversation_id {
-            Some(cid) => Repos.knowledge_base.attached_kb_ids_for_conversation(user_id, cid).await?,
+            Some(cid) => {
+                Repos
+                    .knowledge_base
+                    .attached_kb_ids_for_conversation(user_id, cid)
+                    .await?
+            }
             None => Vec::new(),
         },
     };
-    let scope_ids = Repos.knowledge_base.resolve_scope_file_ids(user_id, &kb_ids).await?;
+    let scope_ids = Repos
+        .knowledge_base
+        .resolve_scope_file_ids(user_id, &kb_ids)
+        .await?;
 
     let admin = Repos.file_rag.get_admin_settings().await?;
     // Retrieval limits are admin-configurable (Document RAG admin settings).
     let max_top_k = admin.search_max_top_k as i64;
-    let top_k = args.top_k.unwrap_or(admin.default_top_k as i64).clamp(1, max_top_k);
+    let top_k = args
+        .top_k
+        .unwrap_or(admin.default_top_k as i64)
+        .clamp(1, max_top_k);
     let max_hit_chars = admin.search_max_hit_chars as usize;
     let snippet_chars = admin.search_snippet_chars as usize;
 
     let result = crate::modules::file_rag::retrieval::semantic_search(
-        &scope_ids, user_id, &args.query, top_k, &admin,
+        &scope_ids,
+        user_id,
+        &args.query,
+        top_k,
+        &admin,
     )
     .await?;
 
     let file_ids: Vec<Uuid> = result.hits.iter().map(|h| h.file_id).collect();
-    let names = Repos.knowledge_base.filenames_for(user_id, &file_ids).await?;
+    let names = Repos
+        .knowledge_base
+        .filenames_for(user_id, &file_ids)
+        .await?;
     let name_of = |fid: &Uuid| names.get(fid).cloned().unwrap_or_default();
 
     // Indexing-incomplete signal (DEC-37): count how many scope files are
@@ -224,14 +272,22 @@ async fn search_knowledge(
         .collect();
 
     let summary = if result.hits.is_empty() {
-        format!("No passages in the knowledge base matched '{}'.", args.query)
+        format!(
+            "No passages in the knowledge base matched '{}'.",
+            args.query
+        )
     } else {
         let lines: Vec<String> = result
             .hits
             .iter()
             .map(|h| {
                 let snippet: String = h.content.chars().take(snippet_chars).collect();
-                format!("{}:p{}: {}", name_of(&h.file_id), h.page_number, snippet.replace('\n', " "))
+                format!(
+                    "{}:p{}: {}",
+                    name_of(&h.file_id),
+                    h.page_number,
+                    snippet.replace('\n', " ")
+                )
             })
             .collect();
         let mut s = lines.join("\n");
@@ -279,10 +335,16 @@ async fn list_knowledge_bases_tool(user_id: Uuid) -> Result<Value, AppError> {
 pub async fn list_kbs(
     auth: RequirePermissions<(KnowledgeBaseUse,)>,
 ) -> ApiResult<Json<Vec<KnowledgeBase>>> {
-    Ok((StatusCode::OK, Json(Repos.knowledge_base.list(auth.user.id).await?)))
+    Ok((
+        StatusCode::OK,
+        Json(Repos.knowledge_base.list(auth.user.id).await?),
+    ))
 }
 pub fn list_kbs_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.list").summary("List the caller's knowledge bases.").response::<200, Json<Vec<KnowledgeBase>>>()
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.list")
+        .summary("List the caller's knowledge bases.")
+        .response::<200, Json<Vec<KnowledgeBase>>>()
 }
 
 /// Max knowledge-base name length, in characters.
@@ -343,7 +405,10 @@ pub async fn create_kb(
     Ok((StatusCode::CREATED, Json(kb)))
 }
 pub fn create_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.create").summary("Create a knowledge base.").response::<201, Json<KnowledgeBase>>()
+    with_permission::<(KnowledgeBaseManage,)>(op)
+        .id("KnowledgeBase.create")
+        .summary("Create a knowledge base.")
+        .response::<201, Json<KnowledgeBase>>()
 }
 
 pub async fn get_kb(
@@ -358,7 +423,10 @@ pub async fn get_kb(
     Ok((StatusCode::OK, Json(kb)))
 }
 pub fn get_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.get").summary("Get one knowledge base.").response::<200, Json<KnowledgeBase>>()
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.get")
+        .summary("Get one knowledge base.")
+        .response::<200, Json<KnowledgeBase>>()
 }
 
 pub async fn update_kb(
@@ -393,7 +461,10 @@ pub async fn update_kb(
     Ok((StatusCode::OK, Json(kb)))
 }
 pub fn update_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.update").summary("Rename / describe a knowledge base.").response::<200, Json<KnowledgeBase>>()
+    with_permission::<(KnowledgeBaseManage,)>(op)
+        .id("KnowledgeBase.update")
+        .summary("Rename / describe a knowledge base.")
+        .response::<200, Json<KnowledgeBase>>()
 }
 
 pub async fn delete_kb(
@@ -409,7 +480,9 @@ pub async fn delete_kb(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn delete_kb_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.delete").summary("Delete a knowledge base.")
+    with_permission::<(KnowledgeBaseManage,)>(op)
+        .id("KnowledgeBase.delete")
+        .summary("Delete a knowledge base.")
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -439,7 +512,8 @@ pub async fn list_documents(
 pub fn list_documents_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(KnowledgeBaseUse,)>(op)
         .id("KnowledgeBase.listDocuments")
-        .summary("List a KB's documents with index status.").response::<200, Json<Vec<KnowledgeBaseDocument>>>()
+        .summary("List a KB's documents with index status.")
+        .response::<200, Json<Vec<KnowledgeBaseDocument>>>()
 }
 
 pub async fn attach_documents(
@@ -470,7 +544,10 @@ pub async fn attach_documents(
     Ok((StatusCode::OK, Json(result)))
 }
 pub fn attach_documents_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.attachDocuments").summary("Attach existing files to a KB.").response::<200, Json<AttachDocumentsResult>>()
+    with_permission::<(KnowledgeBaseManage,)>(op)
+        .id("KnowledgeBase.attachDocuments")
+        .summary("Attach existing files to a KB.")
+        .response::<200, Json<AttachDocumentsResult>>()
 }
 
 pub async fn remove_document(
@@ -490,7 +567,9 @@ pub async fn remove_document(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn remove_document_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.removeDocument").summary("Remove a document from a KB (join only).")
+    with_permission::<(KnowledgeBaseManage,)>(op)
+        .id("KnowledgeBase.removeDocument")
+        .summary("Remove a document from a KB (join only).")
 }
 
 pub async fn reindex_document(
@@ -504,7 +583,9 @@ pub async fn reindex_document(
     Ok((StatusCode::ACCEPTED, ()))
 }
 pub fn reindex_document_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseManage,)>(op).id("KnowledgeBase.reindexDocument").summary("Retry indexing a KB document.")
+    with_permission::<(KnowledgeBaseManage,)>(op)
+        .id("KnowledgeBase.reindexDocument")
+        .summary("Retry indexing a KB document.")
 }
 
 // ── detail-page: verify retrieval + retrieval mode + "used in" (FB-8) ────
@@ -551,19 +632,32 @@ pub async fn search_kb(
     if !Repos.knowledge_base.owns(user_id, id).await? {
         return Err(AppError::not_found("KnowledgeBase").into());
     }
-    let scope_ids = Repos.knowledge_base.resolve_scope_file_ids(user_id, &[id]).await?;
+    let scope_ids = Repos
+        .knowledge_base
+        .resolve_scope_file_ids(user_id, &[id])
+        .await?;
     let admin = Repos.file_rag.get_admin_settings().await?;
     let max_top_k = admin.search_max_top_k as i64;
-    let top_k = body.top_k.unwrap_or(admin.default_top_k as i64).clamp(1, max_top_k);
+    let top_k = body
+        .top_k
+        .unwrap_or(admin.default_top_k as i64)
+        .clamp(1, max_top_k);
     let max_hit_chars = admin.search_max_hit_chars as usize;
 
     let result = crate::modules::file_rag::retrieval::semantic_search(
-        &scope_ids, user_id, &body.query, top_k, &admin,
+        &scope_ids,
+        user_id,
+        &body.query,
+        top_k,
+        &admin,
     )
     .await?;
 
     let file_ids: Vec<Uuid> = result.hits.iter().map(|h| h.file_id).collect();
-    let names = Repos.knowledge_base.filenames_for(user_id, &file_ids).await?;
+    let names = Repos
+        .knowledge_base
+        .filenames_for(user_id, &file_ids)
+        .await?;
     let searchable = scope_ids.len() as i64
         - Repos
             .knowledge_base
@@ -618,8 +712,14 @@ pub async fn kb_usage(
     Ok((
         StatusCode::OK,
         Json(KnowledgeBaseUsage {
-            conversations: convs.into_iter().map(|(id, label)| UsageRef { id, label }).collect(),
-            projects: projs.into_iter().map(|(id, label)| UsageRef { id, label }).collect(),
+            conversations: convs
+                .into_iter()
+                .map(|(id, label)| UsageRef { id, label })
+                .collect(),
+            projects: projs
+                .into_iter()
+                .map(|(id, label)| UsageRef { id, label })
+                .collect(),
         }),
     ))
 }
@@ -637,14 +737,20 @@ pub async fn attach_conversation(
     origin: SyncOrigin,
     Path((cid, kb_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<()> {
-    if !Repos.knowledge_base.attach_to_conversation(auth.user.id, cid, kb_id).await? {
+    if !Repos
+        .knowledge_base
+        .attach_to_conversation(auth.user.id, cid, kb_id)
+        .await?
+    {
         return Err(AppError::not_found("KnowledgeBase").into());
     }
     emit_kb_changed(auth.user.id, SyncAction::Update, kb_id, origin.0);
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn attach_conversation_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.attachConversation").summary("Attach a KB to a conversation.")
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.attachConversation")
+        .summary("Attach a KB to a conversation.")
 }
 
 pub async fn detach_conversation(
@@ -652,12 +758,17 @@ pub async fn detach_conversation(
     origin: SyncOrigin,
     Path((cid, kb_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<()> {
-    Repos.knowledge_base.detach_from_conversation(cid, kb_id).await?;
+    Repos
+        .knowledge_base
+        .detach_from_conversation(cid, kb_id)
+        .await?;
     emit_kb_changed(auth.user.id, SyncAction::Update, kb_id, origin.0);
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn detach_conversation_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.detachConversation").summary("Detach a KB from a conversation.")
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.detachConversation")
+        .summary("Detach a KB from a conversation.")
 }
 
 pub async fn attach_project(
@@ -665,14 +776,20 @@ pub async fn attach_project(
     origin: SyncOrigin,
     Path((pid, kb_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<()> {
-    if !Repos.knowledge_base.attach_to_project(auth.user.id, pid, kb_id).await? {
+    if !Repos
+        .knowledge_base
+        .attach_to_project(auth.user.id, pid, kb_id)
+        .await?
+    {
         return Err(AppError::not_found("KnowledgeBase").into());
     }
     emit_kb_changed(auth.user.id, SyncAction::Update, kb_id, origin.0);
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn attach_project_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.attachProject").summary("Attach a KB to a project.")
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.attachProject")
+        .summary("Attach a KB to a project.")
 }
 
 pub async fn detach_project(
@@ -685,7 +802,9 @@ pub async fn detach_project(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 pub fn detach_project_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.detachProject").summary("Detach a KB from a project.")
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.detachProject")
+        .summary("Detach a KB from a project.")
 }
 
 /// KBs directly attached to a conversation — drives the composer's attach chip
@@ -694,11 +813,17 @@ pub async fn list_conversation_kbs(
     auth: RequirePermissions<(KnowledgeBaseUse,)>,
     Path(cid): Path<Uuid>,
 ) -> ApiResult<Json<Vec<KnowledgeBase>>> {
-    let kbs = Repos.knowledge_base.attached_kbs_for_conversation(auth.user.id, cid).await?;
+    let kbs = Repos
+        .knowledge_base
+        .attached_kbs_for_conversation(auth.user.id, cid)
+        .await?;
     Ok((StatusCode::OK, Json(kbs)))
 }
 pub fn list_conversation_kbs_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.listConversation").summary("List KBs attached to a conversation.").response::<200, Json<Vec<KnowledgeBase>>>()
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.listConversation")
+        .summary("List KBs attached to a conversation.")
+        .response::<200, Json<Vec<KnowledgeBase>>>()
 }
 
 /// KBs attached to a project — drives the project "Knowledge bases" extension.
@@ -707,18 +832,24 @@ pub async fn list_project_kbs(
     auth: RequirePermissions<(KnowledgeBaseUse,)>,
     Path(pid): Path<Uuid>,
 ) -> ApiResult<Json<Vec<KnowledgeBase>>> {
-    let kbs = Repos.knowledge_base.attached_kbs_for_project(auth.user.id, pid).await?;
+    let kbs = Repos
+        .knowledge_base
+        .attached_kbs_for_project(auth.user.id, pid)
+        .await?;
     Ok((StatusCode::OK, Json(kbs)))
 }
 pub fn list_project_kbs_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(KnowledgeBaseUse,)>(op).id("KnowledgeBase.listProject").summary("List KBs attached to a project.").response::<200, Json<Vec<KnowledgeBase>>>()
+    with_permission::<(KnowledgeBaseUse,)>(op)
+        .id("KnowledgeBase.listProject")
+        .summary("List KBs attached to a project.")
+        .response::<200, Json<Vec<KnowledgeBase>>>()
 }
 
 #[cfg(test)]
 mod stringified_arg_tests {
     use super::*;
-    use crate::common::tool_args::conformance::{assert_arg_conformance, ArgSite};
     use crate::common::tool_args::ArgShape;
+    use crate::common::tool_args::conformance::{ArgSite, assert_arg_conformance};
     use serde_json::json;
 
     /// A stringified `knowledge_base_ids` used to hard-fail serde AND destroy
@@ -751,7 +882,11 @@ mod stringified_arg_tests {
             absent_yields: None,
             extract: |args: serde_json::Value| {
                 decode_search_args(&args)
-                    .map(|v| v.get("knowledge_base_ids").cloned().filter(|x| !x.is_null()))
+                    .map(|v| {
+                        v.get("knowledge_base_ids")
+                            .cloned()
+                            .filter(|x| !x.is_null())
+                    })
                     .map_err(|e| format!("{e}"))
             },
         });

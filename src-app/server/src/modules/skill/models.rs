@@ -5,7 +5,6 @@
 //! lives on disk under `extracted_path`; the row only carries metadata
 //! + parsed SKILL.md frontmatter.
 
-
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

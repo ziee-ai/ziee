@@ -412,6 +412,15 @@ export interface BackgroundRunCancelAck {
  *  by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).
  */
 export interface BackgroundRunDetail {
+  /**
+   * The durable agent-loop transcript — one entry per thinking block / tool
+   *  call & result / assistant message, projected from
+   *  `step_logs_json['agent::agent_activity']` and rendered by the workflow
+   *  `AgentActivityTimeline`. Empty when the run produced no activity. The
+   *  entries are `ProgressKind::AgentActivity` values (the FE type is
+   *  `Extract<ProgressKind, {type:'agent_activity'}>`).
+   */
+  activity?: ProgressKind[]
   conversation_id?: string
   created_at: string
   /** Terminal error text for a failed run (else `None`). */
@@ -3201,6 +3210,12 @@ export interface ListPromptsResponse {
 
 export interface ListResourcesResponse {
   resources: Resource[]
+}
+
+/** Query params for `GET /api/subagent-runs`. */
+export interface ListSubAgentRunsQuery {
+  /** The parent assistant `message_id` whose fan-out children to list. */
+  parent_message_id: string
 }
 
 /**
@@ -6543,6 +6558,30 @@ export interface SubAgentActivityChildDto {
 export type SubAgentActivityChildStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 /**
+ * Response for `GET /api/subagent-runs?parent_message_id=…` — the fan-out children
+ *  of one parent chat turn, spawn-ordered. Hard-bounded by the fan-out cap, so no
+ *  pagination.
+ */
+export interface SubAgentRunListResponse {
+  children: SubAgentRunSummary[]
+}
+
+/**
+ * One fan-out CHILD sub-agent run, listed under its parent chat turn
+ *  (`GET /api/subagent-runs?parent_message_id=…`). The compact projection — id,
+ *  friendly label, terminal/running status, created_at. The full per-child
+ *  transcript is fetched separately via `GET /api/subagent-runs/{id}` (which
+ *  reuses [`BackgroundRunDetail`], since a child is a background-kind run).
+ */
+export interface SubAgentRunSummary {
+  created_at: string
+  id: string
+  /** Friendly per-child label (the child's first system-prompt line), capped. */
+  label?: string
+  status: string
+}
+
+/**
  * Deployment-wide summarization admin settings (singleton row).
  *
  *  `default_summarization_model_id` is intentionally nullable: when
@@ -8544,6 +8583,8 @@ export type ApiEndpointParameters = {
   'SkillSystem.removeFromGroup': { id: string; group_id: string }
   'SkillSystem.setGroups': { id: string } & SkillGroupsRequest
   'SkillSystem.update': { id: string } & UpdateSkill
+  'SubAgentRuns.get': { child_id: string }
+  'SubAgentRuns.list': { parent_message_id: string }
   'Summarization.getConversationSummary': { id: string }
   'SummarizationAdmin.get': void
   'SummarizationAdmin.update': UpdateSummarizationAdminSettingsRequest
@@ -8992,6 +9033,8 @@ export type ApiEndpointResponses = {
   'SkillSystem.removeFromGroup': void
   'SkillSystem.setGroups': void
   'SkillSystem.update': Skill
+  'SubAgentRuns.get': BackgroundRunDetail
+  'SubAgentRuns.list': SubAgentRunListResponse
   'Summarization.getConversationSummary': ConversationSummary | null
   'SummarizationAdmin.get': SummarizationAdminSettings
   'SummarizationAdmin.update': SummarizationAdminSettings

@@ -7,7 +7,7 @@
 
 use uuid::Uuid;
 
-use crate::modules::sync::event::{publish, Audience, SyncAction, SyncEntity};
+use crate::modules::sync::event::{Audience, SyncAction, SyncEntity, publish};
 
 /// Notify the owner that a file's head/version set changed. `origin_conn` is
 /// the originating SSE connection (skipped for self-echo) when known, else

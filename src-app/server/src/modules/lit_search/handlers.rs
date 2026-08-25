@@ -1533,8 +1533,8 @@ mod tests {
 #[cfg(test)]
 mod stringified_arg_tests {
     use super::*;
-    use crate::common::tool_args::conformance::{assert_arg_conformance, ArgSite};
     use crate::common::tool_args::ArgShape;
+    use crate::common::tool_args::conformance::{ArgSite, assert_arg_conformance};
     use serde_json::json;
 
     /// All five lit_search array arguments decode before their typed
@@ -1550,13 +1550,13 @@ mod stringified_arg_tests {
         let parsed: SearchArgs = serde_json::from_value(out).expect("typed parse must now succeed");
         assert_eq!(parsed.queries.unwrap().len(), 2);
 
-        let err = decode_array_args(
-            &json!({ "ids": "not json {" }),
-            &[("ids", LIT_IDS_EXAMPLE)],
-        )
-        .unwrap_err();
+        let err = decode_array_args(&json!({ "ids": "not json {" }), &[("ids", LIT_IDS_EXAMPLE)])
+            .unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("ids") && msg.contains("JSON array"), "got: {msg}");
+        assert!(
+            msg.contains("ids") && msg.contains("JSON array"),
+            "got: {msg}"
+        );
         assert!(msg.contains("PMID"), "must carry a copyable example: {msg}");
     }
 

@@ -8,7 +8,9 @@ static JWT_CONFIG: OnceCell<Arc<JwtConfig>> = OnceCell::new();
 
 /// Initialize file module JWT config (called once during module init)
 pub fn init_jwt_config(config: Arc<JwtConfig>) {
-    JWT_CONFIG.set(config).expect("JWT config already initialized");
+    JWT_CONFIG
+        .set(config)
+        .expect("JWT config already initialized");
 }
 
 /// Get JWT config for file downloads

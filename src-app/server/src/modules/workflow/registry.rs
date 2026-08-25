@@ -23,7 +23,6 @@
 //! the natural primitive for "wake every waiter when this fires", which
 //! is exactly the runner's per-step `select!` shape.
 
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -177,7 +176,8 @@ pub fn set_timeout(run_id: Uuid, secs: u64) -> bool {
 /// already exited (runner removed itself from the registry).
 pub fn cancel(run_id: Uuid) -> bool {
     if let Some(h) = get(run_id) {
-        h.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        h.cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         h.cancel.notify_waiters();
         true
     } else {
@@ -263,7 +263,10 @@ pub fn set_pending_elicitation(
         .pending_elicitation
         .lock()
         .map_err(|_| "elicit slot poisoned")?;
-    *slot = Some(PendingElicit { id: elicitation_id, tx });
+    *slot = Some(PendingElicit {
+        id: elicitation_id,
+        tx,
+    });
     Ok(rx)
 }
 
@@ -334,8 +337,7 @@ pub fn reap_stale() {
                 .load(std::sync::atomic::Ordering::Relaxed)
                 .min(crate::modules::workflow::runner::MAX_RUN_TIMEOUT_SECS);
             secs != 0
-                && now.duration_since(h.created_at)
-                    > Duration::from_secs(secs) + HANDLE_TTL_BUFFER
+                && now.duration_since(h.created_at) > Duration::from_secs(secs) + HANDLE_TTL_BUFFER
         })
         .map(|e| *e.key())
         .collect();
@@ -434,7 +436,10 @@ mod tests {
         assert!(set_timeout(run_id, 0)); // unbounded
         assert_eq!(h.timeout_secs.load(std::sync::atomic::Ordering::Relaxed), 0);
         assert!(set_timeout(run_id, 7200));
-        assert_eq!(h.timeout_secs.load(std::sync::atomic::Ordering::Relaxed), 7200);
+        assert_eq!(
+            h.timeout_secs.load(std::sync::atomic::Ordering::Relaxed),
+            7200
+        );
         unregister(run_id);
         // Gone handle → false (terminal run).
         assert!(!set_timeout(run_id, 60));
@@ -445,7 +450,8 @@ mod tests {
         let run_id = Uuid::new_v4();
         let h = register(run_id);
         // Mark unbounded; even an "old" handle must survive the reaper.
-        h.timeout_secs.store(0, std::sync::atomic::Ordering::Relaxed);
+        h.timeout_secs
+            .store(0, std::sync::atomic::Ordering::Relaxed);
         reap_stale();
         assert!(get(run_id).is_some(), "unbounded handle must not be reaped");
         unregister(run_id);
@@ -462,7 +468,10 @@ mod tests {
         // Every shipped kind resolves via the slice lookup (no hardcoded arm).
         assert!(JOB_KIND_POLICIES.len() >= 3);
         for k in ["workflow", "sandbox_exec", "subagent"] {
-            assert!(policy_for(k).is_some(), "kind '{k}' resolves via the registry");
+            assert!(
+                policy_for(k).is_some(),
+                "kind '{k}' resolves via the registry"
+            );
         }
         // An unregistered kind is None (a new kind plugs in by REGISTERING, not
         // by editing this lookup).

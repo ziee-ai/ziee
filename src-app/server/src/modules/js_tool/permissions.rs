@@ -34,7 +34,6 @@ pub struct JsToolSettingsManage;
 impl PermissionCheck for JsToolSettingsManage {
     const NAME: &'static str = "JsToolSettingsManage";
     const PERMISSION: &'static str = "js_tool::settings::manage";
-    const DESCRIPTION: &'static str =
-        "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.";
+    const DESCRIPTION: &'static str = "Update the run_js (js_tool) memory/stack/wall-clock/approval-timeout/concurrency/trace caps.";
     const MODULE: &'static str = "js_tool";
 }

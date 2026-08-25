@@ -159,13 +159,19 @@ pub(crate) fn route_decision(
 
 #[cfg(test)]
 mod route_decision_tests {
-    use super::{route_decision, RouteDecision};
+    use super::{RouteDecision, route_decision};
 
     #[test]
     fn anthropic_gemini_take_native_image_and_pdf() {
         for pt in ["anthropic", "gemini"] {
-            assert_eq!(route_decision(pt, "application/pdf", false, 3, false), RouteDecision::ProviderApi);
-            assert_eq!(route_decision(pt, "image/png", false, 0, false), RouteDecision::ProviderApi);
+            assert_eq!(
+                route_decision(pt, "application/pdf", false, 3, false),
+                RouteDecision::ProviderApi
+            );
+            assert_eq!(
+                route_decision(pt, "image/png", false, 0, false),
+                RouteDecision::ProviderApi
+            );
         }
     }
 
@@ -173,30 +179,57 @@ mod route_decision_tests {
     fn only_real_openai_uploads_pdf_others_fall_through() {
         // Mapped-but-not-real openai (groq/deepseek/etc) → NOT provider API.
         // A PDF with extracted text falls to InlineText; without text → Base64.
-        assert_eq!(route_decision("openai", "application/pdf", false, 5, false), RouteDecision::InlineText);
-        assert_eq!(route_decision("openai", "application/pdf", false, 0, false), RouteDecision::Base64);
+        assert_eq!(
+            route_decision("openai", "application/pdf", false, 5, false),
+            RouteDecision::InlineText
+        );
+        assert_eq!(
+            route_decision("openai", "application/pdf", false, 0, false),
+            RouteDecision::Base64
+        );
         // A genuine openai provider uploads via the Files API.
-        assert_eq!(route_decision("openai", "application/pdf", true, 5, false), RouteDecision::ProviderApi);
+        assert_eq!(
+            route_decision("openai", "application/pdf", true, 5, false),
+            RouteDecision::ProviderApi
+        );
     }
 
     #[test]
     fn office_doc_with_text_inlines_but_text_like_and_images_do_not() {
         let docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        assert_eq!(route_decision("openai", docx, false, 4, false), RouteDecision::InlineText);
+        assert_eq!(
+            route_decision("openai", docx, false, 4, false),
+            RouteDecision::InlineText
+        );
         // text/* and is_text_like go base64 (verbatim text path), never inline.
-        assert_eq!(route_decision("openai", "text/plain", false, 4, false), RouteDecision::Base64);
-        assert_eq!(route_decision("openai", "application/json", false, 4, true), RouteDecision::Base64);
+        assert_eq!(
+            route_decision("openai", "text/plain", false, 4, false),
+            RouteDecision::Base64
+        );
+        assert_eq!(
+            route_decision("openai", "application/json", false, 4, true),
+            RouteDecision::Base64
+        );
         // Images always base64 here (image file_id is provider-API only).
-        assert_eq!(route_decision("openai", "image/png", false, 4, false), RouteDecision::Base64);
+        assert_eq!(
+            route_decision("openai", "image/png", false, 4, false),
+            RouteDecision::Base64
+        );
         // No extracted text → base64 even for an office mime.
-        assert_eq!(route_decision("openai", docx, false, 0, false), RouteDecision::Base64);
+        assert_eq!(
+            route_decision("openai", docx, false, 0, false),
+            RouteDecision::Base64
+        );
     }
 
     #[test]
     fn anthropic_office_doc_with_text_inlines() {
         // anthropic only takes native image/pdf; an office doc still inlines text.
         let docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        assert_eq!(route_decision("anthropic", docx, false, 2, false), RouteDecision::InlineText);
+        assert_eq!(
+            route_decision("anthropic", docx, false, 2, false),
+            RouteDecision::InlineText
+        );
     }
 }
 
@@ -335,9 +368,7 @@ async fn process_via_base64(
                 text: format!("[File: {filename}]\n{text}"),
             }]),
             Err(_) => Ok(vec![ContentBlock::Text {
-                text: format!(
-                    "[File: {filename} ({mime_type}) — non-UTF8 content omitted]"
-                ),
+                text: format!("[File: {filename} ({mime_type}) — non-UTF8 content omitted]"),
             }]),
         }
     } else {

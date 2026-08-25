@@ -35,7 +35,10 @@ fn resolve_system_binary(name: &str) -> Option<std::path::PathBuf> {
             return Some(candidate);
         }
         // macOS sometimes has system_profiler under /usr/sbin/
-        let alt = std::path::PathBuf::from(dir).join("usr").join("sbin").join(name);
+        let alt = std::path::PathBuf::from(dir)
+            .join("usr")
+            .join("sbin")
+            .join(name);
         if alt.is_file() {
             return Some(alt);
         }
@@ -372,8 +375,16 @@ pub fn recommend_backend_for(
 /// GPU versions and picks the best artifact from `available`.
 pub fn recommend_backend(available: &[String]) -> Option<String> {
     let os = host_platform();
-    let cuda = if is_cuda_available() { detect_cuda_version() } else { None };
-    let rocm = if is_rocm_available() { detect_rocm_version() } else { None };
+    let cuda = if is_cuda_available() {
+        detect_cuda_version()
+    } else {
+        None
+    };
+    let rocm = if is_rocm_available() {
+        detect_rocm_version()
+    } else {
+        None
+    };
     let metal = os == "macos" && is_metal_available();
     recommend_backend_for(&os, cuda, rocm, metal, available)
 }
@@ -405,10 +416,11 @@ fn is_cuda_available_uncached() -> bool {
     // Closes 08-llm-local-runtime F-14 (Low). If the binary is not in
     // any trusted dir we skip this probe.
     if let Some(output) = probe_trusted("nvidia-smi", &[])
-        && output.status.success() {
-            tracing::debug!("nvidia-smi command succeeded");
-            return true;
-        }
+        && output.status.success()
+    {
+        tracing::debug!("nvidia-smi command succeeded");
+        return true;
+    }
 
     false
 }
@@ -477,10 +489,11 @@ fn is_rocm_available_uncached() -> bool {
 
     // Fallback: try rocm-smi command (absolute-path resolved, no PATH lookup)
     if let Some(output) = probe_trusted("rocm-smi", &[])
-        && output.status.success() {
-            tracing::debug!("rocm-smi command succeeded");
-            return true;
-        }
+        && output.status.success()
+    {
+        tracing::debug!("rocm-smi command succeeded");
+        return true;
+    }
 
     false
 }
@@ -589,7 +602,10 @@ mod tests {
 
     #[test]
     fn none_when_nothing_published() {
-        assert_eq!(recommend_backend_for("linux", Some((12, 4)), None, false, &[]), None);
+        assert_eq!(
+            recommend_backend_for("linux", Some((12, 4)), None, false, &[]),
+            None
+        );
     }
 
     #[test]
@@ -602,7 +618,10 @@ mod tests {
         };
         let start = std::time::Instant::now();
         let out = probe_command_with_timeout(sleep, &["10"], Duration::from_millis(150));
-        assert!(out.is_none(), "a probe exceeding the timeout must yield None");
+        assert!(
+            out.is_none(),
+            "a probe exceeding the timeout must yield None"
+        );
         assert!(
             start.elapsed() < Duration::from_secs(3),
             "must abandon the wait, not block for the child's full runtime"

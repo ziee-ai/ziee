@@ -140,13 +140,11 @@ impl ProjectExtension for McpProjectExtension {
         // duplicate_in_tx has already inserted with the user_id from
         // the request auth). The destination project is owned by the
         // calling user — read it back to get the FK.
-        let user_id = sqlx::query_scalar!(
-            "SELECT user_id FROM projects WHERE id = $1",
-            dst_project_id
-        )
-        .fetch_one(&mut **tx)
-        .await
-        .map_err(AppError::database_error)?;
+        let user_id =
+            sqlx::query_scalar!("SELECT user_id FROM projects WHERE id = $1", dst_project_id)
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(AppError::database_error)?;
 
         let copied = Repos
             .mcp_settings

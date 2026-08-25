@@ -56,9 +56,15 @@ mod tests {
     #[test]
     fn permission_strings_are_stable() {
         assert_eq!(LlmRepositoriesRead::PERMISSION, "llm_repositories::read");
-        assert_eq!(LlmRepositoriesCreate::PERMISSION, "llm_repositories::create");
+        assert_eq!(
+            LlmRepositoriesCreate::PERMISSION,
+            "llm_repositories::create"
+        );
         assert_eq!(LlmRepositoriesEdit::PERMISSION, "llm_repositories::edit");
-        assert_eq!(LlmRepositoriesDelete::PERMISSION, "llm_repositories::delete");
+        assert_eq!(
+            LlmRepositoriesDelete::PERMISSION,
+            "llm_repositories::delete"
+        );
     }
 
     #[test]
@@ -84,7 +90,11 @@ mod tests {
         let mut sorted = names.to_vec();
         sorted.sort();
         sorted.dedup();
-        assert_eq!(sorted.len(), names.len(), "permission NAME constants must be distinct");
+        assert_eq!(
+            sorted.len(),
+            names.len(),
+            "permission NAME constants must be distinct"
+        );
     }
 
     #[test]
@@ -95,7 +105,10 @@ mod tests {
             LlmRepositoriesEdit::PERMISSION,
             LlmRepositoriesDelete::PERMISSION,
         ] {
-            assert!(p.starts_with("llm_repositories::"), "{p} must be llm_repositories-namespaced");
+            assert!(
+                p.starts_with("llm_repositories::"),
+                "{p} must be llm_repositories-namespaced"
+            );
         }
     }
 }

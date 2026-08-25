@@ -87,7 +87,9 @@ pub enum ScheduleError {
     BadCron(String),
     BadTimezone(String),
     RunAtInPast,
-    TooFrequent { min_interval_seconds: i64 },
+    TooFrequent {
+        min_interval_seconds: i64,
+    },
     /// A recurring schedule has no future occurrence at all (e.g. `0 0 30 2 *`
     /// — Feb 30 never happens).
     NoOccurrence,
@@ -300,7 +302,14 @@ mod tests {
         let now = utc(2026, 7, 9, 12, 0);
 
         assert!(matches!(
-            validate_schedule(ScheduleKind::Recurring, None, Some("not a cron"), "UTC", 300, now),
+            validate_schedule(
+                ScheduleKind::Recurring,
+                None,
+                Some("not a cron"),
+                "UTC",
+                300,
+                now
+            ),
             Err(ScheduleError::BadCron(_))
         ));
         assert!(matches!(
@@ -327,19 +336,28 @@ mod tests {
         );
         // every minute (gap 60s) vs a 300s floor → too frequent.
         assert!(matches!(
-            validate_schedule(ScheduleKind::Recurring, None, Some("* * * * *"), "UTC", 300, now),
+            validate_schedule(
+                ScheduleKind::Recurring,
+                None,
+                Some("* * * * *"),
+                "UTC",
+                300,
+                now
+            ),
             Err(ScheduleError::TooFrequent { .. })
         ));
         // hourly (gap 3600s) is fine under a 300s floor.
-        assert!(validate_schedule(
-            ScheduleKind::Recurring,
-            None,
-            Some("0 * * * *"),
-            "UTC",
-            300,
-            now
-        )
-        .is_ok());
+        assert!(
+            validate_schedule(
+                ScheduleKind::Recurring,
+                None,
+                Some("0 * * * *"),
+                "UTC",
+                300,
+                now
+            )
+            .is_ok()
+        );
     }
 
     // TEST-86 (ITEM-21 / DEC-42/44/45): the self-paced clamp — an over-horizon
@@ -356,7 +374,10 @@ mod tests {
         // A 30-day proposal is clamped to the 7-day horizon, then capped at the
         // absolute expiry (created + 7d = 2026-07-08).
         let out = next_self_paced_fire(
-            &SelfPacedProposal { delay_seconds: 30 * 86_400, stop: false },
+            &SelfPacedProposal {
+                delay_seconds: 30 * 86_400,
+                stop: false,
+            },
             min_interval,
             horizon_days,
             created,
@@ -371,7 +392,10 @@ mod tests {
         // A sub-minimum delay is raised to the min_interval floor.
         assert_eq!(
             next_self_paced_fire(
-                &SelfPacedProposal { delay_seconds: 5, stop: false },
+                &SelfPacedProposal {
+                    delay_seconds: 5,
+                    stop: false
+                },
                 min_interval,
                 horizon_days,
                 created,
@@ -384,7 +408,10 @@ mod tests {
         // An in-range delay passes through unchanged.
         assert_eq!(
             next_self_paced_fire(
-                &SelfPacedProposal { delay_seconds: 3600, stop: false },
+                &SelfPacedProposal {
+                    delay_seconds: 3600,
+                    stop: false
+                },
                 min_interval,
                 horizon_days,
                 created,
@@ -397,7 +424,10 @@ mod tests {
         // A `stop` signal disables regardless of the delay.
         assert_eq!(
             next_self_paced_fire(
-                &SelfPacedProposal { delay_seconds: 3600, stop: true },
+                &SelfPacedProposal {
+                    delay_seconds: 3600,
+                    stop: true
+                },
                 min_interval,
                 horizon_days,
                 created,
@@ -411,7 +441,10 @@ mod tests {
         let late = utc(2026, 7, 9, 0, 0);
         assert_eq!(
             next_self_paced_fire(
-                &SelfPacedProposal { delay_seconds: 3600, stop: false },
+                &SelfPacedProposal {
+                    delay_seconds: 3600,
+                    stop: false
+                },
                 min_interval,
                 horizon_days,
                 created,

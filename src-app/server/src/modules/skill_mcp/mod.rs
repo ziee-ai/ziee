@@ -34,7 +34,6 @@ pub mod repository;
 pub mod routes;
 pub mod tools;
 
-
 /// Deterministic UUID for the built-in skill MCP server row. Stable
 /// across deployments. Mirrors `memory_mcp_server_id` /
 /// `files_mcp_server_id`.
@@ -98,9 +97,7 @@ impl AppModule for SkillMcpModule {
                 Ok(()) => tracing::info!(
                     "skill_mcp: built-in server {server_id} registered at {upsert_url}"
                 ),
-                Err(e) => tracing::error!(
-                    "skill_mcp: upsert_builtin_server failed: {e:?}"
-                ),
+                Err(e) => tracing::error!("skill_mcp: upsert_builtin_server failed: {e:?}"),
             }
         });
 

@@ -27,7 +27,7 @@
 
 use std::sync::Arc;
 
-use agent_core::{ScheduleProposal, SchedulePort};
+use agent_core::{SchedulePort, ScheduleProposal};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
@@ -51,11 +51,7 @@ pub struct AgentSchedulePort;
 
 #[async_trait]
 impl SchedulePort for AgentSchedulePort {
-    async fn propose_next(
-        &self,
-        run_id: Uuid,
-        proposal: ScheduleProposal,
-    ) -> Result<(), AppError> {
+    async fn propose_next(&self, run_id: Uuid, proposal: ScheduleProposal) -> Result<(), AppError> {
         if PROPOSALS.len() >= MAX_PENDING && !PROPOSALS.contains_key(&run_id) {
             // Defensive: drop the map rather than grow unbounded. The only path
             // here is a run that recorded but never drained (a rare mid-turn
@@ -104,12 +100,22 @@ mod tests {
         AgentSchedulePort
             .propose_next(
                 run,
-                ScheduleProposal { delay_seconds: Some(3600), reason: Some("wait".into()), stop: false },
+                ScheduleProposal {
+                    delay_seconds: Some(3600),
+                    reason: Some("wait".into()),
+                    stop: false,
+                },
             )
             .await
             .unwrap();
         let got = take_proposal(run).expect("proposal drained");
-        assert_eq!(got, SelfPacedProposal { delay_seconds: 3600, stop: false });
+        assert_eq!(
+            got,
+            SelfPacedProposal {
+                delay_seconds: 3600,
+                stop: false
+            }
+        );
         // Drained exactly once — a second read is None (no leak / no double-arm).
         assert!(take_proposal(run).is_none());
     }
@@ -118,22 +124,42 @@ mod tests {
     async fn stop_and_bare_proposals_convert() {
         let run = Uuid::new_v4();
         AgentSchedulePort
-            .propose_next(run, ScheduleProposal { delay_seconds: None, reason: None, stop: true })
+            .propose_next(
+                run,
+                ScheduleProposal {
+                    delay_seconds: None,
+                    reason: None,
+                    stop: true,
+                },
+            )
             .await
             .unwrap();
         let got = take_proposal(run).unwrap();
         assert!(got.stop, "stop carried through");
-        assert_eq!(got.delay_seconds, 0, "no delay ⇒ 0 (floored to min-interval by the clamp)");
+        assert_eq!(
+            got.delay_seconds, 0,
+            "no delay ⇒ 0 (floored to min-interval by the clamp)"
+        );
 
         // Bare proposal (run again as soon as allowed).
         let run2 = Uuid::new_v4();
         AgentSchedulePort
-            .propose_next(run2, ScheduleProposal { delay_seconds: None, reason: None, stop: false })
+            .propose_next(
+                run2,
+                ScheduleProposal {
+                    delay_seconds: None,
+                    reason: None,
+                    stop: false,
+                },
+            )
             .await
             .unwrap();
         assert_eq!(
             take_proposal(run2).unwrap(),
-            SelfPacedProposal { delay_seconds: 0, stop: false }
+            SelfPacedProposal {
+                delay_seconds: 0,
+                stop: false
+            }
         );
     }
 
@@ -141,16 +167,33 @@ mod tests {
     async fn last_write_wins_within_a_turn() {
         let run = Uuid::new_v4();
         AgentSchedulePort
-            .propose_next(run, ScheduleProposal { delay_seconds: Some(60), reason: None, stop: false })
+            .propose_next(
+                run,
+                ScheduleProposal {
+                    delay_seconds: Some(60),
+                    reason: None,
+                    stop: false,
+                },
+            )
             .await
             .unwrap();
         AgentSchedulePort
-            .propose_next(run, ScheduleProposal { delay_seconds: Some(120), reason: None, stop: false })
+            .propose_next(
+                run,
+                ScheduleProposal {
+                    delay_seconds: Some(120),
+                    reason: None,
+                    stop: false,
+                },
+            )
             .await
             .unwrap();
         assert_eq!(
             take_proposal(run).unwrap(),
-            SelfPacedProposal { delay_seconds: 120, stop: false }
+            SelfPacedProposal {
+                delay_seconds: 120,
+                stop: false
+            }
         );
     }
 }

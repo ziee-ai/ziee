@@ -171,7 +171,6 @@ impl std::fmt::Debug for McpToolCallReveal {
     }
 }
 
-
 /// Paginated list response (mirrors `McpServerListResponse`).
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct McpToolCallListResponse {

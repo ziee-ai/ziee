@@ -31,7 +31,6 @@ pub mod repository;
 pub mod routes;
 pub mod supervisor;
 
-
 /// Deterministic UUID for the built-in BioMCP server row. Stable across
 /// deployments (mirrors `memory_mcp_server_id` / `code_sandbox_server_id`).
 pub fn bio_mcp_server_id() -> Uuid {

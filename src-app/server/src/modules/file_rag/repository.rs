@@ -311,7 +311,10 @@ impl FileRagRepository {
         .fetch_all(&self.pool)
         .await
         .map_err(AppError::database_error)?;
-        Ok(rows.into_iter().map(|r| (r.id, r.user_id, r.content)).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| (r.id, r.user_id, r.content))
+            .collect())
     }
 
     /// A deployment-wide batch of chunks needing (re-)embedding — drives the
@@ -334,7 +337,10 @@ impl FileRagRepository {
         .fetch_all(&self.pool)
         .await
         .map_err(AppError::database_error)?;
-        Ok(rows.into_iter().map(|r| (r.id, r.user_id, r.content)).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| (r.id, r.user_id, r.content))
+            .collect())
     }
 
     /// Write one chunk's embedding. Untyped query (like memory's worker) —

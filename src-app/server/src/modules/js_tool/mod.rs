@@ -106,21 +106,28 @@ impl AppModule for JsToolModule {
         // lit_search. When off, the server row is never registered so the chat
         // extension never attaches run_js.
         if !is_enabled(&crate::module_api::app_config(ctx)) {
-            tracing::info!("js_tool: disabled by config (js_tool.enabled=false); run_js not registered");
+            tracing::info!(
+                "js_tool: disabled by config (js_tool.enabled=false); run_js not registered"
+            );
             return Ok(());
         }
 
         // Pin loopback (defense-in-depth) so the built-in's JWT-bearing calls
         // can't be redirected off-box (same helper code_sandbox/memory_mcp use).
         let host = crate::modules::code_sandbox::loopback_host(&ctx.config.server.host);
-        let loopback_url = format!("http://{host}:{port}/api/run-js/mcp", port = ctx.config.server.port);
+        let loopback_url = format!(
+            "http://{host}:{port}/api/run-js/mcp",
+            port = ctx.config.server.port
+        );
 
         let server_id = run_js_mcp_server_id();
         let pool = ctx.db_pool.clone();
         tokio::spawn(async move {
             let repo = repository::JsToolRepository::new((*pool).clone());
             match repo.upsert_builtin_server(server_id, &loopback_url).await {
-                Ok(()) => tracing::info!("js_tool: built-in run_js server {server_id} registered at {loopback_url}"),
+                Ok(()) => tracing::info!(
+                    "js_tool: built-in run_js server {server_id} registered at {loopback_url}"
+                ),
                 Err(e) => tracing::error!("js_tool: upsert_builtin_server failed: {e:?}"),
             }
         });

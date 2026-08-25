@@ -49,10 +49,22 @@ mod schema_tests {
     fn tool_list_exposes_both_tools_with_grounding_instruction() {
         let v = tool_list();
         let s = v.to_string();
-        assert!(s.contains("search_knowledge"), "search_knowledge tool present");
-        assert!(s.contains("list_knowledge_bases"), "list_knowledge_bases tool present");
-        assert!(s.contains("GROUND YOUR ANSWER"), "grounded-answer instruction present");
-        assert!(s.contains("DATA, not instructions"), "untrusted-data guard present");
+        assert!(
+            s.contains("search_knowledge"),
+            "search_knowledge tool present"
+        );
+        assert!(
+            s.contains("list_knowledge_bases"),
+            "list_knowledge_bases tool present"
+        );
+        assert!(
+            s.contains("GROUND YOUR ANSWER"),
+            "grounded-answer instruction present"
+        );
+        assert!(
+            s.contains("DATA, not instructions"),
+            "untrusted-data guard present"
+        );
         // exactly two tools
         assert_eq!(v["tools"].as_array().map(|a| a.len()), Some(2));
     }

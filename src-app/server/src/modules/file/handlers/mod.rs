@@ -7,12 +7,12 @@
 // identity-recheck, and `versions::append_version` (commit_new_version). The
 // moved `content_disposition` + cache consts are re-exported by `download`.
 
-pub mod upload;
 pub mod download;
 pub mod export;
+pub mod upload;
 pub mod versions;
 
-pub use upload::*;
 pub use download::*;
 pub use export::*;
+pub use upload::*;
 pub use versions::*;

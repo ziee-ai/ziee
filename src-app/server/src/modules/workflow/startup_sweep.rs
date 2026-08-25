@@ -5,7 +5,6 @@
 //! and removes staged `workspace/<conv>/workflow/<run>/` dirs for
 //! runs that are no longer non-terminal.
 
-
 use sqlx::PgPool;
 
 use crate::common::AppError;
@@ -19,17 +18,17 @@ use crate::modules::workflow::repository;
 fn dir_older_than_30d(path: &std::path::Path) -> bool {
     const THIRTY_DAYS: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 60 * 60);
     match std::fs::metadata(path).and_then(|m| m.modified()) {
-        Ok(mtime) => mtime.elapsed().map(|age| age > THIRTY_DAYS).unwrap_or(false),
+        Ok(mtime) => mtime
+            .elapsed()
+            .map(|age| age > THIRTY_DAYS)
+            .unwrap_or(false),
         // Can't stat / mtime in the future (clock skew) → treat as NOT ancient
         // so we never delete a dir we're unsure about.
         Err(_) => false,
     }
 }
 
-pub async fn sweep_at_boot(
-    pool: &PgPool,
-    cutoff: time::OffsetDateTime,
-) -> Result<(), AppError> {
+pub async fn sweep_at_boot(pool: &PgPool, cutoff: time::OffsetDateTime) -> Result<(), AppError> {
     let rows = repository::fail_orphaned_runs(pool, cutoff).await?;
     if rows > 0 {
         tracing::warn!(

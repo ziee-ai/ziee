@@ -101,7 +101,10 @@ pub fn hub_router() -> ApiRouter {
             ),
         )
         // Unified catalog endpoints (Phase 1)
-        .api_route("/hub/index", get_with(get_hub_catalog, get_hub_catalog_docs))
+        .api_route(
+            "/hub/index",
+            get_with(get_hub_catalog, get_hub_catalog_docs),
+        )
         .api_route(
             "/hub/version",
             get_with(get_hub_catalog_version, get_hub_catalog_version_docs),

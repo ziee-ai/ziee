@@ -49,7 +49,10 @@ mod tests {
     #[test]
     fn counts_chars_not_bytes() {
         // 4 multibyte chars -> 1 token (not 12 from byte length)
-        assert_eq!(estimate_tokens("héllo".chars().take(4).collect::<String>().as_str()), 1);
+        assert_eq!(
+            estimate_tokens("héllo".chars().take(4).collect::<String>().as_str()),
+            1
+        );
     }
 
     #[test]

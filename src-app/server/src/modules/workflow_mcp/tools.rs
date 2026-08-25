@@ -7,7 +7,6 @@
 //! `format_outputs_for_mcp` honoring each output's `expose:` mode and
 //! the size caps (plan §4.7).
 
-
 use std::path::Path;
 use std::time::Duration;
 
@@ -23,8 +22,7 @@ use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::runner;
 use crate::modules::workflow::validate::{
-    ExposeMode, OutputDef, Severity, WorkflowDef, parse_workflow_yaml,
-    validate_collecting_async,
+    ExposeMode, OutputDef, Severity, WorkflowDef, parse_workflow_yaml, validate_collecting_async,
     validate_for_install_async,
 };
 use crate::modules::workflow::{compiled, cost};
@@ -156,13 +154,9 @@ fn input_schema_for(def: &WorkflowDef) -> Value {
 /// 128-char cap. Workflows whose `workflow.yaml` fails to parse are
 /// skipped (defensive — install-time validation should have caught it).
 pub async fn tool_list(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Value, AppError> {
-    let workflows = repository::list_for_user(
-        pool,
-        user_id,
-        crate::common::DEFAULT_PAGE_SIZE as i64,
-        0,
-    )
-    .await?;
+    let workflows =
+        repository::list_for_user(pool, user_id, crate::common::DEFAULT_PAGE_SIZE as i64, 0)
+            .await?;
     let mut tools: Vec<Value> = Vec::new();
     // L3: distinct reverse-DNS names can collapse to the SAME `wf_*` slug
     // (`/` and `.` both map to `_`). Two such workflows would surface as
@@ -313,13 +307,9 @@ async fn resolve_workflow_by_slug(
     user_id: Uuid,
     slug: &str,
 ) -> Result<Workflow, AppError> {
-    let workflows = repository::list_for_user(
-        pool,
-        user_id,
-        crate::common::DEFAULT_PAGE_SIZE as i64,
-        0,
-    )
-    .await?;
+    let workflows =
+        repository::list_for_user(pool, user_id, crate::common::DEFAULT_PAGE_SIZE as i64, 0)
+            .await?;
     workflows
         .into_iter()
         .find(|wf| slug_for_name(&wf.name) == slug)
@@ -516,14 +506,20 @@ fn error_tool_result(code: &str, message: impl Into<String>) -> Value {
 /// Pull `dir` (required) + `inputs` (optional object) out of the verb args.
 fn parse_workspace_args(arguments: &Value) -> Result<(String, Value), AppError> {
     let obj = arguments.as_object().ok_or_else(|| {
-        AppError::bad_request("WORKFLOW_ARGS_NOT_OBJECT", "arguments must be a JSON object")
+        AppError::bad_request(
+            "WORKFLOW_ARGS_NOT_OBJECT",
+            "arguments must be a JSON object",
+        )
     })?;
     let dir = obj
         .get("dir")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
-            AppError::bad_request("WORKFLOW_DIR_REQUIRED", "'dir' (a workspace subdir) is required")
+            AppError::bad_request(
+                "WORKFLOW_DIR_REQUIRED",
+                "'dir' (a workspace subdir) is required",
+            )
         })?
         .to_string();
     let inputs = obj.get("inputs").cloned().unwrap_or(Value::Null);
@@ -615,7 +611,10 @@ async fn run_from_workspace(
         Ok(c) => c,
         Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
     };
-    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(conversation_id, &dir) {
+    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(
+        conversation_id,
+        &dir,
+    ) {
         Ok(r) => r,
         Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
     };
@@ -661,15 +660,16 @@ async fn validate_from_workspace(
     arguments: &Value,
 ) -> Result<Value, AppError> {
     let (dir, _inputs) = parse_workspace_args(arguments)?;
-    if let Err(e) = crate::modules::workflow::workspace::require_conversation_owner(
-        conversation_id,
-        user_id,
-    )
-    .await
+    if let Err(e) =
+        crate::modules::workflow::workspace::require_conversation_owner(conversation_id, user_id)
+            .await
     {
         return Ok(error_tool_result(e.error_code(), e.to_string()));
     }
-    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(conversation_id, &dir) {
+    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(
+        conversation_id,
+        &dir,
+    ) {
         Ok(r) => r,
         Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
     };
@@ -732,7 +732,10 @@ async fn save_workflow(
 ) -> Result<Value, AppError> {
     let _ = pool;
     let obj = arguments.as_object().ok_or_else(|| {
-        AppError::bad_request("WORKFLOW_ARGS_NOT_OBJECT", "arguments must be a JSON object")
+        AppError::bad_request(
+            "WORKFLOW_ARGS_NOT_OBJECT",
+            "arguments must be a JSON object",
+        )
     })?;
     let dir = obj
         .get("dir")
@@ -741,15 +744,16 @@ async fn save_workflow(
         .ok_or_else(|| AppError::bad_request("WORKFLOW_DIR_REQUIRED", "'dir' is required"))?;
     let name = obj.get("name").and_then(|v| v.as_str()).map(str::to_string);
 
-    if let Err(e) = crate::modules::workflow::workspace::require_conversation_owner(
-        conversation_id,
-        user_id,
-    )
-    .await
+    if let Err(e) =
+        crate::modules::workflow::workspace::require_conversation_owner(conversation_id, user_id)
+            .await
     {
         return Ok(error_tool_result(e.error_code(), e.to_string()));
     }
-    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(conversation_id, dir) {
+    let root = match crate::modules::workflow::workspace::resolve_conversation_workspace_dir(
+        conversation_id,
+        dir,
+    ) {
         Ok(r) => r,
         Err(e) => return Ok(error_tool_result(e.error_code(), e.to_string())),
     };
@@ -1149,11 +1153,7 @@ pub async fn format_outputs_for_mcp(
 /// Build the rich error `CallToolResult` (plan §4.7). Always carries the
 /// minimum recovery context; `logs_resource` only when `expose_logs`
 /// allows it.
-async fn build_error_result(
-    pool: &sqlx::PgPool,
-    run: &WorkflowRun,
-    def: &WorkflowDef,
-) -> Value {
+async fn build_error_result(pool: &sqlx::PgPool, run: &WorkflowRun, def: &WorkflowDef) -> Value {
     let _ = pool;
     let error_message = run
         .error_message
@@ -1255,9 +1255,7 @@ fn take_chars(s: &str, n: usize) -> String {
 }
 
 fn run_ms_elapsed(run: &WorkflowRun) -> u64 {
-    (run.updated_at - run.created_at)
-        .num_milliseconds()
-        .max(0) as u64
+    (run.updated_at - run.created_at).num_milliseconds().max(0) as u64
 }
 
 /// Read a resolved output's full value from disk via the per-step output
@@ -1305,10 +1303,12 @@ pub(crate) fn step_id_from_template(from: &str) -> Option<String> {
 /// Serialized byte length of a JSON value as it will appear inline in the
 /// MCP text body (H5 — account the ACTUAL inlined size, not raw size_bytes).
 fn serialized_len(v: &Value) -> usize {
-    serde_json::to_string(v).map(|s| s.len()).unwrap_or_else(|e| {
-        tracing::warn!(error = %e, "workflow_mcp: serde_json serialization failed");
-        0
-    })
+    serde_json::to_string(v)
+        .map(|s| s.len())
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "workflow_mcp: serde_json serialization failed");
+            0
+        })
 }
 
 #[cfg(test)]
@@ -1328,10 +1328,16 @@ mod tests {
         assert!(!handle.is_cancelled(), "fresh run is not cancelled");
         let pool = sqlx::PgPool::connect_lazy("postgresql://invalid:0/none").expect("lazy pool");
         {
-            let _g = RunCancelOnDrop { pool, run_id, armed: true };
+            let _g = RunCancelOnDrop {
+                pool,
+                run_id,
+                armed: true,
+            };
         } // drop here → synchronous registry::cancel(run_id)
         assert!(
-            registry::get(run_id).map(|h| h.is_cancelled()).unwrap_or(false),
+            registry::get(run_id)
+                .map(|h| h.is_cancelled())
+                .unwrap_or(false),
             "dropping an armed guard must cancel the run via the registry"
         );
     }
@@ -1343,7 +1349,11 @@ mod tests {
         let run_id = uuid::Uuid::new_v4();
         let handle = registry::register(run_id);
         let pool = sqlx::PgPool::connect_lazy("postgresql://invalid:0/none").expect("lazy pool");
-        let g = RunCancelOnDrop { pool, run_id, armed: true };
+        let g = RunCancelOnDrop {
+            pool,
+            run_id,
+            armed: true,
+        };
         g.disarm(); // terminal-status path → consumes + drops without cancel
         assert!(
             !handle.is_cancelled(),
@@ -1449,7 +1459,9 @@ mod tests {
             "WORKFLOW_DIR_REQUIRED"
         );
         assert_eq!(
-            parse_workspace_args(&json!({ "dir": "" })).unwrap_err().error_code(),
+            parse_workspace_args(&json!({ "dir": "" }))
+                .unwrap_err()
+                .error_code(),
             "WORKFLOW_DIR_REQUIRED"
         );
     }
@@ -1459,7 +1471,12 @@ mod tests {
         let r = error_tool_result("SOME_CODE", "human message");
         assert_eq!(r["isError"], json!(true));
         assert_eq!(r["structuredContent"]["code"], json!("SOME_CODE"));
-        assert!(r["content"][0]["text"].as_str().unwrap().contains("SOME_CODE"));
+        assert!(
+            r["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("SOME_CODE")
+        );
     }
 
     fn run_with_final(final_json: Value, step_outputs: Value) -> WorkflowRun {
@@ -1534,7 +1551,10 @@ mod tests {
         // No pool needed for these expose modes (full falls back to
         // preview when step output file is absent; hidden omits).
         let pool = test_pool().await;
-        let outs = vec![out("summary", ExposeMode::Full), out("secret", ExposeMode::Hidden)];
+        let outs = vec![
+            out("summary", ExposeMode::Full),
+            out("secret", ExposeMode::Hidden),
+        ];
         let res = format_outputs_for_mcp(&pool, &run, &outs).await.unwrap();
         let outputs = &res["structuredContent"]["outputs"];
         assert!(outputs.get("summary").is_some());
@@ -1574,13 +1594,18 @@ mod tests {
         });
         let run = run_with_final(final_json, json!({}));
         let pool = test_pool().await;
-        let outs = vec![out("art", ExposeMode::Artifact), out("prev", ExposeMode::Preview)];
+        let outs = vec![
+            out("art", ExposeMode::Artifact),
+            out("prev", ExposeMode::Preview),
+        ];
         let res = format_outputs_for_mcp(&pool, &run, &outs).await.unwrap();
         let content = res["content"].as_array().unwrap();
         // artifact → resource block
-        assert!(content.iter().any(|c| {
-            c["type"] == json!("resource") && c["resource"]["name"] == json!("art")
-        }));
+        assert!(
+            content.iter().any(|c| {
+                c["type"] == json!("resource") && c["resource"]["name"] == json!("art")
+            })
+        );
         // preview → inline snippet capped at 500 chars
         let text = content[0]["text"].as_str().unwrap();
         let parsed: Value = serde_json::from_str(text).unwrap();
@@ -1700,7 +1725,10 @@ mod tests {
         let res = format_outputs_for_mcp(&pool, &run, &outs).await.unwrap();
         let content = res["content"].as_array().unwrap();
         // Some outputs must have promoted to resource blocks (cap tripped).
-        let resource_count = content.iter().filter(|c| c["type"] == json!("resource")).count();
+        let resource_count = content
+            .iter()
+            .filter(|c| c["type"] == json!("resource"))
+            .count();
         assert!(
             resource_count > 0,
             "H5: total-text cap must promote excess previews to resources"
@@ -1809,8 +1837,8 @@ mod tests {
 #[cfg(test)]
 mod stringified_arg_tests {
     use super::*;
-    use crate::common::tool_args::conformance::{assert_arg_conformance, ArgSite};
     use crate::common::tool_args::ArgShape;
+    use crate::common::tool_args::conformance::{ArgSite, assert_arg_conformance};
     use serde_json::json;
 
     /// The function named `coerce_inputs` now actually coerces. Its pre-existing
@@ -1826,13 +1854,25 @@ mod stringified_arg_tests {
             json!({ "topic": "sales" })
         );
         // No regression on the shapes that already worked.
-        assert_eq!(coerce_inputs(&json!({ "a": 1 })).unwrap(), json!({ "a": 1 }));
-        assert_eq!(coerce_inputs(&serde_json::Value::Null).unwrap(), serde_json::Value::Null);
+        assert_eq!(
+            coerce_inputs(&json!({ "a": 1 })).unwrap(),
+            json!({ "a": 1 })
+        );
+        assert_eq!(
+            coerce_inputs(&serde_json::Value::Null).unwrap(),
+            serde_json::Value::Null
+        );
 
         let err = coerce_inputs(&json!("nope")).unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("inputs") && msg.contains("JSON object"), "got: {msg}");
-        assert!(msg.contains(WORKFLOW_INPUTS_EXAMPLE), "must show inputs to copy: {msg}");
+        assert!(
+            msg.contains("inputs") && msg.contains("JSON object"),
+            "got: {msg}"
+        );
+        assert!(
+            msg.contains(WORKFLOW_INPUTS_EXAMPLE),
+            "must show inputs to copy: {msg}"
+        );
     }
 
     /// The shared conformance battery, applied to the WHOLE arguments object —

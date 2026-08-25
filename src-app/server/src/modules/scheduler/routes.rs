@@ -1,10 +1,7 @@
 //! REST surface for scheduled-task CRUD + the admin-settings singleton.
 //! (run-now / test-fire land once the dispatch seam exists.)
 
-use aide::axum::{
-    ApiRouter,
-    routing::get_with,
-};
+use aide::axum::{ApiRouter, routing::get_with};
 
 use super::handlers;
 
@@ -46,7 +43,13 @@ pub fn scheduler_router() -> ApiRouter {
         )
         .api_route(
             "/scheduler/admin-settings",
-            get_with(handlers::get_admin_settings, handlers::get_admin_settings_docs)
-                .put_with(handlers::update_admin_settings, handlers::update_admin_settings_docs),
+            get_with(
+                handlers::get_admin_settings,
+                handlers::get_admin_settings_docs,
+            )
+            .put_with(
+                handlers::update_admin_settings,
+                handlers::update_admin_settings_docs,
+            ),
         )
 }

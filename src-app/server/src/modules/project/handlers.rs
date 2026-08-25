@@ -444,7 +444,9 @@ pub async fn delete_project(
         user_id = %auth.user.id,
         "project: deleted"
     );
-    event_bus.emit(ProjectEvent::deleted(id, auth.user.id)).await;
+    event_bus
+        .emit(ProjectEvent::deleted(id, auth.user.id))
+        .await;
     sync_publish(
         SyncEntity::Project,
         SyncAction::Delete,
@@ -472,7 +474,9 @@ pub fn delete_project_docs(op: TransformOperation) -> TransformOperation {
 pub async fn duplicate_project(
     auth: RequirePermissions<(ProjectsCreate, ProjectsRead)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
-    Extension(extension_registry): Extension<Arc<crate::modules::project::ProjectExtensionRegistry>>,
+    Extension(extension_registry): Extension<
+        Arc<crate::modules::project::ProjectExtensionRegistry>,
+    >,
     Path(id): Path<Uuid>,
     origin: SyncOrigin,
 ) -> ApiResult<Json<Project>> {
@@ -655,8 +659,14 @@ mod tests {
         assert_eq!(normalize_search(Some("")).unwrap(), None);
         assert_eq!(normalize_search(Some("   ")).unwrap(), None);
         assert_eq!(normalize_search(Some("\t\n")).unwrap(), None);
-        assert_eq!(normalize_search(Some("  foo ")).unwrap().as_deref(), Some("foo"));
-        assert_eq!(normalize_search(Some("roadmap")).unwrap().as_deref(), Some("roadmap"));
+        assert_eq!(
+            normalize_search(Some("  foo ")).unwrap().as_deref(),
+            Some("foo")
+        );
+        assert_eq!(
+            normalize_search(Some("roadmap")).unwrap().as_deref(),
+            Some("roadmap")
+        );
     }
 
     /// A NUL-bearing term is now a typed 400 rather than reaching the `ILIKE`

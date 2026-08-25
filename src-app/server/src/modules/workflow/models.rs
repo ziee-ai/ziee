@@ -6,7 +6,6 @@
 //! disk under `extracted_path`; the runner's per-run staging is under
 //! `<workspace>/<conv>/workflow/<run>/`.
 
-
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -152,9 +151,7 @@ impl WorkflowRunStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            WorkflowRunStatus::Completed
-                | WorkflowRunStatus::Failed
-                | WorkflowRunStatus::Cancelled
+            WorkflowRunStatus::Completed | WorkflowRunStatus::Failed | WorkflowRunStatus::Cancelled
         )
     }
 }

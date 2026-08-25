@@ -82,10 +82,7 @@ impl HubRepository {
     /// handler to refuse duplicate installs (each duplicate fans out
     /// to every new user via the clone-on-signup hook, multiplying
     /// the runtime cost).
-    pub async fn find_template_install(
-        &self,
-        hub_id: &str,
-    ) -> Result<Option<Uuid>, AppError> {
+    pub async fn find_template_install(&self, hub_id: &str) -> Result<Option<Uuid>, AppError> {
         find_template_install(&self.pool, hub_id).await
     }
 
@@ -94,9 +91,7 @@ impl HubRepository {
     /// `created_template_ids` into the catalog response so the hub
     /// card can disable the "Use as Template" button when a template
     /// is already installed.
-    pub async fn get_template_install_ids(
-        &self,
-    ) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
+    pub async fn get_template_install_ids(&self) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
         get_template_install_ids(&self.pool).await
     }
 
@@ -107,10 +102,7 @@ impl HubRepository {
     /// out). Returns Some(entity_id) when one exists — the
     /// `Hub.createSystemMcpServerFromHub` handler uses this to
     /// refuse duplicate installs.
-    pub async fn find_system_mcp_install(
-        &self,
-        hub_id: &str,
-    ) -> Result<Option<Uuid>, AppError> {
+    pub async fn find_system_mcp_install(&self, hub_id: &str) -> Result<Option<Uuid>, AppError> {
         find_system_mcp_install(&self.pool, hub_id).await
     }
 
@@ -145,12 +137,9 @@ impl HubRepository {
     /// merge `created_system_ids` into the catalog response so the
     /// hub card can disable the "Install as System" button when a
     /// system install already exists.
-    pub async fn get_system_mcp_install_ids(
-        &self,
-    ) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
+    pub async fn get_system_mcp_install_ids(&self) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
         get_system_mcp_install_ids(&self.pool).await
     }
-
 }
 
 /// Row returned by `list_installed_entities` — one tracked hub
@@ -215,7 +204,13 @@ pub async fn track_hub_entity(
 ) -> Result<HubEntity, AppError> {
     let mut tx = pool.begin().await.map_err(AppError::database_error)?;
     let entity = track_hub_entity_in_tx(
-        &mut tx, entity_type, entity_id, hub_id, hub_category, created_by, hub_version,
+        &mut tx,
+        entity_type,
+        entity_id,
+        hub_id,
+        hub_category,
+        created_by,
+        hub_version,
     )
     .await?;
     tx.commit().await.map_err(AppError::database_error)?;
@@ -274,7 +269,8 @@ pub async fn track_hub_entity_in_tx(
         entity_id: record.entity_id,
         hub_id: record.hub_id,
         hub_category: record.hub_category,
-        created_at: DateTime::from_timestamp(record.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        created_at: DateTime::from_timestamp(record.created_at.unix_timestamp(), 0)
+            .unwrap_or_else(Utc::now),
         created_by: record.created_by,
     })
 }
@@ -529,10 +525,8 @@ pub async fn list_installed_entities(
             // narrow-predicate rationale as before; the Installed tab
             // uses this to route Re-install through
             // `Hub.createAssistantTemplateFromHub`.
-            is_template_install: r.created_by.is_none()
-                && r.entity_type == "assistant",
-            is_system_mcp_install: r.created_by.is_none()
-                && r.entity_type == "mcp_server",
+            is_template_install: r.created_by.is_none() && r.entity_type == "assistant",
+            is_system_mcp_install: r.created_by.is_none() && r.entity_type == "mcp_server",
             entity_type: r.entity_type,
         })
         .collect())
@@ -554,10 +548,7 @@ pub async fn list_installed_entities(
 /// to delete a row that no longer exists. `ORDER BY created_at DESC
 /// LIMIT 1` makes the result deterministic in the (currently
 /// impossible) case of two live template installs co-existing.
-pub async fn find_template_install(
-    pool: &PgPool,
-    hub_id: &str,
-) -> Result<Option<Uuid>, AppError> {
+pub async fn find_template_install(pool: &PgPool, hub_id: &str) -> Result<Option<Uuid>, AppError> {
     let row = sqlx::query!(
         r#"
         SELECT he.entity_id

@@ -40,7 +40,10 @@ pub async fn commit_new_version(
     // never SILENTLY: a swallowed error here would create a version with no
     // extracted text / thumbnails that looks like a binary file, with nothing in
     // the logs to explain it.
-    let processing = match ProcessingManager::new().process_file(&new_bytes, &mime).await {
+    let processing = match ProcessingManager::new()
+        .process_file(&new_bytes, &mime)
+        .await
+    {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(
@@ -84,8 +87,7 @@ pub async fn commit_new_version(
                 has_thumbnail: !processing.thumbnails.is_empty(),
                 preview_page_count: processing.images.len() as i32,
                 text_page_count: processing.text_pages.len() as i32,
-                processing_metadata: serde_json::to_value(&processing.metadata)
-                    .unwrap_or_default(),
+                processing_metadata: serde_json::to_value(&processing.metadata).unwrap_or_default(),
                 source_message_id,
                 created_by: created_by.to_string(),
             },

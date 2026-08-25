@@ -30,7 +30,9 @@ pub mod handlers {
 /// Shim: the JWT request extractors live in `ziee_auth::auth::http::jwt_extractor`.
 pub mod jwt_extractor {
     #[allow(unused_imports)]
-    pub use ziee_auth::auth::http::jwt_extractor::{JwtAuth, OptionalJwtAuth, verify_token_version};
+    pub use ziee_auth::auth::http::jwt_extractor::{
+        JwtAuth, OptionalJwtAuth, verify_token_version,
+    };
 }
 
 /// Shim: the auth-domain permission keys live in `ziee_auth::auth::permissions`.
@@ -180,13 +182,12 @@ impl AppModule for AuthModule {
                         let msg = panic_payload
                             .downcast_ref::<&'static str>()
                             .copied()
-                            .or_else(|| {
-                                panic_payload
-                                    .downcast_ref::<String>()
-                                    .map(String::as_str)
-                            })
+                            .or_else(|| panic_payload.downcast_ref::<String>().map(String::as_str))
                             .unwrap_or("<non-string panic>");
-                        tracing::error!(panic = msg, "auth cleanup tick PANICKED — task will retry next interval");
+                        tracing::error!(
+                            panic = msg,
+                            "auth cleanup tick PANICKED — task will retry next interval"
+                        );
                     }
                 }
             }

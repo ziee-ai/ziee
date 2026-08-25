@@ -71,7 +71,11 @@ pub async fn jsonrpc_handler(
                 Err(e) => error_response(id, e.0, e.1),
             }
         }
-        _ => error_response(id, StatusCode::OK, JsonRpcError::method_not_found(&req.method)),
+        _ => error_response(
+            id,
+            StatusCode::OK,
+            JsonRpcError::method_not_found(&req.method),
+        ),
     }
 }
 
@@ -229,7 +233,10 @@ async fn get_tool_result(
 
     // Page over chars (char-safe — never split a multibyte sequence).
     let offset = args.offset.unwrap_or(0).max(0) as usize;
-    let max_chars = args.max_chars.unwrap_or(DEFAULT_MAX_CHARS).clamp(1, 100_000) as usize;
+    let max_chars = args
+        .max_chars
+        .unwrap_or(DEFAULT_MAX_CHARS)
+        .clamp(1, 100_000) as usize;
     let page = page_chars(&full, offset, max_chars, tuid);
 
     Ok(json!({
@@ -288,7 +295,12 @@ fn page_chars(full: &str, offset: usize, max_chars: usize, tuid: &str) -> Page {
             "\n[… showing chars {offset}–{next} of {total_chars}; more available — call get_tool_result(tool_use_id=\"{tuid}\", offset={next}) …]"
         ));
     }
-    Page { text, returned, total_chars, has_more }
+    Page {
+        text,
+        returned,
+        total_chars,
+        has_more,
+    }
 }
 
 #[cfg(test)]

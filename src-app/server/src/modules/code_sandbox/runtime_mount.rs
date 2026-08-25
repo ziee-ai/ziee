@@ -62,9 +62,7 @@ use crate::modules::code_sandbox::runtime_fetch;
 // The rootfs-provider vocabulary (EnsureOutcome / EvictOutcome / FetchOutcome /
 // FetchPhase / FetchError) moved to the engine crate with the carve; re-import
 // it. `ReadyError` STAYS here (it is not in any provider signature).
-use crate::modules::code_sandbox::provider::{
-    EnsureOutcome, EvictOutcome, FetchError, FetchPhase,
-};
+use crate::modules::code_sandbox::provider::{EnsureOutcome, EvictOutcome, FetchError, FetchPhase};
 use crate::modules::code_sandbox::types::HostCapabilities;
 
 // =====================================================================
@@ -103,10 +101,20 @@ struct MountedRootfs {
 #[allow(dead_code)]
 pub enum ReadyError {
     SquashfuseMissing,
-    NoRootfsForFlavor { flavor: String, cache_dir: PathBuf },
-    FetchFailed { flavor: String, reason: String },
-    MountFailed { reason: String },
-    PidNsDisabled { reason: String },
+    NoRootfsForFlavor {
+        flavor: String,
+        cache_dir: PathBuf,
+    },
+    FetchFailed {
+        flavor: String,
+        reason: String,
+    },
+    MountFailed {
+        reason: String,
+    },
+    PidNsDisabled {
+        reason: String,
+    },
     // ── VM-backend lazy-init failures (Plan 1 §5) ──
     // Cross-platform but currently only constructed on macOS/Windows; kept on
     // all builds so a stray `match` is total.
@@ -119,7 +127,9 @@ pub enum ReadyError {
     UsernsDisabledInWsl,
     /// A libkrun (macOS) / wsl.exe (Windows) microVM failed to boot within the
     /// deadline (`reason` carries the specific cause).
-    VmBootFailed { reason: String },
+    VmBootFailed {
+        reason: String,
+    },
     /// libkrun's dylib could not be loaded by the macOS launcher (the dep
     /// wasn't bundled, or the runtime linker can't find it).
     LibkrunMissing,
@@ -270,19 +280,14 @@ async fn do_first_init(
     //    don't need a separate fast-path here. The returned outcome
     //    carries the pinned `version` plus stats for `fetch_info`.
     let log_flavor = flavor.to_string();
-    let outcome = runtime_fetch::ensure_fetched(
-        pool,
-        &cache_dir,
-        flavor,
-        move |p| {
-            tracing::info!(
-                flavor = %log_flavor,
-                phase = ?p.phase,
-                "code_sandbox: fetch progress: {}",
-                p.message
-            );
-        },
-    )
+    let outcome = runtime_fetch::ensure_fetched(pool, &cache_dir, flavor, move |p| {
+        tracing::info!(
+            flavor = %log_flavor,
+            phase = ?p.phase,
+            "code_sandbox: fetch progress: {}",
+            p.message
+        );
+    })
     .await
     .map_err(|e| ReadyError::FetchFailed {
         flavor: flavor.to_string(),
@@ -331,11 +336,8 @@ async fn do_first_init(
     // `--ro-bind <rootfs>/usr /usr`.
     let mut probe_cfg = config.clone();
     probe_cfg.rootfs_path = Some(mount_dir.to_string_lossy().into_owned());
-    let caps = crate::modules::code_sandbox::probes::probe_rootfs_dependent(
-        &probe_cfg,
-        host_caps,
-    )
-    .map_err(|reason| ReadyError::PidNsDisabled { reason })?;
+    let caps = crate::modules::code_sandbox::probes::probe_rootfs_dependent(&probe_cfg, host_caps)
+        .map_err(|reason| ReadyError::PidNsDisabled { reason })?;
 
     // Register the live mount with the engine registry so a
     // subsequent pin-change can drain + evict against the right
@@ -595,7 +597,10 @@ pub async fn shutdown() {
     drop(guard); // release lock; we no longer need it
 
     for (flavor, mounted) in mounts {
-        let MountedRootfs { mut child, mount_dir } = mounted;
+        let MountedRootfs {
+            mut child,
+            mount_dir,
+        } = mounted;
 
         // SIGTERM first — squashfuse's default handler unmounts
         // cleanly. (tokio's Child::kill sends SIGKILL, which would
@@ -648,7 +653,11 @@ pub async fn evict_by_version_flavor(
     // 2. Unmount the specific squashfuse for this (version, flavor).
     if let Some(slot) = MOUNTED.get() {
         let taken = slot.lock().await.remove(&key);
-        if let Some(MountedRootfs { mut child, mount_dir }) = taken {
+        if let Some(MountedRootfs {
+            mut child,
+            mount_dir,
+        }) = taken
+        {
             if let Some(pid) = child.id() {
                 #[cfg(target_os = "linux")]
                 unsafe {
@@ -658,7 +667,11 @@ pub async fn evict_by_version_flavor(
                 let _ = pid;
                 let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
             }
-            let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
+            let _ = Command::new("fusermount")
+                .arg("-u")
+                .arg(&mount_dir)
+                .status()
+                .await;
             let _ = std::fs::remove_dir(&mount_dir);
         }
     }
@@ -683,7 +696,11 @@ pub async fn evict_by_version_flavor(
             }
             if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
                 let mnt = version_cache_dir.join(stem);
-                let _ = Command::new("fusermount").arg("-u").arg(&mnt).status().await;
+                let _ = Command::new("fusermount")
+                    .arg("-u")
+                    .arg(&mnt)
+                    .status()
+                    .await;
                 let _ = std::fs::remove_dir_all(&mnt);
             }
             let _ = std::fs::remove_file(&p);
@@ -696,5 +713,8 @@ pub async fn evict_by_version_flavor(
         was_cached,
         "code_sandbox: evict_by_version_flavor complete"
     );
-    EvictOutcome { bytes_freed, was_cached }
+    EvictOutcome {
+        bytes_freed,
+        was_cached,
+    }
 }

@@ -41,7 +41,6 @@ pub mod resources;
 pub mod routes;
 pub mod tools;
 
-
 /// Deterministic UUID for the built-in workflow MCP server row. Stable
 /// across deployments. Mirrors `skill_mcp_server_id` /
 /// `memory_mcp_server_id` / `files_mcp_server_id`.

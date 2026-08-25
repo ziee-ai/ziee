@@ -36,10 +36,7 @@ pub fn style_path(name: &str) -> Option<PathBuf> {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let file = CSL_DIR.get_file(format!("{name}.csl"))?;
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let out = std::env::temp_dir().join(format!(
-        "ziee-csl-{}-{n}-{name}.csl",
-        std::process::id()
-    ));
+    let out = std::env::temp_dir().join(format!("ziee-csl-{}-{n}-{name}.csl", std::process::id()));
     std::fs::write(&out, file.contents()).ok()?;
     Some(out)
 }

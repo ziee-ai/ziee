@@ -9,7 +9,7 @@
 
 use aide::transform::TransformOperation;
 use axum::extract::{Path, Query};
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -47,8 +47,12 @@ pub fn conversation_to_markdown(msgs: &[MessageWithContent]) -> String {
         out.push_str("\n\n");
 
         for c in &m.contents {
-            let Ok(data) = c.parse_content() else { continue };
-            let Ok(v) = serde_json::to_value(&data) else { continue };
+            let Ok(data) = c.parse_content() else {
+                continue;
+            };
+            let Ok(v) = serde_json::to_value(&data) else {
+                continue;
+            };
             let ty = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
             match ty {
                 "text" => {
@@ -73,14 +77,19 @@ pub fn conversation_to_markdown(msgs: &[MessageWithContent]) -> String {
                         .get("input")
                         .map(|i| serde_json::to_string_pretty(i).unwrap_or_default())
                         .unwrap_or_default();
-                    out.push_str(&format!("```tool_use ({name})\n{}\n```\n\n", input.trim_end()));
+                    out.push_str(&format!(
+                        "```tool_use ({name})\n{}\n```\n\n",
+                        input.trim_end()
+                    ));
                 }
                 "tool_result" => {
                     let body = v
                         .get("content")
                         .map(|c| serde_json::to_string_pretty(c).unwrap_or_default())
                         .or_else(|| {
-                            v.get("text").and_then(|x| x.as_str()).map(|s| s.to_string())
+                            v.get("text")
+                                .and_then(|x| x.as_str())
+                                .map(|s| s.to_string())
                         })
                         .unwrap_or_default();
                     out.push_str("```tool_result\n");
@@ -93,14 +102,11 @@ pub fn conversation_to_markdown(msgs: &[MessageWithContent]) -> String {
                         .and_then(|x| x.as_str())
                         .or_else(|| v.get("name").and_then(|x| x.as_str()))
                         .unwrap_or("file");
-                    let fid = v
-                        .get("file_id")
-                        .and_then(|x| x.as_str())
-                        .or_else(|| {
-                            v.get("source")
-                                .and_then(|s| s.get("file_id"))
-                                .and_then(|x| x.as_str())
-                        });
+                    let fid = v.get("file_id").and_then(|x| x.as_str()).or_else(|| {
+                        v.get("source")
+                            .and_then(|s| s.get("file_id"))
+                            .and_then(|x| x.as_str())
+                    });
                     match fid {
                         Some(id) => out.push_str(&format!("[{name}](/api/files/{id})\n\n")),
                         None => out.push_str(&format!("{name}\n\n")),

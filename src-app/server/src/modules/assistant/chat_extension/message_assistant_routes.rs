@@ -7,9 +7,9 @@
 //! to set the originally-active assistant back when the user clicks
 //! Edit on a past message.
 
-use aide::axum::{routing::get_with, ApiRouter};
+use aide::axum::{ApiRouter, routing::get_with};
 use aide::transform::TransformOperation;
-use axum::{debug_handler, extract::Path, http::StatusCode, Json};
+use axum::{Json, debug_handler, extract::Path, http::StatusCode};
 use serde::Serialize;
 use uuid::Uuid;
 

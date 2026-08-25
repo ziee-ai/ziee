@@ -35,7 +35,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use super::models::{HubAssistant, HubCategory, HubData, HubMCPServer, HubModel, HubSkill, HubWorkflow};
+use super::models::{
+    HubAssistant, HubCategory, HubData, HubMCPServer, HubModel, HubSkill, HubWorkflow,
+};
 use crate::common::AppError;
 
 // =====================================================================
@@ -107,8 +109,7 @@ static HUB_SEED: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/binaries/hub-seed")
 /// the tracked seed's `index.json` `hub_version` field, so this const
 /// stays in lockstep with whatever `binaries/hub-seed/` actually
 /// contains.
-pub const SEED_HUB_VERSION: &str =
-    include_str!(concat!(env!("OUT_DIR"), "/hub_seed_version.txt"));
+pub const SEED_HUB_VERSION: &str = include_str!(concat!(env!("OUT_DIR"), "/hub_seed_version.txt"));
 
 /// Marker file in `current/` indicating the active catalog is the
 /// embedded seed (never fetched from Pages). A successful refresh
@@ -374,11 +375,7 @@ impl HubManager {
         }
 
         fs::create_dir_all(&current).map_err(|e| {
-            AppError::internal_error(format!(
-                "hub: create {}: {}",
-                current.display(),
-                e
-            ))
+            AppError::internal_error(format!("hub: create {}: {}", current.display(), e))
         })?;
         Self::dump_dir(&HUB_SEED, &current)?;
         let _ = fs::write(current.join(SEED_MARKER), b"seed\n");
@@ -394,11 +391,7 @@ impl HubManager {
     fn overwrite_with_seed(current: &std::path::Path) -> Result<(), AppError> {
         if current.exists() {
             for entry in fs::read_dir(current).map_err(|e| {
-                AppError::internal_error(format!(
-                    "hub: read {}: {}",
-                    current.display(),
-                    e
-                ))
+                AppError::internal_error(format!("hub: read {}: {}", current.display(), e))
             })? {
                 let entry = entry.map_err(|e| {
                     AppError::internal_error(format!(
@@ -414,20 +407,12 @@ impl HubManager {
                     fs::remove_file(&path)
                 };
                 res.map_err(|e| {
-                    AppError::internal_error(format!(
-                        "hub: clear {}: {}",
-                        path.display(),
-                        e
-                    ))
+                    AppError::internal_error(format!("hub: clear {}: {}", path.display(), e))
                 })?;
             }
         } else {
             fs::create_dir_all(current).map_err(|e| {
-                AppError::internal_error(format!(
-                    "hub: create {}: {}",
-                    current.display(),
-                    e
-                ))
+                AppError::internal_error(format!("hub: create {}: {}", current.display(), e))
             })?;
         }
         Self::dump_dir(&HUB_SEED, current)?;
@@ -455,15 +440,10 @@ impl HubManager {
     pub async fn catalog(&self) -> Result<Catalog, AppError> {
         let path = self.current_dir().join("index.json");
         let bytes = tokio::fs::read(&path).await.map_err(|e| {
-            AppError::internal_error(format!(
-                "hub: read index.json at {}: {}",
-                path.display(),
-                e
-            ))
+            AppError::internal_error(format!("hub: read index.json at {}: {}", path.display(), e))
         })?;
-        serde_json::from_slice::<Catalog>(&bytes).map_err(|e| {
-            AppError::internal_error(format!("hub: parse index.json: {}", e))
-        })
+        serde_json::from_slice::<Catalog>(&bytes)
+            .map_err(|e| AppError::internal_error(format!("hub: parse index.json: {}", e)))
     }
 
     /// Read the per-entry manifest. The path is resolved from the
@@ -550,19 +530,13 @@ impl HubManager {
             }
             HubCategory::Assistant => {
                 let a: HubAssistant = serde_json::from_slice(&bytes).map_err(|e| {
-                    AppError::internal_error(format!(
-                        "hub: parse assistant {}: {}",
-                        name, e
-                    ))
+                    AppError::internal_error(format!("hub: parse assistant {}: {}", name, e))
                 })?;
                 Ok(HubManifest::assistant(a))
             }
             HubCategory::McpServer => {
                 let s: HubMCPServer = serde_json::from_slice(&bytes).map_err(|e| {
-                    AppError::internal_error(format!(
-                        "hub: parse mcp-server {}: {}",
-                        name, e
-                    ))
+                    AppError::internal_error(format!("hub: parse mcp-server {}: {}", name, e))
                 })?;
                 Ok(HubManifest::mcp_server(s))
             }
@@ -630,10 +604,7 @@ impl HubManager {
     /// Combined load — backs the old `load_hub_data_with_locale`
     /// callers that read everything in one shot. The `_locale` arg
     /// is accepted for source-compat but ignored.
-    pub async fn load_hub_data_with_locale(
-        &self,
-        _locale: &str,
-    ) -> Result<HubData, AppError> {
+    pub async fn load_hub_data_with_locale(&self, _locale: &str) -> Result<HubData, AppError> {
         let catalog = self.catalog().await?;
         let models = self.list_models().await?;
         let assistants = self.list_assistants().await?;
@@ -733,7 +704,9 @@ impl HubManager {
             .catalog()
             .await
             .inspect_err(|e| {
-                tracing::debug!("hub.refresh: no readable previous catalog (expected on first boot): {e}")
+                tracing::debug!(
+                    "hub.refresh: no readable previous catalog (expected on first boot): {e}"
+                )
             })
             .ok()
             .map(|c| c.hub_version);
@@ -752,26 +725,14 @@ impl HubManager {
         // then drop the seed marker (if any) since we're now Pages-backed.
         let current = self.current_dir();
         fs::create_dir_all(&current).map_err(|e| {
-            AppError::internal_error(format!(
-                "hub: create {}: {}",
-                current.display(),
-                e
-            ))
+            AppError::internal_error(format!("hub: create {}: {}", current.display(), e))
         })?;
         let tmp_path = current.join("index.json.tmp");
         let final_path = current.join("index.json");
-        fs::write(&tmp_path, &bytes).map_err(|e| {
-            AppError::internal_error(format!(
-                "hub: write tmp index.json: {}",
-                e
-            ))
-        })?;
-        fs::rename(&tmp_path, &final_path).map_err(|e| {
-            AppError::internal_error(format!(
-                "hub: promote tmp index.json: {}",
-                e
-            ))
-        })?;
+        fs::write(&tmp_path, &bytes)
+            .map_err(|e| AppError::internal_error(format!("hub: write tmp index.json: {}", e)))?;
+        fs::rename(&tmp_path, &final_path)
+            .map_err(|e| AppError::internal_error(format!("hub: promote tmp index.json: {}", e)))?;
         let _ = fs::remove_file(current.join(SEED_MARKER));
 
         let new_version = catalog.hub_version;
@@ -795,9 +756,7 @@ impl HubManager {
         let url_owned = url.clone();
         let bytes = tokio::task::spawn_blocking(move || download_json(&url_owned))
             .await
-            .map_err(|e| {
-                AppError::internal_error(format!("hub: fetch-manifest join: {}", e))
-            })??;
+            .map_err(|e| AppError::internal_error(format!("hub: fetch-manifest join: {}", e)))??;
 
         let cache_path = self.current_dir().join(rel);
         if let Some(parent) = cache_path.parent() {
@@ -832,11 +791,7 @@ impl HubManager {
     /// Copy an `include_dir::Dir` recursively onto disk.
     fn dump_dir(dir: &Dir<'_>, target: &Path) -> Result<(), AppError> {
         fs::create_dir_all(target).map_err(|e| {
-            AppError::internal_error(format!(
-                "hub: mkdir {}: {}",
-                target.display(),
-                e
-            ))
+            AppError::internal_error(format!("hub: mkdir {}: {}", target.display(), e))
         })?;
         for entry in dir.entries() {
             match entry {
@@ -852,19 +807,12 @@ impl HubManager {
                         })?;
                     }
                     fs::write(&dest, f.contents()).map_err(|e| {
-                        AppError::internal_error(format!(
-                            "hub: write {}: {}",
-                            dest.display(),
-                            e
-                        ))
+                        AppError::internal_error(format!("hub: write {}: {}", dest.display(), e))
                     })?;
                 }
                 include_dir::DirEntry::Dir(sub) => {
-                    let dest = target.join(
-                        sub.path()
-                            .strip_prefix(dir.path())
-                            .unwrap_or(sub.path()),
-                    );
+                    let dest =
+                        target.join(sub.path().strip_prefix(dir.path()).unwrap_or(sub.path()));
                     Self::dump_dir(sub, &dest)?;
                 }
             }
@@ -894,10 +842,7 @@ fn download_json(url: &str) -> Result<Vec<u8>, AppError> {
     let mut attempt = 0;
     let resp = loop {
         attempt += 1;
-        let send_result = client
-            .get(url)
-            .header("Accept", "application/json")
-            .send();
+        let send_result = client.get(url).header("Accept", "application/json").send();
         let transient = match &send_result {
             Ok(r) => r.status().is_server_error() || r.status().as_u16() == 429,
             Err(_) => true,
@@ -906,7 +851,10 @@ fn download_json(url: &str) -> Result<Vec<u8>, AppError> {
             let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
             tracing::warn!(
                 "hub: GET {} transient failure (attempt {}/{}); retrying in {:?}",
-                url, attempt, MAX_ATTEMPTS, delay
+                url,
+                attempt,
+                MAX_ATTEMPTS,
+                delay
             );
             std::thread::sleep(delay);
             continue;
@@ -983,20 +931,13 @@ pub(crate) fn is_safe_name(name: &str) -> bool {
     let ns_ok = !ns.is_empty()
         && !ns.starts_with('.')
         && !ns.ends_with('.')
-        && ns.bytes().all(|b| {
-            b.is_ascii_lowercase()
-                || b.is_ascii_digit()
-                || b == b'.'
-                || b == b'-'
-        });
+        && ns
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-');
     let leaf_ok = !leaf.is_empty()
         && !leaf.starts_with('.')
         && leaf.bytes().all(|b| {
-            b.is_ascii_lowercase()
-                || b.is_ascii_digit()
-                || b == b'.'
-                || b == b'-'
-                || b == b'_'
+            b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'_'
         });
     ns_ok && leaf_ok
 }
@@ -1214,8 +1155,12 @@ mod tests {
         assert!(is_safe_manifest_path("models/llama/1.0.0.json"));
         assert!(is_safe_manifest_path("assistants/foo/1.0.0.json"));
         assert!(is_safe_manifest_path("mcp-servers/bar/2.3.4.json"));
-        assert!(is_safe_manifest_path("skills/io.github.x/configure/1.0.0.json"));
-        assert!(is_safe_manifest_path("workflows/io.github.x/research/1.0.0.json"));
+        assert!(is_safe_manifest_path(
+            "skills/io.github.x/configure/1.0.0.json"
+        ));
+        assert!(is_safe_manifest_path(
+            "workflows/io.github.x/research/1.0.0.json"
+        ));
         // Wrong extension.
         assert!(!is_safe_manifest_path("models/foo/1.0.0.yaml"));
         // Parent-dir.
@@ -1262,8 +1207,8 @@ mod tests {
         let asst_json = HUB_SEED
             .get_file("assistants/io.github.ziee-ai/code-reviewer/1.0.0.json")
             .expect("seed has code-reviewer");
-        let asst: HubAssistant = serde_json::from_slice(asst_json.contents())
-            .expect("parse assistant json");
+        let asst: HubAssistant =
+            serde_json::from_slice(asst_json.contents()).expect("parse assistant json");
         assert_eq!(asst.name, "io.github.ziee-ai/code-reviewer");
 
         let mcp_json = HUB_SEED

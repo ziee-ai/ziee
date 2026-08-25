@@ -11,7 +11,6 @@
 //   - chat/core/handlers/providers.rs   → get_for_user
 // In-bridge callers: handlers.rs (5 HTTP handlers).
 
-
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -39,10 +38,7 @@ impl UserGroupLlmProviderRepository {
     }
 
     /// All groups that have access to a provider.
-    pub async fn get_provider_groups(
-        &self,
-        provider_id: Uuid,
-    ) -> Result<Vec<Group>, sqlx::Error> {
+    pub async fn get_provider_groups(&self, provider_id: Uuid) -> Result<Vec<Group>, sqlx::Error> {
         let rows = sqlx::query!(
             r#"SELECT g.id, g.name, g.description, g.permissions, g.is_system, g.is_active, g.is_default, g.created_at, g.updated_at
              FROM groups g
@@ -118,10 +114,7 @@ impl UserGroupLlmProviderRepository {
     /// rows (with api_key decrypted). Unbounded — for internal callers that
     /// need the complete set (e.g. the assignment-diff in update). The HTTP
     /// read path uses [`get_for_group_paged`] instead.
-    pub async fn get_for_group(
-        &self,
-        group_id: Uuid,
-    ) -> Result<Vec<LlmProvider>, sqlx::Error> {
+    pub async fn get_for_group(&self, group_id: Uuid) -> Result<Vec<LlmProvider>, sqlx::Error> {
         let rows = sqlx::query!(
             r#"SELECT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.api_key_encrypted, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
                       p.default_runtime_version_id

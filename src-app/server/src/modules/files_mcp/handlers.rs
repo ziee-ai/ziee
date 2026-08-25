@@ -115,7 +115,11 @@ pub async fn jsonrpc_handler(
                 Err(e) => error_response(id, StatusCode::OK, app_error_to_jsonrpc(&e)),
             }
         }
-        _ => error_response(id, StatusCode::OK, JsonRpcError::method_not_found(&req.method)),
+        _ => error_response(
+            id,
+            StatusCode::OK,
+            JsonRpcError::method_not_found(&req.method),
+        ),
     }
 }
 
@@ -279,7 +283,10 @@ async fn convert_document(
     let a: ConvertArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     if a.markdown.trim().is_empty() {
-        return Err(AppError::bad_request("INVALID_ARGS", "markdown must not be empty"));
+        return Err(AppError::bad_request(
+            "INVALID_ARGS",
+            "markdown must not be empty",
+        ));
     }
     let filename = sanitize_pdf_filename(a.filename);
 
@@ -326,7 +333,10 @@ async fn convert_document(
     crate::modules::file::sync::publish_file_changed(user_id, file.id);
     crate::modules::file_rag::ingest::spawn_index(user_id, &file);
     Ok(text_result(
-        format!("Converted to PDF and saved '{}' (id {}).", file.filename, file.id),
+        format!(
+            "Converted to PDF and saved '{}' (id {}).",
+            file.filename, file.id
+        ),
         Some(json!({
             "file_id": file.id,
             "version": file.version,
@@ -381,7 +391,10 @@ async fn semantic_search(
     let args: SemanticSearchArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     if args.query.trim().is_empty() {
-        return Err(AppError::bad_request("INVALID_ARGS", "query must not be empty"));
+        return Err(AppError::bad_request(
+            "INVALID_ARGS",
+            "query must not be empty",
+        ));
     }
 
     let admin = Repos.file_rag.get_admin_settings().await?;
@@ -520,7 +533,10 @@ fn file_not_available_error(files: &[AvailableFile]) -> AppError {
             .collect();
         msg.push_str(&format!(" Available now: {}", shown.join(", ")));
         if files.len() > NOT_AVAILABLE_NAME_CAP {
-            msg.push_str(&format!(" (+{} more)", files.len() - NOT_AVAILABLE_NAME_CAP));
+            msg.push_str(&format!(
+                " (+{} more)",
+                files.len() - NOT_AVAILABLE_NAME_CAP
+            ));
         }
         msg.push('.');
     }
@@ -551,7 +567,9 @@ fn resolve_target<'a>(
             .collect();
         return match matches.as_slice() {
             [one] => Ok(one),
-            [] => Err(AppError::not_found("File (no such name in this conversation)")),
+            [] => Err(AppError::not_found(
+                "File (no such name in this conversation)",
+            )),
             many => {
                 let candidates: Vec<Value> = many
                     .iter()
@@ -590,7 +608,9 @@ async fn read_file(
             // whose tool results are text-only get this base64 image; the chat
             // layer can fall back to native re-injection there.
             let ext = extension_of(&file.name);
-            let bytes = storage.load_original(user_id, file.blob_version_id, &ext).await?;
+            let bytes = storage
+                .load_original(user_id, file.blob_version_id, &ext)
+                .await?;
             use base64::Engine;
             let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
             let mime = file
@@ -621,9 +641,7 @@ async fn read_file(
         // `pages == 1`, so a `pages > 0` test would route it to the
         // page reader and `read_text_lines` (the offset/limit-in-lines
         // path the tool advertises) would be dead.
-        FileType::Text => {
-            read_text_lines(&*storage, user_id, file, args.offset, args.limit).await
-        }
+        FileType::Text => read_text_lines(&*storage, user_id, file, args.offset, args.limit).await,
         FileType::Document => {
             if file.pages > 0 {
                 read_paginated(&*storage, user_id, file, args.offset, args.limit).await
@@ -653,7 +671,10 @@ async fn read_paginated(
     for page in start..end {
         // pages are stored 1-indexed.
         let page_num = (page + 1) as u32;
-        match storage.load_text_page(user_id, file.blob_version_id, page_num).await {
+        match storage
+            .load_text_page(user_id, file.blob_version_id, page_num)
+            .await
+        {
             Ok(text) => {
                 out.push_str(&format!("\n--- {} · page {} ---\n", file.name, page + 1));
                 out.push_str(&text);
@@ -701,7 +722,9 @@ async fn read_text_lines(
     limit: Option<usize>,
 ) -> Result<Value, AppError> {
     let ext = extension_of(&file.name);
-    let bytes = storage.load_original(user_id, file.blob_version_id, &ext).await?;
+    let bytes = storage
+        .load_original(user_id, file.blob_version_id, &ext)
+        .await?;
     let content = String::from_utf8_lossy(&bytes);
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();
@@ -755,7 +778,10 @@ async fn grep_files(
     let args: GrepArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     if args.pattern.is_empty() {
-        return Err(AppError::bad_request("INVALID_ARGS", "pattern must not be empty"));
+        return Err(AppError::bad_request(
+            "INVALID_ARGS",
+            "pattern must not be empty",
+        ));
     }
     let re = regex::RegexBuilder::new(&args.pattern)
         .case_insensitive(args.ignore_case)
@@ -783,7 +809,11 @@ async fn grep_files(
     let mut scanned: usize = 0;
     let mut missing: Vec<Value> = Vec::new();
     'outer: for file in targets {
-        let pages = if file.pages > 0 { file.pages as usize } else { 1 };
+        let pages = if file.pages > 0 {
+            file.pages as usize
+        } else {
+            1
+        };
         for page in 0..pages {
             let text = if file.pages > 0 {
                 match storage
@@ -804,7 +834,10 @@ async fn grep_files(
                 }
             } else {
                 let ext = extension_of(&file.name);
-                match storage.load_original(user_id, file.blob_version_id, &ext).await {
+                match storage
+                    .load_original(user_id, file.blob_version_id, &ext)
+                    .await
+                {
                     Ok(b) => String::from_utf8_lossy(&b).into_owned(),
                     Err(_) => {
                         missing.push(json!({
@@ -1019,7 +1052,9 @@ async fn commit_text_version(
         None => Ok(unchanged_result(file)),
         Some(version) => Ok(text_result(
             format!("Updated '{}' → v{}.", file.filename, version.version),
-            Some(json!({ "file_id": file.id, "version": version.version, "version_id": version.id })),
+            Some(
+                json!({ "file_id": file.id, "version": version.version, "version_id": version.id }),
+            ),
         )),
     }
 }
@@ -1038,7 +1073,10 @@ async fn create_file(
     let a: CreateArgs = serde_json::from_value(args.clone())
         .map_err(|e| AppError::bad_request("INVALID_ARGS", e.to_string()))?;
     if a.filename.trim().is_empty() {
-        return Err(AppError::bad_request("INVALID_ARGS", "filename must not be empty"));
+        return Err(AppError::bad_request(
+            "INVALID_ARGS",
+            "filename must not be empty",
+        ));
     }
     let bytes = a.content.into_bytes();
     let file_id = Uuid::new_v4();
@@ -1207,7 +1245,10 @@ mod resolve_target_tests {
         let canonical = f.id;
         let files = vec![f];
         let got = resolve_target(&files, Some(absorbed), None).expect("alias id must resolve");
-        assert_eq!(got.id, canonical, "an alias id resolves to the canonical entry");
+        assert_eq!(
+            got.id, canonical,
+            "an alias id resolves to the canonical entry"
+        );
     }
 
     /// The reported symptom: an id from outside this conversation. The error must
@@ -1217,12 +1258,29 @@ mod resolve_target_tests {
     fn unknown_id_errors_actionably() {
         let files = vec![mk("alpha.md"), mk("beta.pdf")];
         let e = resolve_target(&files, Some(Uuid::new_v4()), None).unwrap_err();
-        assert_eq!(e.error_code(), "FILE_NOT_AVAILABLE", "machine-readable code");
-        assert_eq!(e.status_code(), 400, "maps to JSON-RPC invalid_params, as before");
+        assert_eq!(
+            e.error_code(),
+            "FILE_NOT_AVAILABLE",
+            "machine-readable code"
+        );
+        assert_eq!(
+            e.status_code(),
+            400,
+            "maps to JSON-RPC invalid_params, as before"
+        );
         let s = err_parts(&e);
-        assert!(s.contains("list_files"), "must point at list_files; got: {s}");
-        assert!(s.contains("name"), "must offer the `name` fallback; got: {s}");
-        assert!(s.contains("alpha.md") && s.contains("beta.pdf"), "lists current files; got: {s}");
+        assert!(
+            s.contains("list_files"),
+            "must point at list_files; got: {s}"
+        );
+        assert!(
+            s.contains("name"),
+            "must offer the `name` fallback; got: {s}"
+        );
+        assert!(
+            s.contains("alpha.md") && s.contains("beta.pdf"),
+            "lists current files; got: {s}"
+        );
     }
 
     /// An empty conversation says so rather than dangling "Available now:".
@@ -1241,8 +1299,14 @@ mod resolve_target_tests {
             .collect();
         let e = resolve_target(&files, Some(Uuid::new_v4()), None).unwrap_err();
         let s = err_parts(&e);
-        assert!(s.contains("+5 more"), "must report the elided count; got: {s}");
-        assert!(!s.contains("f14.md"), "must not list past the cap; got: {s}");
+        assert!(
+            s.contains("+5 more"),
+            "must report the elided count; got: {s}"
+        );
+        assert!(
+            !s.contains("f14.md"),
+            "must not list past the cap; got: {s}"
+        );
     }
 
     // --- pre-existing name-path behaviour must be unchanged -----------------
@@ -1252,9 +1316,16 @@ mod resolve_target_tests {
         let mut f = mk("report.md");
         f.aka.push("report-copy.md".to_string());
         let files = vec![f];
-        assert_eq!(resolve_target(&files, None, Some("report.md")).unwrap().name, "report.md");
         assert_eq!(
-            resolve_target(&files, None, Some("report-copy.md")).unwrap().name,
+            resolve_target(&files, None, Some("report.md"))
+                .unwrap()
+                .name,
+            "report.md"
+        );
+        assert_eq!(
+            resolve_target(&files, None, Some("report-copy.md"))
+                .unwrap()
+                .name,
             "report.md",
             "an aka alias still resolves to the canonical entry"
         );
@@ -1264,15 +1335,19 @@ mod resolve_target_tests {
     fn ambiguous_name_and_missing_target_are_unchanged() {
         let files = vec![mk("dup.md"), mk("dup.md")];
         assert_eq!(
-            resolve_target(&files, None, Some("dup.md")).unwrap_err().error_code(),
+            resolve_target(&files, None, Some("dup.md"))
+                .unwrap_err()
+                .error_code(),
             "AMBIGUOUS_NAME"
         );
         assert_eq!(
             resolve_target(&files, None, None).unwrap_err().error_code(),
             "MISSING_TARGET"
         );
-        assert!(err_parts(&resolve_target(&files, None, Some("nope.md")).unwrap_err())
-            .contains("no such name"));
+        assert!(
+            err_parts(&resolve_target(&files, None, Some("nope.md")).unwrap_err())
+                .contains("no such name")
+        );
     }
 }
 
@@ -1283,21 +1358,39 @@ mod tests {
     #[test]
     fn sanitize_pdf_filename_strips_path_and_coerces_extension() {
         // Path components are dropped (the basename wins) — no directory escape.
-        assert_eq!(sanitize_pdf_filename(Some("a/b/report.pdf".into())), "report.pdf");
-        assert_eq!(sanitize_pdf_filename(Some("../../etc/passwd".into())), "passwd.pdf");
-        assert_eq!(sanitize_pdf_filename(Some("c:\\win\\notes".into())), "notes.pdf");
+        assert_eq!(
+            sanitize_pdf_filename(Some("a/b/report.pdf".into())),
+            "report.pdf"
+        );
+        assert_eq!(
+            sanitize_pdf_filename(Some("../../etc/passwd".into())),
+            "passwd.pdf"
+        );
+        assert_eq!(
+            sanitize_pdf_filename(Some("c:\\win\\notes".into())),
+            "notes.pdf"
+        );
         // A bare name gains the .pdf extension; an existing .pdf isn't doubled
         // (regardless of case).
         assert_eq!(sanitize_pdf_filename(Some("summary".into())), "summary.pdf");
-        assert_eq!(sanitize_pdf_filename(Some("summary.pdf".into())), "summary.pdf");
-        assert_eq!(sanitize_pdf_filename(Some("report.PDF".into())), "report.pdf");
+        assert_eq!(
+            sanitize_pdf_filename(Some("summary.pdf".into())),
+            "summary.pdf"
+        );
+        assert_eq!(
+            sanitize_pdf_filename(Some("report.PDF".into())),
+            "report.pdf"
+        );
     }
 
     #[test]
     fn sanitize_pdf_filename_does_not_panic_on_multibyte() {
         // A cut near a `.pdf` byte boundary must not land mid-UTF-8-codepoint.
         assert_eq!(sanitize_pdf_filename(Some("😀x".into())), "x.pdf");
-        assert_eq!(sanitize_pdf_filename(Some("résumé.PDF".into())), "résumé.pdf");
+        assert_eq!(
+            sanitize_pdf_filename(Some("résumé.PDF".into())),
+            "résumé.pdf"
+        );
         // A 4-byte emoji alone (len 4) — get(0..) == the whole emoji, not ".pdf".
         assert_eq!(sanitize_pdf_filename(Some("😀".into())), "document.pdf");
     }
@@ -1323,4 +1416,3 @@ mod tests {
         assert!(out.ends_with(".pdf"));
     }
 }
-

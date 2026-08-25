@@ -2,22 +2,31 @@
 --
 -- A fan-out child is modeled as its OWN `workflow_runs` row (`job_kind='subagent'`,
 -- already a valid job_kind since 202607190700), so it inherits the entire
--- agent-activity persistence stack + the existing workflow-run retention. The ONLY
--- new linkage a chat-parented child needs is the parent assistant `message_id`:
+-- agent-activity persistence stack + the existing workflow-run retention. Two
+-- nullable links (every existing / non-chat-parented run leaves both NULL):
 --
---   * it is the key `GET /api/subagent-runs?parent_message_id=…` filters on;
---   * the FK `REFERENCES messages(id) ON DELETE CASCADE` makes the child row
---     cascade-delete with its parent assistant message — and, transitively, with
---     the conversation (a conversation delete cascades its messages). This is how
---     "child rows CASCADE-delete with their parent" holds (DEC-3) WITHOUT a new
---     retention setting: child rows are ordinary `workflow_runs` rows and are
---     pruned by the existing workflow-run retention.
+--   * `parent_message_id` — the parent assistant `message_id`. The QUERY key that
+--     `GET /api/subagent-runs?parent_message_id=…` filters on (one chat turn can
+--     fan out more than once, so the conversation alone is too coarse). Plain uuid,
+--     NOT a FK: `messages` rows are NOT FK-linked to `conversations` and do NOT
+--     cascade on a conversation delete (`delete_conversation` relies on FK cascade,
+--     and there is none for messages), so a message-FK could NOT guarantee the
+--     child cascades with the conversation.
 --
--- Nullable: every existing run, and every non-chat-parented run, leaves it NULL.
--- No `parent_run_id` / `parent_conversation_id` is added — only chat fan-out is
--- wired to persist children (DEC-7/DEC-11), so those columns would be dead.
+--   * `parent_conversation_id` — the parent conversation, `REFERENCES conversations
+--     ON DELETE CASCADE`. THIS is the lifecycle guarantee (DEC-3): deleting the
+--     conversation cascade-deletes its fan-out child runs. (The row's EXISTING
+--     `conversation_id` FK is `ON DELETE SET NULL` — shared by all background runs —
+--     so it can't be repurposed for the cascade; a dedicated column is needed.)
+--     Child rows are then pruned by the EXISTING workflow-run retention too — no new
+--     retention setting (DEC-3/DEC-9).
+--
+-- No `parent_run_id` is added — no workflow/background host fans out through the
+-- isolated child path (DEC-11), so it would be a dead column.
 ALTER TABLE public.workflow_runs
-    ADD COLUMN parent_message_id uuid REFERENCES public.messages(id) ON DELETE CASCADE;
+    ADD COLUMN parent_message_id uuid,
+    ADD COLUMN parent_conversation_id uuid
+        REFERENCES public.conversations(id) ON DELETE CASCADE;
 
 -- The children-of-a-turn lookup (partial: only child rows carry the column).
 CREATE INDEX idx_workflow_runs_parent_message

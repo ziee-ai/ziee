@@ -34,13 +34,21 @@ pub async fn jsonrpc_handler(
     let raw: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(e) => {
-            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::parse_error(e.to_string()));
+            return error_response(
+                None,
+                StatusCode::BAD_REQUEST,
+                JsonRpcError::parse_error(e.to_string()),
+            );
         }
     };
     let req: JsonRpcRequest = match serde_json::from_value(raw) {
         Ok(r) => r,
         Err(e) => {
-            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::invalid_request(e.to_string()));
+            return error_response(
+                None,
+                StatusCode::BAD_REQUEST,
+                JsonRpcError::invalid_request(e.to_string()),
+            );
         }
     };
 
@@ -68,14 +76,23 @@ pub async fn jsonrpc_handler(
                 "run_js must be invoked in a chat context; it is executed inline by the chat runtime, not over the loopback transport",
             ),
         ),
-        _ => error_response(id, StatusCode::OK, JsonRpcError::method_not_found(&req.method)),
+        _ => error_response(
+            id,
+            StatusCode::OK,
+            JsonRpcError::method_not_found(&req.method),
+        ),
     }
 }
 
 fn ok_response(id: Option<Value>, result: Value) -> Response {
     (
         StatusCode::OK,
-        Json(JsonRpcResponse { jsonrpc: "2.0", id, result: Some(result), error: None }),
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: Some(result),
+            error: None,
+        }),
     )
         .into_response()
 }
@@ -83,7 +100,12 @@ fn ok_response(id: Option<Value>, result: Value) -> Response {
 fn error_response(id: Option<Value>, http: StatusCode, err: JsonRpcError) -> Response {
     (
         http,
-        Json(JsonRpcResponse { jsonrpc: "2.0", id, result: None, error: Some(err) }),
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: None,
+            error: Some(err),
+        }),
     )
         .into_response()
 }
@@ -134,7 +156,9 @@ pub async fn update_settings_handler(
     // caps take effect on the very next invocation, and live-resize the global
     // admission semaphore (max_concurrent_runs) immediately.
     crate::modules::js_tool::settings_cache::invalidate(&row);
-    crate::modules::js_tool::executor::set_max_concurrent_runs(row.max_concurrent_runs.max(1) as usize);
+    crate::modules::js_tool::executor::set_max_concurrent_runs(
+        row.max_concurrent_runs.max(1) as usize
+    );
     sync_publish(
         SyncEntity::JsToolSettings,
         SyncAction::Update,
