@@ -30,11 +30,14 @@ choice.
 **Basis:** convention — mirrors `background_mcp/runs.rs` (owner-scoped typed REST, `get_with`/docs), and reuses the existing detail getter rather than duplicating it.
 
 ### DEC-7: chat-vs-run parent linkage mechanics?
-**Resolution:** for the ONLY host wired this round (chat fan-out), the child row links via `parent_message_id` (the parent assistant `message_id`). The list endpoint filters `WHERE parent_message_id = $1`. `parent_run_id` / `parent_conversation_id` are NOT added — no workflow/background host fans out through the isolated child path (DEC-11), so those columns would be dead. DESIGN explicitly delegated the linkage choice to DECISIONS ("one linkage per host"); chat's linkage is message-id.
-**Basis:** convention — YAGNI + the design deferred this; the child's existing `conversation_id` + `user_id` columns already carry conversation + owner.
+**Resolution:** for the ONLY host wired this round (chat fan-out), the child row carries TWO links: `parent_message_id` (the parent assistant `message_id`) — a PLAIN column, the list query key (`WHERE parent_message_id = $1`); and `parent_conversation_id` — FK `conversations(id) ON DELETE CASCADE`, the lifecycle link. `parent_run_id` is NOT added (no workflow/background host fans out through the isolated child path — DEC-11 — so it would be dead). DESIGN explicitly delegated the linkage choice to DECISIONS.
+**Basis:** codebase — see the DEC-7 CORRECTION below; the design deferred this.
+
+## DEC-7 CORRECTION — why `parent_conversation_id` (not a `messages` FK) carries the cascade
+Verified by RUNNING the schema (DRIFT-1.1): `messages` has NO FK to `conversations`, and `delete_conversation` relies purely on FK cascade — so a `parent_message_id REFERENCES messages ON DELETE CASCADE` (the original DEC-7) would NOT delete a child when its CONVERSATION is deleted (only when the message itself is, which conversation-delete does not do). The dedicated `parent_conversation_id` FK (ON DELETE CASCADE to `conversations`) is therefore the DEC-3 lifecycle guarantee; `parent_message_id` stays a plain query key (owner-scope + `job_kind='subagent'` provide the security). TEST-8 proves the conversation-delete cascade.
 
 ### DEC-8: index columns for the children lookup?
-**Resolution:** a partial btree index `idx_workflow_runs_parent_message ON workflow_runs (parent_message_id) WHERE parent_message_id IS NOT NULL` — the list query filters on `parent_message_id` (+ `user_id`, already indexed patterns exist).
+**Resolution:** a partial btree index `idx_workflow_runs_parent_message ON workflow_runs (parent_message_id) WHERE parent_message_id IS NOT NULL` — the list query filters on `parent_message_id`. `parent_conversation_id` needs no dedicated index (it is used only by the FK cascade, which uses the PK/FK machinery, and conversation deletes are rare).
 **Basis:** convention — mirrors `idx_workflow_runs_conv` (partial index WHERE NOT NULL) in 202607140230.
 
 ### DEC-9: no new retention setting — rationale?

@@ -19,6 +19,8 @@ import {
 import { isTerminalRunStatus } from '../stores/BackgroundRuns.store'
 import { BackgroundRunResult } from './BackgroundRunResult'
 import { BackgroundRuns } from '@/modules/background/stores/BackgroundRuns.store'
+import { AgentActivityTimeline } from '@/modules/workflow/components/run/AgentActivityTimeline'
+import type { AgentActivityEntry } from '@/modules/workflow/components/run/activityDescriptors'
 
 // Status → Tag tone. `cancelled` stays neutral (`default`), never the red
 // `error` of `failed` — mirrors the tool-call history convention so a
@@ -292,7 +294,22 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
                 data-testid={`background-run-result-error-${run.id}`}
               />
             ) : detail ? (
-              <BackgroundRunResult detail={detail} />
+              <Flex className="flex-col gap-3">
+                <BackgroundRunResult detail={detail} />
+                {/* ITEM-4 — the durable agent-loop transcript, rendered by the
+                    shared workflow timeline. Only when the run produced ≥1
+                    agent-activity entry (no empty timeline block otherwise). */}
+                {(() => {
+                  const transcript: AgentActivityEntry[] = (
+                    detail.activity ?? []
+                  ).filter(
+                    (e): e is AgentActivityEntry => e.type === 'agent_activity',
+                  )
+                  return transcript.length > 0 ? (
+                    <AgentActivityTimeline stepId="agent" entries={transcript} />
+                  ) : null
+                })()}
+              </Flex>
             ) : (
               <Flex className="justify-center py-4">
                 <Spin label="Loading result" />

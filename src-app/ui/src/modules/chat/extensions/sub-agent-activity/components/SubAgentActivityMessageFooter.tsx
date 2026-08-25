@@ -25,11 +25,19 @@ export function SubAgentActivityMessageFooter() {
   const pane = useChatPaneOrNull()
   const store = ((pane?.store ?? Chat) as typeof Chat)
     .SubAgentActivityStore
-  // Reactive read (installs the useStore subscription) — must run every render,
-  // BEFORE any early return, so the hook order stays stable.
-  const { byMessage } = store
+  // Reactive reads (install the useStore subscriptions) — must run every render,
+  // BEFORE any early return, so the hook order stays stable. `childDetailsById`
+  // drives the ITEM-9 per-child transcript drill-in; `loadChildTranscript` is a
+  // resolved action (hook-free) that the card invokes on first expand.
+  const { byMessage, childDetailsById } = store
 
   if (!msg || msg.role !== 'assistant') return null
 
-  return <SubAgentActivityCard activity={byMessage[msg.id] ?? EMPTY_ACTIVITY} />
+  return (
+    <SubAgentActivityCard
+      activity={byMessage[msg.id] ?? EMPTY_ACTIVITY}
+      childDetails={childDetailsById}
+      onExpandChild={store.loadChildTranscript}
+    />
+  )
 }
