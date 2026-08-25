@@ -59,7 +59,10 @@ pub async fn read_json_capped<T: DeserializeOwned>(
 
 /// Read a response body as a (lossy) UTF-8 string with a hard byte cap — for
 /// the XML connectors (arXiv Atom, PubMed efetch).
-pub async fn read_text_capped(resp: reqwest::Response, max_bytes: u64) -> Result<String, AppError> {
+pub async fn read_text_capped(
+    resp: reqwest::Response,
+    max_bytes: u64,
+) -> Result<String, AppError> {
     let bytes = read_bytes_capped(resp, max_bytes).await?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
@@ -72,7 +75,10 @@ mod tests {
     /// reqwest derives `content_length()` from the body, exercising the early
     /// Content-Length rejection branch.
     fn sized_response(body: Vec<u8>) -> reqwest::Response {
-        let http_resp = http::Response::builder().status(200).body(body).unwrap();
+        let http_resp = http::Response::builder()
+            .status(200)
+            .body(body)
+            .unwrap();
         reqwest::Response::from(http_resp)
     }
 
@@ -80,7 +86,9 @@ mod tests {
     /// is None and the cap can only be enforced while streaming.
     fn streaming_response(chunks: Vec<Vec<u8>>) -> reqwest::Response {
         let stream = futures_util::stream::iter(
-            chunks.into_iter().map(|c| Ok::<Vec<u8>, std::io::Error>(c)),
+            chunks
+                .into_iter()
+                .map(|c| Ok::<Vec<u8>, std::io::Error>(c)),
         );
         let body = reqwest::Body::wrap_stream(stream);
         let http_resp = http::Response::builder().status(200).body(body).unwrap();

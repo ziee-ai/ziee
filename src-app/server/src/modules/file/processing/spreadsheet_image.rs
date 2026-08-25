@@ -1,15 +1,15 @@
 // Spreadsheet image generation - creates preview images from spreadsheet files
 // Each sheet is rendered as a separate page image
 
-use ab_glyph::{FontRef, PxScale};
 use async_trait::async_trait;
-use calamine::{Ods, Reader, Xls, Xlsx, open_workbook_from_rs};
+use calamine::{open_workbook_from_rs, Ods, Reader, Xls, Xlsx};
 use image::{ImageBuffer, Rgb, RgbImage};
 use imageproc::drawing::{draw_line_segment_mut, draw_text_mut};
+use ab_glyph::{FontRef, PxScale};
 use std::io::Cursor;
 
-use super::{ProcessingResult, traits::ImageGenerator};
 use crate::common::AppError;
+use super::{ProcessingResult, traits::ImageGenerator};
 
 const IMAGE_WIDTH: u32 = 1200;
 const IMAGE_HEIGHT: u32 = 900;
@@ -28,7 +28,8 @@ impl SpreadsheetImageGenerator {
         const THUMBNAIL_SIZE: u32 = 300;
 
         // Decode JPEG
-        let img = image::load_from_memory(image_data).map_err(|e| AppError::internal_with_id(e))?;
+        let img = image::load_from_memory(image_data)
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         // Convert to RGB first (to ensure resize returns RGB)
         let rgb_img = img.to_rgb8();
@@ -46,7 +47,7 @@ impl SpreadsheetImageGenerator {
             &rgb_img,
             new_width,
             new_height,
-            image::imageops::FilterType::Lanczos3,
+            image::imageops::FilterType::Lanczos3
         );
 
         // Convert to DynamicImage for encoding
@@ -54,11 +55,7 @@ impl SpreadsheetImageGenerator {
 
         // Encode to JPEG
         let mut jpeg_data = Vec::new();
-        thumbnail
-            .write_to(
-                &mut std::io::Cursor::new(&mut jpeg_data),
-                image::ImageFormat::Jpeg,
-            )
+        thumbnail.write_to(&mut std::io::Cursor::new(&mut jpeg_data), image::ImageFormat::Jpeg)
             .map_err(|e| AppError::internal_with_id(e))?;
 
         Ok(jpeg_data)
@@ -77,11 +74,9 @@ impl SpreadsheetImageGenerator {
         }
 
         // Load font
-        let font_data = include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/resources/fonts/DejaVuSansMono.ttf"
-        ));
-        let font = FontRef::try_from_slice(font_data).map_err(|e| AppError::internal_with_id(e))?;
+        let font_data = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/fonts/DejaVuSansMono.ttf"));
+        let font = FontRef::try_from_slice(font_data)
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let scale = PxScale::from(FONT_SIZE);
         let text_color = Rgb([40, 40, 40]);
@@ -102,11 +97,7 @@ impl SpreadsheetImageGenerator {
 
         let table_start_y = MARGIN + 30;
         let num_rows = rows.len().min(MAX_ROWS_PER_PAGE);
-        let num_cols = rows
-            .first()
-            .map(|r| r.len())
-            .unwrap_or(0)
-            .min(MAX_COLS_PER_PAGE);
+        let num_cols = rows.first().map(|r| r.len()).unwrap_or(0).min(MAX_COLS_PER_PAGE);
 
         // Draw grid
         let table_width = (num_cols as u32) * CELL_WIDTH;
@@ -154,16 +145,19 @@ impl SpreadsheetImageGenerator {
                 // Truncate cell content to fit
                 let max_chars = 15;
                 let cell_text = if cell.len() > max_chars {
-                    format!(
-                        "{}...",
-                        &cell.chars().take(max_chars - 3).collect::<String>()
-                    )
+                    format!("{}...", &cell.chars().take(max_chars - 3).collect::<String>())
                 } else {
                     cell.clone()
                 };
 
                 draw_text_mut(
-                    &mut img, text_color, x as i32, y as i32, scale, &font, &cell_text,
+                    &mut img,
+                    text_color,
+                    x as i32,
+                    y as i32,
+                    scale,
+                    &font,
+                    &cell_text,
                 );
             }
         }
@@ -206,8 +200,8 @@ impl SpreadsheetImageGenerator {
     /// Extract all sheets from XLSX workbook
     fn extract_xlsx_sheets(data: &[u8]) -> Result<Vec<(String, Vec<Vec<String>>)>, AppError> {
         let cursor = Cursor::new(data);
-        let mut workbook: Xlsx<_> =
-            open_workbook_from_rs(cursor).map_err(|e| AppError::internal_with_id(e))?;
+        let mut workbook: Xlsx<_> = open_workbook_from_rs(cursor)
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let mut sheets = Vec::new();
 
@@ -216,8 +210,10 @@ impl SpreadsheetImageGenerator {
                 let mut rows = Vec::new();
 
                 for row in range.rows() {
-                    let row_data: Vec<String> =
-                        row.iter().map(|cell| format!("{}", cell)).collect();
+                    let row_data: Vec<String> = row
+                        .iter()
+                        .map(|cell| format!("{}", cell))
+                        .collect();
                     rows.push(row_data);
                 }
 
@@ -231,8 +227,8 @@ impl SpreadsheetImageGenerator {
     /// Extract all sheets from XLS workbook
     fn extract_xls_sheets(data: &[u8]) -> Result<Vec<(String, Vec<Vec<String>>)>, AppError> {
         let cursor = Cursor::new(data);
-        let mut workbook: Xls<_> =
-            open_workbook_from_rs(cursor).map_err(|e| AppError::internal_with_id(e))?;
+        let mut workbook: Xls<_> = open_workbook_from_rs(cursor)
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let mut sheets = Vec::new();
 
@@ -241,8 +237,10 @@ impl SpreadsheetImageGenerator {
                 let mut rows = Vec::new();
 
                 for row in range.rows() {
-                    let row_data: Vec<String> =
-                        row.iter().map(|cell| format!("{}", cell)).collect();
+                    let row_data: Vec<String> = row
+                        .iter()
+                        .map(|cell| format!("{}", cell))
+                        .collect();
                     rows.push(row_data);
                 }
 
@@ -256,8 +254,8 @@ impl SpreadsheetImageGenerator {
     /// Extract all sheets from ODS workbook
     fn extract_ods_sheets(data: &[u8]) -> Result<Vec<(String, Vec<Vec<String>>)>, AppError> {
         let cursor = Cursor::new(data);
-        let mut workbook: Ods<_> =
-            open_workbook_from_rs(cursor).map_err(|e| AppError::internal_with_id(e))?;
+        let mut workbook: Ods<_> = open_workbook_from_rs(cursor)
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let mut sheets = Vec::new();
 
@@ -266,8 +264,10 @@ impl SpreadsheetImageGenerator {
                 let mut rows = Vec::new();
 
                 for row in range.rows() {
-                    let row_data: Vec<String> =
-                        row.iter().map(|cell| format!("{}", cell)).collect();
+                    let row_data: Vec<String> = row
+                        .iter()
+                        .map(|cell| format!("{}", cell))
+                        .collect();
                     rows.push(row_data);
                 }
 
@@ -308,9 +308,7 @@ impl ImageGenerator for SpreadsheetImageGenerator {
 
         // Generate all sheet preview images at full size
         let mut images = Vec::new();
-        for (page_num, (sheet_name, rows)) in
-            sheets.iter().take(max_thumbnails as usize).enumerate()
-        {
+        for (page_num, (sheet_name, rows)) in sheets.iter().take(max_thumbnails as usize).enumerate() {
             if rows.is_empty() {
                 continue; // Skip empty sheets
             }

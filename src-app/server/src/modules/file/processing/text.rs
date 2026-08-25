@@ -12,13 +12,8 @@ impl ContentProcessor for TextProcessor {
     fn can_process(&self, mime_type: &str) -> bool {
         matches!(
             mime_type,
-            "text/plain"
-                | "text/markdown"
-                | "text/csv"
-                | "text/html"
-                | "text/xml"
-                | "application/json"
-                | "application/xml"
+            "text/plain" | "text/markdown" | "text/csv" | "text/html" | "text/xml"
+                | "application/json" | "application/xml"
         )
     }
 

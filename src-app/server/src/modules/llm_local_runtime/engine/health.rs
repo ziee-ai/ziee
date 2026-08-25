@@ -154,10 +154,9 @@ impl ExponentialBackoff {
     /// Returns the delay to apply BEFORE the next attempt and
     /// advances the internal counter.
     pub fn next_delay(&mut self) -> Duration {
-        let base = self
-            .initial
-            .as_secs()
-            .saturating_mul((self.factor.saturating_pow(self.attempt)).max(1) as u64);
+        let base = self.initial.as_secs().saturating_mul(
+            (self.factor.saturating_pow(self.attempt)).max(1) as u64,
+        );
         let capped = base.min(self.max.as_secs());
         self.attempt = self.attempt.saturating_add(1);
         Duration::from_secs(capped)
@@ -541,7 +540,10 @@ mod tests {
         // The server stores these strings in a VARCHAR column. Keep
         // them stable; bumping the schema requires a migration.
         let expectations = [
-            (InstanceState::Starting, "starting"),
+            (
+                InstanceState::Starting,
+                "starting",
+            ),
             (InstanceState::Healthy, "healthy"),
             (
                 InstanceState::Unhealthy {
@@ -564,7 +566,12 @@ mod tests {
                 },
                 "restarting",
             ),
-            (InstanceState::Failed { reason: "".into() }, "failed"),
+            (
+                InstanceState::Failed {
+                    reason: "".into(),
+                },
+                "failed",
+            ),
             (InstanceState::Stopped, "stopped"),
         ];
         for (s, expected) in expectations {

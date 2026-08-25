@@ -359,9 +359,7 @@ pub async fn delete_user_assistant(
     Repos.assistant.delete(id).await?;
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
-    event_bus
-        .emit(AssistantEvent::deleted(id, Some(auth.user.id)))
-        .await;
+    event_bus.emit(AssistantEvent::deleted(id, Some(auth.user.id))).await;
 
     sync_publish(
         SyncEntity::Assistant,

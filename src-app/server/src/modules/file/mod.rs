@@ -6,8 +6,8 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::module_api::{AppModule, ModuleEntry, MODULE_ENTRIES};
 use crate::ModuleContext;
-use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleEntry};
 
 // ── Chunk `ziee-file`: the STORE half moved to the `ziee-file` SDK crate. ──
 // These re-export shims keep every `crate::modules::file::{models,repository,
@@ -29,8 +29,8 @@ pub mod project_extension;
 pub mod provider_routing;
 pub mod routes;
 pub mod sync;
-pub mod utils;
 pub mod versioning;
+pub mod utils;
 
 // Re-export repository for global Repos access (from the SDK crate).
 pub use ziee_file::FileRepository;
@@ -83,10 +83,7 @@ impl AppModule for FileModule {
         let storage_path = app_data_dir.join("files");
         init_file_storage(storage_path.to_str().unwrap_or("./data/files"));
 
-        tracing::info!(
-            "File module initialized with storage path: {:?}",
-            storage_path
-        );
+        tracing::info!("File module initialized with storage path: {:?}", storage_path);
 
         // Backfill citation geometry for files ingested before geometry existed
         // (or that failed capture) so their citations get exact-passage

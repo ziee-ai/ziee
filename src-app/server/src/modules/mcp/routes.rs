@@ -84,17 +84,11 @@ pub fn user_routes() -> ApiRouter {
         )
         .api_route(
             "/mcp/servers/{id}/resources",
-            get_with(
-                runtime::list_server_resources,
-                runtime::list_server_resources_docs,
-            ),
+            get_with(runtime::list_server_resources, runtime::list_server_resources_docs),
         )
         .api_route(
             "/mcp/servers/{id}/resources/read",
-            post_with(
-                runtime::read_server_resource,
-                runtime::read_server_resource_docs,
-            ),
+            post_with(runtime::read_server_resource, runtime::read_server_resource_docs),
         )
         .api_route(
             "/mcp/servers/{id}/disconnect",
@@ -103,10 +97,7 @@ pub fn user_routes() -> ApiRouter {
         // Prompts (MCP spec § server/prompts)
         .api_route(
             "/mcp/servers/{id}/prompts",
-            get_with(
-                runtime::list_server_prompts,
-                runtime::list_server_prompts_docs,
-            ),
+            get_with(runtime::list_server_prompts, runtime::list_server_prompts_docs),
         )
         .api_route(
             "/mcp/servers/{id}/prompts/get",

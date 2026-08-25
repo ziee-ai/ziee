@@ -303,10 +303,8 @@ mod tests {
     #[test]
     fn conversation_id_composes_with_the_other_filters() {
         let id = Uuid::new_v4();
-        let q = parse(&format!(
-            "status=running&kind=subagent&conversation_id={id}"
-        ))
-        .expect("valid query");
+        let q = parse(&format!("status=running&kind=subagent&conversation_id={id}"))
+            .expect("valid query");
         assert_eq!(q.conversation_id, Some(id));
         assert_eq!(q.status.as_deref(), Some("running"));
         assert_eq!(q.kind.as_deref(), Some("subagent"));

@@ -29,15 +29,15 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::Serialize;
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 
 use crate::common::r#type::AppError;
-use crate::modules::llm_local_runtime::BinaryManager;
 use crate::modules::llm_local_runtime::engine::EngineType;
+use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
 use crate::modules::llm_local_runtime::permissions::RuntimeVersionRead;
 use crate::modules::llm_local_runtime::runtime_version::models::RuntimeVersion;
-use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::llm_local_runtime::BinaryManager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -58,10 +58,7 @@ pub enum EngineDownloadStatus {
 
 impl EngineDownloadStatus {
     fn is_terminal(self) -> bool {
-        matches!(
-            self,
-            EngineDownloadStatus::Completed | EngineDownloadStatus::Failed
-        )
+        matches!(self, EngineDownloadStatus::Completed | EngineDownloadStatus::Failed)
     }
 }
 
@@ -142,7 +139,8 @@ crate::sse_event_enum! {
 // Registry
 // =====================================================================
 
-pub static DOWNLOAD_TASKS: Lazy<DashMap<String, Arc<DownloadTask>>> = Lazy::new(DashMap::new);
+pub static DOWNLOAD_TASKS: Lazy<DashMap<String, Arc<DownloadTask>>> =
+    Lazy::new(DashMap::new);
 
 /// Engine-download graceful-shutdown signal. Engine-binary downloads (unlike
 /// model-file downloads, which use `utils::cancellation::CANCELLATION_TRACKER`)
@@ -327,13 +325,8 @@ async fn run_download(
     let started = std::time::Instant::now();
     let task_for_cb = task.clone();
     let progress_cb = move |received: u64, total: Option<u64>| {
-        let percent = total.map(|t| {
-            if t == 0 {
-                0.0
-            } else {
-                (received as f32 / t as f32) * 100.0
-            }
-        });
+        let percent =
+            total.map(|t| if t == 0 { 0.0 } else { (received as f32 / t as f32) * 100.0 });
         // Synchronous callback fired from inside the download
         // future. `try_lock` keeps us non-blocking; the lock is
         // uncontended outside the SSE-subscribe path.

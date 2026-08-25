@@ -3,7 +3,11 @@
 // inversion (migration 78).
 
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, http::StatusCode};
+use axum::{
+    Json, debug_handler,
+    extract::Path,
+    http::StatusCode,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -37,10 +41,7 @@ pub async fn get_project_mcp_settings(
         .mcp_settings
         .get_or_default(McpScope::Project(id), auth.user.id)
         .await?;
-    Ok((
-        StatusCode::OK,
-        Json(ProjectMcpSettingsResponse::from(settings)),
-    ))
+    Ok((StatusCode::OK, Json(ProjectMcpSettingsResponse::from(settings))))
 }
 
 pub fn get_project_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
@@ -129,10 +130,7 @@ pub async fn update_project_mcp_settings(
         origin.0,
     );
 
-    Ok((
-        StatusCode::OK,
-        Json(ProjectMcpSettingsResponse::from(saved)),
-    ))
+    Ok((StatusCode::OK, Json(ProjectMcpSettingsResponse::from(saved))))
 }
 
 pub fn update_project_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
@@ -162,17 +160,16 @@ pub fn update_project_mcp_settings_docs(op: TransformOperation) -> TransformOper
 pub struct ProjectMcpSettingsResponse {
     pub approval_mode: String,
     pub auto_approved_tools: Vec<AutoApprovedServer>,
-    pub disabled_servers:
-        Vec<crate::modules::mcp::chat_extension::approval::models::DisabledServer>,
+    pub disabled_servers: Vec<crate::modules::mcp::chat_extension::approval::models::DisabledServer>,
     pub loop_settings: Option<LoopSettings>,
 }
 
 impl From<McpSettings> for ProjectMcpSettingsResponse {
     fn from(settings: McpSettings) -> Self {
-        let auto_approved_tools =
-            serde_json::from_value(settings.auto_approved_tools.clone()).unwrap_or_default();
-        let disabled_servers =
-            serde_json::from_value(settings.disabled_servers.clone()).unwrap_or_default();
+        let auto_approved_tools = serde_json::from_value(settings.auto_approved_tools.clone())
+            .unwrap_or_default();
+        let disabled_servers = serde_json::from_value(settings.disabled_servers.clone())
+            .unwrap_or_default();
         let loop_settings = settings
             .loop_settings
             .as_ref()
@@ -194,11 +191,16 @@ async fn validate_mcp_server_access<I: IntoIterator<Item = Uuid>>(
     field: &str,
 ) -> Result<(), AppError> {
     for server_id in server_ids {
-        let accessible = Repos.mcp.can_user_access_server(user_id, server_id).await?;
+        let accessible = Repos
+            .mcp
+            .can_user_access_server(user_id, server_id)
+            .await?;
         if !accessible {
             return Err(AppError::unprocessable_entity(
                 "MCP_SERVER_NOT_ACCESSIBLE",
-                format!("{field} references MCP server {server_id} which you don't have access to"),
+                format!(
+                    "{field} references MCP server {server_id} which you don't have access to"
+                ),
             ));
         }
     }

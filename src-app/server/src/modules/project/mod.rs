@@ -55,6 +55,7 @@ impl ProjectModule {
             extension_registry: None,
         }
     }
+
 }
 
 impl AppModule for ProjectModule {
@@ -125,7 +126,8 @@ impl AppModule for ProjectModule {
                 let ext_routes = registry
                     .register_routes(router)
                     .layer(axum::Extension(registry.clone()));
-                let project_routes = project_router().layer(axum::Extension(registry.clone()));
+                let project_routes =
+                    project_router().layer(axum::Extension(registry.clone()));
                 ext_routes.merge(project_routes)
             } else {
                 router.merge(project_router())

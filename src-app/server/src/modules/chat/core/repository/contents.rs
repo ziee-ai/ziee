@@ -14,7 +14,8 @@ pub async fn create_content(
     initial_data: MessageContentData,
     sequence_order: i32,
 ) -> Result<MessageContent, AppError> {
-    let content_json = serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
+    let content_json =
+        serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
 
     let content = sqlx::query_as!(
         MessageContent,
@@ -67,7 +68,8 @@ pub async fn append_content(
     content_type: &str,
     initial_data: MessageContentData,
 ) -> Result<MessageContent, AppError> {
-    let content_json = serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
+    let content_json =
+        serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
 
     let content = sqlx::query_as!(
         MessageContent,
@@ -109,7 +111,8 @@ pub async fn append_content_with_id(
     content_type: &str,
     initial_data: MessageContentData,
 ) -> Result<MessageContent, AppError> {
-    let content_json = serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
+    let content_json =
+        serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
 
     let content = sqlx::query_as!(
         MessageContent,
@@ -197,7 +200,10 @@ pub async fn get_message_contents_batch(
 
 /// Cancel any pending elicitation_request content blocks for the given message.
 /// Called when the streaming task ends to ensure stale 'pending' rows are resolved.
-pub async fn cancel_pending_elicitations(pool: &PgPool, message_id: Uuid) -> Result<(), AppError> {
+pub async fn cancel_pending_elicitations(
+    pool: &PgPool,
+    message_id: Uuid,
+) -> Result<(), AppError> {
     sqlx::query!(
         r#"
         UPDATE message_contents

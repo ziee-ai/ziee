@@ -95,6 +95,7 @@ pub struct RuntimeSettingsManage;
 impl PermissionCheck for RuntimeSettingsManage {
     const NAME: &'static str = "RuntimeSettingsManage";
     const PERMISSION: &'static str = "llm_local_runtime::settings_manage";
-    const DESCRIPTION: &'static str = "Modify runtime singleton settings (idle/auto-start/drain)";
+    const DESCRIPTION: &'static str =
+        "Modify runtime singleton settings (idle/auto-start/drain)";
     const MODULE: &'static str = "llm_local_runtime";
 }

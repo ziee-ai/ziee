@@ -1,7 +1,7 @@
 // Elicitation protocol types
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 use uuid::Uuid;
 
 /// Hard cap on the serialized size of an MCP server's `requestedSchema`.
@@ -259,18 +259,12 @@ mod tests {
         let encoded = serde_json::Value::String(serde_json::to_string(&forged).unwrap());
 
         let capped = cap_requested_schema(encoded);
-        assert!(
-            capped.is_object(),
-            "a string-encoded schema must be decoded"
-        );
+        assert!(capped.is_object(), "a string-encoded schema must be decoded");
         assert!(
             capped.get(ASK_USER_SCHEMA_MARKER).is_none(),
             "string-encoding must NOT be a bypass for the forged-marker strip"
         );
-        assert!(
-            capped["properties"]["x"].is_object(),
-            "real content survives"
-        );
+        assert!(capped["properties"]["x"].is_object(), "real content survives");
     }
 
     /// A JSON-encoded schema from a non-conformant server is decoded so the

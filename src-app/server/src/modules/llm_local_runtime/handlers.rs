@@ -1,9 +1,9 @@
 // API handlers for local runtime management
 
 use axum::{
-    Json,
     extract::{Extension, Path},
     http::StatusCode,
+    Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -15,9 +15,9 @@ use crate::{
 };
 
 use super::events::LlmLocalRuntimeEvent;
-use super::get_deployment_manager;
 use super::models::*;
 use super::permissions::*;
+use super::get_deployment_manager;
 
 // =====================================================
 // Model Instance Management Handlers
@@ -70,9 +70,7 @@ pub async fn start_model_instance(
 
     // Get deployment strategy (always local)
     let deployment_manager = get_deployment_manager();
-    let deployment = deployment_manager
-        .get_deployment(&DeploymentConfig::Local { binary_path: None })
-        .await?;
+    let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
 
     // Resolve the real model file path + typed engine_settings (incl.
     // the embedder `--embeddings` flag derived from capabilities) the
@@ -161,9 +159,7 @@ pub async fn start_model_instance(
     ))
 }
 
-pub fn start_model_instance_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn start_model_instance_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeManage,)>(op)
         .id("LocalRuntime.startModel")
@@ -188,9 +184,7 @@ pub async fn stop_model_instance(
 
     // Get deployment strategy and stop (always local)
     let deployment_manager = get_deployment_manager();
-    let deployment = deployment_manager
-        .get_deployment(&DeploymentConfig::Local { binary_path: None })
-        .await?;
+    let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
     deployment.stop(model_id).await?;
 
     // Evict in-memory per-model tracking so the HEALTH state machine + instance
@@ -209,8 +203,9 @@ pub async fn stop_model_instance(
         .ok_or_else(|| AppError::internal_error("Failed to retrieve instance"))?;
 
     // Emit event for cache invalidation
-    event_bus
-        .emit_async(LlmLocalRuntimeEvent::instance_stopped(instance.id, instance.model_id).into());
+    event_bus.emit_async(
+        LlmLocalRuntimeEvent::instance_stopped(instance.id, instance.model_id).into(),
+    );
 
     Ok((
         StatusCode::OK,
@@ -230,9 +225,7 @@ pub async fn stop_model_instance(
     ))
 }
 
-pub fn stop_model_instance_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn stop_model_instance_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeManage,)>(op)
         .id("LocalRuntime.stopModel")
@@ -258,9 +251,7 @@ pub async fn restart_model_instance(
 
     // Stop the deployment (always local)
     let deployment_manager = get_deployment_manager();
-    let deployment = deployment_manager
-        .get_deployment(&DeploymentConfig::Local { binary_path: None })
-        .await?;
+    let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
     deployment.stop(model_id).await?;
 
     // Delete the instance record
@@ -285,7 +276,7 @@ pub async fn restart_model_instance(
             provider_id,
             result.port,
             &result.base_url,
-            None, // runtime_version_id: will be tracked properly in future iteration
+            None,  // runtime_version_id: will be tracked properly in future iteration
         )
         .await
     {
@@ -334,9 +325,7 @@ pub async fn restart_model_instance(
     ))
 }
 
-pub fn restart_model_instance_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn restart_model_instance_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeManage,)>(op)
         .id("LocalRuntime.restartModel")
@@ -392,18 +381,12 @@ pub async fn clear_failed_instance(
         Json(ClearFailedResponse {
             model_id,
             cleared,
-            state: if cleared {
-                "stopped".to_string()
-            } else {
-                "not_failed".to_string()
-            },
+            state: if cleared { "stopped".to_string() } else { "not_failed".to_string() },
         }),
     ))
 }
 
-pub fn clear_failed_instance_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn clear_failed_instance_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeManage,)>(op)
         .id("LocalRuntime.clearFailed")
@@ -426,12 +409,14 @@ pub async fn swap_model_runtime_version(
 
     // The model's engine (as stored text) — read directly so we don't depend
     // on the model entity's enum representation.
-    let model_engine: String =
-        sqlx::query_scalar!("SELECT engine_type FROM llm_models WHERE id = $1", model_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| AppError::internal_error(format!("model lookup: {e}")))?
-            .ok_or_else(|| AppError::not_found("Model"))?;
+    let model_engine: String = sqlx::query_scalar!(
+        "SELECT engine_type FROM llm_models WHERE id = $1",
+        model_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| AppError::internal_error(format!("model lookup: {e}")))?
+    .ok_or_else(|| AppError::not_found("Model"))?;
 
     // Target version must be the SAME engine — swap version, not engine.
     let target = super::runtime_version::repository::get_by_id(pool, req.version_id)
@@ -499,8 +484,9 @@ pub async fn swap_model_runtime_version(
         }
         restarted = true;
 
-        event_bus
-            .emit_async(LlmLocalRuntimeEvent::instance_restarted(instance.id, model_id).into());
+        event_bus.emit_async(
+            LlmLocalRuntimeEvent::instance_restarted(instance.id, model_id).into(),
+        );
     }
 
     Ok((
@@ -552,9 +538,7 @@ pub async fn get_model_instance(
     ))
 }
 
-pub fn get_model_instance_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_model_instance_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeRead,)>(op)
         .id("LocalRuntime.getInstance")
@@ -567,14 +551,15 @@ pub async fn get_model_status(
     auth: RequirePermissions<(LocalRuntimeRead,)>,
     Path(model_id): Path<Uuid>,
 ) -> ApiResult<Json<InstanceStatusResponse>> {
-    let instance = Repos.local_runtime.get_instance_by_model(model_id).await?;
+    let instance = Repos
+        .local_runtime
+        .get_instance_by_model(model_id)
+        .await?;
 
     if let Some(inst) = instance {
         // Get deployment strategy and check status (always local)
         let deployment_manager = get_deployment_manager();
-        let deployment = deployment_manager
-            .get_deployment(&DeploymentConfig::Local { binary_path: None })
-            .await?;
+        let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
         let status = deployment.status(model_id).await?;
 
         // Redact base_url (which includes the local port) for
@@ -610,9 +595,7 @@ pub async fn get_model_status(
     }
 }
 
-pub fn get_model_status_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_model_status_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeRead,)>(op)
         .id("LocalRuntime.getStatus")
@@ -633,9 +616,7 @@ pub async fn get_model_health(
 
     // Get deployment strategy (always local)
     let deployment_manager = get_deployment_manager();
-    let deployment = deployment_manager
-        .get_deployment(&DeploymentConfig::Local { binary_path: None })
-        .await?;
+    let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
 
     let start_time = std::time::Instant::now();
     let healthy = deployment.health_check(&instance.base_url).await?;
@@ -655,9 +636,7 @@ pub async fn get_model_health(
     ))
 }
 
-pub fn get_model_health_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_model_health_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeRead,)>(op)
         .id("LocalRuntime.healthCheck")
@@ -679,18 +658,17 @@ pub async fn get_model_logs(
 
     // Get deployment strategy (always local)
     let deployment_manager = get_deployment_manager();
-    let deployment = deployment_manager
-        .get_deployment(&DeploymentConfig::Local { binary_path: None })
-        .await?;
+    let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
 
     let logs = deployment.get_logs(model_id, 100).await?;
 
-    Ok((StatusCode::OK, Json(LogsResponse { model_id, logs })))
+    Ok((
+        StatusCode::OK,
+        Json(LogsResponse { model_id, logs }),
+    ))
 }
 
-pub fn get_model_logs_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_model_logs_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeLogs,)>(op)
         .id("LocalRuntime.getLogs")
@@ -733,9 +711,7 @@ pub async fn detect_gpu(
     ))
 }
 
-pub fn detect_gpu_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn detect_gpu_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeRead,)>(op)
         .id("LocalRuntime.detectGpu")
@@ -792,7 +768,8 @@ pub async fn stream_model_logs(
 
     Ok((
         StatusCode::OK,
-        Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(30))),
+        Sse::new(stream)
+            .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(30))),
     ))
 }
 
@@ -846,9 +823,7 @@ pub async fn get_provider_instances(
     ))
 }
 
-pub fn get_provider_instances_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_provider_instances_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     use crate::modules::permissions::with_permission;
     with_permission::<(LocalRuntimeRead,)>(op)
         .id("LocalRuntime.getProviderInstances")
@@ -856,3 +831,4 @@ pub fn get_provider_instances_docs(
         .tag("LocalRuntime")
         .response::<200, Json<ProviderInstancesResponse>>()
 }
+

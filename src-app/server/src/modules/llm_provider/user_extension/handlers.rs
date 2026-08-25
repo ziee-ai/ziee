@@ -81,9 +81,7 @@ pub async fn assign_provider_to_group(
         .map_err(|e| {
             tracing::error!(
                 "Failed to assign provider {} to group {}: {}",
-                provider_id,
-                request.group_id,
-                e
+                provider_id, request.group_id, e
             );
             AppError::internal_error("Database operation failed")
         })?;
@@ -152,9 +150,7 @@ pub async fn remove_provider_from_group(
         .map_err(|e| {
             tracing::error!(
                 "Failed to remove provider {} from group {}: {}",
-                provider_id,
-                group_id,
-                e
+                provider_id, group_id, e
             );
             AppError::internal_error("Database operation failed")
         })?;
@@ -268,8 +264,7 @@ pub async fn update_group_providers(
         .map_err(|e| {
             tracing::error!(
                 "Failed to get current providers for group {}: {}",
-                group_id,
-                e
+                group_id, e
             );
             AppError::internal_error("Database operation failed")
         })?;
@@ -293,9 +288,7 @@ pub async fn update_group_providers(
             .map_err(|e| {
                 tracing::error!(
                     "Failed to remove provider {} from group {}: {}",
-                    provider_id,
-                    group_id,
-                    e
+                    provider_id, group_id, e
                 );
                 AppError::internal_error("Database operation failed")
             })?;
@@ -310,9 +303,7 @@ pub async fn update_group_providers(
             .map_err(|e| {
                 tracing::error!(
                     "Failed to assign provider {} to group {}: {}",
-                    provider_id,
-                    group_id,
-                    e
+                    provider_id, group_id, e
                 );
                 AppError::internal_error("Database operation failed")
             })?;
@@ -356,8 +347,7 @@ pub async fn update_group_providers(
         .map_err(|e| {
             tracing::error!(
                 "Failed to get updated providers for group {}: {}",
-                group_id,
-                e
+                group_id, e
             );
             AppError::internal_error("Database operation failed")
         })?;

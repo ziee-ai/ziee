@@ -1,9 +1,6 @@
 //! MCP approval workflow routes
 
-use aide::axum::{
-    ApiRouter,
-    routing::{get_with, put_with},
-};
+use aide::axum::{routing::{get_with, put_with}, ApiRouter};
 
 use super::handlers::*;
 
@@ -22,9 +19,6 @@ pub fn mcp_approval_router() -> ApiRouter {
         // Pending approvals
         .api_route(
             "/branches/{branch_id}/pending-approvals",
-            get_with(
-                get_pending_approvals_for_branch,
-                get_pending_approvals_for_branch_docs,
-            ),
+            get_with(get_pending_approvals_for_branch, get_pending_approvals_for_branch_docs),
         )
 }

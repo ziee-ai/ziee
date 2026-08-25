@@ -55,15 +55,13 @@ pub async fn create_provider_from_model_id(
     AppError,
 > {
     // Get model information
-    let model = Repos
-        .llm_model
+    let model = Repos.llm_model
         .get_by_id(model_id)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
 
     // Get provider information
-    let provider_info = Repos
-        .llm_provider
+    let provider_info = Repos.llm_provider
         .get_by_id(model.provider_id)
         .await
         .map_err(AppError::database_error)?
@@ -102,12 +100,12 @@ pub async fn create_provider_from_model_id(
         .await?
     };
 
-    let base_url = provider_info.base_url.as_deref().ok_or_else(|| {
-        AppError::internal_error(format!(
-            "Provider '{}' has no base_url configured",
-            provider_info.name
-        ))
-    })?;
+    let base_url = provider_info
+        .base_url
+        .as_deref()
+        .ok_or_else(|| AppError::internal_error(
+            format!("Provider '{}' has no base_url configured", provider_info.name)
+        ))?;
 
     // Create provider instance
     let provider = Arc::new(

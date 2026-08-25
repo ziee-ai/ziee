@@ -6,9 +6,9 @@
 //! only when an embedding model is configured, and is best-effort (failure
 //! leaves chunks unembedded → search degrades to FTS, like memory).
 
-use once_cell::sync::Lazy;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
+use once_cell::sync::Lazy;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
@@ -76,12 +76,8 @@ static BACKFILL_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 /// the file has no extracted text. Called right after `publish_file_changed`
 /// at the upload + files_mcp create_file sites.
 pub fn spawn_index(user_id: Uuid, file: &File) {
-    let (file_id, blob_version_id, version, pages) = (
-        file.id,
-        file.blob_version_id,
-        file.version,
-        file.text_page_count,
-    );
+    let (file_id, blob_version_id, version, pages) =
+        (file.id, file.blob_version_id, file.version, file.text_page_count);
     tokio::spawn(async move {
         if pages <= 0 {
             // No extractable text (scanned/image PDF) — a distinct terminal
@@ -106,7 +102,7 @@ pub(crate) async fn set_index_state(
     error: Option<&str>,
     chunk_count: i32,
 ) {
-    use crate::modules::sync::event::{Audience, SyncAction, SyncEntity, publish};
+    use crate::modules::sync::event::{publish, Audience, SyncAction, SyncEntity};
     if let Err(e) = Repos
         .file_rag
         .set_index_state(file_id, user_id, status, error, chunk_count)
@@ -304,9 +300,7 @@ async fn embed_file_chunks(file_id: Uuid, model_id: Uuid, expected_dim: i32) {
             }
             Err(e) => {
                 // Degrade to FTS-only; the rebuild/backfill embed pass retries.
-                tracing::warn!(
-                    "file_rag: embedding {file_id} failed ({e}); chunks remain FTS-only"
-                );
+                tracing::warn!("file_rag: embedding {file_id} failed ({e}); chunks remain FTS-only");
                 return;
             }
         }
@@ -397,6 +391,7 @@ async fn run_backfill_inner() {
     }
 }
 
+
 /// After an embedding-model swap, a re-embed pass can receive a vector whose
 /// dimension no longer matches the `file_chunks.embedding` column (e.g. a 1024-d
 /// model while the column is halfvec(768)). Storing it would error/corrupt the
@@ -407,9 +402,10 @@ pub(crate) fn embedding_dim_ok(vec_len: usize, expected_dim: i32) -> bool {
 }
 #[cfg(test)]
 mod backfill_guard_tests {
-    use super::{BACKFILL_IN_PROGRESS, end_backfill, try_begin_backfill};
+    use super::{end_backfill, try_begin_backfill, BACKFILL_IN_PROGRESS};
 
     use std::sync::atomic::Ordering;
+
 
     /// The single-flight guard (ingest.rs:265-275) must admit exactly one
     /// in-flight backfill: a second concurrent acquire fails until the first
@@ -447,6 +443,7 @@ mod backfill_guard_tests {
 mod backfill_single_flight_tests {
     use super::*;
 
+
     /// The single-flight guard: while a backfill is in flight
     /// (`BACKFILL_IN_PROGRESS == true`), a second `run_backfill()` caller
     /// must short-circuit on the failed `compare_exchange` and return WITHOUT
@@ -478,7 +475,8 @@ mod backfill_single_flight_tests {
 }
 #[cfg(test)]
 mod ingest_tests {
-    use super::{MAX_PAGE_BYTES, truncate_to_max_page_bytes};
+    use super::{truncate_to_max_page_bytes, MAX_PAGE_BYTES};
+
 
     #[test]
     fn under_cap_is_untouched() {
@@ -487,6 +485,7 @@ mod ingest_tests {
         assert_eq!(s, "short text");
     }
 
+
     #[test]
     fn at_cap_is_untouched() {
         let mut s = "a".repeat(MAX_PAGE_BYTES);
@@ -494,12 +493,14 @@ mod ingest_tests {
         assert_eq!(s.len(), MAX_PAGE_BYTES);
     }
 
+
     #[test]
     fn oversized_ascii_truncates_to_cap() {
         let mut s = "a".repeat(MAX_PAGE_BYTES + 1234);
         assert!(truncate_to_max_page_bytes(&mut s));
         assert_eq!(s.len(), MAX_PAGE_BYTES, "ASCII cuts exactly at the cap");
     }
+
 
     #[test]
     fn oversized_multibyte_truncates_on_char_boundary_no_panic() {
@@ -510,10 +511,7 @@ mod ingest_tests {
         assert!(s.len() > MAX_PAGE_BYTES);
         assert!(truncate_to_max_page_bytes(&mut s));
         assert!(s.len() <= MAX_PAGE_BYTES, "never exceeds the cap");
-        assert!(
-            s.len() > MAX_PAGE_BYTES - 3,
-            "backs up at most one codepoint"
-        );
+        assert!(s.len() > MAX_PAGE_BYTES - 3, "backs up at most one codepoint");
         // The result is still valid UTF-8 (it is a String, so this also proves
         // no mid-codepoint truncation panicked).
         assert!(s.chars().all(|c| c == '€'));
@@ -522,6 +520,7 @@ mod ingest_tests {
 #[cfg(test)]
 mod dim_guard_tests {
     use super::embedding_dim_ok;
+
 
     #[test]
     fn matching_dimension_is_stored_mismatch_is_skipped() {

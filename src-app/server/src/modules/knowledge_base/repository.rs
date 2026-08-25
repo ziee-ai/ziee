@@ -6,8 +6,10 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::models::{AttachDocumentsResult, IndexingSummary, KnowledgeBase, KnowledgeBaseDocument};
 use crate::common::AppError;
+use super::models::{
+    AttachDocumentsResult, IndexingSummary, KnowledgeBase, KnowledgeBaseDocument,
+};
 
 pub struct KnowledgeBaseRepository {
     pool: PgPool,
@@ -92,7 +94,11 @@ impl KnowledgeBaseRepository {
     }
 
     /// Fetch one KB (owner-scoped) with derived document_count + indexing_summary.
-    pub async fn get(&self, user_id: Uuid, kb_id: Uuid) -> Result<Option<KnowledgeBase>, AppError> {
+    pub async fn get(
+        &self,
+        user_id: Uuid,
+        kb_id: Uuid,
+    ) -> Result<Option<KnowledgeBase>, AppError> {
         let base = sqlx::query!(
             r#"
             SELECT kb.id, kb.name, kb.description,
@@ -540,7 +546,11 @@ impl KnowledgeBaseRepository {
         Ok(true)
     }
 
-    pub async fn detach_from_project(&self, project_id: Uuid, kb_id: Uuid) -> Result<(), AppError> {
+    pub async fn detach_from_project(
+        &self,
+        project_id: Uuid,
+        kb_id: Uuid,
+    ) -> Result<(), AppError> {
         sqlx::query!(
             "DELETE FROM project_knowledge_bases WHERE project_id = $1 AND knowledge_base_id = $2",
             project_id,

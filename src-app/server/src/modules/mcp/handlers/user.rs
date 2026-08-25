@@ -21,9 +21,7 @@ use crate::{
 };
 
 use super::super::{
-    connection_health::{
-        McpServerWithHealthWarning, enforce_on_create, enforce_on_update_transition,
-    },
+    connection_health::{enforce_on_create, enforce_on_update_transition, McpServerWithHealthWarning},
     events::McpServerEvent,
     models::{McpServer, McpServerOAuthConfigResponse, SetMcpServerOAuthConfigRequest},
     permissions::*,
@@ -190,7 +188,12 @@ pub async fn create_user_server(
     // failure: downgrade to enabled=false (no data loss — the user's
     // config is preserved so they can fix + retry) and surface the
     // failure reason in the response so the UI can toast it.
-    let wrapped = enforce_on_create(Repos.mcp.pool(), server, &event_bus).await?;
+    let wrapped = enforce_on_create(
+        Repos.mcp.pool(),
+        server,
+        &event_bus,
+    )
+    .await?;
 
     // Cross-device sync: notify AFTER enforcement so peers refetch the final
     // (possibly probe-downgraded) state.
@@ -275,7 +278,11 @@ pub async fn update_user_server(
     // run BEFORE validate_sandbox_fields_update so that gate sees
     // the post-policy request.
     let policy = user_policy::load(Repos.pool()).await?;
-    user_policy::enforce_on_user_transport_change(&mut request, &existing.transport_type, &policy)?;
+    user_policy::enforce_on_user_transport_change(
+        &mut request,
+        &existing.transport_type,
+        &policy,
+    )?;
     super::validate_sandbox_fields_update(&existing, &request)?;
 
     let persisted = Repos
@@ -291,9 +298,13 @@ pub async fn update_user_server(
         auth.user.id,
     ));
 
-    let server =
-        enforce_on_update_transition(Repos.mcp.pool(), persisted, prior_enabled, &event_bus)
-            .await?;
+    let server = enforce_on_update_transition(
+        Repos.mcp.pool(),
+        persisted,
+        prior_enabled,
+        &event_bus,
+    )
+    .await?;
 
     sync_publish(
         SyncEntity::McpServer,
@@ -338,9 +349,7 @@ pub async fn delete_user_server(
     Repos.mcp.delete_user_server(id, auth.user.id).await?;
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
-    event_bus
-        .emit(McpServerEvent::user_server_deleted(id, auth.user.id))
-        .await;
+    event_bus.emit(McpServerEvent::user_server_deleted(id, auth.user.id)).await;
 
     sync_publish(
         SyncEntity::McpServer,
@@ -387,11 +396,7 @@ pub async fn get_server_oauth_config(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Option<McpServerOAuthConfigResponse>>> {
     owned_server(id, auth.user.id).await?;
-    let cfg = Repos
-        .mcp
-        .get_oauth_config(id)
-        .await?
-        .map(|c| c.to_response());
+    let cfg = Repos.mcp.get_oauth_config(id).await?.map(|c| c.to_response());
     Ok((StatusCode::OK, Json(cfg)))
 }
 

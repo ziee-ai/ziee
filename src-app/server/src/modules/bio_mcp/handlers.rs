@@ -9,10 +9,10 @@
 //! stripped; biomcp gets the keys via its process env, not over HTTP.
 
 use axum::{
-    Json,
     body::{Body, Bytes},
     http::{HeaderMap, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
+    Json,
 };
 use serde_json::json;
 
@@ -191,9 +191,7 @@ mod tests {
             "MCP session header must be forwarded"
         );
         assert!(
-            resp.headers()
-                .get(reqwest::header::CONTENT_LENGTH)
-                .is_none(),
+            resp.headers().get(reqwest::header::CONTENT_LENGTH).is_none(),
             "content-length must be stripped"
         );
         assert_eq!(

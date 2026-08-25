@@ -10,11 +10,14 @@
 //! Persistence of the per-step metadata into `workflow_runs` happens
 //! in the runner (one place, transactional with status updates).
 
+
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use ai_providers::{ChatMessage, ChatRequest, ContentBlockDelta, Provider};
+use ai_providers::{
+    ChatMessage, ChatRequest, ContentBlockDelta, Provider,
+};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use serde_json::Value;
@@ -227,8 +230,14 @@ impl StepDispatcher for LlmDispatcher {
         };
 
         // Write output file + register meta on ctx.
-        let meta_res =
-            file_io::write_step_output(ctx, &step.id, &value, parsed_as, StepKindTag::Llm).await;
+        let meta_res = file_io::write_step_output(
+            ctx,
+            &step.id,
+            &value,
+            parsed_as,
+            StepKindTag::Llm,
+        )
+        .await;
         let meta = match meta_res {
             Ok(m) => m,
             Err(e) => {
@@ -314,54 +323,47 @@ impl StepDispatcher for LlmMapDispatcher {
         emit: Arc<dyn ProgressEmitter>,
     ) -> StepResult {
         let started = Instant::now();
-        let (
-            prompt,
-            prompt_file,
-            for_each,
-            item_var,
-            output_format,
-            max_parallel,
-            on_error,
-            max_retries,
-        ) = match &step.config {
-            StepConfig::LlmMap {
-                prompt,
-                prompt_file,
-                for_each,
-                item_var,
-                output_format,
-                max_parallel,
-                on_error,
-                max_retries,
-                ..
-            } => (
-                prompt.clone(),
-                prompt_file.clone(),
-                for_each.clone(),
-                item_var.clone(),
-                *output_format,
-                *max_parallel,
-                *on_error,
-                *max_retries,
-            ),
-            _ => {
-                return StepResult::Failed {
-                    error: "LlmMapDispatcher called on non-llm_map step".into(),
-                    tokens_used: 0,
-                };
-            }
-        };
+        let (prompt, prompt_file, for_each, item_var, output_format, max_parallel, on_error, max_retries) =
+            match &step.config {
+                StepConfig::LlmMap {
+                    prompt,
+                    prompt_file,
+                    for_each,
+                    item_var,
+                    output_format,
+                    max_parallel,
+                    on_error,
+                    max_retries,
+                    ..
+                } => (
+                    prompt.clone(),
+                    prompt_file.clone(),
+                    for_each.clone(),
+                    item_var.clone(),
+                    *output_format,
+                    *max_parallel,
+                    *on_error,
+                    *max_retries,
+                ),
+                _ => {
+                    return StepResult::Failed {
+                        error: "LlmMapDispatcher called on non-llm_map step".into(),
+                        tokens_used: 0,
+                    };
+                }
+            };
 
         // Resolve for_each → array.
-        let for_each_rendered = match crate::modules::workflow::template::render(&for_each, ctx) {
-            Ok(s) => s,
-            Err(e) => {
-                return StepResult::Failed {
-                    error: format!("for_each render: {e}"),
-                    tokens_used: 0,
-                };
-            }
-        };
+        let for_each_rendered =
+            match crate::modules::workflow::template::render(&for_each, ctx) {
+                Ok(s) => s,
+                Err(e) => {
+                    return StepResult::Failed {
+                        error: format!("for_each render: {e}"),
+                        tokens_used: 0,
+                    };
+                }
+            };
         let items: Vec<Value> = match serde_json::from_str::<Value>(&for_each_rendered) {
             Ok(Value::Array(a)) => a,
             Ok(other) => {
@@ -393,24 +395,23 @@ impl StepDispatcher for LlmMapDispatcher {
         // item as a resolvable variable so `{{ <item_var>.field }}` /
         // `{{ <item_var>[N] }}` work when items are objects/arrays. The
         // finished string is moved into the spawned task.
-        let raw_prompt =
-            match load_raw_prompt(&step.id, &ctx.extracted_path, &prompt, &prompt_file).await {
-                Ok(p) => p,
-                Err(e) => {
-                    return StepResult::Failed {
-                        error: format!("prompt load: {e}"),
-                        tokens_used: 0,
-                    };
-                }
-            };
+        let raw_prompt = match load_raw_prompt(&step.id, &ctx.extracted_path, &prompt, &prompt_file)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                return StepResult::Failed {
+                    error: format!("prompt load: {e}"),
+                    tokens_used: 0,
+                };
+            }
+        };
         let mut per_item_prompts: Vec<String> = Vec::with_capacity(items.len());
         for (idx, item) in items.iter().enumerate() {
             let mut binding = std::collections::HashMap::new();
             binding.insert(item_var.clone(), item.clone());
             match crate::modules::workflow::template::render_with_bindings(
-                &raw_prompt,
-                ctx,
-                &binding,
+                &raw_prompt, ctx, &binding,
             ) {
                 Ok(p) => per_item_prompts.push(p),
                 Err(e) => {
@@ -427,15 +428,15 @@ impl StepDispatcher for LlmMapDispatcher {
             Vec::with_capacity(items.len());
 
         // Initial progress event.
-        ctx.step_item_progress
-            .insert(step.id.clone(), item_progress(0, total, 0, 0, 0));
-        emit.emit(SSEWorkflowRunEvent::StepItemProgress(
-            SSEStepItemProgressData {
-                run_id: ctx.run_id,
-                step_id: step.id.clone(),
-                progress: ctx.step_item_progress[&step.id].clone(),
-            },
-        ));
+        ctx.step_item_progress.insert(
+            step.id.clone(),
+            item_progress(0, total, 0, 0, 0),
+        );
+        emit.emit(SSEWorkflowRunEvent::StepItemProgress(SSEStepItemProgressData {
+            run_id: ctx.run_id,
+            step_id: step.id.clone(),
+            progress: ctx.step_item_progress[&step.id].clone(),
+        }));
 
         let max_toks = ctx.model_max_tokens;
         for (idx, prompt) in per_item_prompts.into_iter().enumerate() {
@@ -536,13 +537,11 @@ impl StepDispatcher for LlmMapDispatcher {
                 );
                 ctx.step_item_progress
                     .insert(step.id.clone(), progress.clone());
-                emit.emit(SSEWorkflowRunEvent::StepItemProgress(
-                    SSEStepItemProgressData {
-                        run_id: ctx.run_id,
-                        step_id: step.id.clone(),
-                        progress,
-                    },
-                ));
+                emit.emit(SSEWorkflowRunEvent::StepItemProgress(SSEStepItemProgressData {
+                    run_id: ctx.run_id,
+                    step_id: step.id.clone(),
+                    progress,
+                }));
                 return StepResult::Cancelled;
             }
             let (idx, outcome, item_tokens) = res;
@@ -583,13 +582,11 @@ impl StepDispatcher for LlmMapDispatcher {
             let progress = item_progress(completed, total, failed, skipped, total_tokens);
             ctx.step_item_progress
                 .insert(step.id.clone(), progress.clone());
-            emit.emit(SSEWorkflowRunEvent::StepItemProgress(
-                SSEStepItemProgressData {
-                    run_id: ctx.run_id,
-                    step_id: step.id.clone(),
-                    progress,
-                },
-            ));
+            emit.emit(SSEWorkflowRunEvent::StepItemProgress(SSEStepItemProgressData {
+                run_id: ctx.run_id,
+                step_id: step.id.clone(),
+                progress,
+            }));
         }
 
         if let Some(err) = any_failed_fatal {
@@ -600,10 +597,7 @@ impl StepDispatcher for LlmMapDispatcher {
         }
 
         // Assemble output array in order.
-        let arr: Vec<Value> = results
-            .into_iter()
-            .map(|o| o.unwrap_or(Value::Null))
-            .collect();
+        let arr: Vec<Value> = results.into_iter().map(|o| o.unwrap_or(Value::Null)).collect();
         let value = Value::Array(arr);
 
         let meta = match file_io::write_step_output(
@@ -659,10 +653,7 @@ fn classify_item_error(on_error: OnError) -> (bool, Option<Value>) {
 /// format (E6). `OutputFormat::Json` with unparseable text is a step failure;
 /// `Text` always succeeds. Factored from the inline `match` so the parse-fail
 /// branch is unit-testable without a real LLM call.
-pub(crate) fn parse_llm_output(
-    text: &str,
-    output_format: OutputFormat,
-) -> Result<(Value, ParsedAs), String> {
+pub(crate) fn parse_llm_output(text: &str, output_format: OutputFormat) -> Result<(Value, ParsedAs), String> {
     match output_format {
         OutputFormat::Text => Ok((Value::String(text.to_string()), ParsedAs::Text)),
         OutputFormat::Json => serde_json::from_str::<Value>(text)
@@ -780,15 +771,16 @@ impl StepDispatcher for SandboxDispatcher {
 
         // Stage stdin file if set.
         let stdin_path_sandbox = if let Some(stdin_tpl) = &stdin {
-            let text = match crate::modules::workflow::template::render(stdin_tpl, ctx) {
-                Ok(s) => s,
-                Err(e) => {
-                    return StepResult::Failed {
-                        error: format!("stdin: render failed: {e}"),
-                        tokens_used: 0,
-                    };
-                }
-            };
+            let text =
+                match crate::modules::workflow::template::render(stdin_tpl, ctx) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        return StepResult::Failed {
+                            error: format!("stdin: render failed: {e}"),
+                            tokens_used: 0,
+                        };
+                    }
+                };
             let inputs_dir = &ctx.inputs_dir;
             if let Err(e) = tokio::fs::create_dir_all(inputs_dir).await {
                 return StepResult::Failed {
@@ -887,16 +879,16 @@ impl StepDispatcher for SandboxDispatcher {
         // dropped on cancel) the sender drops, the consumer's `rx` closes, it
         // does a final flush, and ends.
         let progress_pool = crate::core::repository::Repos.pool().clone();
-        let (progress_tx, progress_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
-        let progress_consumer = tokio::spawn(
-            crate::modules::workflow::sandbox_progress::run_progress_consumer(
+        let (progress_tx, progress_rx) =
+            tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let progress_consumer =
+            tokio::spawn(crate::modules::workflow::sandbox_progress::run_progress_consumer(
                 progress_rx,
                 emit.clone(),
                 progress_pool.clone(),
                 ctx.run_id,
                 step.id.clone(),
-            ),
-        );
+            ));
 
         // Dispatch — wrapping in select! gives us prompt cancel via
         // future-drop (kill_on_drop(true) is already set on the sandbox
@@ -943,10 +935,7 @@ impl StepDispatcher for SandboxDispatcher {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let exit_code = response
-            .get("exit_code")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(-1);
+        let exit_code = response.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(-1);
 
         // Capture stderr (gated).
         let _ = log_io::write_text_log(ctx, &step.id, "stderr", &stderr, step.log).await;
@@ -955,10 +944,7 @@ impl StepDispatcher for SandboxDispatcher {
 
         if exit_code != 0 {
             return StepResult::Failed {
-                error: format!(
-                    "sandbox exit code {exit_code}: {}",
-                    stderr.chars().take(500).collect::<String>()
-                ),
+                error: format!("sandbox exit code {exit_code}: {}", stderr.chars().take(500).collect::<String>()),
                 tokens_used: 0,
             };
         }
@@ -1086,13 +1072,14 @@ fn tool_result_text(result: &crate::modules::mcp::client::traits::ToolResult) ->
     parts.join("\n")
 }
 
+
 // The shared MCP tool-call chokepoint (call_mcp_tool + resolve_tool_server +
 // built-in name map + McpCallScope/McpToolCallError/CancelSignal/ChatCallCtx)
 // now lives in `mcp::agent_tool_call` (shared infra) so BOTH this dispatcher and
 // the chat agent host import it from `mcp/`, not from each other (§9 DAG).
 // Re-exported for this module's internal callers.
 pub(crate) use crate::modules::mcp::agent_tool_call::{
-    CancelSignal, McpCallScope, McpToolCallError, call_mcp_tool,
+    call_mcp_tool, CancelSignal, McpCallScope, McpToolCallError,
 };
 
 // `RunHandle` (workflow-owned) implements the shared `CancelSignal` trait — the
@@ -1103,6 +1090,7 @@ impl CancelSignal for registry::RunHandle {
         self.await_cancel().await;
     }
 }
+
 
 #[async_trait]
 impl StepDispatcher for ToolDispatcher {
@@ -1150,30 +1138,18 @@ impl StepDispatcher for ToolDispatcher {
             conversation_id: ctx.conversation_id,
             run_id: ctx.run_id,
         };
-        let (server_id, tool_result) = match call_mcp_tool(
-            &scope,
-            &server_name,
-            &tool_name,
-            args,
-            true,
-            cancel.as_ref(),
-            None, /*chat_ctx*/
-            None,
-            None,
-            crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
-            None, /* timing_out — no live tool-lifecycle SSE on the workflow surface */
-        )
-        .await
-        {
-            Ok(v) => v,
-            Err(McpToolCallError::Cancelled) => return StepResult::Cancelled,
-            Err(McpToolCallError::Failed(error)) => {
-                return StepResult::Failed {
-                    error,
-                    tokens_used: 0,
-                };
-            }
-        };
+        let (server_id, tool_result) =
+            match call_mcp_tool(&scope, &server_name, &tool_name, args, true, cancel.as_ref(), None /*chat_ctx*/, None, None,
+                crate::modules::mcp::tool_calls::models::McpToolCallSource::Workflow,
+                None /* timing_out — no live tool-lifecycle SSE on the workflow surface */)
+                .await
+            {
+                Ok(v) => v,
+                Err(McpToolCallError::Cancelled) => return StepResult::Cancelled,
+                Err(McpToolCallError::Failed(error)) => {
+                    return StepResult::Failed { error, tokens_used: 0 };
+                }
+            };
 
         // Log the raw result (gated). On a serialize failure, record the
         // error context rather than a silent empty string.
@@ -1234,14 +1210,11 @@ impl StepDispatcher for ToolDispatcher {
                 if let Some(s) = crate::modules::code_sandbox::config::get_state() {
                     allowed_roots.push(s.workspace_root.join(sandbox_key.to_string()));
                 }
-                let (is_built_in, headers) = match crate::core::repository::Repos
-                    .mcp
-                    .get_any_server(server_id)
-                    .await
-                {
-                    Ok(Some(s)) => (s.is_built_in, s.headers),
-                    _ => (false, serde_json::json!({})),
-                };
+                let (is_built_in, headers) =
+                    match crate::core::repository::Repos.mcp.get_any_server(server_id).await {
+                        Ok(Some(s)) => (s.is_built_in, s.headers),
+                        _ => (false, serde_json::json!({})),
+                    };
                 // Same-host trust set (see `resource_link::result_link_trusted_hosts`): hosts of the
                 // user's enabled accessible NON-built-in MCP servers, so an external server's artifact
                 // URL on its own private host (e.g. `host.docker.internal`) can be ingested — no
@@ -1635,19 +1608,24 @@ async fn finish_elicit(
         };
     }
 
-    let meta =
-        match file_io::write_step_output(ctx, step_id, &value, ParsedAs::Json, StepKindTag::Elicit)
-            .await
-        {
-            Ok(m) => m,
-            Err(e) => {
-                let _ = clear_pending(ctx).await;
-                return StepResult::Failed {
-                    error: format!("persist elicit output: {e}"),
-                    tokens_used: 0,
-                };
-            }
-        };
+    let meta = match file_io::write_step_output(
+        ctx,
+        step_id,
+        &value,
+        ParsedAs::Json,
+        StepKindTag::Elicit,
+    )
+    .await
+    {
+        Ok(m) => m,
+        Err(e) => {
+            let _ = clear_pending(ctx).await;
+            return StepResult::Failed {
+                error: format!("persist elicit output: {e}"),
+                tokens_used: 0,
+            };
+        }
+    };
     ctx.step_outputs.insert(step_id.to_string(), meta);
 
     let _ = clear_pending(ctx).await;
@@ -1726,23 +1704,11 @@ mod tests {
         );
         // Other built-ins the workflow runner exposes.
         for (name, id) in [
-            (
-                "web_search",
-                crate::modules::web_search::web_search_server_id(),
-            ),
-            (
-                "lit_search",
-                crate::modules::lit_search::lit_search_server_id(),
-            ),
-            (
-                "citations",
-                crate::modules::citations::citations_server_id(),
-            ),
+            ("web_search", crate::modules::web_search::web_search_server_id()),
+            ("lit_search", crate::modules::lit_search::lit_search_server_id()),
+            ("citations", crate::modules::citations::citations_server_id()),
             ("files", crate::modules::files_mcp::files_mcp_server_id()),
-            (
-                "code_sandbox",
-                crate::modules::code_sandbox::code_sandbox_server_id(),
-            ),
+            ("code_sandbox", crate::modules::code_sandbox::code_sandbox_server_id()),
             ("bio", crate::modules::bio_mcp::bio_mcp_server_id()),
         ] {
             assert_eq!(builtin_server_id_by_name(name), Some(id), "built-in {name}");
@@ -1824,10 +1790,7 @@ mod tests {
         assert_eq!(v["a"], serde_json::json!(1));
 
         let err = parse_llm_output("not json", OutputFormat::Json).unwrap_err();
-        assert!(
-            err.contains("parse failed"),
-            "json-parse-fail message: {err}"
-        );
+        assert!(err.contains("parse failed"), "json-parse-fail message: {err}");
     }
 
     #[test]
@@ -1838,11 +1801,7 @@ mod tests {
         let p = item_progress(4, 10, 1, 2, 1234);
         assert_eq!((p.completed, p.total, p.failed, p.skipped), (4, 10, 1, 2));
         assert_eq!(p.tokens_so_far, 1234);
-        assert_eq!(
-            cancelled_so_far(&p),
-            3,
-            "3 items in-flight/unstarted at cancel"
-        );
+        assert_eq!(cancelled_so_far(&p), 3, "3 items in-flight/unstarted at cancel");
         // Saturating: an over-counted snapshot never underflows to a huge u32.
         assert_eq!(cancelled_so_far(&item_progress(10, 5, 0, 0, 0)), 0);
     }
@@ -1939,9 +1898,10 @@ mod tests {
         let ctx = bare_ctx();
         let mut binding = HashMap::new();
         binding.insert("q".to_string(), serde_json::json!("hello"));
-        let s =
-            crate::modules::workflow::template::render_with_bindings("say {{ q }}", &ctx, &binding)
-                .unwrap();
+        let s = crate::modules::workflow::template::render_with_bindings(
+            "say {{ q }}", &ctx, &binding,
+        )
+        .unwrap();
         assert_eq!(s, "say hello");
     }
 
@@ -2087,11 +2047,12 @@ mod tests {
                     let wf = crate::modules::workflow::validate::parse_workflow_yaml(&yaml)
                         .unwrap_or_else(|e| panic!("parse {kind} {prompt:?} {file:?}: {e:?}"));
 
-                    let findings = crate::modules::workflow::validate::validate_collecting(
-                        &wf,
-                        root.as_path(),
-                        false,
-                    );
+                    let findings =
+                        crate::modules::workflow::validate::validate_collecting(
+                            &wf,
+                            root.as_path(),
+                            false,
+                        );
                     let prompt_findings: Vec<&str> = findings
                         .iter()
                         .filter(|e| PROMPT_CODES.contains(&e.code))
@@ -2121,11 +2082,7 @@ mod tests {
                          {} but the run said {} — a definition that validates clean must run, \
                          and one the validator rejects must not quietly run (INV-1). \
                          findings={prompt_findings:?} run={run:?}",
-                        if prompt_findings.is_empty() {
-                            "OK"
-                        } else {
-                            "REJECTED"
-                        },
+                        if prompt_findings.is_empty() { "OK" } else { "REJECTED" },
                         if run.is_ok() { "OK" } else { "REJECTED" },
                     );
                     checked += 1;
@@ -2170,10 +2127,7 @@ mod tests {
         let err = load_raw_prompt("llm_1", root.as_path(), &Some(String::new()), &None)
             .await
             .expect_err("an empty prompt with no prompt_file must not resolve");
-        assert_eq!(
-            err,
-            "step 'llm_1': step has neither prompt: nor prompt_file:"
-        );
+        assert_eq!(err, "step 'llm_1': step has neither prompt: nor prompt_file:");
 
         // A genuine both-state is still rejected, with its own distinct message.
         let err = load_raw_prompt(
@@ -2236,14 +2190,9 @@ mod tests {
         }
 
         // A zero-byte prompt file is not a prompt — symmetric with `prompt: ""`.
-        let err = load_raw_prompt(
-            "llm_1",
-            root.as_path(),
-            &None,
-            &Some("prompts/empty.md".into()),
-        )
-        .await
-        .expect_err("a zero-byte prompt_file must not ship an empty prompt to the model");
+        let err = load_raw_prompt("llm_1", root.as_path(), &None, &Some("prompts/empty.md".into()))
+            .await
+            .expect_err("a zero-byte prompt_file must not ship an empty prompt to the model");
         assert!(err.contains("is empty"), "{err}");
     }
 }

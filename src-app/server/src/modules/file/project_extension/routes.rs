@@ -38,3 +38,4 @@ pub fn project_files_router() -> ApiRouter {
             delete_with(detach_file, detach_file_docs),
         )
 }
+

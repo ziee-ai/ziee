@@ -167,22 +167,14 @@ async fn test_prompt(
     let conv = Repos
         .chat
         .core
-        .create_conversation(
-            user_id,
-            Some(req.model_id),
-            Some("Scheduled task test".into()),
-        )
+        .create_conversation(user_id, Some(req.model_id), Some("Scheduled task test".into()))
         .await?;
     let conversation_id = conv.id;
     let branch_id = conv.active_branch_id;
 
     let result = match branch_id {
-        Some(bid) => {
-            run_throwaway_turn(pool, config, user_id, req, &prompt, conversation_id, bid).await
-        }
-        None => Err(AppError::internal_error(
-            "throwaway conversation has no branch",
-        )),
+        Some(bid) => run_throwaway_turn(pool, config, user_id, req, &prompt, conversation_id, bid).await,
+        None => Err(AppError::internal_error("throwaway conversation has no branch")),
     };
 
     // Best-effort cleanup regardless of outcome.

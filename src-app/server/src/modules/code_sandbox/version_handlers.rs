@@ -18,9 +18,9 @@
 //! the operator triggers from the UI; the chat-side auto-fetch already
 //! has its own SSE-progress plumbing via `streaming.rs`.
 
-use axum::Json;
 use axum::http::StatusCode;
 use axum::response::sse::{KeepAlive, Sse};
+use axum::Json;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -33,10 +33,14 @@ use crate::modules::code_sandbox::permissions::{
 use crate::modules::code_sandbox::version_install_tasks::{
     self, InstallTaskState, SSEInstallConnectedData, SSEInstallTaskEvent,
 };
-use crate::modules::code_sandbox::version_manager::{self, SwapOutcome, VersionStatus};
-use crate::modules::permissions::RequirePermissions;
+use crate::modules::code_sandbox::version_manager::{
+    self, SwapOutcome, VersionStatus,
+};
 use crate::modules::permissions::openapi::with_permission;
-use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+use crate::modules::permissions::RequirePermissions;
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
+};
 
 // =====================================================================
 // Request shapes
@@ -109,7 +113,10 @@ fn validate_install_request(
                     return false;
                 }
                 // Numeric prerelease identifiers also forbid leading zeros (semver §9).
-                if id.chars().all(|c| c.is_ascii_digit()) && id.len() > 1 && id.starts_with('0') {
+                if id.chars().all(|c| c.is_ascii_digit())
+                    && id.len() > 1
+                    && id.starts_with('0')
+                {
                     return false;
                 }
                 id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
@@ -191,6 +198,7 @@ fn cache_root() -> Result<std::path::PathBuf, (StatusCode, crate::common::AppErr
         )),
     }
 }
+
 
 fn map_version_err(err: version_manager::VersionError) -> (StatusCode, crate::common::AppError) {
     err.to_app_error().to_api_error()
@@ -357,9 +365,7 @@ pub async fn subscribe_install_progress_handler(
     // un-buffered, otherwise progress events get held until the
     // proxy's buffer fills — defeating SSE's whole point.
     use axum::response::IntoResponse;
-    let mut response = Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response();
+    let mut response = Sse::new(stream).keep_alive(KeepAlive::default()).into_response();
     response.headers_mut().insert(
         "X-Accel-Buffering",
         axum::http::HeaderValue::from_static("no"),
@@ -417,13 +423,14 @@ pub async fn set_pin_handler(
             config::not_initialized_error(),
         )
     })?;
-    let swap =
-        version_manager::set_pin_with_drain(&pool, &body.version, state.workspace_root.clone())
-            .await
-            .map_err(map_version_err)?;
-    let status = version_manager::status(&pool)
-        .await
-        .map_err(map_version_err)?;
+    let swap = version_manager::set_pin_with_drain(
+        &pool,
+        &body.version,
+        state.workspace_root.clone(),
+    )
+    .await
+    .map_err(map_version_err)?;
+    let status = version_manager::status(&pool).await.map_err(map_version_err)?;
     // Cross-device sync: the system-wide pin changed (set synchronously before
     // the async drain) → other admin devices refetch the versions surface so
     // the pin state doesn't go stale. Mirrors the delete path's publish.
@@ -471,9 +478,7 @@ pub async fn delete_version_handler(
     version_manager::delete_artifact(&pool, id)
         .await
         .map_err(map_version_err)?;
-    let status = version_manager::status(&pool)
-        .await
-        .map_err(map_version_err)?;
+    let status = version_manager::status(&pool).await.map_err(map_version_err)?;
     // Cross-device sync: the rootfs version list changed → admins refetch.
     sync_publish(
         SyncEntity::CodeSandboxRootfsVersion,

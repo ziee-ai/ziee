@@ -222,97 +222,34 @@ mod tests {
 
     #[test]
     fn memory_bytes_bounds() {
-        assert!(err(UpdateJsToolSettings {
-            memory_bytes: Some(16 * 1024 * 1024 - 1),
-            ..Default::default()
-        }));
-        assert!(ok(UpdateJsToolSettings {
-            memory_bytes: Some(16 * 1024 * 1024),
-            ..Default::default()
-        }));
-        assert!(ok(UpdateJsToolSettings {
-            memory_bytes: Some(4 * 1024 * 1024 * 1024),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            memory_bytes: Some(4 * 1024 * 1024 * 1024 + 1),
-            ..Default::default()
-        }));
+        assert!(err(UpdateJsToolSettings { memory_bytes: Some(16 * 1024 * 1024 - 1), ..Default::default() }));
+        assert!(ok(UpdateJsToolSettings { memory_bytes: Some(16 * 1024 * 1024), ..Default::default() }));
+        assert!(ok(UpdateJsToolSettings { memory_bytes: Some(4 * 1024 * 1024 * 1024), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { memory_bytes: Some(4 * 1024 * 1024 * 1024 + 1), ..Default::default() }));
     }
 
     #[test]
     fn max_stack_bytes_bounds() {
-        assert!(err(UpdateJsToolSettings {
-            max_stack_bytes: Some(64 * 1024 - 1),
-            ..Default::default()
-        }));
-        assert!(ok(UpdateJsToolSettings {
-            max_stack_bytes: Some(64 * 1024),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            max_stack_bytes: Some(64 * 1024 * 1024 + 1),
-            ..Default::default()
-        }));
+        assert!(err(UpdateJsToolSettings { max_stack_bytes: Some(64 * 1024 - 1), ..Default::default() }));
+        assert!(ok(UpdateJsToolSettings { max_stack_bytes: Some(64 * 1024), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { max_stack_bytes: Some(64 * 1024 * 1024 + 1), ..Default::default() }));
     }
 
     #[test]
     fn secs_and_counts_bounds() {
-        assert!(err(UpdateJsToolSettings {
-            wall_secs: Some(0),
-            ..Default::default()
-        }));
-        assert!(ok(UpdateJsToolSettings {
-            wall_secs: Some(1),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            wall_secs: Some(3601),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            approval_timeout_secs: Some(4),
-            ..Default::default()
-        }));
-        assert!(ok(UpdateJsToolSettings {
-            approval_timeout_secs: Some(5),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            max_concurrent_runs: Some(0),
-            ..Default::default()
-        }));
-        assert!(ok(UpdateJsToolSettings {
-            max_concurrent_runs: Some(256),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            max_concurrent_runs: Some(257),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            max_concurrent_dispatch: Some(0),
-            ..Default::default()
-        }));
-        assert!(ok(UpdateJsToolSettings {
-            max_concurrent_dispatch: Some(64),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            max_concurrent_dispatch: Some(65),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            max_trace_entries: Some(0),
-            ..Default::default()
-        }));
-        assert!(ok(UpdateJsToolSettings {
-            max_trace_entries: Some(10_000),
-            ..Default::default()
-        }));
-        assert!(err(UpdateJsToolSettings {
-            max_trace_entries: Some(10_001),
-            ..Default::default()
-        }));
+        assert!(err(UpdateJsToolSettings { wall_secs: Some(0), ..Default::default() }));
+        assert!(ok(UpdateJsToolSettings { wall_secs: Some(1), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { wall_secs: Some(3601), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { approval_timeout_secs: Some(4), ..Default::default() }));
+        assert!(ok(UpdateJsToolSettings { approval_timeout_secs: Some(5), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { max_concurrent_runs: Some(0), ..Default::default() }));
+        assert!(ok(UpdateJsToolSettings { max_concurrent_runs: Some(256), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { max_concurrent_runs: Some(257), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { max_concurrent_dispatch: Some(0), ..Default::default() }));
+        assert!(ok(UpdateJsToolSettings { max_concurrent_dispatch: Some(64), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { max_concurrent_dispatch: Some(65), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { max_trace_entries: Some(0), ..Default::default() }));
+        assert!(ok(UpdateJsToolSettings { max_trace_entries: Some(10_000), ..Default::default() }));
+        assert!(err(UpdateJsToolSettings { max_trace_entries: Some(10_001), ..Default::default() }));
     }
 }

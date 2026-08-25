@@ -7,10 +7,11 @@
 //! segment); B5's workflow_mcp `resources/read` is the primary
 //! consumer for those.
 
+
 use aide::transform::TransformOperation;
 use axum::body::Body;
 use axum::extract::Path as AxumPath;
-use axum::http::{StatusCode, header};
+use axum::http::{header, StatusCode};
 use axum::response::Response;
 use uuid::Uuid;
 
@@ -27,42 +28,33 @@ pub async fn read_log(
     AxumPath((run_id, step_id, kind)): AxumPath<(Uuid, String, String)>,
 ) -> ApiResult<Response> {
     if !ALLOWED_KINDS.contains(&kind.as_str()) {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::bad_request(
-                "WORKFLOW_LOG_BAD_KIND",
-                format!(
-                    "log kind '{kind}' not recognized (allowed: {})",
-                    ALLOWED_KINDS.join(", ")
-                ),
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::bad_request(
+            "WORKFLOW_LOG_BAD_KIND",
+            format!(
+                "log kind '{kind}' not recognized (allowed: {})",
+                ALLOWED_KINDS.join(", ")
+            ),
+        )).into());
     }
     // A1: `step_id` is joined into the on-disk log path below; reject path
     // traversal / separators (parity with artifact_stream / artifact_io). The
     // axum `{step_id}` capture can't contain a literal `/`, but a bare `..`
     // segment would still resolve `logs/..` up to the run dir.
     if step_id.contains("..") || step_id.contains('/') || step_id.contains('\\') {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::bad_request(
-                "WORKFLOW_LOG_BAD_STEP_ID",
-                "step id must not contain path separators or '..'",
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::bad_request(
+            "WORKFLOW_LOG_BAD_STEP_ID",
+            "step id must not contain path separators or '..'",
+        )).into());
     }
     let row = repository::find_run(Repos.pool(), run_id)
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
     if row.user_id != auth.user.id {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::new(
-                StatusCode::FORBIDDEN,
-                "WORKFLOW_RUN_FORBIDDEN",
-                "workflow run is owned by another user",
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::FORBIDDEN,
+            "WORKFLOW_RUN_FORBIDDEN",
+            "workflow run is owned by another user",
+        )).into());
     }
 
     // Resolve the on-disk path. The runner staged logs under
@@ -96,14 +88,12 @@ pub async fn read_log(
             {
                 Some(s) => s.as_bytes().to_vec(),
                 None => {
-                    return Err::<_, (StatusCode, AppError)>(
-                        (AppError::new(
-                            StatusCode::NOT_FOUND,
-                            "WORKFLOW_LOG_MISSING",
-                            "log no longer available",
-                        ))
-                        .into(),
-                    );
+                    return Err::<_, (StatusCode, AppError)>((AppError::new(
+                        StatusCode::NOT_FOUND,
+                        "WORKFLOW_LOG_MISSING",
+                        "log no longer available",
+                    ))
+                    .into());
                 }
             }
         }

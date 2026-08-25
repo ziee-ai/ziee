@@ -60,7 +60,11 @@ pub fn citation_key_base(surname: Option<&str>, year: Option<i32>) -> String {
 
 /// Generate a `surnameYEAR` citation key, suffixing with a/b/c… on collision
 /// with `existing` keys (already-used keys for this user).
-pub fn gen_citation_key(surname: Option<&str>, year: Option<i32>, existing: &[String]) -> String {
+pub fn gen_citation_key(
+    surname: Option<&str>,
+    year: Option<i32>,
+    existing: &[String],
+) -> String {
     let base = citation_key_base(surname, year);
     if !existing.iter().any(|k| k == &base) {
         return base;
@@ -138,10 +142,7 @@ mod tests {
 
     #[test]
     fn citation_key_collision_suffixing() {
-        assert_eq!(
-            gen_citation_key(Some("Smith"), Some(2021), &[]),
-            "smith2021"
-        );
+        assert_eq!(gen_citation_key(Some("Smith"), Some(2021), &[]), "smith2021");
         let existing = vec!["smith2021".to_string()];
         assert_eq!(
             gen_citation_key(Some("Smith"), Some(2021), &existing),

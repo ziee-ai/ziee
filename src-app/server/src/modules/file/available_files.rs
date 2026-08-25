@@ -212,7 +212,9 @@ pub async fn model_supports_tools(
                 }
             }
             Ok(None) => {}
-            Err(e) => tracing::warn!("model lookup failed during tool-capability resolution: {e}"),
+            Err(e) => tracing::warn!(
+                "model lookup failed during tool-capability resolution: {e}"
+            ),
         }
     }
     // 2. Curated catalog fallback — lookup by model NAME.
@@ -337,7 +339,9 @@ pub async fn model_context_window(
         let model = match Repos.llm_model.get_by_id(model_id).await {
             Ok(m) => m,
             Err(e) => {
-                tracing::warn!("model lookup failed during context-window resolution: {e}");
+                tracing::warn!(
+                    "model lookup failed during context-window resolution: {e}"
+                );
                 None
             }
         };
@@ -678,30 +682,14 @@ mod tests {
 
     #[test]
     fn dedup_collapses_identical_checksum_with_alias() {
-        let a = mk(
-            Uuid::new_v4(),
-            "report.md",
-            Some("abc"),
-            FileSource::Project,
-        );
-        let b = mk(
-            Uuid::new_v4(),
-            "report-copy.md",
-            Some("abc"),
-            FileSource::Attachment,
-        );
+        let a = mk(Uuid::new_v4(), "report.md", Some("abc"), FileSource::Project);
+        let b = mk(Uuid::new_v4(), "report-copy.md", Some("abc"), FileSource::Attachment);
         let out = dedup_by_checksum(vec![a.clone(), b]);
         assert_eq!(out.len(), 1, "identical checksum collapses to one");
         assert_eq!(out[0].id, a.id, "first-seen is canonical");
-        assert!(
-            out[0].aka.contains(&"report-copy.md".to_string()),
-            "alias preserved"
-        );
+        assert!(out[0].aka.contains(&"report-copy.md".to_string()), "alias preserved");
         assert!(out[0].source.contains(&FileSource::Project));
-        assert!(
-            out[0].source.contains(&FileSource::Attachment),
-            "sources unioned"
-        );
+        assert!(out[0].source.contains(&FileSource::Attachment), "sources unioned");
     }
 
     /// Content-dedup drops the absorbed file's ROW, but the model may already
@@ -711,18 +699,8 @@ mod tests {
     /// alias-name guarantee asserted above.
     #[test]
     fn dedup_preserves_absorbed_id_as_alias() {
-        let a = mk(
-            Uuid::new_v4(),
-            "report.md",
-            Some("abc"),
-            FileSource::Project,
-        );
-        let b = mk(
-            Uuid::new_v4(),
-            "report-copy.md",
-            Some("abc"),
-            FileSource::Generated,
-        );
+        let a = mk(Uuid::new_v4(), "report.md", Some("abc"), FileSource::Project);
+        let b = mk(Uuid::new_v4(), "report-copy.md", Some("abc"), FileSource::Generated);
         let b_id = b.id;
         let out = dedup_by_checksum(vec![a.clone(), b]);
         assert_eq!(out.len(), 1);
@@ -749,24 +727,11 @@ mod tests {
     /// never appear in the `list_files` payload (which is this struct's serde).
     #[test]
     fn aka_ids_and_checksum_are_never_serialized_to_the_model() {
-        let a = mk(
-            Uuid::new_v4(),
-            "report.md",
-            Some("abc"),
-            FileSource::Project,
-        );
-        let b = mk(
-            Uuid::new_v4(),
-            "copy.md",
-            Some("abc"),
-            FileSource::Generated,
-        );
+        let a = mk(Uuid::new_v4(), "report.md", Some("abc"), FileSource::Project);
+        let b = mk(Uuid::new_v4(), "copy.md", Some("abc"), FileSource::Generated);
         let out = dedup_by_checksum(vec![a, b]);
         let json = serde_json::to_value(&out[0]).unwrap();
-        assert!(
-            json.get("aka_ids").is_none(),
-            "aka_ids must not reach the model: {json}"
-        );
+        assert!(json.get("aka_ids").is_none(), "aka_ids must not reach the model: {json}");
         assert!(json.get("checksum").is_none());
         assert!(json.get("blob_version_id").is_none());
         // The canonical id + alias NAME are still surfaced, as before.
@@ -778,17 +743,9 @@ mod tests {
     /// `render_manifest`'s exhaustive match).
     #[test]
     fn manifest_renders_generated_source() {
-        let f = mk(
-            Uuid::new_v4(),
-            "authored.md",
-            Some("h1"),
-            FileSource::Generated,
-        );
+        let f = mk(Uuid::new_v4(), "authored.md", Some("h1"), FileSource::Generated);
         let s = render_manifest(&[f]);
-        assert!(
-            s.contains("generated"),
-            "manifest must label the source; got:\n{s}"
-        );
+        assert!(s.contains("generated"), "manifest must label the source; got:\n{s}");
         assert!(s.contains("authored.md"));
     }
 
@@ -803,11 +760,7 @@ mod tests {
     fn dedup_keeps_different_checksum_distinct() {
         let a = mk(Uuid::new_v4(), "x", Some("h1"), FileSource::Attachment);
         let b = mk(Uuid::new_v4(), "x", Some("h2"), FileSource::Attachment);
-        assert_eq!(
-            dedup_by_checksum(vec![a, b]).len(),
-            2,
-            "same name diff content stay distinct"
-        );
+        assert_eq!(dedup_by_checksum(vec![a, b]).len(), 2, "same name diff content stay distinct");
     }
 
     /// `model_context_window` resolves the chat model's window from the curated

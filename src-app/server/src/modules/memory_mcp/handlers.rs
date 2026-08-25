@@ -26,7 +26,9 @@ use crate::modules::code_sandbox::types::{
 use crate::modules::memory::permissions::MemoryRead;
 use crate::modules::permissions::RequirePermissions;
 use crate::modules::permissions::checker::check_permission_union;
-use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 use crate::modules::user::models::{Group, User};
 
 // Shared between memory + memory_mcp handlers (see memory/models.rs).
@@ -84,7 +86,14 @@ pub async fn jsonrpc_handler(
         "tools/list" => ok_response(id, super::tools::tool_list()),
         "ping" => ok_response(id, json!({})),
         "tools/call" => {
-            match dispatch_tool_call(&auth.user, &auth.groups, conversation_id, &req.params).await {
+            match dispatch_tool_call(
+                &auth.user,
+                &auth.groups,
+                conversation_id,
+                &req.params,
+            )
+            .await
+            {
                 Ok(value) => ok_response(id, value),
                 Err(e) => error_response(id, e.0, e.1),
             }
@@ -194,11 +203,7 @@ async fn dispatch_tool_call(
                 .await
                 .ok()
                 .flatten();
-            if owner == Some(user_id) {
-                Some(cid)
-            } else {
-                None
-            }
+            if owner == Some(user_id) { Some(cid) } else { None }
         }
         None => None,
     };
@@ -345,7 +350,8 @@ async fn remember(
     if admin.enabled {
         if let Some(emb_model_id) = admin.embedding_model_id {
             if let Ok(vec) =
-                crate::modules::memory::engine::dispatch::embed(emb_model_id, content).await
+                crate::modules::memory::engine::dispatch::embed(emb_model_id, content)
+                    .await
             {
                 let model_name = Repos
                     .llm_model

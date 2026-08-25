@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
-use super::http::HttpMcpClient;
-use super::stdio::StdioMcpClient;
 use super::traits::{McpClient, Prompt, PromptResult, Resource, Tool, ToolResult};
+use super::stdio::StdioMcpClient;
+use super::http::HttpMcpClient;
 use crate::common::AppError;
 use crate::modules::mcp::models::{McpServer, TransportType};
 use crate::modules::mcp::sampling::SamplingHandler;
@@ -18,7 +18,7 @@ fn sse_deprecated_error() -> AppError {
         "The SSE (HTTP+SSE) transport was deprecated in MCP 2025-03-26. \
          Reconfigure this server to use the Streamable HTTP transport (\"http\") \
          instead. The new transport uses the same JSON-RPC payloads but a \
-         single POST endpoint that may respond with either JSON or SSE.",
+         single POST endpoint that may respond with either JSON or SSE."
     )
 }
 
@@ -226,29 +226,15 @@ impl McpSession {
         name: &str,
         arguments: serde_json::Value,
         message_id: Option<uuid::Uuid>,
-        sse_tx: Option<
-            tokio::sync::mpsc::UnboundedSender<
-                Result<axum::response::sse::Event, std::convert::Infallible>,
-            >,
-        >,
-        elicit_notify_tx: Option<
-            tokio::sync::mpsc::UnboundedSender<
-                crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
-            >,
-        >,
+        sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
     ) -> Result<ToolResult, AppError> {
         self.last_used = Instant::now();
         let started_at = time::OffsetDateTime::now_utc();
         let t0 = Instant::now();
         let result = self
             .client
-            .call_tool(
-                name,
-                arguments.clone(),
-                message_id,
-                sse_tx,
-                elicit_notify_tx,
-            )
+            .call_tool(name, arguments.clone(), message_id, sse_tx, elicit_notify_tx)
             .await;
         let elapsed_ms = t0.elapsed().as_millis() as i64;
         // ITEM-14: publish the ONE clock reading before recording, so the SSE

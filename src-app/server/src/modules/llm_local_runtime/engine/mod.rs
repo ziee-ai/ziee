@@ -26,7 +26,9 @@ pub mod types;
 // Re-export the types consumers reference directly. Everything else
 // (BinaryInfo, the error type, HealthSignal/backoff/window, DeviceType)
 // stays reachable via its submodule path, e.g. `engine::error::RuntimeError`.
-pub use download::{BinaryDownloader, asset_size_for_backend, available_backends};
+pub use download::{
+    asset_size_for_backend, available_backends, BinaryDownloader,
+};
 pub use health::{HealthEvent, HealthStateMachine, InstanceState, Transition};
-pub use metadata::{ModelCapabilities, extract_model_capabilities};
+pub use metadata::{extract_model_capabilities, ModelCapabilities};
 pub use types::EngineType;

@@ -48,10 +48,7 @@ impl ChatSamplingHandler {
         // forked, where the call was `(pool, model_id)`).
         let (provider, model_name, _, _, _, _) =
             create_provider_from_model_id(model_id, user_id).await?;
-        Ok(Self {
-            provider,
-            model_name,
-        })
+        Ok(Self { provider, model_name })
     }
 }
 
@@ -91,18 +88,13 @@ impl SamplingHandler for ChatSamplingHandler {
                     }]
                 }
                 SamplingContent::Unknown => {
-                    tracing::warn!(
-                        "[sampling] Unknown content type in sampling message — skipping"
-                    );
+                    tracing::warn!("[sampling] Unknown content type in sampling message — skipping");
                     vec![]
                 }
             };
 
             if !content_blocks.is_empty() {
-                messages.push(ChatMessage {
-                    role,
-                    content: content_blocks,
-                });
+                messages.push(ChatMessage { role, content: content_blocks });
             }
         }
 
@@ -116,17 +108,15 @@ impl SamplingHandler for ChatSamplingHandler {
 
         tracing::info!(
             "[sampling] Starting LLM call (streaming): model={}, max_tokens={}",
-            self.model_name,
-            request.max_tokens
+            self.model_name, request.max_tokens
         );
 
         // Use streaming so we get the first tokens in seconds, not minutes.
         // Non-streaming (complete()) waits for ALL tokens before returning (~180s for long responses).
         // Streaming matches exactly how normal chat works — fast TTFT ~2-5s.
-        let mut stream =
-            self.provider.chat_stream(chat_request).await.map_err(|e| {
-                AppError::internal_error(format!("Sampling LLM stream failed: {}", e))
-            })?;
+        let mut stream = self.provider.chat_stream(chat_request)
+            .await
+            .map_err(|e| AppError::internal_error(format!("Sampling LLM stream failed: {}", e)))?;
 
         tracing::info!("[sampling] Stream started successfully");
 
@@ -140,10 +130,7 @@ impl SamplingHandler for ChatSamplingHandler {
                             finish_reason = chunk.finish_reason.clone();
                         }
                         for delta in chunk.content {
-                            if let ContentBlockDelta::TextDelta {
-                                delta: text_delta, ..
-                            } = delta
-                            {
+                            if let ContentBlockDelta::TextDelta { delta: text_delta, .. } = delta {
                                 collected.push_str(&text_delta);
                             }
                         }

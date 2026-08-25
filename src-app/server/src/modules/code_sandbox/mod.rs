@@ -17,27 +17,27 @@ use linkme::distributed_slice;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
+use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 
 // ── STAY (ziee server): DB/HTTP halves + the guest-agent staging bodies (their
 //    `include_bytes!` reads the SERVER `CARGO_MANIFEST_DIR`) + the provider impls.
 pub mod embedded;
+#[cfg(target_os = "windows")]
+pub mod wsl2_agent_embedded;
 pub mod handlers;
-pub mod mount_context_extension;
-pub mod permissions;
 pub mod providers;
-pub mod repository;
-pub mod routes;
 pub mod runtime_fetch;
 pub mod runtime_mount;
+pub mod mount_context_extension;
+pub mod permissions;
+pub mod repository;
+pub mod routes;
 pub mod streaming;
 pub mod tools;
 pub mod version_back;
 pub mod version_handlers;
 pub mod version_install_tasks;
 pub mod version_manager;
-#[cfg(target_os = "windows")]
-pub mod wsl2_agent_embedded;
 
 // ── Engine carve: the build-DB-free sandbox ENGINE moved to
 //    `ziee_sandbox` (`sdk/crates/ziee-sandbox`). Re-export its modules as
@@ -206,15 +206,9 @@ mod tests {
     #[test]
     fn known_flavor_allow_list_matches_the_advertised_catalog() {
         let advertised = known_flavor_names();
-        assert!(
-            !advertised.is_empty(),
-            "the catalog must advertise at least one flavor"
-        );
+        assert!(!advertised.is_empty(), "the catalog must advertise at least one flavor");
         for name in &advertised {
-            assert!(
-                is_known_flavor(name),
-                "the advertised flavor `{name}` must be accepted"
-            );
+            assert!(is_known_flavor(name), "the advertised flavor `{name}` must be accepted");
             assert!(
                 validate_known_flavor("flavor", name, "EXAMPLE").is_ok(),
                 "…and must not be refused: `{name}`"
@@ -239,20 +233,11 @@ mod tests {
             let msg = validate_known_flavor("spec.flavor", bad, "EXAMPLE")
                 .expect_err("an unknown flavor must be refused")
                 .to_string();
-            assert!(
-                msg.contains("spec.flavor"),
-                "the refusal names the argument: {msg}"
-            );
+            assert!(msg.contains("spec.flavor"), "the refusal names the argument: {msg}");
             for name in &advertised {
-                assert!(
-                    msg.contains(name),
-                    "…and enumerates the valid flavors: {msg}"
-                );
+                assert!(msg.contains(name), "…and enumerates the valid flavors: {msg}");
             }
-            assert!(
-                msg.contains("EXAMPLE"),
-                "…and carries the copyable example: {msg}"
-            );
+            assert!(msg.contains("EXAMPLE"), "…and carries the copyable example: {msg}");
         }
     }
 
@@ -288,6 +273,7 @@ mod tests {
             "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd"
         );
     }
+
 }
 
 #[distributed_slice(MODULE_ENTRIES)]
@@ -432,8 +418,10 @@ impl AppModule for CodeSandboxModule {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ =
-                std::fs::set_permissions(&workspace_root, std::fs::Permissions::from_mode(0o700));
+            let _ = std::fs::set_permissions(
+                &workspace_root,
+                std::fs::Permissions::from_mode(0o700),
+            );
         }
 
         // ---- Compute loopback URL (Phase 6 seeding) ----
@@ -474,7 +462,9 @@ impl AppModule for CodeSandboxModule {
             if let Err(e) = repo.upsert_builtin_server(server_id, &upsert_url).await {
                 tracing::error!("code_sandbox: upsert_builtin_server failed: {e:?}");
             } else {
-                tracing::info!("code_sandbox: upsert built-in server {server_id} at {upsert_url}");
+                tracing::info!(
+                    "code_sandbox: upsert built-in server {server_id} at {upsert_url}"
+                );
             }
         });
 
@@ -493,9 +483,8 @@ impl AppModule for CodeSandboxModule {
         tokio::spawn(async move {
             match version_manager::ensure_pin_initialized(&pin_pool).await {
                 Ok(Some(pin)) => {
-                    let installed = version_manager::list_installed(&pin_pool)
-                        .await
-                        .unwrap_or_default();
+                    let installed =
+                        version_manager::list_installed(&pin_pool).await.unwrap_or_default();
                     let downloaded: Vec<String> = installed
                         .iter()
                         .filter(|a| a.version == pin)
@@ -520,7 +509,9 @@ impl AppModule for CodeSandboxModule {
         });
 
         config::set_init_status(config::SandboxAvailability::Ready);
-        tracing::info!("code_sandbox: registered (rootfs will mount on first execute_command)");
+        tracing::info!(
+            "code_sandbox: registered (rootfs will mount on first execute_command)"
+        );
         Ok(())
     }
 
@@ -558,10 +549,9 @@ async fn workspace_reaper(root: std::path::PathBuf) {
                 //   bind-mounted user attachments;
                 //   `identity/` is the shared synthetic passwd/group.
                 if let Some(name) = path.file_name().and_then(|n| n.to_str())
-                    && (name == "attachments" || name == "identity")
-                {
-                    continue;
-                }
+                    && (name == "attachments" || name == "identity") {
+                        continue;
+                    }
                 // Prefer the explicit `.last_used` sentinel: every
                 // `run_in_sandbox` call writes the current Unix
                 // timestamp here, so a long-running conversation that
@@ -595,9 +585,10 @@ async fn workspace_reaper(root: std::path::PathBuf) {
                                 age.as_secs() / 86_400
                             )
                         }
-                        Err(e) => {
-                            tracing::warn!("code_sandbox: failed to reap {}: {e}", path.display())
-                        }
+                        Err(e) => tracing::warn!(
+                            "code_sandbox: failed to reap {}: {e}",
+                            path.display()
+                        ),
                     }
                 }
             }

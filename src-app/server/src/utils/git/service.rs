@@ -108,6 +108,7 @@ impl GitService {
         format!("{}-{:x}", repository_id, hash)
     }
 
+
     /// Clone a repository with cancellation support (LFS files not included in initial clone)
     pub async fn clone_repository(
         &self,
@@ -148,16 +149,16 @@ impl GitService {
         // clone is fine because clones are minutes-scale operations
         // anyway; the contention window matches the natural
         // sequential ordering callers would want.
-        let cache_key_lock_str = Self::generate_cache_key(repository_id, repository_url, branch);
+        let cache_key_lock_str =
+            Self::generate_cache_key(repository_id, repository_url, branch);
         let clone_lock = lock_for(&cache_key_lock_str);
         let _clone_guard = clone_lock.lock().await;
 
         // Check for cancellation before starting
         if let Some(ref token) = cancellation_token
-            && token.is_cancelled().await
-        {
-            return Err(GitError::Cancelled);
-        }
+            && token.is_cancelled().await {
+                return Err(GitError::Cancelled);
+            }
 
         // Generate cache key based on repository_id, URL, and branch
         let cache_key = Self::generate_cache_key(repository_id, repository_url, branch);
@@ -247,9 +248,10 @@ impl GitService {
                 // this pin, a server-controlled redirect or hostname
                 // alias would receive the auth token. Closes
                 // 09-llm-repository F-12 (Medium).
-                let original_host = reqwest::Url::parse(&repository_url)
-                    .ok()
-                    .and_then(|u| u.host_str().map(|h| h.to_lowercase()));
+                let original_host =
+                    reqwest::Url::parse(&repository_url).ok().and_then(|u| {
+                        u.host_str().map(|h| h.to_lowercase())
+                    });
                 callbacks.credentials(move |url, username_from_url, _allowed_types| {
                     // Compare the callback's URL host to the original;
                     // refuse credentials on mismatch.
@@ -423,18 +425,17 @@ impl GitService {
                     }
                     Err(e) => {
                         if e.code() == git2::ErrorCode::User
-                            && let Some(ref token) = cancellation_token
-                        {
-                            let rt = tokio::runtime::Handle::try_current();
-                            if let Ok(handle) = rt {
-                                let token_clone = token.clone();
-                                let cancelled =
-                                    handle.block_on(async { token_clone.is_cancelled().await });
-                                if cancelled {
-                                    return Err(GitError::Cancelled);
+                            && let Some(ref token) = cancellation_token {
+                                let rt = tokio::runtime::Handle::try_current();
+                                if let Ok(handle) = rt {
+                                    let token_clone = token.clone();
+                                    let cancelled =
+                                        handle.block_on(async { token_clone.is_cancelled().await });
+                                    if cancelled {
+                                        return Err(GitError::Cancelled);
+                                    }
                                 }
                             }
-                        }
 
                         let _ = progress_tx_clone.send(GitProgress {
                             phase: GitPhase::Error,
@@ -451,9 +452,10 @@ impl GitService {
 
                 // SECURITY: pin credentials to the original repository
                 // host — see fetch path above. Closes 09-llm-repository F-12.
-                let original_host_clone = reqwest::Url::parse(&repository_url)
-                    .ok()
-                    .and_then(|u| u.host_str().map(|h| h.to_lowercase()));
+                let original_host_clone =
+                    reqwest::Url::parse(&repository_url).ok().and_then(|u| {
+                        u.host_str().map(|h| h.to_lowercase())
+                    });
                 callbacks.credentials(move |url, username_from_url, _allowed_types| {
                     let cb_host = reqwest::Url::parse(url)
                         .ok()

@@ -13,6 +13,7 @@
 //! - `tools/call` — spawn the runner, await completion, format result
 //! - `resources/list` / `resources/read` — outputs / artifacts / logs
 
+
 use axum::{
     Json, debug_handler,
     http::StatusCode,
@@ -97,10 +98,12 @@ pub async fn jsonrpc_handler(
             Ok(v) => ok_response(id, v),
             Err(e) => error_response(id, StatusCode::OK, JsonRpcError::from_app_error(&e)),
         },
-        "resources/read" => match dispatch_resources_read(pool, user_id, &req.params).await {
-            Ok(v) => ok_response(id, v),
-            Err((http, err)) => error_response(id, http, err),
-        },
+        "resources/read" => {
+            match dispatch_resources_read(pool, user_id, &req.params).await {
+                Ok(v) => ok_response(id, v),
+                Err((http, err)) => error_response(id, http, err),
+            }
+        }
         _ => error_response(
             id,
             StatusCode::OK,

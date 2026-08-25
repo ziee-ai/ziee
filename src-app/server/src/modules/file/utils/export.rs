@@ -41,8 +41,8 @@ pub async fn render_to_format(
     // ext) makes it fail with an invalid `-f`. Our deliverables are text, so any
     // non-markup source falls back to markdown — never a 500.
     let ext = match input_ext {
-        "md" | "markdown" | "html" | "htm" | "csv" | "rst" | "org" | "tex" | "latex" | "docx"
-        | "odt" | "rtf" | "epub" | "ipynb" => input_ext,
+        "md" | "markdown" | "html" | "htm" | "csv" | "rst" | "org" | "tex"
+        | "latex" | "docx" | "odt" | "rtf" | "epub" | "ipynb" => input_ext,
         _ => "md",
     };
     let dir = std::env::temp_dir().join(format!("ziee-export-{}", Uuid::new_v4()));

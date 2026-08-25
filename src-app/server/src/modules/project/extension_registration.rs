@@ -9,12 +9,12 @@
 // `register_routes` continues to work — extension routes simply contribute
 // nothing.
 
-use sqlx::PgPool;
 use std::sync::Arc;
+use sqlx::PgPool;
 
 use crate::core::config::Config;
-use crate::modules::project::ProjectExtensionRegistry;
 use crate::modules::project::core::extension::PROJECT_EXTENSIONS;
+use crate::modules::project::ProjectExtensionRegistry;
 
 /// Register all discovered project extensions in order.
 ///

@@ -14,9 +14,8 @@ use crate::modules::mcp::{McpRepository, McpServer};
 
 use super::content::McpContentData;
 use super::extension::{
-    McpServerConfig, SSEChatStreamArtifactCreatedData, SSEChatStreamMcpApprovalRequiredData,
-    SSEChatStreamMcpElicitationRequiredData, SSEChatStreamMcpToolCompleteData,
-    SSEChatStreamMcpToolStartData,
+    McpServerConfig, SSEChatStreamMcpApprovalRequiredData, SSEChatStreamMcpElicitationRequiredData,
+    SSEChatStreamMcpToolCompleteData, SSEChatStreamMcpToolStartData, SSEChatStreamArtifactCreatedData,
 };
 
 /// Get all MCP servers accessible to the user
@@ -32,8 +31,11 @@ pub async fn get_all_accessible_config(
         .await?;
 
     // Filter out disabled servers
-    let enabled_servers: Vec<McpServer> =
-        response.servers.into_iter().filter(|s| s.enabled).collect();
+    let enabled_servers: Vec<McpServer> = response
+        .servers
+        .into_iter()
+        .filter(|s| s.enabled)
+        .collect();
 
     Ok(enabled_servers)
 }
@@ -268,9 +270,7 @@ fn prepare_ask_user_schema(input: &Value) -> Result<Value, String> {
 
     // (1) Raw size, before anything parses or caps it.
     if let Some(raw) = raw {
-        let raw_bytes = serde_json::to_vec(raw)
-            .map(|v| v.len())
-            .unwrap_or(usize::MAX);
+        let raw_bytes = serde_json::to_vec(raw).map(|v| v.len()).unwrap_or(usize::MAX);
         if raw_bytes > MAX_STRUCTURED_CONTENT_BYTES {
             return Err(format!(
                 "ask_user 'schema' is too large ({raw_bytes} bytes; limit \
@@ -464,14 +464,13 @@ pub(crate) async fn run_ask_user_elicitation(
     // send_tool_start_event — so the serialized payload carries the `type`
     // discriminator the per-user chat stream keys extension events on (a
     // hand-built Event without `type` is silently dropped by consumers).
-    let event =
-        SSEChatStreamEvent::McpElicitationRequired(SSEChatStreamMcpElicitationRequiredData {
-            elicitation_id: elicitation_id.to_string(),
-            message_id: message_id.map(|m| m.to_string()),
-            message: message.clone(),
-            requested_schema: requested_schema.clone(),
-            server: ASK_USER_SERVER_LABEL.to_string(),
-        });
+    let event = SSEChatStreamEvent::McpElicitationRequired(SSEChatStreamMcpElicitationRequiredData {
+        elicitation_id: elicitation_id.to_string(),
+        message_id: message_id.map(|m| m.to_string()),
+        message: message.clone(),
+        requested_schema: requested_schema.clone(),
+        server: ASK_USER_SERVER_LABEL.to_string(),
+    });
     if sse_tx.send(Ok(event.into())).is_err() {
         let _ = registry::remove(elicitation_id);
         return ask_result(
@@ -516,11 +515,7 @@ pub async fn execute_tool(
     timeout_seconds: Option<i32>,
     message_id: Option<uuid::Uuid>,
     sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
-    elicit_notify_tx: Option<
-        tokio::sync::mpsc::UnboundedSender<
-            crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
-        >,
-    >,
+    elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
 ) -> (McpContentData, bool) {
     // Returns (result, user_only_audience).
     //
@@ -541,7 +536,8 @@ pub async fn execute_tool(
     // the live `sse_tx` needed to surface the form. It blocks until the user
     // answers and returns their answer as the tool result.
     if tool_name == "ask_user"
-        && session.server_id() == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
+        && session.server_id()
+            == crate::modules::elicitation_mcp::elicitation_mcp_server_id()
     {
         // Defensive fallback path (sampling / before_llm_call approved-tools):
         // no user_id in scope here, so the owning user is bound by the notify
@@ -559,15 +555,8 @@ pub async fn execute_tool(
 
     let result = tokio::time::timeout(
         timeout,
-        session.call_tool(
-            tool_name,
-            input.clone(),
-            message_id,
-            sse_tx,
-            elicit_notify_tx,
-        ),
-    )
-    .await;
+        session.call_tool(tool_name, input.clone(), message_id, sse_tx, elicit_notify_tx)
+    ).await;
 
     match result {
         Ok(Ok(tool_result)) => {
@@ -588,11 +577,7 @@ pub async fn execute_tool(
             let mut resource_links: Vec<super::content::ResourceLink> = Vec::new();
 
             for item in &tool_result.content {
-                let content_type = item
-                    .content
-                    .get("type")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("text");
+                let content_type = item.content.get("type").and_then(|t| t.as_str()).unwrap_or("text");
                 match content_type {
                     "text" => {
                         if let Some(text) = item.content.get("text").and_then(|t| t.as_str()) {
@@ -626,9 +611,7 @@ pub async fn execute_tool(
                     "resource_link" => {
                         // MCP resource_link: a reference to a persisted resource (not inline content)
                         if let Some(link) =
-                            crate::modules::mcp::resource_link::parse_resource_link_block(
-                                &item.content,
-                            )
+                            crate::modules::mcp::resource_link::parse_resource_link_block(&item.content)
                         {
                             let name = link.name.clone().unwrap_or_else(|| "file".to_string());
                             // Guard #3 (defense in depth): never echo a raw `ziee://` host
@@ -637,8 +620,7 @@ pub async fn execute_tool(
                             // (mcp::resource_link::persist_links + the artifact-info rewrite);
                             // this placeholder also covers the save-failure path.
                             let uri_for_text =
-                                if crate::modules::mcp::resource_link::is_ziee_host_path(&link.uri)
-                                {
+                                if crate::modules::mcp::resource_link::is_ziee_host_path(&link.uri) {
                                     "(saved server-side; appears as a file attachment)".to_string()
                                 } else {
                                     link.uri.clone()
@@ -744,16 +726,8 @@ pub async fn execute_tool(
                 content: final_content,
                 is_error: Some(tool_result.is_error),
                 attachment,
-                images: if images.is_empty() {
-                    None
-                } else {
-                    Some(images)
-                },
-                resource_links: if resource_links.is_empty() {
-                    None
-                } else {
-                    Some(resource_links)
-                },
+                images: if images.is_empty() { None } else { Some(images) },
+                resource_links: if resource_links.is_empty() { None } else { Some(resource_links) },
                 hidden_content: None, // Set later if resource_links artifacts are saved
                 // Persist the tool response's structuredContent (UI render +
                 // get_tool_result recall; not forwarded to the LLM by
@@ -777,39 +751,36 @@ pub async fn execute_tool(
         }
         Ok(Err(e)) => {
             // MCP error
-            (
-                McpContentData::ToolResult {
-                    tool_use_id: String::new(),
-                    name: Some(tool_name.to_string()),
-                    server_id: None, // Will be set by caller
-                    content: format!("Tool execution failed: {}", e),
-                    is_error: Some(true),
-                    attachment: None,
-                    images: None,
-                    resource_links: None,
-                    hidden_content: None,
-                    structured_content: None,
-                },
-                false,
-            )
+            (McpContentData::ToolResult {
+                tool_use_id: String::new(),
+                name: Some(tool_name.to_string()),
+                server_id: None, // Will be set by caller
+                content: format!("Tool execution failed: {}", e),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: None,
+            }, false)
         }
         Err(_) => {
             // Timeout
-            (
-                McpContentData::ToolResult {
-                    tool_use_id: String::new(),
-                    name: Some(tool_name.to_string()),
-                    server_id: None, // Will be set by caller
-                    content: format!("Tool execution timed out after {}s", timeout_secs),
-                    is_error: Some(true),
-                    attachment: None,
-                    images: None,
-                    resource_links: None,
-                    hidden_content: None,
-                    structured_content: None,
-                },
-                false,
-            )
+            (McpContentData::ToolResult {
+                tool_use_id: String::new(),
+                name: Some(tool_name.to_string()),
+                server_id: None, // Will be set by caller
+                content: format!(
+                    "Tool execution timed out after {}s",
+                    timeout_secs
+                ),
+                is_error: Some(true),
+                attachment: None,
+                images: None,
+                resource_links: None,
+                hidden_content: None,
+                structured_content: None,
+            }, false)
         }
     }
 }
@@ -948,9 +919,7 @@ pub fn approval_is_always_reprompt(
     // (2) control_mcp: read-only tools auto-run; a mutating `invoke_capability`
     // always re-prompts (overriding even AutoApprove).
     if id == crate::modules::control_mcp::control_mcp_server_id() {
-        return crate::modules::control_mcp::handlers::control_call_needs_approval(
-            tool_name, input,
-        );
+        return crate::modules::control_mcp::handlers::control_call_needs_approval(tool_name, input);
     }
     // (3) background_mcp: owner-scoped reads auto-run; `spawn_background` launches
     // a detached agent and always re-prompts.
@@ -1038,18 +1007,14 @@ pub async fn send_artifact_created_event(
 /// Returns `Some` in two cases:
 /// - A required string parameter was found → `{ param_name: query_text }`
 /// - No schema information available → generic fallback `{ "query": query_text }`
-pub fn build_query_input(
-    schema: &serde_json::Value,
-    query_text: &str,
-) -> Option<serde_json::Value> {
+pub fn build_query_input(schema: &serde_json::Value, query_text: &str) -> Option<serde_json::Value> {
     if let (Some(props), Some(required)) = (
         schema.get("properties").and_then(|p| p.as_object()),
         schema.get("required").and_then(|r| r.as_array()),
     ) {
         for req_key in required {
             if let Some(key) = req_key.as_str() {
-                let is_string = props
-                    .get(key)
+                let is_string = props.get(key)
                     .and_then(|p| p.get("type"))
                     .and_then(|t| t.as_str())
                     == Some("string");
@@ -1068,11 +1033,12 @@ pub fn build_query_input(
 #[cfg(test)]
 mod tests {
     use super::{
-        ASK_USER_SCHEMA_EXAMPLE, ASK_USER_SCHEMA_MARKER, MAX_ANTHROPIC_TOOL_NAME_LEN,
-        MAX_STRUCTURED_CONTENT_BYTES, McpContentData, TOOL_COMPLETE_RESULT_PREVIEW_BYTES,
         ask_user_tool_result, build_query_input, cap_structured_content,
-        convert_mcp_tool_to_ai_tool, prepare_ask_user_schema, run_ask_user_elicitation,
-        stamp_ask_user_marker, truncate_on_char_boundary,
+        convert_mcp_tool_to_ai_tool, run_ask_user_elicitation, stamp_ask_user_marker,
+        truncate_on_char_boundary, McpContentData, ASK_USER_SCHEMA_MARKER,
+        MAX_ANTHROPIC_TOOL_NAME_LEN, MAX_STRUCTURED_CONTENT_BYTES,
+        TOOL_COMPLETE_RESULT_PREVIEW_BYTES,
+        prepare_ask_user_schema, ASK_USER_SCHEMA_EXAMPLE,
     };
 
     use crate::modules::mcp::client::traits::Tool as McpToolDef;
@@ -1081,15 +1047,17 @@ mod tests {
 
     use uuid::Uuid;
 
+
     /// Pull `(content, is_error)` out of a `ToolResult` for assertions.
     fn tool_result_parts(r: &McpContentData) -> (String, bool) {
         match r {
-            McpContentData::ToolResult {
-                content, is_error, ..
-            } => (content.clone(), is_error.unwrap_or(false)),
+            McpContentData::ToolResult { content, is_error, .. } => {
+                (content.clone(), is_error.unwrap_or(false))
+            }
             other => panic!("expected ToolResult, got {other:?}"),
         }
     }
+
 
     /// A within-cap structuredContent (e.g. a normal web_search result) is
     /// preserved verbatim.
@@ -1105,6 +1073,7 @@ mod tests {
         let out = cap_structured_content(Some(sc.clone()), "web_search");
         assert_eq!(out, Some(sc), "small payload must pass through unchanged");
     }
+
 
     /// An oversized structuredContent (a pathologically large search/fetch
     /// result) is DROPPED to None so it can't bloat the JSONB row / response.
@@ -1130,6 +1099,7 @@ mod tests {
         assert!(out.is_none(), "oversized structuredContent must be dropped");
     }
 
+
     /// An empty `message` is a malformed tool call from the model → the ONE
     /// genuine error outcome (so the model retries with a real prompt). Returns
     /// before any registry/SSE work, so it's drivable with all-None args.
@@ -1147,6 +1117,7 @@ mod tests {
         assert!(is_error, "empty message must be a tool error");
         assert!(content.contains("non-empty"), "got: {content}");
     }
+
 
     /// With no interactive stream (sse_tx == None — the before_llm_call no-SSE
     /// approved-tools path) there's nobody to ask, so ask_user returns a
@@ -1166,6 +1137,7 @@ mod tests {
         assert!(!is_error, "no-session is not a tool failure");
         assert!(content.contains("no interactive session"), "got: {content}");
     }
+
 
     // ── ask_user rich-schema marker (ITEM-1) ─────────────────────────────────
 
@@ -1256,6 +1228,7 @@ mod tests {
         assert!(!is_error, "accept must never be a tool error");
     }
 
+
     #[test]
     fn ask_user_accept_without_content_is_json_null() {
         let r = ElicitationResponse {
@@ -1267,6 +1240,7 @@ mod tests {
         assert!(!is_error);
     }
 
+
     #[test]
     fn ask_user_decline_returns_marker_non_error() {
         let r = ElicitationResponse {
@@ -1277,6 +1251,7 @@ mod tests {
         assert!(content.contains("declined"), "got: {content}");
         assert!(!is_error, "decline is an answer, not a failure");
     }
+
 
     #[test]
     fn ask_user_cancel_timeout_and_unknown_map_to_no_response_marker() {
@@ -1297,6 +1272,7 @@ mod tests {
         }
     }
 
+
     /// Stream-close DURING the wait: the form is surfaced on the SSE stream,
     /// then the user closes the chat stream (Stop) before answering. The
     /// `sse_tx.closed()` arm of the select must fire and produce a NON-error
@@ -1305,9 +1281,8 @@ mod tests {
     #[tokio::test]
     async fn ask_user_stream_close_during_wait_returns_non_error_no_response() {
         use tokio::sync::mpsc;
-        let (tx, mut rx) = mpsc::unbounded_channel::<
-            Result<axum::response::sse::Event, std::convert::Infallible>,
-        >();
+        let (tx, mut rx) =
+            mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
 
         let handle = tokio::spawn(run_ask_user_elicitation(
             serde_json::json!({ "message": "Pick a color", "schema": { "type": "object",
@@ -1333,6 +1308,7 @@ mod tests {
         );
     }
 
+
     fn make_mcp_tool(name: &str) -> McpToolDef {
         McpToolDef {
             name: name.to_string(),
@@ -1341,6 +1317,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn convert_mcp_tool_accepts_safe_name() {
         let server_id = Uuid::new_v4();
@@ -1348,6 +1325,7 @@ mod tests {
         let out = convert_mcp_tool_to_ai_tool(server_id, &tool, None);
         assert!(out.is_some(), "safe name should produce a tool");
     }
+
 
     #[test]
     fn convert_mcp_tool_drops_oversize_composed_name() {
@@ -1359,6 +1337,7 @@ mod tests {
         let out = convert_mcp_tool_to_ai_tool(server_id, &tool, None);
         assert!(out.is_none(), "oversize composed name should be dropped");
     }
+
 
     #[test]
     fn convert_mcp_tool_drops_disallowed_charset() {
@@ -1373,6 +1352,7 @@ mod tests {
         );
     }
 
+
     // TEST-1: the server label prefixes the DESCRIPTION only; the wire NAME is
     // the unchanged `<uuid>__<tool>` whether or not a label is supplied.
     #[test]
@@ -1383,10 +1363,7 @@ mod tests {
 
         let labeled = convert_mcp_tool_to_ai_tool(server_id, &tool, Some("biognosia"))
             .expect("safe name should produce a tool");
-        assert_eq!(
-            labeled.function.name, expected_name,
-            "label must NOT touch the name"
-        );
+        assert_eq!(labeled.function.name, expected_name, "label must NOT touch the name");
         assert_eq!(
             labeled.function.description.as_deref(),
             Some("[biognosia] test"),
@@ -1395,16 +1372,14 @@ mod tests {
 
         let unlabeled = convert_mcp_tool_to_ai_tool(server_id, &tool, None)
             .expect("safe name should produce a tool");
-        assert_eq!(
-            unlabeled.function.name, expected_name,
-            "name identical with None label"
-        );
+        assert_eq!(unlabeled.function.name, expected_name, "name identical with None label");
         assert_eq!(
             unlabeled.function.description.as_deref(),
             Some("test"),
             "None label must leave the description byte-identical"
         );
     }
+
 
     // TEST-2: an empty/None tool description with a label yields `[<name>] ` (no
     // orig text); the name guards ignore the label entirely.
@@ -1434,6 +1409,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn test_build_query_input_required_string_param() {
         let schema = serde_json::json!({
@@ -1446,6 +1422,7 @@ mod tests {
         assert_eq!(result, Some(serde_json::json!({ "query": "test message" })));
     }
 
+
     #[test]
     fn test_build_query_input_fallback_to_query_key() {
         // Schema has no required params (only optional) → uses generic fallback
@@ -1457,6 +1434,7 @@ mod tests {
         let result = build_query_input(&schema, "test message");
         assert_eq!(result, Some(serde_json::json!({ "query": "test message" })));
     }
+
 
     #[test]
     fn test_build_query_input_picks_first_required_string() {
@@ -1472,6 +1450,7 @@ mod tests {
         assert_eq!(result, Some(serde_json::json!({ "topic": "test message" })));
     }
 
+
     #[test]
     fn test_build_query_input_returns_none_for_non_string_required_params() {
         // Schema has required params but none are strings — auto-mapping is impossible
@@ -1483,11 +1462,9 @@ mod tests {
             }
         });
         let result = build_query_input(&schema, "test message");
-        assert_eq!(
-            result, None,
-            "Should return None when required params exist but none are strings"
-        );
+        assert_eq!(result, None, "Should return None when required params exist but none are strings");
     }
+
 
     /// Prompt-injection / abuse guard: the form `schema` is MODEL-supplied and
     /// is serialized, persisted as a DB content block, and pushed over the SSE
@@ -1533,6 +1510,7 @@ mod tests {
         );
     }
 
+
     /// Negative control: a within-cap schema passes the size guard (and, with
     /// no sse_tx, falls through to the non-error "no interactive session"
     /// marker) — proving the cap rejects ONLY oversized schemas.
@@ -1552,15 +1530,13 @@ mod tests {
         )
         .await;
         let (content, is_error) = tool_result_parts(&result);
-        assert!(
-            !is_error,
-            "a normal schema must not be rejected, got: {content}"
-        );
+        assert!(!is_error, "a normal schema must not be rejected, got: {content}");
         assert!(
             !content.contains("1 MiB"),
             "normal schema must not trip the size cap, got: {content}",
         );
     }
+
 
     /// Stream-close AT SEND TIME: the chat stream is already gone before the
     /// elicitation form can be surfaced (the receiver was dropped before the
@@ -1572,9 +1548,8 @@ mod tests {
     #[tokio::test]
     async fn ask_user_send_time_stream_close_returns_distinct_marker() {
         use tokio::sync::mpsc;
-        let (tx, rx) = mpsc::unbounded_channel::<
-            Result<axum::response::sse::Event, std::convert::Infallible>,
-        >();
+        let (tx, rx) =
+            mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
         // Drop the receiver FIRST so the very first form `send` fails.
         drop(rx);
 
@@ -1602,6 +1577,7 @@ mod tests {
         );
     }
 
+
     /// A pathologically large LLM-generated `schema` is rejected as a tool
     /// error BEFORE it can be streamed to the form (the FE renders a field per
     /// property, so an oversized schema would hang the browser). The size guard
@@ -1610,12 +1586,7 @@ mod tests {
     async fn ask_user_oversized_schema_is_error() {
         // Build a JSON-schema object whose serialized form clears the cap.
         let big: std::collections::BTreeMap<String, serde_json::Value> = (0..60_000)
-            .map(|i| {
-                (
-                    format!("field_{i}"),
-                    serde_json::json!({ "type": "string" }),
-                )
-            })
+            .map(|i| (format!("field_{i}"), serde_json::json!({ "type": "string" })))
             .collect();
         let schema = serde_json::json!({ "type": "object", "properties": big });
         assert!(
@@ -1662,18 +1633,11 @@ mod tests {
 
         let out = truncate_on_char_boundary(&s, cap);
 
-        assert!(
-            out.ends_with("...[truncated]"),
-            "truncation marker kept: {}",
-            &out[out.len() - 20..]
-        );
+        assert!(out.ends_with("...[truncated]"), "truncation marker kept: {}", &out[out.len() - 20..]);
         let body = out.strip_suffix("...[truncated]").unwrap();
         // Cut back to the boundary BELOW the cap — never past it, never mid-char.
         assert_eq!(body.len(), cap - 2, "cut back to the nearest char boundary");
-        assert!(
-            !body.contains('\u{65e5}'),
-            "the straddling char is dropped, not split"
-        );
+        assert!(!body.contains('\u{65e5}'), "the straddling char is dropped, not split");
         // The whole output is valid UTF-8 by construction (it is a `String`), which
         // is precisely what the byte slice could not guarantee.
     }
@@ -1715,10 +1679,7 @@ mod tests {
             s
         );
         // Degenerate cap: everything is dropped, but it still must not panic.
-        assert_eq!(
-            truncate_on_char_boundary("\u{65e5}\u{672c}", 1),
-            "...[truncated]"
-        );
+        assert_eq!(truncate_on_char_boundary("\u{65e5}\u{672c}", 1), "...[truncated]");
     }
 
     // ========================================================================
@@ -1803,19 +1764,9 @@ mod tests {
 
         // A regular server routes through the approval-mode ladder, which DOES
         // honour a persisted auto-approval → the button is offered.
-        assert!(!approval_is_always_reprompt(
-            Some(regular),
-            "search",
-            &json!({}),
-            None
-        ));
+        assert!(!approval_is_always_reprompt(Some(regular), "search", &json!({}), None));
         // Unresolvable server → no basis to claim "always"; offer the button.
-        assert!(!approval_is_always_reprompt(
-            None,
-            "search",
-            &json!({}),
-            None
-        ));
+        assert!(!approval_is_always_reprompt(None, "search", &json!({}), None));
     }
     // ── stringified-argument decode (the reported live defect) ───────────────
 
@@ -1835,10 +1786,7 @@ mod tests {
         });
         let out = prepare_ask_user_schema(&input).expect("the reported payload must be accepted");
 
-        assert!(
-            out.is_object(),
-            "the schema must be an OBJECT, not a string"
-        );
+        assert!(out.is_object(), "the schema must be an OBJECT, not a string");
         let props = out["properties"]
             .as_object()
             .expect("a usable form needs `properties`");
@@ -1931,14 +1879,12 @@ mod tests {
             "properties": { "x": { "type": "string", "description": "A".repeat(MAX_STRUCTURED_CONTENT_BYTES + 1024) } }
         });
         let encoded = serde_json::to_string(&big).unwrap();
-        assert!(
-            encoded.len() > MAX_STRUCTURED_CONTENT_BYTES,
-            "fixture must clear the cap"
-        );
+        assert!(encoded.len() > MAX_STRUCTURED_CONTENT_BYTES, "fixture must clear the cap");
 
-        let err =
-            prepare_ask_user_schema(&serde_json::json!({ "message": "Pick", "schema": encoded }))
-                .expect_err("an oversized ENCODED schema must be refused");
+        let err = prepare_ask_user_schema(
+            &serde_json::json!({ "message": "Pick", "schema": encoded }),
+        )
+        .expect_err("an oversized ENCODED schema must be refused");
         assert!(err.contains("too large"), "got: {err}");
         assert!(
             err.contains(&MAX_STRUCTURED_CONTENT_BYTES.to_string()),
@@ -1980,42 +1926,15 @@ mod tests {
             d
         };
         let cases: Vec<(&str, serde_json::Value)> = vec![
-            (
-                "message-missing",
-                serde_json::json!({ "schema": { "type": "object", "properties": { "a": { "type": "string" } } } }),
-            ),
-            (
-                "message-blank",
-                serde_json::json!({ "message": "   ", "schema": { "type": "object", "properties": { "a": { "type": "string" } } } }),
-            ),
-            (
-                "schema-not-json",
-                serde_json::json!({ "message": "Pick", "schema": "not json {" }),
-            ),
-            (
-                "schema-decodes-to-array",
-                serde_json::json!({ "message": "Pick", "schema": "[1,2,3]" }),
-            ),
-            (
-                "schema-decodes-to-number",
-                serde_json::json!({ "message": "Pick", "schema": "42" }),
-            ),
-            (
-                "schema-over-unwrap-bound",
-                serde_json::json!({ "message": "Pick", "schema": deep }),
-            ),
-            (
-                "schema-wrong-type",
-                serde_json::json!({ "message": "Pick", "schema": 7 }),
-            ),
-            (
-                "schema-no-properties",
-                serde_json::json!({ "message": "Pick", "schema": { "type": "object" } }),
-            ),
-            (
-                "schema-empty-properties",
-                serde_json::json!({ "message": "Pick", "schema": { "type": "object", "properties": {} } }),
-            ),
+            ("message-missing", serde_json::json!({ "schema": { "type": "object", "properties": { "a": { "type": "string" } } } })),
+            ("message-blank", serde_json::json!({ "message": "   ", "schema": { "type": "object", "properties": { "a": { "type": "string" } } } })),
+            ("schema-not-json", serde_json::json!({ "message": "Pick", "schema": "not json {" })),
+            ("schema-decodes-to-array", serde_json::json!({ "message": "Pick", "schema": "[1,2,3]" })),
+            ("schema-decodes-to-number", serde_json::json!({ "message": "Pick", "schema": "42" })),
+            ("schema-over-unwrap-bound", serde_json::json!({ "message": "Pick", "schema": deep })),
+            ("schema-wrong-type", serde_json::json!({ "message": "Pick", "schema": 7 })),
+            ("schema-no-properties", serde_json::json!({ "message": "Pick", "schema": { "type": "object" } })),
+            ("schema-empty-properties", serde_json::json!({ "message": "Pick", "schema": { "type": "object", "properties": {} } })),
         ];
 
         for (label, input) in cases {
@@ -2024,17 +1943,13 @@ mod tests {
             assert!(is_error, "[{label}] must be a tool error");
             // (a) what was RECEIVED — the argument is named.
             assert!(
-                content.contains("'schema'")
-                    || content.contains("`schema`")
-                    || content.contains("'message'")
-                    || content.contains("`message`"),
+                content.contains("'schema'") || content.contains("`schema`")
+                    || content.contains("'message'") || content.contains("`message`"),
                 "[{label}] must name the offending argument: {content}"
             );
             // (b) what is EXPECTED.
             assert!(
-                content.contains("required")
-                    || content.contains("must")
-                    || content.contains("Send"),
+                content.contains("required") || content.contains("must") || content.contains("Send"),
                 "[{label}] must say what is expected: {content}"
             );
             // (c) a concrete corrective EXAMPLE the model can copy.
@@ -2086,8 +2001,8 @@ mod tests {
     /// (TEST-41)
     #[test]
     fn ask_user_schema_passes_the_shared_argument_conformance_battery() {
+        use crate::common::tool_args::conformance::{assert_arg_conformance, ArgSite};
         use crate::common::tool_args::ArgShape;
-        use crate::common::tool_args::conformance::{ArgSite, assert_arg_conformance};
 
         let canonical =
             serde_json::json!({ "type": "object", "properties": { "name": { "type": "string" } } });

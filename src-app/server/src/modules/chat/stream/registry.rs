@@ -135,11 +135,7 @@ impl ChatStreamRegistry {
             ));
         }
 
-        inner
-            .by_user
-            .entry(conn.user_id)
-            .or_default()
-            .insert(conn_id);
+        inner.by_user.entry(conn.user_id).or_default().insert(conn_id);
         inner.clients.insert(conn_id, conn);
         Ok(())
     }
@@ -344,6 +340,7 @@ impl ChatStreamRegistry {
             remove_conn(&mut inner, cid);
         }
     }
+
 }
 
 /// Publish one generation frame to the owner's subscribed connections (and the
@@ -598,26 +595,10 @@ mod tests {
         reg.publish_frame(a, started(conv_x));
         reg.publish_frame(a, content(conv_x, "hi"));
 
-        assert_eq!(
-            drain(&mut rx_ax),
-            2,
-            "A's conn subscribed to X receives X's frames"
-        );
-        assert_eq!(
-            drain(&mut rx_ay),
-            0,
-            "A's conn on a different conversation gets nothing"
-        );
-        assert_eq!(
-            drain(&mut rx_anone),
-            0,
-            "A's unsubscribed conn gets nothing"
-        );
-        assert_eq!(
-            drain(&mut rx_bx),
-            0,
-            "user B never receives user A's frames"
-        );
+        assert_eq!(drain(&mut rx_ax), 2, "A's conn subscribed to X receives X's frames");
+        assert_eq!(drain(&mut rx_ay), 0, "A's conn on a different conversation gets nothing");
+        assert_eq!(drain(&mut rx_anone), 0, "A's unsubscribed conn gets nothing");
+        assert_eq!(drain(&mut rx_bx), 0, "user B never receives user A's frames");
     }
 
     #[test]
@@ -638,11 +619,7 @@ mod tests {
         reg.set_subscription(cid, Some(conv));
 
         // Catch-up replays started + both content frames.
-        assert_eq!(
-            drain(&mut rx),
-            3,
-            "catch-up replays the buffered reply-so-far"
-        );
+        assert_eq!(drain(&mut rx), 3, "catch-up replays the buffered reply-so-far");
 
         // A subsequent live frame continues with no gap/dup.
         reg.publish_frame(a, content(conv, "!"));
@@ -682,11 +659,7 @@ mod tests {
 
         reg.set_subscription(cid, None);
         reg.publish_frame(a, started(conv));
-        assert_eq!(
-            drain(&mut rx),
-            0,
-            "a conn unsubscribed (null) receives nothing"
-        );
+        assert_eq!(drain(&mut rx), 0, "a conn unsubscribed (null) receives nothing");
     }
 
     #[test]
@@ -773,11 +746,7 @@ mod tests {
 
         drop(dead_rx); // that stream went away
 
-        assert_eq!(
-            reg.prune_closed(),
-            1,
-            "only the dead connection is reclaimed"
-        );
+        assert_eq!(reg.prune_closed(), 1, "only the dead connection is reclaimed");
         assert_eq!(
             reg.inner.lock().unwrap().clients.len(),
             1,
@@ -790,10 +759,7 @@ mod tests {
 
         // The survivor is still functional, not merely still counted.
         reg.publish_frame(uid, started(conv));
-        assert!(
-            drain(&mut live_rx) > 0,
-            "the survivor still receives frames"
-        );
+        assert!(drain(&mut live_rx) > 0, "the survivor still receives frames");
     }
 
     /// TEST-12 [acceptance INV-3] — the chat cap is charged for LIVE
@@ -824,11 +790,7 @@ mod tests {
         let err = reg
             .register(Uuid::new_v4(), overflow)
             .expect_err("the configured cap must still refuse a (cap+1)th LIVE connection");
-        assert_eq!(
-            err.status_code(),
-            429,
-            "the per-user cap still surfaces 429"
-        );
+        assert_eq!(err.status_code(), 429, "the per-user cap still surfaces 429");
 
         // (b) the user's streams all go away → the next registration succeeds
         //     and the registry holds exactly the one new connection.
@@ -947,16 +909,9 @@ mod tests {
             let mut inner = reg.inner.lock().unwrap_or_else(|e| e.into_inner());
             inner.by_user.entry(uid).or_default().insert(Uuid::new_v4());
         }
-        assert_eq!(
-            reg.prune_closed_for_user(uid),
-            1,
-            "only the orphan is freed"
-        );
+        assert_eq!(reg.prune_closed_for_user(uid), 1, "only the orphan is freed");
         let inner = reg.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let set = inner
-            .by_user
-            .get(&uid)
-            .expect("the live connection keeps the entry");
+        let set = inner.by_user.get(&uid).expect("the live connection keeps the entry");
         assert_eq!(set.len(), 1);
         assert!(set.contains(&live_id));
         assert_eq!(inner.clients.len(), 1, "`clients` is left untouched");
@@ -971,11 +926,7 @@ mod tests {
         let (c, mut rx) = conn(uid, Some(conv));
         reg.register(Uuid::new_v4(), c).unwrap();
 
-        assert_eq!(
-            reg.prune_closed(),
-            0,
-            "a live connection is never reclaimed"
-        );
+        assert_eq!(reg.prune_closed(), 0, "a live connection is never reclaimed");
         assert_eq!(reg.prune_closed_for_user(uid), 0);
         assert_eq!(reg.inner.lock().unwrap().clients.len(), 1);
 
@@ -1030,11 +981,7 @@ mod tests {
         let raw = Event::default().event("titleUpdated").data("{}");
         reg.publish_raw_event(a, conv, raw);
 
-        assert_eq!(
-            drain(&mut rx_ax),
-            1,
-            "A's conn subscribed to the conversation receives it"
-        );
+        assert_eq!(drain(&mut rx_ax), 1, "A's conn subscribed to the conversation receives it");
         assert_eq!(drain(&mut rx_anone), 0, "A's unsubscribed conn does not");
         assert_eq!(drain(&mut rx_bx), 0, "a different user never receives it");
 
@@ -1044,10 +991,6 @@ mod tests {
         let late_id = Uuid::new_v4();
         reg.register(late_id, late).unwrap();
         reg.set_subscription(late_id, Some(conv));
-        assert_eq!(
-            drain(&mut rx_late),
-            0,
-            "a late joiner gets no raw-event replay"
-        );
+        assert_eq!(drain(&mut rx_late), 0, "a late joiner gets no raw-event replay");
     }
 }

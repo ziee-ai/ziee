@@ -596,7 +596,9 @@ impl LfsService {
                 // (The comment this replaces claimed "tempfile picks the OS
                 // default /tmp". That was never true — it picked `./`, the
                 // process CWD, which is the bug this round fixes.)
-                if let Err(e) = fs::rename(&temp_file.path(), cache_file.as_path()).await {
+                if let Err(e) =
+                    fs::rename(&temp_file.path(), cache_file.as_path()).await
+                {
                     if e.raw_os_error() == Some(libc::EXDEV) {
                         info!(
                             "rename across filesystems failed (EXDEV); falling back to copy+remove for {:?} -> {:?}",
@@ -721,10 +723,9 @@ impl LfsService {
 
         // Check for cancellation before starting
         if let Some(ref token) = cancellation_token
-            && token.is_cancelled().await
-        {
-            return Err(LfsError::Cancelled);
-        }
+            && token.is_cancelled().await {
+                return Err(LfsError::Cancelled);
+            }
 
         // First scan which of the requested files are LFS pointers
         let mut lfs_files = Vec::new();
@@ -733,28 +734,25 @@ impl LfsService {
         for file_path in file_paths {
             // Check for cancellation during scan
             if let Some(ref token) = cancellation_token
-                && token.is_cancelled().await
-            {
-                return Err(LfsError::Cancelled);
-            }
+                && token.is_cancelled().await {
+                    return Err(LfsError::Cancelled);
+                }
 
             let full_path = repo_path.join(file_path);
 
             // Use the existing is_lfs_pointer_file function to check if file is an LFS pointer
             if let Ok(is_lfs) = is_lfs_pointer_file(&full_path).await
-                && is_lfs
-            {
-                // Read the file content to get metadata
-                if let Ok(content) = fs::read_to_string(&full_path).await
-                    && let Some((_oid, size)) = parse_lfs_pointer_content(&content)
-                {
-                    lfs_files.push(LfsPointer {
-                        size,
-                        path: PathBuf::from(file_path),
-                    });
-                    total_size += size;
+                && is_lfs {
+                    // Read the file content to get metadata
+                    if let Ok(content) = fs::read_to_string(&full_path).await
+                        && let Some((_oid, size)) = parse_lfs_pointer_content(&content) {
+                            lfs_files.push(LfsPointer {
+                                size,
+                                path: PathBuf::from(file_path),
+                            });
+                            total_size += size;
+                        }
                 }
-            }
         }
 
         info!(
@@ -780,10 +778,9 @@ impl LfsService {
         for (index, lfs_pointer) in lfs_files.iter().enumerate() {
             // Check for cancellation before each file
             if let Some(ref token) = cancellation_token
-                && token.is_cancelled().await
-            {
-                return Err(LfsError::Cancelled);
-            }
+                && token.is_cancelled().await {
+                    return Err(LfsError::Cancelled);
+                }
 
             let file_name = lfs_pointer
                 .path
@@ -850,10 +847,9 @@ impl LfsService {
 
         // Check for cancellation one final time
         if let Some(ref token) = cancellation_token
-            && token.is_cancelled().await
-        {
-            return Err(LfsError::Cancelled);
-        }
+            && token.is_cancelled().await {
+                return Err(LfsError::Cancelled);
+            }
 
         // All files downloaded successfully
         let _ = progress_tx.send(LfsProgress {
@@ -967,18 +963,14 @@ mod tests {
         gap: Duration,
         then_go_silent: bool,
     ) -> (String, tokio::task::JoinHandle<()>) {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("addr");
-        let declared = if then_go_silent {
-            chunks + 1000
-        } else {
-            chunks
-        };
+        let declared = if then_go_silent { chunks + 1000 } else { chunks };
         let handle = tokio::spawn(async move {
             if let Ok((mut sock, _)) = listener.accept().await {
-                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {declared}\r\n\r\n");
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {declared}\r\n\r\n"
+                );
                 if sock.write_all(head.as_bytes()).await.is_err() {
                     return;
                 }
@@ -1012,10 +1004,7 @@ mod tests {
             .expect("request")
             .bytes()
             .await;
-        assert!(
-            ok.is_ok(),
-            "a steadily-progressing transfer must not be killed: {ok:?}"
-        );
+        assert!(ok.is_ok(), "a steadily-progressing transfer must not be killed: {ok:?}");
         assert_eq!(ok.unwrap().len(), 20);
 
         // POSITIVE CONTROL — the OLD shape (absolute cap only, no read timeout)
@@ -1056,10 +1045,7 @@ mod tests {
             .bytes()
             .await;
 
-        assert!(
-            result.is_err(),
-            "a silent peer must be cut off, not awaited"
-        );
+        assert!(result.is_err(), "a silent peer must be cut off, not awaited");
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "the stall bound must fire promptly, not wait for the absolute backstop",
@@ -1101,7 +1087,8 @@ mod tests {
         // model's blob is 5.68 GB; the backstop must not imply a throughput
         // floor a home connection cannot meet.
         const BLOB_BYTES: f64 = 5.68 * 1000.0 * 1000.0 * 1000.0;
-        let floor_mbps = (BLOB_BYTES * 8.0) / LFS_ABSOLUTE_BACKSTOP.as_secs() as f64 / 1_000_000.0;
+        let floor_mbps =
+            (BLOB_BYTES * 8.0) / LFS_ABSOLUTE_BACKSTOP.as_secs() as f64 / 1_000_000.0;
         assert!(
             floor_mbps < 5.0,
             "backstop implies a {floor_mbps:.1} Mbps floor — the old 30-min cap implied 25.2 Mbps, which is what broke the owner's download",
@@ -1119,10 +1106,7 @@ mod tests {
         // is what bounds how much disk a hostile LFS server can consume. The
         // streaming loop previously had no byte cap at all.
         let max = LfsService::max_object_bytes(1_000);
-        assert!(
-            !LfsService::exceeds_declared_size(0, 1_000, max),
-            "the exact size must be accepted"
-        );
+        assert!(!LfsService::exceeds_declared_size(0, 1_000, max), "the exact size must be accepted");
         assert!(
             !LfsService::exceeds_declared_size(1_000, LFS_SIZE_SLACK_BYTES, max),
             "a padded final chunk within the slack must not fail a real download",
@@ -1134,11 +1118,7 @@ mod tests {
         // A declared size near u64::MAX must not wrap the ceiling to a tiny
         // number — that would reject every honest chunk instead of accepting it.
         assert_eq!(LfsService::max_object_bytes(u64::MAX), u64::MAX);
-        assert!(!LfsService::exceeds_declared_size(
-            u64::MAX - 1,
-            1,
-            u64::MAX
-        ));
+        assert!(!LfsService::exceeds_declared_size(u64::MAX - 1, 1, u64::MAX));
     }
 
     /// Local alias so the tests read as "the blob client".
@@ -1152,7 +1132,9 @@ mod tests {
             .map(|entries| {
                 entries
                     .flatten()
-                    .filter(|e| e.file_name().to_string_lossy().ends_with(".lfstmp"))
+                    .filter(|e| {
+                        e.file_name().to_string_lossy().ends_with(".lfstmp")
+                    })
                     .count()
             })
             .unwrap_or(0)

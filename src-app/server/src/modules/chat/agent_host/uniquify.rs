@@ -20,8 +20,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use agent_core::{DeltaSink, ModelClient, Usage};
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock};
+use agent_core::{DeltaSink, ModelClient, Usage};
 use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -46,11 +46,7 @@ pub struct UniquifyingModelClient {
 
 impl UniquifyingModelClient {
     pub fn new(inner: Arc<dyn ModelClient>, pool: PgPool, assistant_message_id: Uuid) -> Self {
-        Self {
-            inner,
-            pool,
-            assistant_message_id,
-        }
+        Self { inner, pool, assistant_message_id }
     }
 
     /// Seed the used-id set from tool_use ids already persisted on this assistant
@@ -88,11 +84,7 @@ impl UniquifyingModelClient {
 
     async fn rewrite(&self, mut msg: ChatMessage) -> ChatMessage {
         // Fast path: no tool_use blocks → nothing to uniquify (no DB hit).
-        if !msg
-            .content
-            .iter()
-            .any(|b| matches!(b, ContentBlock::ToolUse { .. }))
-        {
+        if !msg.content.iter().any(|b| matches!(b, ContentBlock::ToolUse { .. })) {
             return msg;
         }
         let mut used = self.seed_used().await;

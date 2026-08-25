@@ -16,14 +16,17 @@ use crate::{
     modules::{
         memory::{
             models::{
-                CreateMemoryRequest, MemoryAdminSettings, MemoryAuditEntry, MemoryListResponse,
-                UpdateMemoryAdminSettingsRequest, UpdateMemoryRequest,
-                UpdateUserMemorySettingsRequest, UserMemory, UserMemorySettings, is_valid_kind,
+                CreateMemoryRequest, MemoryAdminSettings, MemoryAuditEntry,
+                MemoryListResponse, UpdateMemoryAdminSettingsRequest,
+                UpdateMemoryRequest, UpdateUserMemorySettingsRequest, UserMemory,
+                UserMemorySettings, is_valid_kind,
             },
             permissions::{MemoryAdminManage, MemoryAdminRead, MemoryRead, MemoryWrite},
         },
         permissions::{RequirePermissions, with_permission},
-        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        sync::{
+            Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
+        },
     },
 };
 
@@ -74,7 +77,11 @@ pub async fn list_memories(
 ) -> ApiResult<Json<MemoryListResponse>> {
     // Resolve page/per_page from either the new shape or the
     // legacy limit/offset, then clamp to a defensive range.
-    let per_page = q.per_page.or(q.limit).unwrap_or(50).clamp(1, 200);
+    let per_page = q
+        .per_page
+        .or(q.limit)
+        .unwrap_or(50)
+        .clamp(1, 200);
     let page = if let Some(p) = q.page {
         p.max(1)
     } else if let Some(off) = q.offset {
@@ -161,9 +168,11 @@ pub async fn create_memory(
         return Err(AppError::bad_request("VALIDATION_ERROR", "content must not be empty").into());
     }
     if content.chars().count() > MAX_CONTENT_LEN {
-        return Err(
-            AppError::bad_request("VALIDATION_ERROR", "content exceeds 4000 char limit").into(),
-        );
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "content exceeds 4000 char limit",
+        )
+        .into());
     }
     // The length cap does not catch U+0000, which `user_memories.content`
     // (a `text` column) cannot hold — an unguarded NUL 500'd.
@@ -401,9 +410,11 @@ pub async fn update_user_settings(
 ) -> ApiResult<Json<UserMemorySettings>> {
     if let Some(n) = body.max_memories {
         if !(1..=100_000).contains(&n) {
-            return Err(
-                AppError::bad_request("VALIDATION_ERROR", "max_memories out of range").into(),
-            );
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "max_memories out of range",
+            )
+            .into());
         }
     }
     if let Some(Some(d)) = body.retention_days {
@@ -811,8 +822,11 @@ pub async fn trigger_reembed(
     let pool = Repos.memory.pool_clone();
     let model_name = model.name.clone();
     tokio::spawn(async move {
-        let dim = match crate::modules::memory::engine::dispatch::embed(model_id, "dimension probe")
-            .await
+        let dim = match crate::modules::memory::engine::dispatch::embed(
+            model_id,
+            "dimension probe",
+        )
+        .await
         {
             Ok(v) => v.len() as i32,
             Err(e) => {
@@ -860,9 +874,11 @@ pub async fn trigger_fts_rebuild(
     // `GENERATED AS to_tsvector($1, content)`) so this allowlist + the
     // CHECK constraint are the two layers protecting us from injection.
     if !super::models::is_valid_fts_dictionary(&body.dictionary) {
-        return Err(
-            AppError::bad_request("VALIDATION_ERROR", "fts_dictionary not in allowlist").into(),
-        );
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "fts_dictionary not in allowlist",
+        )
+        .into());
     }
 
     // Short-circuit same-dictionary rebuild — the GENERATED expression
@@ -970,7 +986,10 @@ pub async fn trigger_fts_rebuild(
             // status readers see a clean transition: started_at set →
             // completed_at set (no torn-write window).
             if let Err(e) = Repos.memory.complete_fts_rebuild(&mut tx, &dict).await {
-                tracing::error!("memory.fts_rebuild: complete_fts_rebuild failed: {}", e);
+                tracing::error!(
+                    "memory.fts_rebuild: complete_fts_rebuild failed: {}",
+                    e
+                );
                 return Err(sqlx::Error::Configuration(e.to_string().into()));
             }
             tx.commit().await?;
@@ -993,7 +1012,9 @@ pub async fn trigger_fts_rebuild(
                 // effort — a DB outage at this point means the row
                 // stays claimed until the operator inspects, which is
                 // the correct fail-loud behavior for total DB loss.
-                if let Err(cleanup_err) = Repos.memory.clear_fts_rebuild_marker().await {
+                if let Err(cleanup_err) =
+                    Repos.memory.clear_fts_rebuild_marker().await
+                {
                     tracing::error!(
                         "memory.fts_rebuild: failed to clear marker after error: {}",
                         cleanup_err
@@ -1040,8 +1061,8 @@ pub async fn get_fts_rebuild_status(
     _auth: RequirePermissions<(MemoryAdminRead,)>,
 ) -> ApiResult<Json<super::models::FtsRebuildStatus>> {
     let admin = Repos.memory.get_admin_settings().await?;
-    let in_progress =
-        admin.fts_rebuild_started_at.is_some() && admin.fts_rebuild_completed_at.is_none();
+    let in_progress = admin.fts_rebuild_started_at.is_some()
+        && admin.fts_rebuild_completed_at.is_none();
     Ok((
         StatusCode::OK,
         Json(super::models::FtsRebuildStatus {

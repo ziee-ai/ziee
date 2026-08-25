@@ -115,12 +115,13 @@ impl CodeSandboxRepository {
         &self,
         conversation_id: Uuid,
     ) -> Result<Option<Uuid>, AppError> {
-        let row: Option<(Uuid,)> =
-            sqlx::query_as("SELECT user_id FROM conversations WHERE id = $1")
-                .bind(conversation_id)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(Self::db_err)?;
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT user_id FROM conversations WHERE id = $1",
+        )
+        .bind(conversation_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Self::db_err)?;
         Ok(row.map(|r| r.0))
     }
 
@@ -428,18 +429,17 @@ impl CodeSandboxRepository {
             // Surface the most common operator mistake (CHECK constraint
             // violation) with a 422 so the UI can render it clearly.
             if let sqlx::Error::Database(db) = &e
-                && db.constraint().is_some()
-            {
-                return AppError::new(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    "SANDBOX_LIMIT_DB_CONSTRAINT",
-                    format!(
-                        "value rejected by DB constraint {:?}: {}",
-                        db.constraint(),
-                        db.message()
-                    ),
-                );
-            }
+                && db.constraint().is_some() {
+                    return AppError::new(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "SANDBOX_LIMIT_DB_CONSTRAINT",
+                        format!(
+                            "value rejected by DB constraint {:?}: {}",
+                            db.constraint(),
+                            db.message()
+                        ),
+                    );
+                }
             AppError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "DATABASE_ERROR",

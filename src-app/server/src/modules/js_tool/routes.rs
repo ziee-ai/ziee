@@ -16,9 +16,7 @@ pub fn js_tool_router() -> ApiRouter {
         // Typed REST: admin-configurable limits (mirrors code_sandbox).
         .api_route(
             "/js-tool/settings",
-            get_with(handlers::get_settings_handler, handlers::get_settings_docs).put_with(
-                handlers::update_settings_handler,
-                handlers::update_settings_docs,
-            ),
+            get_with(handlers::get_settings_handler, handlers::get_settings_docs)
+                .put_with(handlers::update_settings_handler, handlers::update_settings_docs),
         )
 }

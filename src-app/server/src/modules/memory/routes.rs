@@ -66,10 +66,7 @@ pub fn memory_router() -> ApiRouter {
         use aide::axum::routing::post_with;
         router = router.api_route(
             "/_test/memory/extract",
-            post_with(
-                super::handlers::test_extract,
-                super::handlers::test_extract_docs,
-            ),
+            post_with(super::handlers::test_extract, super::handlers::test_extract_docs),
         );
     }
     router

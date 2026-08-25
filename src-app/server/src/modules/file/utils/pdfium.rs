@@ -65,9 +65,9 @@ where
         // Ignore send error: it only fails if the caller already gave up.
         let _ = rtx.send(f(pdfium));
     });
-    worker().send(job).map_err(|_| {
-        AppError::internal_error("PDFium worker unavailable (initialization failed)")
-    })?;
+    worker()
+        .send(job)
+        .map_err(|_| AppError::internal_error("PDFium worker unavailable (initialization failed)"))?;
     rrx.recv()
         .map_err(|_| AppError::internal_error("PDFium worker dropped the job"))?
 }
@@ -98,9 +98,8 @@ fn build_pdfium() -> Result<Pdfium, AppError> {
     }
 
     // Fallback to system library
-    let bindings = Pdfium::bind_to_system_library().map_err(|e| {
-        AppError::internal_error(format!("Failed to bind to PDFium library: {}", e))
-    })?;
+    let bindings = Pdfium::bind_to_system_library()
+        .map_err(|e| AppError::internal_error(format!("Failed to bind to PDFium library: {}", e)))?;
 
     Ok(Pdfium::new(bindings))
 }

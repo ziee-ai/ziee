@@ -129,9 +129,10 @@ pub(super) async fn read_audio_field(
             }
         };
         if field.name() == Some("file") {
-            let bytes = field.bytes().await.map_err(|e| {
-                AppError::bad_request("VOICE_BAD_UPLOAD", format!("read field: {e}"))
-            })?;
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::bad_request("VOICE_BAD_UPLOAD", format!("read field: {e}")))?;
             if bytes.len() > ABSOLUTE_MAX_BYTES {
                 return Err(AppError::bad_request(
                     "VOICE_CLIP_TOO_LARGE",
@@ -142,10 +143,7 @@ pub(super) async fn read_audio_field(
         }
     }
     audio.ok_or_else(|| {
-        AppError::bad_request(
-            "VOICE_NO_AUDIO",
-            "missing multipart `file` field (audio/wav)",
-        )
+        AppError::bad_request("VOICE_NO_AUDIO", "missing multipart `file` field (audio/wav)")
     })
 }
 
@@ -257,12 +255,8 @@ fn wav_duration_secs(bytes: &[u8]) -> Option<f64> {
     let mut data_len: Option<u32> = None;
     while pos + 8 <= bytes.len() {
         let id = &bytes[pos..pos + 4];
-        let size = u32::from_le_bytes([
-            bytes[pos + 4],
-            bytes[pos + 5],
-            bytes[pos + 6],
-            bytes[pos + 7],
-        ]) as usize;
+        let size = u32::from_le_bytes([bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]])
+            as usize;
         let body = pos + 8;
         if id == b"fmt " && body + 16 <= bytes.len() {
             byte_rate = Some(u32::from_le_bytes([
@@ -338,10 +332,7 @@ mod tests {
 
     #[test]
     fn parses_inference_text_variants() {
-        assert_eq!(
-            parse_inference_text(r#"{"text":"  hi there "}"#).unwrap(),
-            "hi there"
-        );
+        assert_eq!(parse_inference_text(r#"{"text":"  hi there "}"#).unwrap(), "hi there");
         assert_eq!(
             parse_inference_text(r#"{"transcription":"nested"}"#).unwrap(),
             "nested"

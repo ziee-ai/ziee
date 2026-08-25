@@ -24,9 +24,8 @@ use crate::modules::mcp::chat_extension::extension::SSEChatStreamRunJsApprovalRe
 use crate::modules::mcp::elicitation::{models::ElicitationResponse, registry};
 
 /// SSE channel type threaded through the chat stream.
-pub type SseTx = tokio::sync::mpsc::UnboundedSender<
-    Result<axum::response::sse::Event, std::convert::Infallible>,
->;
+pub type SseTx =
+    tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>;
 
 /// The gate decision for a sub-tool call, mirroring the mcp.rs after_llm_call
 /// classification (mcp.rs:1897) but as a pure function so it is unit-testable.
@@ -196,54 +195,27 @@ mod tests {
     #[test]
     fn test_gate_decision_matches_normal_loop() {
         // Built-in server → bypass (no prompt), regardless of mode.
-        assert_eq!(
-            gate(true, false, false, ApprovalMode::ManualApprove, false),
-            GateDecision::Allow
-        );
-        assert_eq!(
-            gate(true, false, false, ApprovalMode::Disabled, false),
-            GateDecision::Allow
-        );
+        assert_eq!(gate(true, false, false, ApprovalMode::ManualApprove, false), GateDecision::Allow);
+        assert_eq!(gate(true, false, false, ApprovalMode::Disabled, false), GateDecision::Allow);
 
         // Control-mutating → always prompt, even under AutoApprove.
-        assert_eq!(
-            gate(false, true, true, ApprovalMode::AutoApprove, true),
-            GateDecision::NeedApproval
-        );
+        assert_eq!(gate(false, true, true, ApprovalMode::AutoApprove, true), GateDecision::NeedApproval);
         // Control READ-ONLY → auto-run (no prompt) even under ManualApprove, like
         // the normal loop's is_control branch.
-        assert_eq!(
-            gate(false, true, false, ApprovalMode::ManualApprove, false),
-            GateDecision::Allow
-        );
+        assert_eq!(gate(false, true, false, ApprovalMode::ManualApprove, false), GateDecision::Allow);
         // Control-mutating under Disabled → DENY (Disabled beats control).
-        assert_eq!(
-            gate(false, true, true, ApprovalMode::Disabled, false),
-            GateDecision::Deny
-        );
+        assert_eq!(gate(false, true, true, ApprovalMode::Disabled, false), GateDecision::Deny);
 
         // ManualApprove non-control, not allowlisted → prompt.
-        assert_eq!(
-            gate(false, false, false, ApprovalMode::ManualApprove, false),
-            GateDecision::NeedApproval
-        );
+        assert_eq!(gate(false, false, false, ApprovalMode::ManualApprove, false), GateDecision::NeedApproval);
         // ManualApprove, allowlisted → allow.
-        assert_eq!(
-            gate(false, false, false, ApprovalMode::ManualApprove, true),
-            GateDecision::Allow
-        );
+        assert_eq!(gate(false, false, false, ApprovalMode::ManualApprove, true), GateDecision::Allow);
 
         // AutoApprove non-builtin → allow.
-        assert_eq!(
-            gate(false, false, false, ApprovalMode::AutoApprove, false),
-            GateDecision::Allow
-        );
+        assert_eq!(gate(false, false, false, ApprovalMode::AutoApprove, false), GateDecision::Allow);
 
         // Disabled non-builtin → deny.
-        assert_eq!(
-            gate(false, false, false, ApprovalMode::Disabled, false),
-            GateDecision::Deny
-        );
+        assert_eq!(gate(false, false, false, ApprovalMode::Disabled, false), GateDecision::Deny);
     }
 
     #[tokio::test]
@@ -274,11 +246,9 @@ mod tests {
         };
         let out = request_approval(&ctx, "srv", "tool", &serde_json::json!({})).await;
         match out {
-            ApprovalOutcome::Denied(msg) => assert!(
-                msg.contains("timed out") || msg.contains("cancel"),
-                "msg: {msg}"
-            ),
+            ApprovalOutcome::Denied(msg) => assert!(msg.contains("timed out") || msg.contains("cancel"), "msg: {msg}"),
             ApprovalOutcome::Approved => panic!("timeout must deny, not approve"),
         }
     }
+
 }

@@ -325,7 +325,8 @@ pub async fn test_user_connection(
     let response = if let Some(builtin) = existing.as_ref().filter(|s| s.is_built_in) {
         probe_builtin_server(&session_manager, builtin, auth.user.id).await
     } else {
-        let server = build_ephemeral_server(&request, Some(auth.user.id), false, existing.as_ref());
+        let server =
+            build_ephemeral_server(&request, Some(auth.user.id), false, existing.as_ref());
         run_connection_test(server, oauth).await
     };
     // Record the outcome on the persisted server (if `request.id`
@@ -337,11 +338,7 @@ pub async fn test_user_connection(
         } else {
             ("unhealthy", Some(response.message.as_str()))
         };
-        if let Err(e) = Repos
-            .mcp
-            .record_health_check(server_id, status, reason)
-            .await
-        {
+        if let Err(e) = Repos.mcp.record_health_check(server_id, status, reason).await {
             tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record test-connection result");
         }
     }
@@ -393,11 +390,7 @@ pub async fn test_system_connection(
         } else {
             ("unhealthy", Some(response.message.as_str()))
         };
-        if let Err(e) = Repos
-            .mcp
-            .record_health_check(server_id, status, reason)
-            .await
-        {
+        if let Err(e) = Repos.mcp.record_health_check(server_id, status, reason).await {
             tracing::warn!(error = ?e, server_id = %server_id, "mcp::health: failed to record test-connection result");
         }
     }
@@ -494,10 +487,7 @@ mod tests {
         assert_eq!(server.transport_type, TransportType::Stdio);
         assert_eq!(server.command.as_deref(), Some("uvx"));
         assert_eq!(server.args, serde_json::json!(["mcp-server-fetch"]));
-        assert_eq!(
-            server.environment_variables,
-            serde_json::json!({"FOO": "bar"})
-        );
+        assert_eq!(server.environment_variables, serde_json::json!({"FOO": "bar"}));
         assert_eq!(server.timeout_seconds, 15);
         assert!(!server.is_system);
         assert!(!server.is_built_in);

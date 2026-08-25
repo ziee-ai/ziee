@@ -70,7 +70,11 @@ impl ProjectRepository {
 
     /// Read a project scoped to `user_id`. Returns None for projects
     /// owned by other users (404, not 403, to avoid existence leak).
-    pub async fn get_for_user(&self, id: Uuid, user_id: Uuid) -> Result<Option<Project>, AppError> {
+    pub async fn get_for_user(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<Project>, AppError> {
         let project = sqlx::query_as!(
             Project,
             r#"

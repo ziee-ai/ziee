@@ -3,11 +3,7 @@
 //! admin endpoints require `scheduler::admin::{read,manage}`.
 
 use aide::transform::TransformOperation;
-use axum::{
-    Json, debug_handler,
-    extract::{Path, Query},
-    http::StatusCode,
-};
+use axum::{Json, debug_handler, extract::{Path, Query}, http::StatusCode};
 use chrono::Utc;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -17,17 +13,18 @@ use crate::core::Repos;
 use crate::modules::permissions::{RequirePermissions, with_permission};
 use crate::modules::sync::{SyncAction, SyncOrigin};
 
-use super::continue_chat::{self, ContinueResult};
-use super::dryrun::{self, TestFireRequest, TestFireResult};
 use super::events::{emit_admin_settings, emit_task};
 use super::models::{
-    CreateScheduledTask, MAX_NAME_LEN, MAX_PROMPT_LEN, RunsPage, ScheduledTask, UpdateScheduledTask,
+    CreateScheduledTask, RunsPage, ScheduledTask, UpdateScheduledTask, MAX_NAME_LEN,
+    MAX_PROMPT_LEN,
 };
-use super::permissions::{SchedulerAdminManage, SchedulerAdminRead, SchedulerUse};
-use super::repository;
-use super::schedule::{self, ScheduleError, ScheduleKind};
-use super::settings::{self, SchedulerAdminSettings, UpdateSchedulerAdminSettings};
+use super::continue_chat::{self, ContinueResult};
+use super::dryrun::{self, TestFireRequest, TestFireResult};
 use super::tick;
+use super::permissions::{SchedulerAdminManage, SchedulerAdminRead, SchedulerUse};
+use super::schedule::{self, ScheduleError, ScheduleKind};
+use super::repository;
+use super::settings::{self, SchedulerAdminSettings, UpdateSchedulerAdminSettings};
 
 fn parse_kind(s: &str) -> Result<ScheduleKind, (StatusCode, AppError)> {
     match s {
@@ -109,7 +106,8 @@ async fn validate_allowed_tools(
         user_id,
     )
     .await?;
-    let accessible_ids: std::collections::HashSet<Uuid> = accessible.iter().map(|s| s.id).collect();
+    let accessible_ids: std::collections::HashSet<Uuid> =
+        accessible.iter().map(|s| s.id).collect();
     for entry in allowed {
         if !accessible_ids.contains(&entry.server_id) {
             return Err(AppError::forbidden(
@@ -131,9 +129,7 @@ pub async fn create_task(
     // Field validation.
     let name = body.name.trim();
     if name.is_empty() || name.len() > MAX_NAME_LEN {
-        return Err(
-            AppError::bad_request("SCHEDULER_BAD_NAME", "name is empty or too long").into(),
-        );
+        return Err(AppError::bad_request("SCHEDULER_BAD_NAME", "name is empty or too long").into());
     }
     match body.target_kind.as_str() {
         "workflow" => {
@@ -383,12 +379,7 @@ pub async fn update_task(
     // gating was previously not mirrored here, letting a foreign assistant /
     // inaccessible model be written and only fail at fire time).
     if let Some(aid) = body.assistant_id {
-        if Repos
-            .assistant
-            .get_for_user(aid, auth.user.id)
-            .await?
-            .is_none()
-        {
+        if Repos.assistant.get_for_user(aid, auth.user.id).await?.is_none() {
             return Err(AppError::not_found("Assistant").into());
         }
     }
@@ -427,27 +418,18 @@ pub async fn update_task(
         || body.enabled == Some(true);
 
     let next_arg = if schedule_touched {
-        let kind = parse_kind(
-            body.schedule_kind
-                .as_deref()
-                .unwrap_or(&existing.schedule_kind),
-        )?;
+        let kind = parse_kind(body.schedule_kind.as_deref().unwrap_or(&existing.schedule_kind))?;
         let run_at = body.run_at.or(existing.run_at);
-        let cron = body.cron_expr.as_deref().or(existing.cron_expr.as_deref());
+        let cron = body
+            .cron_expr
+            .as_deref()
+            .or(existing.cron_expr.as_deref());
         let tz = body.timezone.as_deref().unwrap_or(&existing.timezone);
         let admin = settings::get(Repos.pool()).await?;
         let now = Utc::now();
-        schedule::validate_schedule(
-            kind,
-            run_at,
-            cron,
-            tz,
-            i64::from(admin.min_interval_seconds),
-            now,
-        )
-        .map_err(map_schedule_err)?;
-        let next =
-            schedule::next_occurrence(kind, run_at, cron, tz, now).map_err(map_schedule_err)?;
+        schedule::validate_schedule(kind, run_at, cron, tz, i64::from(admin.min_interval_seconds), now)
+            .map_err(map_schedule_err)?;
+        let next = schedule::next_occurrence(kind, run_at, cron, tz, now).map_err(map_schedule_err)?;
         Some(next)
     } else {
         None
@@ -514,9 +496,7 @@ pub fn run_now_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(SchedulerUse,)>(op)
         .id("ScheduledTask.runNow")
         .summary("Run a scheduled task now")
-        .description(
-            "Fires the task immediately, off-schedule; the result lands as a notification.",
-        )
+        .description("Fires the task immediately, off-schedule; the result lands as a notification.")
         .response::<202, Json<ScheduledTask>>()
 }
 
@@ -590,10 +570,7 @@ pub async fn continue_series(
 ) -> ApiResult<Json<ContinueResult>> {
     let conversation_id =
         continue_chat::continue_series_in_chat(Repos.pool(), auth.user.id, id, body.limit).await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ContinueResult { conversation_id }),
-    ))
+    Ok((StatusCode::CREATED, Json(ContinueResult { conversation_id })))
 }
 
 pub fn continue_series_docs(op: TransformOperation) -> TransformOperation {
@@ -617,10 +594,7 @@ pub async fn continue_run(
         .ok_or_else(|| AppError::not_found("Scheduled task run"))?;
     let conversation_id =
         continue_chat::continue_run_in_chat(Repos.pool(), auth.user.id, &run).await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ContinueResult { conversation_id }),
-    ))
+    Ok((StatusCode::CREATED, Json(ContinueResult { conversation_id })))
 }
 
 pub fn continue_run_docs(op: TransformOperation) -> TransformOperation {

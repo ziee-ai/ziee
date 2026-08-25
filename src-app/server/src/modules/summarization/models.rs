@@ -71,7 +71,9 @@ pub fn is_valid_summarization_mode(mode: &str) -> bool {
 /// Lets the PUT handler treat null as "clear this column" and absent as
 /// "leave it alone." Local copy matches the pattern used in
 /// `memory::models` and `chat::core::types`.
-fn deserialize_nullable_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+fn deserialize_nullable_field<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: serde::Deserialize<'de>,

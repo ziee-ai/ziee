@@ -6,17 +6,19 @@
 //! Chat code never branches on `"local"`.
 
 use aide::transform::TransformOperation;
-use axum::Json;
 use axum::body::Body;
 use axum::extract::Extension;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use sqlx::types::Uuid;
 
 use super::auto_start;
-use super::proxy::{self, InFlightGuard, InstanceFlag, lookup_token, touch_last_used};
+use super::proxy::{
+    self, lookup_token, touch_last_used, InFlightGuard, InstanceFlag,
+};
 use crate::common::AppError;
 
 // =====================================================================
@@ -97,10 +99,7 @@ fn err_engine_start_timeout(model: &str, elapsed_ms: u64) -> Response {
         ProxyErrorBody {
             error: ProxyErrorInner {
                 kind: "engine_start_timeout".into(),
-                message: format!(
-                    "Engine for model '{}' did not become healthy in time",
-                    model
-                ),
+                message: format!("Engine for model '{}' did not become healthy in time", model),
                 model: Some(model.into()),
                 elapsed_ms: Some(elapsed_ms),
                 ..default_error_inner()
@@ -271,10 +270,11 @@ async fn forward_post_with_body(
     };
 
     // Resolve model.
-    let (model_id, validation_status) = match resolve_model(pool, provider_id, &model_name).await {
-        Ok(t) => t,
-        Err(resp) => return resp,
-    };
+    let (model_id, validation_status) =
+        match resolve_model(pool, provider_id, &model_name).await {
+            Ok(t) => t,
+            Err(resp) => return resp,
+        };
     // Block the known-bad TERMINAL validation states. `error` is a general
     // failure state in the same family as `failed`/`invalid` (see migration
     // 0004's CHECK) and must be refused too. NULL/empty (legacy, never
@@ -305,7 +305,10 @@ async fn forward_post_with_body(
     if let Err(e) = auto_start::ensure_running(pool, model_id).await {
         let msg = format!("{}", e);
         if msg.contains("did not become Healthy") {
-            return err_engine_start_timeout(&model_name, started_at.elapsed().as_millis() as u64);
+            return err_engine_start_timeout(
+                &model_name,
+                started_at.elapsed().as_millis() as u64,
+            );
         }
         return err_engine_start_failed(msg);
     }
@@ -322,13 +325,14 @@ async fn forward_post_with_body(
     };
 
     // Look up per-instance bearer.
-    let engine_bearer =
-        match crate::modules::llm_local_runtime::deployment::local::get_instance_api_key(model_id) {
-            Some(t) => t,
-            None => {
-                return err_engine_start_failed("missing per-instance bearer token".into());
-            }
-        };
+    let engine_bearer = match crate::modules::llm_local_runtime::deployment::local::get_instance_api_key(
+        model_id,
+    ) {
+        Some(t) => t,
+        None => {
+            return err_engine_start_failed("missing per-instance bearer token".into());
+        }
+    };
 
     // Build the upstream URL: engine_base already includes scheme +
     // host + port; we append the OpenAI-compat path suffix.
@@ -354,7 +358,11 @@ async fn forward_post_with_body(
 }
 
 /// Forward a GET (no body). Used by `/v1/models`.
-async fn forward_get(pool: &PgPool, headers: &HeaderMap, _suffix: &str) -> Response {
+async fn forward_get(
+    pool: &PgPool,
+    headers: &HeaderMap,
+    _suffix: &str,
+) -> Response {
     // Auth.
     let provider_id = match auth_and_resolve_provider(headers).await {
         Ok(p) => p,
@@ -440,7 +448,8 @@ async fn stream_back(upstream: reqwest::Response) -> Response {
         // structured envelope.
         let body = upstream.bytes().await.unwrap_or_default();
         return err_upstream(
-            axum::http::StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
+            axum::http::StatusCode::from_u16(status.as_u16())
+                .unwrap_or(StatusCode::BAD_GATEWAY),
             body,
         );
     }
@@ -449,8 +458,8 @@ async fn stream_back(upstream: reqwest::Response) -> Response {
     let body = Body::from_stream(stream);
 
     let mut resp = Response::new(body);
-    *resp.status_mut() =
-        axum::http::StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK);
+    *resp.status_mut() = axum::http::StatusCode::from_u16(status.as_u16())
+        .unwrap_or(StatusCode::OK);
     *resp.headers_mut() = headers_out;
     resp
 }

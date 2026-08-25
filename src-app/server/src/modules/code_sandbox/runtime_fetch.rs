@@ -213,7 +213,11 @@ pub async fn ensure_fetched_format(
 /// Returns the byte count on success, or a stringified error message
 /// on failure (including 404, network errors, and write errors).
 /// Blocking — must be called from a `tokio::spawn_blocking` context.
-pub(crate) fn download_blob_blocking(url: &str, dest: &Path, attempts: u32) -> Result<u64, String> {
+pub(crate) fn download_blob_blocking(
+    url: &str,
+    dest: &Path,
+    attempts: u32,
+) -> Result<u64, String> {
     match download_to_file(url, dest, attempts) {
         DownloadResult::Ok(n) => Ok(n),
         DownloadResult::NotFound => Err(format!("HTTP 404 at {url}")),
@@ -293,7 +297,10 @@ fn download_to_file(url: &str, dest: &Path, attempts: u32) -> DownloadResult {
                 let mut file = match std::fs::File::create(dest) {
                     Ok(f) => f,
                     Err(e) => {
-                        return DownloadResult::Failed(format!("create {}: {e}", dest.display()));
+                        return DownloadResult::Failed(format!(
+                            "create {}: {e}",
+                            dest.display()
+                        ))
                     }
                 };
                 // Chunked copy with a running byte cap — a server that lies
@@ -364,9 +371,9 @@ fn verify_cosign_bundle(
     identity: &str,
     issuer: &str,
 ) -> Result<(), String> {
-    use sigstore::bundle::Bundle;
     use sigstore::bundle::verify::blocking::Verifier;
     use sigstore::bundle::verify::policy::Identity;
+    use sigstore::bundle::Bundle;
 
     let bundle_json =
         std::fs::read_to_string(bundle_path).map_err(|e| format!("read bundle: {e}"))?;
@@ -401,10 +408,7 @@ mod tests {
 
         // 127.0.0.1:1 refuses connections → DownloadResult::Failed → Err.
         let r = download_blob_blocking("http://127.0.0.1:1/rootfs.squashfs", &dest, 1);
-        assert!(
-            r.is_err(),
-            "an unreachable host must produce a download error"
-        );
+        assert!(r.is_err(), "an unreachable host must produce a download error");
 
         // No completed-looking artifact is left behind (the verify/install steps
         // must never see a partial blob as if it downloaded).
@@ -412,10 +416,7 @@ mod tests {
             Ok(m) => m.len() == 0,
             Err(_) => true,
         };
-        assert!(
-            leftover_ok,
-            "a failed download must not leave a non-empty artifact"
-        );
+        assert!(leftover_ok, "a failed download must not leave a non-empty artifact");
         let _ = std::fs::remove_file(&dest);
     }
 

@@ -57,8 +57,8 @@ use crate::common::AppError;
 // shared infra — the chat host imports it from `mcp/`, NOT laterally from the
 // workflow feature module).
 use crate::modules::mcp::agent_tool_call::{
-    CancelSignal, ChatCallCtx, McpCallScope, McpToolCallError, call_mcp_tool, mcp_to_agent_result,
-    resolve_tool_server, split_tool_name,
+    call_mcp_tool, mcp_to_agent_result, resolve_tool_server, split_tool_name, CancelSignal,
+    ChatCallCtx, McpCallScope, McpToolCallError,
 };
 use crate::utils::cancellation::CancellationToken;
 
@@ -98,10 +98,8 @@ impl ModelResolver for ChatModelResolver {
             ));
         }
         let (provider, ..) =
-            crate::modules::chat::core::ai_provider::create_provider_from_model_id(
-                model_id, user_id,
-            )
-            .await?;
+            crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
+                .await?;
         Ok(provider)
     }
 }
@@ -275,14 +273,8 @@ impl ToolProvider for ChatToolProvider {
         use crate::modules::mcp::chat_extension::helpers::{
             send_tool_complete_event, send_tool_start_event,
         };
-        send_tool_start_event(
-            self.tx.as_ref(),
-            &call.id,
-            &tool_name,
-            &server_name,
-            &call.input,
-        )
-        .await;
+        send_tool_start_event(self.tx.as_ref(), &call.id, &tool_name, &server_name, &call.input)
+            .await;
         // B2: enforce the conversation's `disabled_servers` at CALL time
         // (`enforce_conversation_disabled = true`), as defense-in-depth on TOP of
         // the attach-time filter. Attach-time filtering is the primary gate, but a
@@ -295,7 +287,8 @@ impl ToolProvider for ChatToolProvider {
         // on BOTH the success and the failure path, so the `mcpToolComplete` frame
         // and the stored history report identical timing. Stays `None` when the
         // call never reached a session (pre-dispatch refusal / cancellation).
-        let mut call_timing: Option<crate::modules::mcp::tool_calls::models::ToolCallTiming> = None;
+        let mut call_timing: Option<crate::modules::mcp::tool_calls::models::ToolCallTiming> =
+            None;
         let outcome = call_mcp_tool(
             &scope,
             &server_name,

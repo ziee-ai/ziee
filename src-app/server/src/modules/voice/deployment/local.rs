@@ -223,9 +223,9 @@ impl LocalDeployment {
         cmd.args(&args);
         Self::apply_hardening(&mut cmd);
 
-        let mut child = cmd.spawn().map_err(|e| {
-            AppError::internal_error(format!("failed to spawn whisper-server: {e}"))
-        })?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| AppError::internal_error(format!("failed to spawn whisper-server: {e}")))?;
 
         let pid = child
             .id()

@@ -44,6 +44,7 @@ fn is_safe_remote_filename(f: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'))
 }
 
+
 /// Project a DB row into the API `VoiceModel`, marking active + update-available.
 fn to_api(
     row: VoiceModelRow,
@@ -110,9 +111,7 @@ pub async fn get_catalog(
     ))
 }
 
-pub fn get_catalog_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_catalog_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.listModelCatalog")
         .tag("Voice")
@@ -141,9 +140,7 @@ pub async fn list_models(
     Ok((StatusCode::OK, Json(models)))
 }
 
-pub fn list_models_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn list_models_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.listModels")
         .tag("Voice")
@@ -169,16 +166,7 @@ pub async fn activate_model(
         .update_settings(
             None,
             Some(row.name.clone()),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            None, None, None, None, None, None, None, None, None, None,
         )
         .await?;
 
@@ -200,18 +188,10 @@ pub async fn activate_model(
         origin.0,
     );
     let api = to_api(row, "", None);
-    Ok((
-        StatusCode::OK,
-        Json(VoiceModel {
-            is_active: true,
-            ..api
-        }),
-    ))
+    Ok((StatusCode::OK, Json(VoiceModel { is_active: true, ..api })))
 }
 
-pub fn activate_model_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn activate_model_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminManage,)>(op)
         .id("Voice.activateModel")
         .tag("Voice")
@@ -254,9 +234,7 @@ pub async fn delete_model(
     Ok((StatusCode::NO_CONTENT, ()))
 }
 
-pub fn delete_model_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn delete_model_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminManage,)>(op)
         .id("Voice.deleteModel")
         .tag("Voice")
@@ -290,8 +268,7 @@ pub async fn download_model(
             expected_sha256: None,
             ssrf_check: true,
         }
-    } else if let (Some(repo), Some(remote_filename)) =
-        (req.repository.clone(), req.filename.clone())
+    } else if let (Some(repo), Some(remote_filename)) = (req.repository.clone(), req.filename.clone())
     {
         // HF repo + file (user-supplied) → SSRF-checked, unverified. The remote
         // filename is used ONLY to build the fetch URL and MUST be a safe relative
@@ -304,11 +281,7 @@ pub async fn download_model(
             )
             .to_api_error());
         }
-        let ext = if remote_filename.ends_with(".gguf") {
-            "gguf"
-        } else {
-            "bin"
-        };
+        let ext = if remote_filename.ends_with(".gguf") { "gguf" } else { "bin" };
         model::ModelDownloadSpec {
             url: model_catalog::hf_repo_url(&repo, &remote_filename),
             filename: format!("ggml-{}.{ext}", req.name),
@@ -357,9 +330,7 @@ pub async fn download_model(
     ))
 }
 
-pub fn download_model_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn download_model_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminManage,)>(op)
         .id("Voice.downloadModel")
         .tag("Voice")
@@ -380,9 +351,7 @@ pub async fn cancel_model_download(
     }
 }
 
-pub fn cancel_model_download_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn cancel_model_download_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminManage,)>(op)
         .id("Voice.cancelModelDownload")
         .tag("Voice")
@@ -394,10 +363,8 @@ pub fn cancel_model_download_docs(
 pub async fn list_active_model_downloads(
     _auth: RequirePermissions<(VoiceAdminRead,)>,
 ) -> ApiResult<Json<Vec<SnapshotDto>>> {
-    let tasks: Vec<Arc<ModelDownloadTask>> = MODEL_DOWNLOAD_TASKS
-        .iter()
-        .map(|e| e.value().clone())
-        .collect();
+    let tasks: Vec<Arc<ModelDownloadTask>> =
+        MODEL_DOWNLOAD_TASKS.iter().map(|e| e.value().clone()).collect();
     let mut out = Vec::new();
     for t in tasks {
         let snap = snapshot_of(&t).await;
@@ -409,9 +376,7 @@ pub async fn list_active_model_downloads(
     Ok((StatusCode::OK, Json(out)))
 }
 
-pub fn list_active_model_downloads_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn list_active_model_downloads_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.listModelDownloads")
         .tag("Voice")
@@ -429,9 +394,7 @@ pub async fn get_model_download(
     Ok((StatusCode::OK, Json(snapshot_of(&task).await)))
 }
 
-pub fn get_model_download_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_model_download_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.getModelDownload")
         .tag("Voice")
@@ -441,13 +404,9 @@ pub fn get_model_download_docs(
 
 async fn snapshot_of(task: &Arc<ModelDownloadTask>) -> SnapshotDto {
     let g = task.state.lock().await;
-    let percent = g.total_bytes.map(|t| {
-        if t == 0 {
-            0.0
-        } else {
-            (g.bytes_received as f32 / t as f32) * 100.0
-        }
-    });
+    let percent = g
+        .total_bytes
+        .map(|t| if t == 0 { 0.0 } else { (g.bytes_received as f32 / t as f32) * 100.0 });
     SnapshotDto {
         task_id: task.task_id,
         key: task.key.clone(),
@@ -465,9 +424,7 @@ pub async fn subscribe_model_download_events(
     _auth: RequirePermissions<(VoiceAdminRead,)>,
     Path(key): Path<String>,
 ) -> ApiResult<
-    axum::response::Sse<
-        impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
-    >,
+    axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>>,
 > {
     use axum::response::sse::{Event, KeepAlive, Sse};
 
@@ -478,12 +435,7 @@ pub async fn subscribe_model_download_events(
     let mut rx = task.events.subscribe();
     let (initial_status, replay, terminal_complete, terminal_err) = {
         let g = task.state.lock().await;
-        (
-            g.status,
-            g.progress.clone(),
-            g.complete.clone(),
-            g.error.clone(),
-        )
+        (g.status, g.progress.clone(), g.complete.clone(), g.error.clone())
     };
     let task_clone = task.clone();
     let stream = async_stream::stream! {
@@ -518,15 +470,10 @@ pub async fn subscribe_model_download_events(
             }
         }
     };
-    Ok((
-        StatusCode::OK,
-        Sse::new(stream).keep_alive(KeepAlive::default()),
-    ))
+    Ok((StatusCode::OK, Sse::new(stream).keep_alive(KeepAlive::default())))
 }
 
-pub fn subscribe_model_download_events_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn subscribe_model_download_events_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.subscribeModelDownloadEvents")
         .tag("Voice")
@@ -566,14 +513,19 @@ pub async fn upload_model(
     // erroring), disarmed only once the file is finalized into place.
     let mut temp_guard = TempGuard(None);
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        AppError::bad_request("UPLOAD_ERROR", format!("multipart error: {e}")).to_api_error()
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::bad_request("UPLOAD_ERROR", format!("multipart error: {e}")).to_api_error())?
+    {
         match field.name() {
             Some("name") => {
-                name = Some(field.text().await.map_err(|e| {
-                    AppError::bad_request("UPLOAD_ERROR", format!("read name: {e}")).to_api_error()
-                })?);
+                name = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| AppError::bad_request("UPLOAD_ERROR", format!("read name: {e}")).to_api_error())?,
+                );
             }
             Some("file") => {
                 orig_filename = field.file_name().map(|s| s.to_string());
@@ -597,8 +549,9 @@ pub async fn upload_model(
     }
 
     // Validate name + magic; `temp_guard` discards the temp on any rejection.
-    let upload = upload
-        .ok_or_else(|| AppError::bad_request("VALIDATION_ERROR", "missing file").to_api_error())?;
+    let upload = upload.ok_or_else(|| {
+        AppError::bad_request("VALIDATION_ERROR", "missing file").to_api_error()
+    })?;
     let name = name.filter(|n| !n.is_empty()).ok_or_else(|| {
         AppError::bad_request("VALIDATION_ERROR", "missing model name").to_api_error()
     })?;
@@ -614,9 +567,7 @@ pub async fn upload_model(
     // stored and failed later. Each condition gets its own actionable message
     // (an empty upload used to be reported as "bad magic", which is false).
     if let Some(rejection) = model::ModelRejection::classify(&upload.head, upload.size) {
-        return Err(rejection
-            .to_error("the uploaded file", &upload.head)
-            .to_api_error());
+        return Err(rejection.to_error("the uploaded file", &upload.head).to_api_error());
     }
 
     // Filename: keep a .gguf upload's extension, else the ggml-<name>.bin form.
@@ -652,9 +603,7 @@ pub async fn upload_model(
     Ok((StatusCode::OK, Json(to_api(row, &settings.model, None))))
 }
 
-pub fn upload_model_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn upload_model_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminManage,)>(op)
         .id("Voice.uploadModel")
         .tag("Voice")

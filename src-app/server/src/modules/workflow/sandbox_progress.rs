@@ -304,16 +304,17 @@ mod tests {
     #[test]
     fn non_object_json_is_bare_status() {
         // A JSON array/number is NOT an object → bare status of the raw text.
-        assert!(matches!(track("[1,2,3]").kind, ProgressKind::Status { .. }));
+        assert!(matches!(
+            track("[1,2,3]").kind,
+            ProgressKind::Status { .. }
+        ));
     }
 
     #[test]
     fn each_kind_parses() {
         assert_eq!(
             track(r#"{"type":"status","message":"hi"}"#).kind,
-            ProgressKind::Status {
-                message: "hi".into()
-            }
+            ProgressKind::Status { message: "hi".into() }
         );
         assert_eq!(
             track(r#"{"type":"bar","fraction":0.42}"#).kind,
@@ -321,25 +322,15 @@ mod tests {
         );
         assert_eq!(
             track(r#"{"type":"counter","current":420,"total":1000,"unit":"files"}"#).kind,
-            ProgressKind::Counter {
-                current: 420.0,
-                total: 1000.0,
-                unit: Some("files".into())
-            }
+            ProgressKind::Counter { current: 420.0, total: 1000.0, unit: Some("files".into()) }
         );
         assert_eq!(
             track(r#"{"type":"log","line":"epoch 3"}"#).kind,
-            ProgressKind::Log {
-                line: "epoch 3".into()
-            }
+            ProgressKind::Log { line: "epoch 3".into() }
         );
         assert_eq!(
             track(r#"{"type":"phase","name":"Indexing","index":2,"total":4}"#).kind,
-            ProgressKind::Phase {
-                name: "Indexing".into(),
-                index: Some(2),
-                total: Some(4)
-            }
+            ProgressKind::Phase { name: "Indexing".into(), index: Some(2), total: Some(4) }
         );
     }
 
@@ -366,11 +357,7 @@ mod tests {
     fn negative_current_clamped_total_must_be_positive() {
         assert_eq!(
             track(r#"{"type":"counter","current":-5,"total":10}"#).kind,
-            ProgressKind::Counter {
-                current: 0.0,
-                total: 10.0,
-                unit: None
-            }
+            ProgressKind::Counter { current: 0.0, total: 10.0, unit: None }
         );
         // total <= 0 → dropped.
         assert_eq!(
@@ -432,18 +419,8 @@ mod tests {
     #[test]
     fn ingest_coalesces_same_id_latest_wins() {
         let (mut tracks, mut changed, mut dropped) = empty_state();
-        ingest_line(
-            br#"{"type":"bar","id":"dl","fraction":0.1}"#,
-            &mut tracks,
-            &mut changed,
-            &mut dropped,
-        );
-        ingest_line(
-            br#"{"type":"bar","id":"dl","fraction":0.9}"#,
-            &mut tracks,
-            &mut changed,
-            &mut dropped,
-        );
+        ingest_line(br#"{"type":"bar","id":"dl","fraction":0.1}"#, &mut tracks, &mut changed, &mut dropped);
+        ingest_line(br#"{"type":"bar","id":"dl","fraction":0.9}"#, &mut tracks, &mut changed, &mut dropped);
         assert_eq!(tracks.len(), 1, "same id coalesces to one track");
         assert_eq!(changed.len(), 1);
         assert_eq!(dropped, 0);
@@ -464,28 +441,15 @@ mod tests {
         assert_eq!(tracks.len(), MAX_TRACKS_PER_STEP, "track map capped");
         assert_eq!(dropped, 5, "5 over-cap NEW ids dropped");
         // An id already in the map still updates after the cap is hit.
-        ingest_line(
-            br#"{"type":"bar","id":"t0","fraction":0.99}"#,
-            &mut tracks,
-            &mut changed,
-            &mut dropped,
-        );
+        ingest_line(br#"{"type":"bar","id":"t0","fraction":0.99}"#, &mut tracks, &mut changed, &mut dropped);
         assert_eq!(tracks["t0"].kind, ProgressKind::Bar { fraction: 0.99 });
-        assert_eq!(
-            dropped, 5,
-            "updating an existing capped-in id is not a drop"
-        );
+        assert_eq!(dropped, 5, "updating an existing capped-in id is not a drop");
     }
 
     #[test]
     fn ingest_counts_malformed_and_ignores_empty() {
         let (mut tracks, mut changed, mut dropped) = empty_state();
-        ingest_line(
-            br#"{"type":"bar"}"#,
-            &mut tracks,
-            &mut changed,
-            &mut dropped,
-        ); // missing fraction
+        ingest_line(br#"{"type":"bar"}"#, &mut tracks, &mut changed, &mut dropped); // missing fraction
         ingest_line(b"   ", &mut tracks, &mut changed, &mut dropped); // whitespace only
         assert!(tracks.is_empty());
         assert!(changed.is_empty());
@@ -499,21 +463,11 @@ mod tests {
         // one in-flight + one done track, both pending in `changed`.
         tracks.insert(
             "a".into(),
-            ProgressTrack {
-                id: "a".into(),
-                label: None,
-                done: false,
-                kind: ProgressKind::Bar { fraction: 0.3 },
-            },
+            ProgressTrack { id: "a".into(), label: None, done: false, kind: ProgressKind::Bar { fraction: 0.3 } },
         );
         tracks.insert(
             "b".into(),
-            ProgressTrack {
-                id: "b".into(),
-                label: None,
-                done: true,
-                kind: ProgressKind::Bar { fraction: 1.0 },
-            },
+            ProgressTrack { id: "b".into(), label: None, done: true, kind: ProgressKind::Bar { fraction: 1.0 } },
         );
         changed.insert("a".into());
         changed.insert("b".into());
@@ -525,21 +479,14 @@ mod tests {
         assert!(emitted, "flush emitted a frame");
         assert!(changed.is_empty(), "changed drained after flush");
         assert!(tracks.contains_key("a"), "in-flight track retained");
-        assert!(
-            !tracks.contains_key("b"),
-            "done track evicted after delivery"
-        );
+        assert!(!tracks.contains_key("b"), "done track evicted after delivery");
 
         let events = cap.0.lock().unwrap();
         assert_eq!(events.len(), 1);
         match &events[0] {
             SSEWorkflowRunEvent::StepProgress(d) => {
                 assert_eq!(d.step_id, "step");
-                assert_eq!(
-                    d.tracks.len(),
-                    2,
-                    "both changed tracks delivered once in the batch"
-                );
+                assert_eq!(d.tracks.len(), 2, "both changed tracks delivered once in the batch");
             }
             other => panic!("expected StepProgress, got {other:?}"),
         }
@@ -551,16 +498,7 @@ mod tests {
         let mut changed: HashSet<String> = HashSet::new();
         let cap = Arc::new(VecEmitter(Mutex::new(Vec::new())));
         let emit: Arc<dyn ProgressEmitter> = cap.clone();
-        assert!(!flush(
-            &emit,
-            Uuid::nil(),
-            "step",
-            &mut tracks,
-            &mut changed
-        ));
-        assert!(
-            cap.0.lock().unwrap().is_empty(),
-            "no frame emitted for an empty change set"
-        );
+        assert!(!flush(&emit, Uuid::nil(), "step", &mut tracks, &mut changed));
+        assert!(cap.0.lock().unwrap().is_empty(), "no frame emitted for an empty change set");
     }
 }

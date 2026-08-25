@@ -122,9 +122,9 @@ pub fn list_models_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_model(
     _auth: RequirePermissions<(LlmModelsRead,)>,
     Path(model_id): Path<Uuid>,
+    
 ) -> ApiResult<Json<LlmModel>> {
-    let model = Repos
-        .llm_model
+    let model = Repos.llm_model
         .get_by_id(model_id)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
@@ -164,10 +164,7 @@ pub async fn create_model(
         && ai_providers::registry_lookup(&provider.provider_type, &model.name)
             .map(|c| c.deprecated)
             .unwrap_or(false)
-        && matches!(
-            Repos.llm_model.set_deprecated(model.id, true).await,
-            Ok(true)
-        )
+        && matches!(Repos.llm_model.set_deprecated(model.id, true).await, Ok(true))
     {
         model.is_deprecated = true;
     }
@@ -175,20 +172,8 @@ pub async fn create_model(
     // Emit event
     event_bus.emit_async(LlmModelEvent::created(model.clone()).into());
 
-    sync_publish(
-        SyncEntity::LlmModel,
-        SyncAction::Create,
-        model.id,
-        Audience::perm::<LlmModelsRead>(),
-        origin.0,
-    );
-    sync_publish(
-        SyncEntity::UserLlmProvider,
-        SyncAction::Update,
-        model.id,
-        Audience::perm::<UserLlmProvidersRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::LlmModel, SyncAction::Create, model.id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model.id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::CREATED, Json(model)))
 }
@@ -228,7 +213,9 @@ pub async fn refresh_provider_models(
         })?
         .ok_or_else(|| AppError::not_found("Provider"))?;
 
-    if let Err(e) = crate::modules::llm_model::prune::sweep_provider_once(&pool, &provider).await {
+    if let Err(e) =
+        crate::modules::llm_model::prune::sweep_provider_once(&pool, &provider).await
+    {
         tracing::warn!("refresh_provider_models: sweep for {provider_id} failed: {e}");
     }
 
@@ -240,9 +227,7 @@ pub fn refresh_provider_models_docs(op: TransformOperation) -> TransformOperatio
     with_permission::<(LlmModelsEdit,)>(op)
         .id("LlmProvider.refreshModels")
         .tag("LLM Providers")
-        .summary(
-            "Refresh a provider's models against its live list; flags deprecated/removed ones.",
-        )
+        .summary("Refresh a provider's models against its live list; flags deprecated/removed ones.")
         .description(concat!(
             "Runs the deprecation reconcile for one remote provider: re-fetches ",
             "its live /v1/models set and flips is_deprecated on saved models that ",
@@ -266,8 +251,7 @@ pub async fn update_model(
     utils::validate_update_request(&request)?;
 
     // Update model
-    let model = Repos
-        .llm_model
+    let model = Repos.llm_model
         .update(model_id, request)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
@@ -275,20 +259,8 @@ pub async fn update_model(
     // Emit event
     event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
 
-    sync_publish(
-        SyncEntity::LlmModel,
-        SyncAction::Update,
-        model.id,
-        Audience::perm::<LlmModelsRead>(),
-        origin.0,
-    );
-    sync_publish(
-        SyncEntity::UserLlmProvider,
-        SyncAction::Update,
-        model.id,
-        Audience::perm::<UserLlmProvidersRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model.id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model.id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(model)))
 }
@@ -427,20 +399,8 @@ pub async fn delete_model(
         );
     }
 
-    sync_publish(
-        SyncEntity::LlmModel,
-        SyncAction::Delete,
-        model_id,
-        Audience::perm::<LlmModelsRead>(),
-        origin.0,
-    );
-    sync_publish(
-        SyncEntity::UserLlmProvider,
-        SyncAction::Update,
-        model_id,
-        Audience::perm::<UserLlmProvidersRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::LlmModel, SyncAction::Delete, model_id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model_id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -545,8 +505,7 @@ pub async fn enable_model(
         ..Default::default()
     };
 
-    let model = Repos
-        .llm_model
+    let model = Repos.llm_model
         .update(model_id, request)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
@@ -554,20 +513,8 @@ pub async fn enable_model(
     // Emit event
     event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
 
-    sync_publish(
-        SyncEntity::LlmModel,
-        SyncAction::Update,
-        model.id,
-        Audience::perm::<LlmModelsRead>(),
-        origin.0,
-    );
-    sync_publish(
-        SyncEntity::UserLlmProvider,
-        SyncAction::Update,
-        model.id,
-        Audience::perm::<UserLlmProvidersRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model.id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model.id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(model)))
 }
@@ -595,8 +542,7 @@ pub async fn disable_model(
         ..Default::default()
     };
 
-    let model = Repos
-        .llm_model
+    let model = Repos.llm_model
         .update(model_id, request)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
@@ -604,20 +550,8 @@ pub async fn disable_model(
     // Emit event
     event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
 
-    sync_publish(
-        SyncEntity::LlmModel,
-        SyncAction::Update,
-        model.id,
-        Audience::perm::<LlmModelsRead>(),
-        origin.0,
-    );
-    sync_publish(
-        SyncEntity::UserLlmProvider,
-        SyncAction::Update,
-        model.id,
-        Audience::perm::<UserLlmProvidersRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model.id, Audience::perm::<LlmModelsRead>(), origin.0);
+    sync_publish(SyncEntity::UserLlmProvider, SyncAction::Update, model.id, Audience::perm::<UserLlmProvidersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(model)))
 }

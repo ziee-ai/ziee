@@ -109,15 +109,13 @@ mod tests {
             .expect("second upsert (on-conflict update) must succeed, not error");
 
         // Exactly one row for the id (idempotent — no duplicate insert).
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_servers WHERE id = $1")
-            .bind(server_id)
-            .fetch_one(&pool)
-            .await
-            .expect("count query");
-        assert_eq!(
-            count, 1,
-            "upsert must leave exactly one row for the id, not duplicate"
-        );
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM mcp_servers WHERE id = $1")
+                .bind(server_id)
+                .fetch_one(&pool)
+                .await
+                .expect("count query");
+        assert_eq!(count, 1, "upsert must leave exactly one row for the id, not duplicate");
 
         // The conflict branch re-asserted the new loopback url + identity flags.
         let row = sqlx::query!(

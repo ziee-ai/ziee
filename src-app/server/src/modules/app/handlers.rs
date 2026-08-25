@@ -83,16 +83,9 @@ pub async fn setup_admin(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Mint + whitelist the session tokens (admin-configured lifetimes).
-    let minted = mint_session_tokens(
-        Repos.pool(),
-        &jwt_service,
-        user.id,
-        &user.username,
-        &user.email,
-        user.is_admin,
-    )
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let minted = mint_session_tokens(Repos.pool(), &jwt_service, user.id, &user.username, &user.email, user.is_admin)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Log setup event
     tracing::info!(
@@ -101,12 +94,9 @@ pub async fn setup_admin(
         "Admin user created during setup"
     );
 
-    Ok(token_response(
-        &headers,
-        StatusCode::CREATED,
-        minted,
-        |tokens| AuthResponse { user, tokens },
-    ))
+    Ok(token_response(&headers, StatusCode::CREATED, minted, |tokens| {
+        AuthResponse { user, tokens }
+    }))
 }
 
 /// Documentation for setup_admin endpoint

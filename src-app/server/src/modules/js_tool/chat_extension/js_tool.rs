@@ -80,9 +80,7 @@ fn apply_run_js_attach(
         0,
         ChatMessage {
             role: Role::System,
-            content: vec![ContentBlock::Text {
-                text: RUN_JS_NUDGE.to_string(),
-            }],
+            content: vec![ContentBlock::Text { text: RUN_JS_NUDGE.to_string() }],
         },
     );
 }

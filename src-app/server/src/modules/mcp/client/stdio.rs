@@ -1,6 +1,6 @@
 use async_trait::async_trait;
+use rmcp::{ServiceExt, transport::TokioChildProcess, service::RunningService};
 use rmcp::model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams};
-use rmcp::{ServiceExt, service::RunningService, transport::TokioChildProcess};
 use std::path::PathBuf;
 use tokio::process::Command;
 use uuid::Uuid;
@@ -12,7 +12,9 @@ use super::traits::{
 use crate::common::AppError;
 use crate::modules::code_sandbox;
 use crate::modules::code_sandbox::backend::vm_long_lived;
-use crate::modules::code_sandbox::mcp_spawn::{self, McpSandboxTransport, McpSpawnRequest};
+use crate::modules::code_sandbox::mcp_spawn::{
+    self, McpSandboxTransport, McpSpawnRequest,
+};
 use crate::modules::mcp::models::{McpServer, TransportType};
 use crate::modules::mcp::utils::embedded;
 
@@ -93,10 +95,7 @@ pub struct StdioMcpClient {
 impl StdioMcpClient {
     pub fn new(server: McpServer) -> Result<Self, AppError> {
         if server.transport_type != TransportType::Stdio {
-            return Err(AppError::bad_request(
-                "INVALID_TRANSPORT",
-                "Only stdio transport supported",
-            ));
+            return Err(AppError::bad_request("INVALID_TRANSPORT", "Only stdio transport supported"));
         }
 
         Ok(Self {
@@ -136,27 +135,29 @@ impl StdioMcpClient {
         // bounded buffer (16 KB cap to bound memory on chatty
         // servers) and append the captured tail to the connect
         // error when serve() fails.
-        let (transport, stderr_handle) = TokioChildProcess::builder(command)
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                // The OS error text embeds the RESOLVED binary path
-                // (e.g. the embedded uv/bun under the server's data
-                // dir) — a host-layout detail the caller has no
-                // business seeing. Log it, return the stable message.
-                errors::upstream_error(
-                    &self.server_config.name,
-                    errors::UpstreamFailure::Unreachable,
-                    format!(
-                        "server_id={} failed to spawn stdio subprocess: {e}",
-                        self.server_id
-                    ),
-                )
-            })?;
+        let (transport, stderr_handle) =
+            TokioChildProcess::builder(command)
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|e| {
+                    // The OS error text embeds the RESOLVED binary path
+                    // (e.g. the embedded uv/bun under the server's data
+                    // dir) — a host-layout detail the caller has no
+                    // business seeing. Log it, return the stable message.
+                    errors::upstream_error(
+                        &self.server_config.name,
+                        errors::UpstreamFailure::Unreachable,
+                        format!(
+                            "server_id={} failed to spawn stdio subprocess: {e}",
+                            self.server_id
+                        ),
+                    )
+                })?;
 
         // Shared buffer for the connect-failure message + a tracing
         // sink for live diagnostics during the server's lifetime.
-        let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::with_capacity(2048)));
+        let captured =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::with_capacity(2048)));
         if let Some(stderr) = stderr_handle {
             let captured = captured.clone();
             let server_id = self.server_id;
@@ -244,11 +245,9 @@ impl StdioMcpClient {
     /// directly and on macOS/Windows tunnels through the per-flavor VM
     /// agent session.
     async fn connect_sandboxed(&mut self) -> Result<(), AppError> {
-        let cmd = self
-            .server_config
-            .command
-            .as_ref()
-            .ok_or_else(|| AppError::bad_request("MISSING_COMMAND", "Missing command"))?;
+        let cmd = self.server_config.command.as_ref().ok_or_else(|| {
+            AppError::bad_request("MISSING_COMMAND", "Missing command")
+        })?;
         // No host allowlist here: the sandbox runs the command verbatim
         // against the rootfs PATH (bwrap isolation is the guard). We do
         // NOT rewrite to the embedded bun/uv — those are host-arch and
@@ -257,11 +256,7 @@ impl StdioMcpClient {
             .server_config
             .args
             .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
         let extra_setenv = Self::filter_env(&self.server_config.environment_variables);
 
@@ -295,11 +290,7 @@ impl StdioMcpClient {
                 self.service = Some(service);
                 self._sandbox_inflight = _inflight;
             }
-            McpSandboxTransport::VmSession {
-                io,
-                session,
-                _inflight,
-            } => {
+            McpSandboxTransport::VmSession { io, session, _inflight } => {
                 let (rd, wr) = tokio::io::split(io);
                 let transport = rmcp::transport::async_rw::AsyncRwTransport::new_client(rd, wr);
                 let service = ().serve(transport).await.map_err(|e| {
@@ -340,20 +331,14 @@ impl StdioMcpClient {
     }
 
     fn create_command(&self) -> Result<Command, AppError> {
-        let cmd = self
-            .server_config
-            .command
-            .as_ref()
+        let cmd = self.server_config.command.as_ref()
             .ok_or_else(|| AppError::bad_request("MISSING_COMMAND", "Missing command"))?;
 
         // Security: Validate command against the host allowlist.
         if !HOST_ALLOWED_COMMANDS.contains(&cmd.as_str()) {
             return Err(AppError::bad_request(
                 "INVALID_COMMAND",
-                format!(
-                    "Command '{}' is not allowed on the host. Allowed commands: {:?}. Enable run-in-sandbox to use any command.",
-                    cmd, HOST_ALLOWED_COMMANDS
-                ),
+                format!("Command '{}' is not allowed on the host. Allowed commands: {:?}. Enable run-in-sandbox to use any command.", cmd, HOST_ALLOWED_COMMANDS)
             ));
         }
 
@@ -450,25 +435,17 @@ impl McpClient for StdioMcpClient {
     }
 
     async fn list_tools(&mut self) -> Result<Vec<Tool>, AppError> {
-        let service = self
-            .service
-            .as_ref()
+        let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
 
-        let result = service
-            .list_tools(Default::default())
-            .await
+        let result = service.list_tools(Default::default()).await
             .map_err(|e| AppError::internal_error(format!("Failed to list tools: {}", e)))?;
 
-        Ok(result
-            .tools
-            .into_iter()
-            .map(|t| Tool {
-                name: t.name.to_string(),
-                description: t.description.map(|d| d.to_string()),
-                input_schema: serde_json::Value::Object((*t.input_schema).clone()),
-            })
-            .collect())
+        Ok(result.tools.into_iter().map(|t| Tool {
+            name: t.name.to_string(),
+            description: t.description.map(|d| d.to_string()),
+            input_schema: serde_json::Value::Object((*t.input_schema).clone()),
+        }).collect())
     }
 
     async fn call_tool(
@@ -476,20 +453,10 @@ impl McpClient for StdioMcpClient {
         name: &str,
         arguments: serde_json::Value,
         _message_id: Option<uuid::Uuid>,
-        _sse_tx: Option<
-            tokio::sync::mpsc::UnboundedSender<
-                Result<axum::response::sse::Event, std::convert::Infallible>,
-            >,
-        >,
-        _elicit_notify_tx: Option<
-            tokio::sync::mpsc::UnboundedSender<
-                crate::modules::mcp::elicitation::models::ElicitationStartedNotification,
-            >,
-        >,
+        _sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        _elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
     ) -> Result<ToolResult, AppError> {
-        let service = self
-            .service
-            .as_ref()
+        let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
 
         let args_map = arguments.as_object().cloned();
@@ -501,22 +468,16 @@ impl McpClient for StdioMcpClient {
         if let Some(args) = args_map {
             params = params.with_arguments(args);
         }
-        let result = service
-            .call_tool(params)
-            .await
-            .map_err(|e| AppError::internal_error(format!("Tool call failed: {}", e)))?;
+        let result = service.call_tool(params).await
+        .map_err(|e| AppError::internal_error(format!("Tool call failed: {}", e)))?;
 
         Ok(ToolResult {
-            content: result
-                .content
-                .into_iter()
-                .map(|c| {
-                    // Convert rmcp ToolContent to our ToolContent
-                    ToolContent {
-                        content: serde_json::to_value(c).unwrap_or_default(),
-                    }
-                })
-                .collect(),
+            content: result.content.into_iter().map(|c| {
+                // Convert rmcp ToolContent to our ToolContent
+                ToolContent {
+                    content: serde_json::to_value(c).unwrap_or_default(),
+                }
+            }).collect(),
             is_error: result.is_error.unwrap_or(false),
             // Pass through the `structuredContent` an external stdio server returns
             // (rmcp's CallToolResult carries it), matching the HTTP path where it's
@@ -526,47 +487,33 @@ impl McpClient for StdioMcpClient {
     }
 
     async fn list_resources(&mut self) -> Result<Vec<Resource>, AppError> {
-        let service = self
-            .service
-            .as_ref()
+        let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
 
-        let result = service
-            .list_resources(Default::default())
-            .await
+        let result = service.list_resources(Default::default()).await
             .map_err(|e| AppError::internal_error(format!("Failed to list resources: {}", e)))?;
 
-        Ok(result
-            .resources
-            .into_iter()
-            .map(|r| Resource {
-                uri: r.uri.to_string(),
-                name: r.name.to_string(),
-                description: r.description.as_ref().map(|d| d.to_string()),
-                mime_type: r.mime_type.as_ref().map(|m| m.to_string()),
-            })
-            .collect())
+        Ok(result.resources.into_iter().map(|r| Resource {
+            uri: r.uri.to_string(),
+            name: r.name.to_string(),
+            description: r.description.as_ref().map(|d| d.to_string()),
+            mime_type: r.mime_type.as_ref().map(|m| m.to_string()),
+        }).collect())
     }
 
     async fn read_resource(&mut self, uri: &str) -> Result<serde_json::Value, AppError> {
-        let service = self
-            .service
-            .as_ref()
+        let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
 
-        let result = service
-            .read_resource(ReadResourceRequestParams::new(uri.to_string()))
-            .await
-            .map_err(|e| AppError::internal_error(format!("Failed to read resource: {}", e)))?;
+        let result = service.read_resource(ReadResourceRequestParams::new(uri.to_string())).await
+        .map_err(|e| AppError::internal_error(format!("Failed to read resource: {}", e)))?;
 
         serde_json::to_value(result.contents)
             .map_err(|e| AppError::internal_error(format!("Failed to serialize resource: {}", e)))
     }
 
     async fn list_prompts(&mut self) -> Result<Vec<Prompt>, AppError> {
-        let service = self
-            .service
-            .as_ref()
+        let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
 
         // rmcp returns an empty list (or errors) for servers that don't
@@ -578,24 +525,15 @@ impl McpClient for StdioMcpClient {
             Err(_) => return Ok(Vec::new()),
         };
 
-        Ok(result
-            .prompts
-            .into_iter()
-            .map(|p| Prompt {
-                name: p.name.to_string(),
-                description: p.description.map(|d| d.to_string()),
-                arguments: p
-                    .arguments
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|a| PromptArgument {
-                        name: a.name.to_string(),
-                        description: a.description.map(|d| d.to_string()),
-                        required: a.required.unwrap_or(false),
-                    })
-                    .collect(),
-            })
-            .collect())
+        Ok(result.prompts.into_iter().map(|p| Prompt {
+            name: p.name.to_string(),
+            description: p.description.map(|d| d.to_string()),
+            arguments: p.arguments.unwrap_or_default().into_iter().map(|a| PromptArgument {
+                name: a.name.to_string(),
+                description: a.description.map(|d| d.to_string()),
+                required: a.required.unwrap_or(false),
+            }).collect(),
+        }).collect())
     }
 
     async fn get_prompt(
@@ -603,28 +541,23 @@ impl McpClient for StdioMcpClient {
         name: &str,
         arguments: Option<serde_json::Value>,
     ) -> Result<PromptResult, AppError> {
-        let service = self
-            .service
-            .as_ref()
+        let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
 
-        let args_map =
-            arguments.and_then(|v| v.as_object().map(|o| o.clone().into_iter().collect()));
+        let args_map = arguments.and_then(|v| {
+            v.as_object().map(|o| o.clone().into_iter().collect())
+        });
 
         let mut params = GetPromptRequestParams::new(name.to_string());
         if let Some(args) = args_map {
             params = params.with_arguments(args);
         }
-        let result = service
-            .get_prompt(params)
-            .await
-            .map_err(|e| AppError::internal_error(format!("get_prompt failed: {}", e)))?;
+        let result = service.get_prompt(params).await
+        .map_err(|e| AppError::internal_error(format!("get_prompt failed: {}", e)))?;
 
         // Convert rmcp's typed PromptMessage list back to opaque JSON values
         // to match the HttpMcpClient shape; callers don't need rmcp types.
-        let messages = result
-            .messages
-            .into_iter()
+        let messages = result.messages.into_iter()
             .map(|m| serde_json::to_value(m).unwrap_or(serde_json::Value::Null))
             .collect();
 
@@ -756,10 +689,7 @@ mod tests {
     fn should_sandbox_false_when_state_uninitialised() {
         let s = server_template();
         let client = StdioMcpClient::new(s).unwrap();
-        assert!(
-            !client.should_sandbox(),
-            "expected false when state is None"
-        );
+        assert!(!client.should_sandbox(), "expected false when state is None");
     }
 
     #[test]
@@ -790,9 +720,6 @@ mod tests {
     #[test]
     fn filter_env_returns_empty_for_non_object() {
         let env = json!(null);
-        assert_eq!(
-            StdioMcpClient::filter_env(&env),
-            Vec::<(String, String)>::new()
-        );
+        assert_eq!(StdioMcpClient::filter_env(&env), Vec::<(String, String)>::new());
     }
 }

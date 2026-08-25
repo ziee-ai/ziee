@@ -12,6 +12,7 @@
 //! unoccupied per plan §4.5: 5 (text), 8 (project), 10 (assistant),
 //! 20 (file), 24 (summarization), 25 (memory), 30 (mcp), 80 (title).
 
+
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 use async_trait::async_trait;
 use axum::response::sse::Event;
@@ -22,11 +23,11 @@ use std::sync::Arc;
 
 use crate::common::AppError;
 use crate::core::Repos;
-use crate::modules::chat::core::extension::request::SendMessageRequest;
 use crate::modules::chat::core::extension::{
     BeforeLlmAction, CHAT_EXTENSIONS, ChatExtension, ExtensionEntry, ExtensionMetadata,
     StreamContext,
 };
+use crate::modules::chat::core::extension::request::SendMessageRequest;
 
 use super::super::repository::SkillAvailableEntry;
 
@@ -141,21 +142,11 @@ pub fn render_listing(entries: &[SkillAvailableEntry]) -> String {
     for e in entries {
         out.push_str("- ");
         out.push_str(&e.name);
-        if let Some(desc) = e
-            .description
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
+        if let Some(desc) = e.description.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
             out.push_str(" — ");
             out.push_str(desc);
         }
-        if let Some(wtu) = e
-            .when_to_use
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
+        if let Some(wtu) = e.when_to_use.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
             out.push_str(" [");
             out.push_str(wtu);
             out.push(']');
@@ -170,11 +161,7 @@ mod tests {
     use super::*;
     use uuid::Uuid;
 
-    fn entry(
-        name: &str,
-        description: Option<&str>,
-        when_to_use: Option<&str>,
-    ) -> SkillAvailableEntry {
+    fn entry(name: &str, description: Option<&str>, when_to_use: Option<&str>) -> SkillAvailableEntry {
         SkillAvailableEntry {
             id: Uuid::nil(),
             name: name.to_string(),
@@ -186,11 +173,7 @@ mod tests {
     #[test]
     fn header_present_and_skills_listed_with_separators() {
         let body = render_listing(&[
-            entry(
-                "io.github.ziee/configure-llm-providers",
-                Some("Add provider keys"),
-                None,
-            ),
+            entry("io.github.ziee/configure-llm-providers", Some("Add provider keys"), None),
             entry(
                 "io.github.ziee/create-skill",
                 Some("Author a new skill"),

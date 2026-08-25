@@ -357,7 +357,11 @@ impl CitationsRepository {
     }
 
     /// Find an existing entry by normalized DOI (dedup key 1).
-    pub async fn find_by_doi(&self, user_id: Uuid, doi: &str) -> Result<Option<Uuid>, AppError> {
+    pub async fn find_by_doi(
+        &self,
+        user_id: Uuid,
+        doi: &str,
+    ) -> Result<Option<Uuid>, AppError> {
         let row = sqlx::query!(
             r#"SELECT id FROM bibliography_entries WHERE user_id = $1 AND lower(doi) = lower($2)"#,
             user_id,
@@ -370,7 +374,11 @@ impl CitationsRepository {
     }
 
     /// Find an existing entry by PMID (dedup key 2).
-    pub async fn find_by_pmid(&self, user_id: Uuid, pmid: &str) -> Result<Option<Uuid>, AppError> {
+    pub async fn find_by_pmid(
+        &self,
+        user_id: Uuid,
+        pmid: &str,
+    ) -> Result<Option<Uuid>, AppError> {
         let row = sqlx::query!(
             r#"SELECT id FROM bibliography_entries WHERE user_id = $1 AND pmid = $2"#,
             user_id,
@@ -440,4 +448,5 @@ impl CitationsRepository {
         .map_err(AppError::database_error)?;
         Ok(rows.into_iter().map(|r| r.citation_key).collect())
     }
+
 }

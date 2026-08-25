@@ -18,9 +18,6 @@ pub fn project_mcp_settings_router() -> ApiRouter {
         )
         .api_route(
             "/projects/{id}/mcp-settings",
-            put_with(
-                update_project_mcp_settings,
-                update_project_mcp_settings_docs,
-            ),
+            put_with(update_project_mcp_settings, update_project_mcp_settings_docs),
         )
 }

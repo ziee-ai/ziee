@@ -100,8 +100,8 @@ pub fn is_trusted_resource_emitter(server_id: Uuid) -> bool {
 /// `allowed_roots` (each itself canonicalized). Rejects `..` / symlink escape and any path
 /// outside the allowed roots. Returns the canonical path on success.
 pub fn confine_under_roots(path: &Path, allowed_roots: &[PathBuf]) -> Result<PathBuf, AppError> {
-    let canon_path =
-        std::fs::canonicalize(path).map_err(|_| AppError::not_found("resource file"))?;
+    let canon_path = std::fs::canonicalize(path)
+        .map_err(|_| AppError::not_found("resource file"))?;
     for root in allowed_roots {
         if let Ok(canon_root) = std::fs::canonicalize(root)
             && canon_path.starts_with(&canon_root)
@@ -124,10 +124,7 @@ pub fn parse_resource_link_block(content: &serde_json::Value) -> Option<Resource
     let uri = content.get("uri").and_then(|v| v.as_str())?;
     Some(ResourceLink {
         uri: uri.to_string(),
-        name: content
-            .get("name")
-            .and_then(|v| v.as_str())
-            .map(String::from),
+        name: content.get("name").and_then(|v| v.as_str()).map(String::from),
         mime_type: content
             .get("mimeType")
             .and_then(|v| v.as_str())
@@ -445,10 +442,7 @@ pub async fn persist_links(
             // remainder is relative and must never be treated as a host path. (The blanking
             // sweep at the end strips the leftover ziee:// uri so it can't reach the client.)
             if !Path::new(host_path).is_absolute() {
-                tracing::warn!(
-                    "ignoring non-absolute ziee:// resource_link uri: {}",
-                    link.uri
-                );
+                tracing::warn!("ignoring non-absolute ziee:// resource_link uri: {}", link.uri);
                 continue;
             }
             // Guard #1: trusted emitter only.
@@ -524,11 +518,7 @@ pub async fn persist_links(
             let audience = jwt_audience.unwrap_or("ziee-api");
             // Current epoch, not a default — this loopback token is validated by
             // the same RequirePermissions gate as any user token.
-            let tv = match crate::modules::auth::refresh_tokens::current_token_version(
-                Repos.pool(),
-                user_id,
-            )
-            .await
+            let tv = match crate::modules::auth::refresh_tokens::current_token_version(Repos.pool(), user_id).await
             {
                 Ok(Some(v)) => v,
                 Ok(None) => {
@@ -739,7 +729,8 @@ pub async fn persist_links(
                 );
                 match Repos.file.delete(art.file_id, user_id).await {
                     Ok(blob_ids) => {
-                        let storage = crate::modules::file::storage::manager::get_file_storage();
+                        let storage =
+                            crate::modules::file::storage::manager::get_file_storage();
                         for blob_id in blob_ids {
                             let _ = storage.delete_all(user_id, blob_id).await;
                         }
@@ -775,24 +766,15 @@ pub async fn persist_links(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::url_validator::{OutboundUrlPolicy, validate_outbound_url};
+    use crate::utils::url_validator::{validate_outbound_url, OutboundUrlPolicy};
 
     // TEST-1: host_of lowercases + extracts host, ignoring port/scheme-case.
     #[test]
     fn host_of_is_host_only_case_insensitive() {
-        assert_eq!(
-            host_of("http://172.21.0.1:9004/mcp"),
-            Some("172.21.0.1".into())
-        );
+        assert_eq!(host_of("http://172.21.0.1:9004/mcp"), Some("172.21.0.1".into()));
         // Same host, different port + upper-case scheme → same lowercased host.
-        assert_eq!(
-            host_of("HTTP://172.21.0.1:9005/results/x.csv"),
-            Some("172.21.0.1".into())
-        );
-        assert_eq!(
-            host_of("http://RCPA.Local:9005/x"),
-            Some("rcpa.local".into())
-        );
+        assert_eq!(host_of("HTTP://172.21.0.1:9005/results/x.csv"), Some("172.21.0.1".into()));
+        assert_eq!(host_of("http://RCPA.Local:9005/x"), Some("rcpa.local".into()));
         // No host / unparseable → None (no panic).
         assert_eq!(host_of("not a url"), None);
         assert_eq!(host_of("ziee:///abs/path"), None);
@@ -919,10 +901,7 @@ mod tests {
         // PrivateScoped: MCP_USER (localhost + private, NO link-local); redirects DISABLED.
         let (p, r) = fetch_policy_and_redirects(FetchPolicyKind::PrivateScoped);
         assert!(p.allow_localhost && p.allow_private && !p.allow_link_local);
-        assert!(
-            !r,
-            "scoped path disables redirects (off-host must not inherit)"
-        );
+        assert!(!r, "scoped path disables redirects (off-host must not inherit)");
         // PrivateGlobal: MCP_USER; redirects followed.
         let (p, r) = fetch_policy_and_redirects(FetchPolicyKind::PrivateGlobal);
         assert!(p.allow_localhost && p.allow_private && !p.allow_link_local);
@@ -948,11 +927,8 @@ mod tests {
         );
         // IMDS / link-local stays blocked even under the trusted MCP_USER policy.
         assert!(
-            validate_outbound_url(
-                "http://169.254.169.254/latest/meta-data",
-                &OutboundUrlPolicy::MCP_USER
-            )
-            .is_err(),
+            validate_outbound_url("http://169.254.169.254/latest/meta-data", &OutboundUrlPolicy::MCP_USER)
+                .is_err(),
             "MCP_USER still blocks IMDS/link-local"
         );
     }
@@ -1030,14 +1006,10 @@ mod tests {
     #[test]
     fn is_ziee_host_path_distinguishes_dialects() {
         // Absolute host-path dialect (the sensitive one) → true.
-        assert!(is_ziee_host_path(
-            "ziee:///var/lib/ziee/sandboxes/c/out.csv"
-        ));
+        assert!(is_ziee_host_path("ziee:///var/lib/ziee/sandboxes/c/out.csv"));
         assert!(is_ziee_host_path("ziee:///etc/passwd"));
         // workflow_mcp's logical resource handle (relative remainder) → false (preserve it).
-        assert!(!is_ziee_host_path(
-            "ziee://workflow-runs/abc/outputs/x.json"
-        ));
+        assert!(!is_ziee_host_path("ziee://workflow-runs/abc/outputs/x.json"));
         // Non-ziee + malformed → false.
         assert!(!is_ziee_host_path("/api/files/1"));
         assert!(!is_ziee_host_path("https://ok/y"));
@@ -1064,7 +1036,9 @@ mod tests {
         assert_eq!(v["list"][2], 7);
         assert_eq!(v["workflow_handle"], "ziee://workflow-runs/r1/outputs/out"); // preserved
         // No absolute host-path `ziee://` survives; the workflow handle is allowed.
-        assert!(!serde_json::to_string(&v).unwrap().contains("ziee:///"));
+        assert!(!serde_json::to_string(&v)
+            .unwrap()
+            .contains("ziee:///"));
     }
 
     #[test]

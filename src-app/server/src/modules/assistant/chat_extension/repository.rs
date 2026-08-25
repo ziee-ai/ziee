@@ -87,12 +87,13 @@ impl AssistantChatRepository {
             return Ok(None);
         }
 
-        let row: Option<(Uuid,)> =
-            sqlx::query_as("SELECT assistant_id FROM message_assistant WHERE message_id = $1")
-                .bind(message_id)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(AppError::database_error)?;
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT assistant_id FROM message_assistant WHERE message_id = $1",
+        )
+        .bind(message_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
         Ok(Some(row.map(|(id,)| id)))
     }
 }

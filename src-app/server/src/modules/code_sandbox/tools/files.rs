@@ -13,7 +13,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use axum::http::StatusCode;
-use jsonwebtoken::{EncodingKey, Header, encode};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -56,7 +56,10 @@ pub fn canonicalize_in_workspace(workspace: &Path, filename: &str) -> Result<Pat
     // letter or UNC root — but in any sandboxed-path UX the user means
     // "absolute" by `/etc/passwd`). Sandbox semantics are POSIX-flavored
     // regardless of host OS, so a leading separator is always wrong.
-    if raw.is_absolute() || filename.starts_with('/') || filename.starts_with('\\') {
+    if raw.is_absolute()
+        || filename.starts_with('/')
+        || filename.starts_with('\\')
+    {
         return Err(bad("absolute paths are not allowed"));
     }
     for c in raw.components() {
@@ -73,8 +76,8 @@ pub fn canonicalize_in_workspace(workspace: &Path, filename: &str) -> Result<Pat
     // filesystem hasn't propagated), fall back to the literal path —
     // we still get correctness because every component check below
     // compares against this base.
-    let workspace_resolved =
-        std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+    let workspace_resolved = std::fs::canonicalize(workspace)
+        .unwrap_or_else(|_| workspace.to_path_buf());
 
     // Walk each user-supplied component starting from the canonical
     // workspace. For each step:
@@ -98,7 +101,7 @@ pub fn canonicalize_in_workspace(workspace: &Path, filename: &str) -> Result<Pat
                     seg.to_string_lossy()
                 )));
             }
-            Ok(_) => {}  // regular dir/file: keep walking
+            Ok(_) => {} // regular dir/file: keep walking
             Err(_) => {} // doesn't exist yet — fine for write_file targets
         }
     }
@@ -229,7 +232,8 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
                 // instead, which CAN see the suffixed mount paths.
                 let n = matches.len();
                 let p = std::path::Path::new(filename);
-                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or(filename);
+                let stem =
+                    p.file_stem().and_then(|s| s.to_str()).unwrap_or(filename);
                 let ext = p.extension().and_then(|s| s.to_str());
                 let suffixed_examples: Vec<String> = (2..=n)
                     .map(|i| match ext {
@@ -263,7 +267,9 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
                 let bytes = storage
                     .load_original(ctx.user_id, att.blob_version_id, &ext)
                     .await
-                    .map_err(|le| io_err(format!("load attachment {filename}: {le:?}")))?;
+                    .map_err(|le| {
+                        io_err(format!("load attachment {filename}: {le:?}"))
+                    })?;
                 return String::from_utf8(bytes).map_err(|_| {
                     AppError::new(
                         StatusCode::BAD_REQUEST,
@@ -402,7 +408,8 @@ pub async fn edit_file(
     }
 
     let append_mode = start_line == len + 1;
-    let mut new_lines: Vec<String> = new_content.lines().map(String::from).collect();
+    let mut new_lines: Vec<String> =
+        new_content.lines().map(String::from).collect();
     if append_mode {
         lines.append(&mut new_lines);
     } else {
@@ -610,15 +617,16 @@ fn sign_download_token(file_id: Uuid, user_id: Uuid) -> Result<String, AppError>
     // JwtConfig (initialized at server boot). The file module panics
     // if accessed before init; we wrap in catch_unwind to surface a
     // clean error instead.
-    let jwt_cfg =
-        std::panic::catch_unwind(|| crate::modules::file::config::get_jwt_config().clone())
-            .map_err(|_| {
-                AppError::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "FILE_JWT_NOT_INITIALIZED",
-                    "file module JWT config missing; cannot sign download token",
-                )
-            })?;
+    let jwt_cfg = std::panic::catch_unwind(|| {
+        crate::modules::file::config::get_jwt_config().clone()
+    })
+    .map_err(|_| {
+        AppError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "FILE_JWT_NOT_INITIALIZED",
+            "file module JWT config missing; cannot sign download token",
+        )
+    })?;
     let now = chrono::Utc::now();
     let exp = (now + chrono::Duration::minutes(5)).timestamp() as usize;
     let claims = DownloadTokenClaims {
@@ -695,10 +703,7 @@ mod tests {
         for path in &["../escape", "../../etc/passwd", "foo/../../../escape"] {
             let err = canonicalize_in_workspace(tmp.path(), path).expect_err(path);
             let msg = format!("{err:?}");
-            assert!(
-                msg.contains("traversal") || msg.contains(".."),
-                "msg: {msg}"
-            );
+            assert!(msg.contains("traversal") || msg.contains(".."), "msg: {msg}");
         }
     }
 
@@ -986,9 +991,6 @@ mod tests {
         let res = write_file(&ctx, "ok.bin", &at_cap)
             .await
             .expect("at-cap must be accepted");
-        assert_eq!(
-            res["bytes_written"].as_u64().unwrap() as usize,
-            WRITE_FILE_MAX_BYTES
-        );
+        assert_eq!(res["bytes_written"].as_u64().unwrap() as usize, WRITE_FILE_MAX_BYTES);
     }
 }

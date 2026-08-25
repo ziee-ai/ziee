@@ -141,9 +141,7 @@ pub async fn update_admin_settings(
     // Cross-field: overlap must stay below the (possibly new) chunk size.
     let current = Repos.file_rag.get_admin_settings().await?;
     let eff_chunk = body.chunk_chars.unwrap_or(current.chunk_chars);
-    let eff_overlap = body
-        .chunk_overlap_chars
-        .unwrap_or(current.chunk_overlap_chars);
+    let eff_overlap = body.chunk_overlap_chars.unwrap_or(current.chunk_overlap_chars);
     if eff_overlap >= eff_chunk {
         return Err(bad("chunk_overlap_chars must be < chunk_chars").into());
     }
@@ -157,19 +155,17 @@ pub async fn update_admin_settings(
     // leaving a halfvec(old) column that rejects new-dim vectors.
     let mut spawn_reembed: Option<(Uuid, i32)> = None;
     if let Some(Some(model_id)) = body.embedding_model_id {
-        let v = dispatch::embed(model_id, "dimension probe")
-            .await
-            .map_err(|e| {
-                // Log the underlying provider error server-side only; the client
-                // gets a generic message (matches memory's policy — don't leak
-                // provider URLs / upstream response bodies into the HTTP response).
-                tracing::warn!("file_rag: embedding-model probe failed for {model_id}: {e}");
-                AppError::bad_request(
-                    "INVALID_EMBEDDING_MODEL",
-                    "the selected model could not produce an embedding; check that it is an \
+        let v = dispatch::embed(model_id, "dimension probe").await.map_err(|e| {
+            // Log the underlying provider error server-side only; the client
+            // gets a generic message (matches memory's policy — don't leak
+            // provider URLs / upstream response bodies into the HTTP response).
+            tracing::warn!("file_rag: embedding-model probe failed for {model_id}: {e}");
+            AppError::bad_request(
+                "INVALID_EMBEDDING_MODEL",
+                "the selected model could not produce an embedding; check that it is an \
                  embedding model and that its provider is configured",
-                )
-            })?;
+            )
+        })?;
         let dim = v.len() as i32;
         if dim < 1 || dim > MAX_EMBED_DIM {
             return Err(AppError::bad_request(

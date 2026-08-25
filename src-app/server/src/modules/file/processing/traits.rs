@@ -1,8 +1,8 @@
 // File processing traits
 
-use super::ProcessingResult;
 use crate::common::AppError;
 use async_trait::async_trait;
+use super::ProcessingResult;
 
 /// Content processor trait for text extraction
 #[async_trait]
@@ -14,11 +14,7 @@ pub trait ContentProcessor: Send + Sync {
     async fn extract_text(&self, data: &[u8], mime_type: &str) -> Result<Vec<String>, AppError>;
 
     /// Extract metadata
-    async fn extract_metadata(
-        &self,
-        data: &[u8],
-        mime_type: &str,
-    ) -> Result<serde_json::Value, AppError>;
+    async fn extract_metadata(&self, data: &[u8], mime_type: &str) -> Result<serde_json::Value, AppError>;
 
     /// Per-page citation geometry (JSON strings, aligned 1:1 with `extract_text`
     /// pages) for the exact-passage highlight. Default: none (page-level

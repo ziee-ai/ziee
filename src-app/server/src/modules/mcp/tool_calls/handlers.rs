@@ -260,7 +260,9 @@ pub fn reveal_tool_call_arguments_docs(op: TransformOperation) -> TransformOpera
         )
         .response::<200, Json<McpToolCallReveal>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Missing `mcp_servers_admin::edit`"))
+        .response_with::<403, (), _>(|res| {
+            res.description("Missing `mcp_servers_admin::edit`")
+        })
         .response_with::<404, (), _>(|res| {
             res.description("No such tool call, or it is not owned by the caller")
         })

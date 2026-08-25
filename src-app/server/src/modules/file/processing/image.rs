@@ -1,11 +1,11 @@
 // Image file processor
 
-use super::ProcessingResult;
 use super::traits::ImageGenerator;
+use super::ProcessingResult;
 use crate::common::AppError;
 use crate::modules::file::models::ProcessingMetadata;
 use async_trait::async_trait;
-use image::{DynamicImage, GenericImageView, ImageFormat, imageops::FilterType};
+use image::{imageops::FilterType, DynamicImage, GenericImageView, ImageFormat};
 use std::io::Cursor;
 
 /// Image processor
@@ -48,13 +48,8 @@ impl ImageGenerator for ImageProcessor {
     fn can_generate(&self, mime_type: &str) -> bool {
         matches!(
             mime_type,
-            "image/jpeg"
-                | "image/jpg"
-                | "image/png"
-                | "image/gif"
-                | "image/webp"
-                | "image/bmp"
-                | "image/tiff"
+            "image/jpeg" | "image/jpg" | "image/png" | "image/gif"
+                | "image/webp" | "image/bmp" | "image/tiff"
         )
     }
 
@@ -65,7 +60,8 @@ impl ImageGenerator for ImageProcessor {
         _max_thumbnails: u32,
     ) -> Result<ProcessingResult, AppError> {
         // Load image
-        let img = image::load_from_memory(data).map_err(|e| AppError::internal_with_id(e))?;
+        let img = image::load_from_memory(data)
+            .map_err(|e| AppError::internal_with_id(e))?;
 
         let (width, height) = img.dimensions();
 

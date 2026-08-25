@@ -47,11 +47,13 @@ impl SkillListQuery {
 
 use super::events;
 use super::models::{Skill, UpdateSkill};
-use super::permissions::{SkillsAssignToGroups, SkillsManage, SkillsManageSystem, SkillsRead};
+use super::permissions::{
+    SkillsAssignToGroups, SkillsManage, SkillsManageSystem, SkillsRead,
+};
 use super::types::{
-    AvailableSkillEntry, AvailableSkillsQuery, AvailableSkillsResponse, GroupSystemSkillsResponse,
-    HideSkillInConversationRequest, SkillBodyResponse, SkillGroupsRequest, SkillListResponse,
-    UpdateGroupSystemSkillsRequest,
+    AvailableSkillEntry, AvailableSkillsQuery, AvailableSkillsResponse,
+    GroupSystemSkillsResponse, HideSkillInConversationRequest, SkillBodyResponse,
+    SkillGroupsRequest, SkillListResponse, UpdateGroupSystemSkillsRequest,
 };
 
 // =====================================================
@@ -148,9 +150,7 @@ pub fn get_skill_body_docs(op: TransformOperation) -> TransformOperation {
         .id("Skill.getBody")
         .tag("Skills")
         .summary("Get a skill's SKILL.md body")
-        .description(
-            "Returns the markdown body (frontmatter stripped) read from the extracted bundle.",
-        )
+        .description("Returns the markdown body (frontmatter stripped) read from the extracted bundle.")
         .response::<200, Json<SkillBodyResponse>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
         .response_with::<404, (), _>(|r| r.description("Skill not found"))
@@ -173,9 +173,11 @@ pub async fn update_user_skill(
         .ok_or_else(|| AppError::not_found("Skill"))?;
     // Only the owner of a user-scope skill may edit via this endpoint.
     if existing.scope != "user" || existing.owner_user_id != Some(auth.user.id) {
-        return Err(
-            AppError::forbidden("FORBIDDEN", "only the owner may edit a user-scope skill").into(),
-        );
+        return Err(AppError::forbidden(
+            "FORBIDDEN",
+            "only the owner may edit a user-scope skill",
+        )
+        .into());
     }
     // M-2: the edit path must enforce the same description+when_to_use cap as
     // install (frontmatter parse) — otherwise an edit could bloat the
@@ -385,7 +387,8 @@ pub fn list_available_skills_docs(op: TransformOperation) -> TransformOperation 
 /// the existing hub handler at the canonical user-facing path. Single
 /// implementation in `hub::handlers::create_skill_from_hub`.
 pub use crate::modules::hub::handlers::{
-    create_skill_from_hub as install_from_hub, create_skill_from_hub_docs as install_from_hub_docs,
+    create_skill_from_hub as install_from_hub,
+    create_skill_from_hub_docs as install_from_hub_docs,
     create_system_skill_from_hub as install_system_from_hub,
     create_system_skill_from_hub_docs as install_system_from_hub_docs,
 };
@@ -646,9 +649,7 @@ pub fn get_group_system_skills_docs(op: TransformOperation) -> TransformOperatio
         .id("Group.getSystemSkills")
         .tag("Admin - Groups")
         .summary("Get all system skills assigned to a group")
-        .description(
-            "Get all system skills assigned to a group (for the User Groups assignment widget)",
-        )
+        .description("Get all system skills assigned to a group (for the User Groups assignment widget)")
         .response::<200, Json<GroupSystemSkillsResponse>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }
@@ -687,17 +688,11 @@ pub async fn update_group_system_skills(
     // skills whose group membership actually changed.
     let current = Repos.skill.get_system_skills_for_group(group_id).await?;
     let current_ids: HashSet<Uuid> = current.iter().map(|s| s.id).collect();
-    let affected: HashSet<Uuid> = new_ids
-        .symmetric_difference(&current_ids)
-        .copied()
-        .collect();
+    let affected: HashSet<Uuid> = new_ids.symmetric_difference(&current_ids).copied().collect();
 
     // Apply the full replace atomically (avoids a partial-write window that
     // could strip the group's access on a mid-update failure).
-    Repos
-        .skill
-        .set_group_system_skills(group_id, &desired)
-        .await?;
+    Repos.skill.set_group_system_skills(group_id, &desired).await?;
 
     for skill_id in affected {
         events::emit_system_skill(SyncAction::Update, skill_id, origin.0);

@@ -38,6 +38,7 @@ mod tests {
 
     use uuid::Uuid;
 
+
     fn create_test_user_with_permissions(permissions: Vec<&str>) -> User {
         User {
             id: Uuid::new_v4(),
@@ -57,6 +58,7 @@ mod tests {
         }
     }
 
+
     fn create_test_group(permissions: Vec<&str>) -> Group {
         Group {
             id: Uuid::new_v4(),
@@ -71,6 +73,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn test_user_permission_only() {
         let user = create_test_user_with_permissions(vec!["users::read"]);
@@ -79,6 +82,7 @@ mod tests {
         assert!(!check_permission_union(&user, &groups, "users::edit"));
     }
 
+
     #[test]
     fn test_group_permission_only() {
         let user = create_test_user_with_permissions(vec![]);
@@ -86,6 +90,7 @@ mod tests {
         assert!(check_permission_union(&user, &groups, "users::read"));
         assert!(!check_permission_union(&user, &groups, "users::edit"));
     }
+
 
     #[test]
     fn test_permission_union() {
@@ -99,6 +104,7 @@ mod tests {
         assert!(!check_permission_union(&user, &groups, "users::delete"));
     }
 
+
     #[test]
     fn test_wildcard_all_user_level() {
         let user = create_test_user_with_permissions(vec!["*"]);
@@ -106,6 +112,7 @@ mod tests {
         assert!(check_permission_union(&user, &groups, "users::read"));
         assert!(check_permission_union(&user, &groups, "anything::else"));
     }
+
 
     #[test]
     fn test_wildcard_all_group_level() {
@@ -115,6 +122,7 @@ mod tests {
         assert!(check_permission_union(&user, &groups, "anything::else"));
     }
 
+
     #[test]
     fn test_resource_wildcard() {
         let user = create_test_user_with_permissions(vec!["users::*"]);
@@ -123,6 +131,7 @@ mod tests {
         assert!(check_permission_union(&user, &groups, "users::edit"));
         assert!(!check_permission_union(&user, &groups, "groups::read"));
     }
+
 
     #[test]
     fn test_hierarchical_wildcard() {
@@ -137,6 +146,7 @@ mod tests {
         ));
     }
 
+
     #[test]
     fn test_inactive_group_ignored() {
         let user = create_test_user_with_permissions(vec![]);
@@ -145,6 +155,7 @@ mod tests {
         let groups = vec![group];
         assert!(!check_permission_union(&user, &groups, "users::read"));
     }
+
 
     #[test]
     fn test_multiple_groups() {
@@ -161,12 +172,14 @@ mod tests {
         assert!(!check_permission_union(&user, &groups, "config::read"));
     }
 
+
     #[test]
     fn test_no_permissions() {
         let user = create_test_user_with_permissions(vec![]);
         let groups = vec![];
         assert!(!check_permission_union(&user, &groups, "users::read"));
     }
+
 
     // audit id all-d6976975c860 — permission exhaustion with large sets. The
     // linear scan in check_permissions_array must still resolve correctly when a
@@ -179,9 +192,11 @@ mod tests {
         let bulk: Vec<String> = (0..4000).map(|i| format!("mod{i}::action{i}")).collect();
         let mut user_perms = bulk.clone();
         user_perms.push("target::read".to_string()); // the needle, last in the list
-        let user =
-            create_test_user_with_permissions(user_perms.iter().map(String::as_str).collect());
-        let group_perms: Vec<String> = (4000..5000).map(|i| format!("grp{i}::x")).collect();
+        let user = create_test_user_with_permissions(
+            user_perms.iter().map(String::as_str).collect(),
+        );
+        let group_perms: Vec<String> =
+            (4000..5000).map(|i| format!("grp{i}::x")).collect();
         let groups = vec![create_test_group(
             group_perms.iter().map(String::as_str).collect(),
         )];
@@ -193,9 +208,11 @@ mod tests {
         assert!(!check_permission_union(&user, &groups, "nowhere::at::all"));
     }
 
+
     #[test]
     fn test_large_permission_set_hierarchical_wildcard_buried() {
-        let mut bulk: Vec<String> = (0..3000).map(|i| format!("noise{i}::leaf")).collect();
+        let mut bulk: Vec<String> =
+            (0..3000).map(|i| format!("noise{i}::leaf")).collect();
         // A hierarchical wildcard buried in the middle of the haystack.
         bulk.insert(1500, "config::auth::*".to_string());
         let group = create_test_group(bulk.iter().map(String::as_str).collect());
@@ -205,12 +222,9 @@ mod tests {
         assert!(check_permission_union(&user, &groups, "config::auth::read"));
         assert!(check_permission_union(&user, &groups, "config::auth::edit"));
         // Sibling namespace not covered by config::auth::*.
-        assert!(!check_permission_union(
-            &user,
-            &groups,
-            "config::proxy::read"
-        ));
+        assert!(!check_permission_union(&user, &groups, "config::proxy::read"));
     }
+
 
     // audit id all-e6ee49d03464 — deeply nested (4+ level) hierarchical
     // wildcards. The prefix loop (checker.rs:45-52) handles arbitrary depth;
@@ -224,11 +238,7 @@ mod tests {
         // 4-level exact-prefix match.
         assert!(check_permission_union(&user, &groups, "a::b::c::read"));
         // Deeper (5-level) still under the wildcard prefix.
-        assert!(check_permission_union(
-            &user,
-            &groups,
-            "a::b::c::d::execute"
-        ));
+        assert!(check_permission_union(&user, &groups, "a::b::c::d::execute"));
         // A sibling at the 3rd level is NOT covered.
         assert!(!check_permission_union(&user, &groups, "a::b::x::read"));
         // The wildcard does NOT grant the bare prefix as a leaf permission.
@@ -239,6 +249,7 @@ mod tests {
         assert!(!check_permission_union(&deep, &groups, "a::b::c::read"));
         assert!(check_permission_union(&deep, &groups, "a::b::c::d::read"));
     }
+
 
     #[test]
     fn test_deeply_nested_wildcard_4_plus_levels() {
@@ -261,6 +272,7 @@ mod tests {
         assert!(check_permission_union(&user2, &groups, "a::b::x"));
         assert!(!check_permission_union(&user2, &groups, "a::z::c::d"));
     }
+
 
     /// Permission resolution must stay correct (and not false-positive) with
     /// LARGE permission/group sets — a user with 1000 direct perms across many
@@ -296,13 +308,8 @@ mod tests {
             permissions: vec!["*".to_string()],
             ..create_test_user_with_permissions(vec![])
         };
-        let big_irrelevant: Vec<Group> = (0..100)
-            .map(|_| create_test_group(vec!["noise::x"]))
-            .collect();
-        assert!(check_permission_union(
-            &wildcard,
-            &big_irrelevant,
-            "anything::at::all"
-        ));
+        let big_irrelevant: Vec<Group> =
+            (0..100).map(|_| create_test_group(vec!["noise::x"])).collect();
+        assert!(check_permission_union(&wildcard, &big_irrelevant, "anything::at::all"));
     }
 }

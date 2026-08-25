@@ -87,10 +87,7 @@ impl LfsMetadata {
 /// Validate that an LFS oid matches the SHA-256-hex format that the
 /// LFS spec mandates (64 lowercase hex chars). Closes 07-llm-model F-02.
 fn is_valid_oid(oid: &str) -> bool {
-    oid.len() == 64
-        && oid
-            .chars()
-            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+    oid.len() == 64 && oid.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
 /// Check if a file is an LFS pointer file
@@ -131,10 +128,9 @@ pub fn parse_lfs_pointer_content(content: &str) -> Option<(String, u64)> {
                 return None;
             }
         } else if let Some(size_str) = line.strip_prefix("size ")
-            && let Ok(size_value) = size_str.parse::<u64>()
-        {
-            size = Some(size_value);
-        }
+            && let Ok(size_value) = size_str.parse::<u64>() {
+                size = Some(size_value);
+            }
     }
 
     match (oid, size) {

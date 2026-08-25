@@ -126,17 +126,10 @@ fn map_results(resp: CrossrefResponse) -> Vec<LitRecord> {
                 doi: doi.clone(),
                 pmid: None,
                 title,
-                abstract_text: it
-                    .r#abstract
-                    .as_deref()
-                    .map(strip_tags)
-                    .filter(|a| !a.is_empty()),
+                abstract_text: it.r#abstract.as_deref().map(strip_tags).filter(|a| !a.is_empty()),
                 authors,
                 year,
-                venue: it
-                    .container_title
-                    .into_iter()
-                    .find(|c| !c.trim().is_empty()),
+                venue: it.container_title.into_iter().find(|c| !c.trim().is_empty()),
                 url,
                 source: "crossref".into(),
                 source_ids: vec![format!("crossref:{}", doi.unwrap_or_default())],

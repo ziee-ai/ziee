@@ -326,13 +326,11 @@ impl TitleGenerationExtension {
         model_name: &str,
         user_content: &str,
     ) -> Result<String, AppError> {
-        let (title, finish_reason) = self
-            .attempt_title(provider, model_name, user_content, TITLE_MAX_TOKENS)
-            .await?;
+        let (title, finish_reason) =
+            self.attempt_title(provider, model_name, user_content, TITLE_MAX_TOKENS).await?;
 
         if !should_retry_with_larger_budget(title.as_deref(), finish_reason.as_deref()) {
-            return title
-                .ok_or_else(|| empty_title_error(TITLE_MAX_TOKENS, finish_reason.as_deref()));
+            return title.ok_or_else(|| empty_title_error(TITLE_MAX_TOKENS, finish_reason.as_deref()));
         }
 
         tracing::info!(
@@ -345,8 +343,7 @@ impl TitleGenerationExtension {
         let (retry_title, retry_finish) = self
             .attempt_title(provider, model_name, user_content, TITLE_RETRY_MAX_TOKENS)
             .await?;
-        retry_title
-            .ok_or_else(|| empty_title_error(TITLE_RETRY_MAX_TOKENS, retry_finish.as_deref()))
+        retry_title.ok_or_else(|| empty_title_error(TITLE_RETRY_MAX_TOKENS, retry_finish.as_deref()))
     }
 
     /// ONE title call: stream it, collect the answer text, and report the
@@ -898,10 +895,7 @@ mod tests {
             TITLE_MAX_TOKENS >= 256,
             "budget must clear a reasoning preamble plus a short title"
         );
-        assert!(
-            req.tools.is_empty(),
-            "title generation must not offer tools"
-        );
+        assert!(req.tools.is_empty(), "title generation must not offer tools");
         assert_eq!(req.model, "some-model");
     }
 
@@ -1028,14 +1022,8 @@ mod tests {
         assert!(should_retry_with_larger_budget(None, None));
 
         // Text was produced → nothing to retry, whatever the finish reason.
-        assert!(!should_retry_with_larger_budget(
-            Some("A Title"),
-            Some("length")
-        ));
-        assert!(!should_retry_with_larger_budget(
-            Some("A Title"),
-            Some("stop")
-        ));
+        assert!(!should_retry_with_larger_budget(Some("A Title"), Some("length")));
+        assert!(!should_retry_with_larger_budget(Some("A Title"), Some("stop")));
     }
 
     /// The soft-failure message must name the budget actually in force, so a

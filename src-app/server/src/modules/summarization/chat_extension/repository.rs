@@ -111,8 +111,7 @@ impl SummarizationChatRepository {
             return Ok(None);
         }
         Ok(Some(
-            self.get_conversation_summarization_mode(conversation_id)
-                .await?,
+            self.get_conversation_summarization_mode(conversation_id).await?,
         ))
     }
 }

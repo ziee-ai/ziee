@@ -44,7 +44,10 @@ impl ChatStreamFrame {
     /// True for the terminal frames (`complete`/`error`) — the buffer is
     /// dropped after one of these.
     pub fn is_terminal(&self) -> bool {
-        matches!(self.event.event_name(), "complete" | "error")
+        matches!(
+            self.event.event_name(),
+            "complete" | "error"
+        )
     }
 
     /// True for the opening `started` frame — creates the replay buffer.
@@ -64,9 +67,9 @@ impl ChatStreamFrame {
 
 /// The opening handshake as an SSE `Event` (`event: connected`).
 pub fn connected_event(connection_id: Uuid) -> Event {
-    Event::default()
-        .event("connected")
-        .data(serde_json::to_string(&ChatStreamConnectedData { connection_id }).unwrap_or_default())
+    Event::default().event("connected").data(
+        serde_json::to_string(&ChatStreamConnectedData { connection_id }).unwrap_or_default(),
+    )
 }
 
 /// A documentation-only union of everything that can cross the stream, so the

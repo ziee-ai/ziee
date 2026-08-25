@@ -14,6 +14,7 @@
 //! that's acceptable for a read-only content cache (worst case is N
 //! cold reads instead of 1).
 
+
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -136,6 +137,7 @@ pub fn invalidate_skill(skill_id: Uuid) {
 mod tests {
     use super::*;
 
+
     fn key(id: Uuid, path: &str) -> CacheKey {
         CacheKey {
             skill_id: id,
@@ -145,6 +147,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn put_then_get_returns_same_content() {
         let id = Uuid::new_v4();
@@ -152,6 +155,7 @@ mod tests {
         put(k.clone(), "hello".to_string());
         assert_eq!(get(&k).as_deref(), Some("hello"));
     }
+
 
     #[test]
     fn invalidate_skill_drops_only_matching_entries() {
@@ -166,6 +170,7 @@ mod tests {
         assert_eq!(get(&key(b, "f1")).as_deref(), Some("b1"));
     }
 
+
     #[test]
     fn put_same_key_replaces_content_bytes_accounting() {
         let id = Uuid::new_v4();
@@ -174,6 +179,7 @@ mod tests {
         put(k.clone(), "smaller".to_string()); // replaces
         assert_eq!(get(&k).as_deref(), Some("smaller"));
     }
+
 
     // audit id all-32c98a5e0b5b — resilience of the MCP skill-content cache: the
     // global cache mutex is intentionally poison-RECOVERING
@@ -208,6 +214,7 @@ mod tests {
         );
     }
 
+
     /// Resilience: an entry older than the 5-minute TTL is treated as a MISS and
     /// dropped on access (Inner::get TTL branch). Tested against a LOCAL Inner so
     /// it can't race the process-global CACHE the other tests use. Backdates
@@ -220,16 +227,13 @@ mod tests {
         assert_eq!(inner.get(&k).as_deref(), Some("hello"), "fresh entry hits");
 
         // Make the entry older than TTL.
-        inner.map.get_mut(&k).unwrap().inserted_at = Instant::now()
-            .checked_sub(TTL + Duration::from_secs(1))
-            .unwrap();
+        inner.map.get_mut(&k).unwrap().inserted_at =
+            Instant::now().checked_sub(TTL + Duration::from_secs(1)).unwrap();
 
         assert!(inner.get(&k).is_none(), "expired entry must be a miss");
-        assert_eq!(
-            inner.total_bytes, 0,
-            "expired entry must be dropped from accounting"
-        );
+        assert_eq!(inner.total_bytes, 0, "expired entry must be dropped from accounting");
     }
+
 
     /// Resilience: FIFO capacity eviction — putting past CAPACITY_BYTES evicts the
     /// OLDEST entry first (Inner::put eviction loop). Local Inner; ~40 MiB strings
@@ -243,18 +247,12 @@ mod tests {
         inner.put(key(id, "older"), big.clone());
         inner.put(key(id, "newer"), big.clone()); // forces eviction of "older"
 
-        assert!(
-            inner.get(&key(id, "older")).is_none(),
-            "oldest entry must be evicted (FIFO)"
-        );
+        assert!(inner.get(&key(id, "older")).is_none(), "oldest entry must be evicted (FIFO)");
         assert_eq!(
             inner.get(&key(id, "newer")).map(|s| s.len()),
             Some(40 * 1024 * 1024),
             "the most-recent entry survives"
         );
-        assert!(
-            inner.total_bytes <= CAPACITY_BYTES,
-            "pool must stay within the cap"
-        );
+        assert!(inner.total_bytes <= CAPACITY_BYTES, "pool must stay within the cap");
     }
 }

@@ -1,7 +1,12 @@
 // Elicitation respond handler
 
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, http::StatusCode};
+use axum::{
+    debug_handler,
+    extract::Path,
+    http::StatusCode,
+    Json,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -26,8 +31,7 @@ pub async fn respond_to_elicitation(
         return Err(AppError::bad_request(
             "INVALID_ACTION",
             "action must be one of: accept, decline, cancel",
-        )
-        .into());
+        ).into());
     }
 
     // SECURITY: verify the responder owns this elicitation. The chat
@@ -93,13 +97,10 @@ pub async fn respond_to_elicitation(
         };
         let mut patch = serde_json::json!({ "status": new_status });
         if action == "accept"
-            && let Some(values) = content
-        {
-            patch["response_content"] = values;
-        }
-        if let Err(err) = crate::core::Repos
-            .chat
-            .core
+            && let Some(values) = content {
+                patch["response_content"] = values;
+            }
+        if let Err(err) = crate::core::Repos.chat.core
             .update_content_json(content_id, patch)
             .await
         {

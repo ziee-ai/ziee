@@ -459,12 +459,11 @@ impl Config {
         // Handle automatic port assignment if port is 0
         if config.postgresql.use_embedded
             && let Some(ref mut embedded) = config.postgresql.embedded
-            && embedded.port == 0
-        {
-            embedded.port = find_available_port(50000, 50099)
-                .ok_or("Failed to find available port for database")?;
-            tracing::info!("Auto-assigned database port: {}", embedded.port);
-        }
+                && embedded.port == 0 {
+                    embedded.port = find_available_port(50000, 50099)
+                        .ok_or("Failed to find available port for database")?;
+                    tracing::info!("Auto-assigned database port: {}", embedded.port);
+                }
 
         if config.server.port == 0 {
             config.server.port = find_available_port(3000, 3099)
@@ -509,9 +508,7 @@ impl Config {
         }
 
         // 3. code_sandbox paths.
-        let sandbox = self
-            .code_sandbox
-            .get_or_insert_with(CodeSandboxConfig::default);
+        let sandbox = self.code_sandbox.get_or_insert_with(CodeSandboxConfig::default);
         sandbox
             .rootfs_path
             .get_or_insert_with(|| join_to_string(&app_data_dir, "sandbox-rootfs"));
@@ -590,10 +587,7 @@ mod voice_config_tests {
 
     #[test]
     fn absent_voice_section_defaults_to_enabled() {
-        assert!(
-            resolve(None),
-            "an absent voice: config must default to enabled"
-        );
+        assert!(resolve(None), "an absent voice: config must default to enabled");
         // And an empty block `voice: {}` (present but no fields) is also enabled.
         let empty: VoiceConfig = serde_json::from_str("{}").unwrap();
         assert!(empty.enabled);
@@ -626,7 +620,8 @@ mod packaging_config_tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../packaging/config.default.yaml"
         );
-        let content = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+        let content = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("read {path}: {e}"));
         serde_norway::from_str::<Config>(&content).unwrap_or_else(|e| {
             panic!(
                 "packaging/config.default.yaml must parse as Config (a clean \

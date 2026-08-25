@@ -11,7 +11,8 @@ pub struct AgentSettingsRead;
 impl PermissionCheck for AgentSettingsRead {
     const NAME: &'static str = "AgentSettingsRead";
     const PERMISSION: &'static str = "agent::settings::read";
-    const DESCRIPTION: &'static str = "Read the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).";
+    const DESCRIPTION: &'static str =
+        "Read the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).";
     const MODULE: &'static str = "agent";
 }
 
@@ -22,6 +23,7 @@ pub struct AgentSettingsManage;
 impl PermissionCheck for AgentSettingsManage {
     const NAME: &'static str = "AgentSettingsManage";
     const PERMISSION: &'static str = "agent::settings::manage";
-    const DESCRIPTION: &'static str = "Update the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).";
+    const DESCRIPTION: &'static str =
+        "Update the deployment-wide agent policy (sandbox/approval mode, reviewer, token caps, fan-out).";
     const MODULE: &'static str = "agent";
 }

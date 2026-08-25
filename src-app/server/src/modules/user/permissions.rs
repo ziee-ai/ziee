@@ -148,3 +148,4 @@ pub fn all_permissions() -> Vec<PermissionInfo> {
         GroupsAssignUsers::to_info(),
     ]
 }
+

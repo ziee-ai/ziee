@@ -61,3 +61,4 @@ impl AppModule for HealthModule {
         router.merge(routes())
     }
 }
+

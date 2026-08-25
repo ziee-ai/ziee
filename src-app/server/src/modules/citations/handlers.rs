@@ -22,11 +22,11 @@ use crate::modules::code_sandbox::types::{
 use crate::modules::permissions::RequirePermissions;
 use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
 
-use super::format::ExportFormat;
 use super::models::{
     CitationInput, CitationItemResult, DedupOutcome, MAX_BATCH_ITEMS, VerificationStatus,
 };
 use super::permissions::CitationsUse;
+use super::format::ExportFormat;
 use super::repository::{CitationsRepository, NewEntry};
 use super::{csl, dedup, format, resolve, verify};
 
@@ -80,11 +80,7 @@ pub async fn jsonrpc_handler(
             Ok(value) => ok_response(id, value),
             Err(e) => error_response(id, e.0, e.1),
         },
-        _ => error_response(
-            id,
-            StatusCode::OK,
-            JsonRpcError::method_not_found(&req.method),
-        ),
+        _ => error_response(id, StatusCode::OK, JsonRpcError::method_not_found(&req.method)),
     }
 }
 
@@ -206,9 +202,7 @@ async fn dispatch_tool_call(
         }
         "remove_citations" => {
             let project_id = arg_uuid(&call.arguments, "project_id");
-            verify_project_owned(user_id, project_id)
-                .await
-                .map_err(internal)?;
+            verify_project_owned(user_id, project_id).await.map_err(internal)?;
             // A stringified `ids` used to fall to `unwrap_or_default()` and
             // report "0 citation(s) deleted." as SUCCESS — the model and the
             // user both believed the removal happened.
@@ -234,11 +228,7 @@ async fn dispatch_tool_call(
                     }
                 }
             }
-            let verb = if project_id.is_some() {
-                "unlinked"
-            } else {
-                "deleted"
-            };
+            let verb = if project_id.is_some() { "unlinked" } else { "deleted" };
             if removed > 0 {
                 emit_library_changed(user_id, SyncAction::Delete, Uuid::nil(), None);
             }
@@ -257,9 +247,7 @@ async fn dispatch_tool_call(
         }
         "add_citations" => {
             let project_id = arg_uuid(&call.arguments, "project_id");
-            verify_project_owned(user_id, project_id)
-                .await
-                .map_err(internal)?;
+            verify_project_owned(user_id, project_id).await.map_err(internal)?;
             let items = parse_items(&call.arguments)?;
             let mut out = Vec::with_capacity(items.len());
             for it in &items {
@@ -331,9 +319,7 @@ async fn dispatch_tool_call(
                     })
                     .unwrap_or_default();
                 let entries = if ids.is_empty() {
-                    repo.list_entries(user_id, project_id)
-                        .await
-                        .map_err(internal)?
+                    repo.list_entries(user_id, project_id).await.map_err(internal)?
                 } else {
                     let mut v = Vec::new();
                     for id in ids {
@@ -358,9 +344,7 @@ async fn dispatch_tool_call(
                 ));
             }
             let n = items.len();
-            let output = format::export(items, fmt, style_path)
-                .await
-                .map_err(internal)?;
+            let output = format::export(items, fmt, style_path).await.map_err(internal)?;
             Ok(tool_result(
                 format!("Formatted {n} reference(s)."),
                 json!({ "output": output }),
@@ -373,8 +357,10 @@ async fn dispatch_tool_call(
 // ─────────────────────────── batch orchestration ───────────────────────────
 
 /// Copyable literal-JSON examples carried by every argument refusal here.
-const CITATION_ITEMS_EXAMPLE: &str = r#"[{"doi":"10.1000/xyz123"},{"title":"An article title"}]"#;
-const CITATION_IDS_EXAMPLE: &str = r#"["3f1c2a44-0000-0000-0000-000000000000"]"#;
+const CITATION_ITEMS_EXAMPLE: &str =
+    r#"[{"doi":"10.1000/xyz123"},{"title":"An article title"}]"#;
+const CITATION_IDS_EXAMPLE: &str =
+    r#"["3f1c2a44-0000-0000-0000-000000000000"]"#;
 const CITATION_CSL_EXAMPLE: &str =
     r#"{"type":"article-journal","title":"…","author":[{"family":"Doe","given":"J"}]}"#;
 
@@ -547,21 +533,11 @@ pub(super) async fn reverify_entry(
     entry: &super::models::BibliographyEntry,
 ) -> (bool, CitationItemResult) {
     let input = if let Some(doi) = &entry.doi {
-        CitationInput {
-            id: Some(doi.clone()),
-            ..Default::default()
-        }
+        CitationInput { id: Some(doi.clone()), ..Default::default() }
     } else if let Some(pmid) = &entry.pmid {
-        CitationInput {
-            id: Some(pmid.clone()),
-            kind: Some("pmid".into()),
-            ..Default::default()
-        }
+        CitationInput { id: Some(pmid.clone()), kind: Some("pmid".into()), ..Default::default() }
     } else if let Some(title) = &entry.title {
-        CitationInput {
-            title: Some(title.clone()),
-            ..Default::default()
-        }
+        CitationInput { title: Some(title.clone()), ..Default::default() }
     } else {
         // Nothing to resolve against — leave it as-is.
         return (
@@ -697,18 +673,11 @@ pub(super) async fn add_one(
                     if let Err(e) = repo.attach_to_project(pid, eid).await {
                         return failed(
                             label.clone(),
-                            format!(
-                                "citation matched an existing entry but attaching it to the project failed: {e}"
-                            ),
+                            format!("citation matched an existing entry but attaching it to the project failed: {e}"),
                         );
                     }
                 }
-                return linked(
-                    label.clone(),
-                    eid,
-                    resolved.status,
-                    &resolved.mismatch_fields,
-                );
+                return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
             }
             Ok(None) => {}
             Err(e) => return failed(label.clone(), format!("dedup lookup failed: {e}")),
@@ -720,18 +689,11 @@ pub(super) async fn add_one(
                     if let Err(e) = repo.attach_to_project(pid, eid).await {
                         return failed(
                             label.clone(),
-                            format!(
-                                "citation matched an existing entry but attaching it to the project failed: {e}"
-                            ),
+                            format!("citation matched an existing entry but attaching it to the project failed: {e}"),
                         );
                     }
                 }
-                return linked(
-                    label.clone(),
-                    eid,
-                    resolved.status,
-                    &resolved.mismatch_fields,
-                );
+                return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
             }
             Ok(None) => {}
             Err(e) => return failed(label.clone(), format!("dedup lookup failed: {e}")),
@@ -754,18 +716,11 @@ pub(super) async fn add_one(
                     if let Err(e) = repo.attach_to_project(pid, eid).await {
                         return failed(
                             label.clone(),
-                            format!(
-                                "citation matched an existing entry but attaching it to the project failed: {e}"
-                            ),
+                            format!("citation matched an existing entry but attaching it to the project failed: {e}"),
                         );
                     }
                 }
-                return linked(
-                    label.clone(),
-                    eid,
-                    resolved.status,
-                    &resolved.mismatch_fields,
-                );
+                return linked(label.clone(), eid, resolved.status, &resolved.mismatch_fields);
             }
             Ok(None) => {}
             Err(e) => return failed(label.clone(), format!("dedup lookup failed: {e}")),
@@ -856,9 +811,7 @@ pub(super) async fn add_one(
                         if let Err(e) = repo.attach_to_project(pid, eid).await {
                             return failed(
                                 label,
-                                format!(
-                                    "citation matched an existing entry but attaching it to the project failed: {e}"
-                                ),
+                                format!("citation matched an existing entry but attaching it to the project failed: {e}"),
                             );
                         }
                     }
@@ -867,10 +820,7 @@ pub(super) async fn add_one(
                 // Not a duplicate → must be the citation_key index racing. Loop to
                 // regenerate the key (re-querying existing keys) and retry.
                 if attempt == 3 {
-                    return failed(
-                        label,
-                        "could not store citation (key contention)".to_string(),
-                    );
+                    return failed(label, "could not store citation (key contention)".to_string());
                 }
                 continue;
             }
@@ -900,8 +850,8 @@ fn internal(e: crate::common::AppError) -> (StatusCode, JsonRpcError) {
 #[cfg(test)]
 mod stringified_arg_tests {
     use super::*;
+    use crate::common::tool_args::conformance::{assert_arg_conformance, ArgSite};
     use crate::common::tool_args::ArgShape;
-    use crate::common::tool_args::conformance::{ArgSite, assert_arg_conformance};
     use serde_json::json;
 
     /// The two SILENT WRONG ANSWERS this round fixes, pinned.
@@ -930,32 +880,18 @@ mod stringified_arg_tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(
-            ids.len(),
-            1,
-            "a stringified ids array must select those entries"
-        );
+        assert_eq!(ids.len(), 1, "a stringified ids array must select those entries");
 
         // Absent still reads as absent, so the documented "no ids → whole
         // library" behaviour is untouched.
-        assert!(
-            array_arg(&json!({}), "ids", CITATION_IDS_EXAMPLE)
-                .unwrap()
-                .is_none()
-        );
+        assert!(array_arg(&json!({}), "ids", CITATION_IDS_EXAMPLE).unwrap().is_none());
 
         // Undecodable is refused with actionable text, not a silent empty vec.
         let err = array_arg(&json!({ "ids": "not json {" }), "ids", CITATION_IDS_EXAMPLE)
             .expect_err("an undecodable ids must be refused, never treated as absent");
         let msg = err.1.message.clone();
-        assert!(
-            msg.contains("ids") && msg.contains("JSON array"),
-            "got: {msg}"
-        );
-        assert!(
-            msg.contains("3f1c2a44"),
-            "must carry a copyable example: {msg}"
-        );
+        assert!(msg.contains("ids") && msg.contains("JSON array"), "got: {msg}");
+        assert!(msg.contains("3f1c2a44"), "must carry a copyable example: {msg}");
     }
 
     /// The shared conformance battery, applied to `citations.items`. (TEST-41)

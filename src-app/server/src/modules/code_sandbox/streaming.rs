@@ -27,13 +27,13 @@ use axum::response::sse::{Event, Sse};
 use dashmap::DashMap;
 use futures_util::Stream;
 use once_cell::sync::Lazy;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use crate::core::repository::Repos;
 use crate::modules::code_sandbox::runtime_fetch::{self, FetchPhase};
-use crate::modules::code_sandbox::types::{KNOWN_FLAVORS, SandboxContext};
+use crate::modules::code_sandbox::types::{SandboxContext, KNOWN_FLAVORS};
 use crate::modules::code_sandbox::{config, handlers, runtime_mount, tools};
 
 /// How long the server waits for the user's elicitation response before
@@ -167,11 +167,7 @@ impl StreamMsg {
     /// Render to `(json-rpc frame, is_final)`.
     fn render(self) -> (Value, bool) {
         match self {
-            StreamMsg::Elicit {
-                id,
-                message,
-                schema,
-            } => (
+            StreamMsg::Elicit { id, message, schema } => (
                 json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -180,14 +176,8 @@ impl StreamMsg {
                 }),
                 false,
             ),
-            StreamMsg::Progress {
-                token,
-                progress,
-                total,
-                message,
-            } => {
-                let mut params =
-                    json!({ "progress": progress, "total": total, "message": message });
+            StreamMsg::Progress { token, progress, total, message } => {
+                let mut params = json!({ "progress": progress, "total": total, "message": message });
                 if let Some(t) = token {
                     params["progressToken"] = t;
                 }
@@ -316,25 +306,21 @@ async fn run_execute(
         // Empty-property object schema → the chat UI renders a plain
         // Accept/Decline confirm; the elicitation *action* is the answer.
         let schema = json!({ "type": "object", "properties": {}, "required": [] });
-        let _ = tx.send(StreamMsg::Elicit {
-            id: id.clone(),
-            message,
-            schema,
-        });
+        let _ = tx.send(StreamMsg::Elicit { id: id.clone(), message, schema });
 
-        let action =
-            match tokio::time::timeout(Duration::from_secs(CONSENT_TIMEOUT_SECS), orx).await {
-                Ok(Ok(v)) => v
-                    .get("action")
-                    .and_then(|a| a.as_str())
-                    .unwrap_or("cancel")
-                    .to_string(),
-                _ => {
-                    // Timed out or sender dropped → treat as cancel; clean up.
-                    PENDING_ELICITATIONS.remove(&id);
-                    "cancel".to_string()
-                }
-            };
+        let action = match tokio::time::timeout(Duration::from_secs(CONSENT_TIMEOUT_SECS), orx).await
+        {
+            Ok(Ok(v)) => v
+                .get("action")
+                .and_then(|a| a.as_str())
+                .unwrap_or("cancel")
+                .to_string(),
+            _ => {
+                // Timed out or sender dropped → treat as cancel; clean up.
+                PENDING_ELICITATIONS.remove(&id);
+                "cancel".to_string()
+            }
+        };
 
         if action != "accept" {
             let _ = tx.send(StreamMsg::Final {
@@ -351,17 +337,16 @@ async fn run_execute(
         let txp = tx.clone();
         let token = progress_token.clone();
         let fetch_flavor = flavor.clone();
-        let result =
-            runtime_fetch::ensure_fetched(Repos.pool(), &cache_dir, &fetch_flavor, move |p| {
-                let (progress, total) = phase_to_progress(p.phase);
-                let _ = txp.send(StreamMsg::Progress {
-                    token: token.clone(),
-                    progress,
-                    total,
-                    message: p.message,
-                });
-            })
-            .await;
+        let result = runtime_fetch::ensure_fetched(Repos.pool(), &cache_dir, &fetch_flavor, move |p| {
+            let (progress, total) = phase_to_progress(p.phase);
+            let _ = txp.send(StreamMsg::Progress {
+                token: token.clone(),
+                progress,
+                total,
+                message: p.message,
+            });
+        })
+        .await;
         if let Err(e) = result {
             let _ = tx.send(StreamMsg::Final {
                 rpc_id,
@@ -461,9 +446,7 @@ mod tests {
             "jsonrpc": "2.0", "id": "cs-elicit-nope", "result": { "action": "accept" }
         })));
         // A message with neither result nor error → false.
-        assert!(!try_resolve_elicitation(
-            &json!({ "jsonrpc": "2.0", "id": "y" })
-        ));
+        assert!(!try_resolve_elicitation(&json!({ "jsonrpc": "2.0", "id": "y" })));
     }
 
     #[tokio::test]
@@ -494,8 +477,8 @@ mod tests {
     // → SIGKILL via kill_on_drop, and releases the conversation lock).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_cancelled_aborts_registered_task() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
         use std::time::Duration;
 
         let id = json!(424242);
@@ -525,14 +508,8 @@ mod tests {
         // Registry entry consumed; task aborted (not run to completion).
         assert!(!INFLIGHT.contains_key(&key));
         let res = join.await;
-        assert!(
-            res.is_err() && res.unwrap_err().is_cancelled(),
-            "task must be aborted"
-        );
-        assert!(
-            !completed.load(Ordering::SeqCst),
-            "aborted task must not complete"
-        );
+        assert!(res.is_err() && res.unwrap_err().is_cancelled(), "task must be aborted");
+        assert!(!completed.load(Ordering::SeqCst), "aborted task must not complete");
     }
 
     #[tokio::test]

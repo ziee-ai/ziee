@@ -44,23 +44,12 @@ pub struct RawTool {
 fn sanitize(s: &str) -> String {
     let mut out: String = s
         .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
         .collect();
     if out.is_empty() {
         out.push('_');
     }
-    if out
-        .chars()
-        .next()
-        .map(|c| c.is_ascii_digit())
-        .unwrap_or(false)
-    {
+    if out.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
         out.insert(0, '_');
     }
     out
@@ -113,10 +102,7 @@ pub struct CallBudget {
 }
 impl CallBudget {
     pub fn new(max: u64) -> Self {
-        Self {
-            used: Arc::new(AtomicU64::new(0)),
-            max,
-        }
+        Self { used: Arc::new(AtomicU64::new(0)), max }
     }
     /// Try to claim one call slot. Returns false when the budget is exhausted.
     pub fn try_claim(&self) -> bool {

@@ -19,8 +19,8 @@ use crate::modules::sync::{SyncAction, SyncOrigin};
 use super::format::{self, ExportFormat};
 use super::models::{
     AttachCitationsRequest, BatchReport, ExportQuery, ExportResponse, ImportCitationsRequest,
-    ListCitationsQuery, ListCitationsResponse, MAX_BATCH_ITEMS, MutationResponse, StylesResponse,
-    VerifyCitationsRequest,
+    ListCitationsQuery, ListCitationsResponse, MutationResponse, StylesResponse,
+    VerifyCitationsRequest, MAX_BATCH_ITEMS,
 };
 use super::permissions::{CitationsManage, CitationsUse};
 use super::repository::CitationsRepository;
@@ -74,12 +74,7 @@ pub async fn import_citations(
         results.push(handlers::add_one(&repo, auth.user.id, body.project_id, it).await);
     }
     if results.iter().any(|r| r.entry_id.is_some()) {
-        handlers::emit_library_changed(
-            auth.user.id,
-            SyncAction::Create,
-            uuid::Uuid::nil(),
-            origin.0,
-        );
+        handlers::emit_library_changed(auth.user.id, SyncAction::Create, uuid::Uuid::nil(), origin.0);
     }
     Ok((StatusCode::OK, Json(BatchReport { results })))
 }
@@ -138,12 +133,7 @@ pub async fn reverify_citations(
         results.push(result.1);
     }
     if changed {
-        handlers::emit_library_changed(
-            auth.user.id,
-            SyncAction::Update,
-            uuid::Uuid::nil(),
-            origin.0,
-        );
+        handlers::emit_library_changed(auth.user.id, SyncAction::Update, uuid::Uuid::nil(), origin.0);
     }
     Ok((StatusCode::OK, Json(BatchReport { results })))
 }
@@ -257,12 +247,7 @@ pub async fn attach_to_project(
         .attach_many_to_project(auth.user.id, project_id, &body.entry_ids)
         .await?;
     if count > 0 {
-        handlers::emit_library_changed(
-            auth.user.id,
-            SyncAction::Update,
-            uuid::Uuid::nil(),
-            origin.0,
-        );
+        handlers::emit_library_changed(auth.user.id, SyncAction::Update, uuid::Uuid::nil(), origin.0);
     }
     Ok((
         StatusCode::OK,

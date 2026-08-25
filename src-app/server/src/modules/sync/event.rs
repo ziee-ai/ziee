@@ -322,11 +322,7 @@ impl ziee_framework::sync::SyncSurface for SyncEntity {
         // Reload the active user + groups (WITH the revocation epoch, folded
         // into the same query), re-check the baseline `profile::read` AND the
         // epoch, produce a refreshed snapshot — else teardown / transient.
-        match crate::core::Repos
-            .user
-            .get_by_id_with_token_version(user_id)
-            .await
-        {
+        match crate::core::Repos.user.get_by_id_with_token_version(user_id).await {
             Ok(Some((u, token_version))) if u.is_active => {
                 // A logout must also end an ALREADY-OPEN stream: the subscribe
                 // gate checks the epoch once, but the stream then lives until
@@ -334,11 +330,8 @@ impl ziee_framework::sync::SyncSurface for SyncEntity {
                 // fan-out is not a boundary for a holder of a stolen token —
                 // they don't run our JS. Free: the query above already loads
                 // the row.
-                if crate::modules::auth::jwt_extractor::verify_token_version(
-                    token_ver,
-                    token_version,
-                )
-                .is_err()
+                if crate::modules::auth::jwt_extractor::verify_token_version(token_ver, token_version)
+                    .is_err()
                 {
                     return RecheckOutcome::TearDown;
                 }
@@ -416,12 +409,9 @@ mod tests {
         assert!(json.contains("\"action\":\"update\""), "{json}");
         // Notify-and-refetch: the wire carries ONLY entity/action/id — never
         // row data. Guard against accidentally widening the payload.
-        let obj: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            obj.len(),
-            3,
-            "only entity/action/id may cross the wire: {json}"
-        );
+        let obj: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&json).unwrap();
+        assert_eq!(obj.len(), 3, "only entity/action/id may cross the wire: {json}");
     }
 
     #[test]
@@ -433,10 +423,7 @@ mod tests {
             (SyncEntity::Session, "session"),
             (SyncEntity::ScheduledTask, "scheduled_task"),
             (SyncEntity::Notification, "notification"),
-            (
-                SyncEntity::SchedulerAdminSettings,
-                "scheduler_admin_settings",
-            ),
+            (SyncEntity::SchedulerAdminSettings, "scheduler_admin_settings"),
         ];
         for (e, name) in cases {
             assert_eq!(serde_json::to_string(&e).unwrap(), format!("\"{name}\""));
@@ -452,18 +439,9 @@ mod kb_wire_tests {
     // wire strings the generated TS `sync:<entity>` keys depend on.
     #[test]
     fn kb_entities_serialize_snake_case() {
-        let s = |e: SyncEntity| {
-            serde_json::to_value(e)
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string()
-        };
+        let s = |e: SyncEntity| serde_json::to_value(e).unwrap().as_str().unwrap().to_string();
         assert_eq!(s(SyncEntity::KnowledgeBase), "knowledge_base");
-        assert_eq!(
-            s(SyncEntity::KnowledgeBaseDocument),
-            "knowledge_base_document"
-        );
+        assert_eq!(s(SyncEntity::KnowledgeBaseDocument), "knowledge_base_document");
         assert_eq!(s(SyncEntity::FileIndexState), "file_index_state");
     }
 }

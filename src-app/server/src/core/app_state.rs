@@ -47,8 +47,7 @@ pub fn get_app_data_dir() -> PathBuf {
 /// `Config::resolve_paths` has run, so by the time any handler reads
 /// it the paths are guaranteed populated. Accessor methods on
 /// CachesConfig panic if read on an unresolved instance.
-pub static CACHES_CONFIG: Lazy<Mutex<CachesConfig>> =
-    Lazy::new(|| Mutex::new(CachesConfig::default()));
+pub static CACHES_CONFIG: Lazy<Mutex<CachesConfig>> = Lazy::new(|| Mutex::new(CachesConfig::default()));
 
 pub fn set_caches_config(c: CachesConfig) {
     let mut guard = CACHES_CONFIG.lock().unwrap_or_else(|poisoned| {
@@ -90,9 +89,7 @@ const UPLOAD_BODY_LIMIT_SLACK_BYTES: usize = 16 * 1024 * 1024;
 /// app_state setters.
 pub fn set_max_file_upload_bytes(bytes: usize) {
     let mut guard = MAX_FILE_UPLOAD_BYTES.lock().unwrap_or_else(|poisoned| {
-        tracing::error!(
-            "MAX_FILE_UPLOAD_BYTES mutex poisoned in set_max_file_upload_bytes; recovering"
-        );
+        tracing::error!("MAX_FILE_UPLOAD_BYTES mutex poisoned in set_max_file_upload_bytes; recovering");
         poisoned.into_inner()
     });
     *guard = bytes;
@@ -102,9 +99,7 @@ pub fn set_max_file_upload_bytes(bytes: usize) {
 /// Get the per-file upload cap (bytes). Read per-request by `upload_file_inner`.
 pub fn get_max_file_upload_bytes() -> usize {
     *MAX_FILE_UPLOAD_BYTES.lock().unwrap_or_else(|poisoned| {
-        tracing::error!(
-            "MAX_FILE_UPLOAD_BYTES mutex poisoned in get_max_file_upload_bytes; recovering"
-        );
+        tracing::error!("MAX_FILE_UPLOAD_BYTES mutex poisoned in get_max_file_upload_bytes; recovering");
         poisoned.into_inner()
     })
 }

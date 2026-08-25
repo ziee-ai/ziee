@@ -18,9 +18,7 @@ use sqlx::types::Uuid;
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::common::AppError;
-use crate::modules::llm_local_runtime::engine::{
-    HealthEvent, HealthStateMachine, InstanceState, Transition,
-};
+use crate::modules::llm_local_runtime::engine::{HealthEvent, HealthStateMachine, InstanceState, Transition};
 use crate::modules::llm_local_runtime::get_deployment_manager;
 
 /// Per-model single-flight start cell. The result string carries the
@@ -187,8 +185,9 @@ pub(crate) async fn resolve_model_inputs(
                 .unwrap_or_else(|| files[0].file_path.clone()),
         }
     } else {
-        resolve_model_file_on_disk(model.provider_id, model_id)
-            .ok_or_else(|| AppError::internal_error("model has no files; cannot start engine"))?
+        resolve_model_file_on_disk(model.provider_id, model_id).ok_or_else(|| {
+            AppError::internal_error("model has no files; cannot start engine")
+        })?
     };
 
     let mut config = model
@@ -340,11 +339,13 @@ async fn persist_instance(
     base_url: &str,
 ) -> Result<(), AppError> {
     // Look up the provider_id from llm_models.
-    let provider_id: Uuid =
-        sqlx::query_scalar!("SELECT provider_id FROM llm_models WHERE id = $1", model_id,)
-            .fetch_one(pool)
-            .await
-            .map_err(|e| AppError::database_error(e))?;
+    let provider_id: Uuid = sqlx::query_scalar!(
+        "SELECT provider_id FROM llm_models WHERE id = $1",
+        model_id,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| AppError::database_error(e))?;
 
     let _ = pid; // pid isn't currently a column; reserve for future use
     sqlx::query!(
@@ -395,7 +396,9 @@ pub async fn ensure_running(pool: &PgPool, model_id: Uuid) -> Result<(), AppErro
                         "engine for model {model_id} marked failed (flap protection): {reason}"
                     )));
                 }
-                Transition::Restart { next_at, .. } if std::time::Instant::now() < next_at => {
+                Transition::Restart { next_at, .. }
+                    if std::time::Instant::now() < next_at =>
+                {
                     return Err(AppError::internal_error(
                         "engine is in restart backoff after a crash; retry shortly",
                     ));
@@ -461,7 +464,11 @@ pub async fn ensure_running(pool: &PgPool, model_id: Uuid) -> Result<(), AppErro
 
 /// Do the actual spawn + health-wait. Separated so the caller above
 /// only owns the single-flight bookkeeping.
-async fn do_start(pool: &PgPool, model_id: Uuid, timeout: Duration) -> Result<(), AppError> {
+async fn do_start(
+    pool: &PgPool,
+    model_id: Uuid,
+    timeout: Duration,
+) -> Result<(), AppError> {
     let (engine_type, file_path, config) = resolve_model_inputs(pool, model_id).await?;
 
     let dep_mgr = get_deployment_manager();
@@ -481,7 +488,10 @@ async fn do_start(pool: &PgPool, model_id: Uuid, timeout: Duration) -> Result<()
             // cell is removed after each completion, so a late waiter
             // can re-enter — M1). If the engine is in fact up, treat the
             // conflict as success rather than surfacing a spurious error.
-            if matches!(probe_liveness(pool, model_id).await, Ok(Liveness::Running)) {
+            if matches!(
+                probe_liveness(pool, model_id).await,
+                Ok(Liveness::Running)
+            ) {
                 return Ok(());
             }
             return Err(e);

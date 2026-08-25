@@ -13,6 +13,7 @@
 //! registered provider returns gets surfaced, and nothing is injected when
 //! nothing is mounted (the common case, ~zero overhead: an empty registry read).
 
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -34,7 +35,8 @@ use crate::modules::code_sandbox::{backend, config, mount_provider};
 /// informational system note), it just keeps a stable, documented position.
 const ORDER: i32 = 12;
 
-const WRAPPER_OPEN: &str = "[Code sandbox — mounted folders. The user has mounted these host folders into \
+const WRAPPER_OPEN: &str =
+    "[Code sandbox — mounted folders. The user has mounted these host folders into \
      the sandbox; read them in place via execute_command at the exact paths below. Do \
      NOT upload, copy, or recreate them, and treat read-only mounts as immutable.]\n";
 const WRAPPER_CLOSE: &str = "[End mounted folders]";

@@ -22,11 +22,7 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
 pub fn create(_pool: PgPool, config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
     // Deploy kill-switch: `control_mcp.enabled` (default true). Absent config
     // section means enabled.
-    let enabled = config
-        .control_mcp
-        .as_ref()
-        .map(|c| c.enabled)
-        .unwrap_or(true);
+    let enabled = config.control_mcp.as_ref().map(|c| c.enabled).unwrap_or(true);
     Arc::new(super::control::ControlExtension::new(enabled))
 }
 

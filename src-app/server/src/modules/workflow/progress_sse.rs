@@ -6,6 +6,7 @@
 //! + pending_elicitation_json), so a freshly-mounted FE skips the
 //! separate `GET /api/workflow-runs/{id}` call.
 
+
 use std::convert::Infallible;
 
 use aide::transform::TransformOperation;
@@ -62,7 +63,12 @@ pub async fn subscribe(
     let row = repository::find_run(Repos.pool(), run_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("WorkflowRun")))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                AppError::not_found("WorkflowRun"),
+            )
+        })?;
     if row.user_id != auth.user.id {
         return Err((
             StatusCode::FORBIDDEN,
@@ -119,36 +125,35 @@ pub async fn subscribe(
     // A single `stream!` block keeps the return type monomorphic — two
     // separate `stream!` invocations are distinct opaque types and can't
     // share one `impl Stream` signature.
-    let live: Option<(
-        Uuid,
-        tokio::sync::mpsc::UnboundedReceiver<Result<Event, axum::Error>>,
-    )> = if terminal {
-        None
-    } else {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<Event, axum::Error>>();
-        let client_id = registry::register_client(run_id, tx).map_err(|e| {
-            if e == "too many subscribers" {
-                (
-                    StatusCode::TOO_MANY_REQUESTS,
-                    AppError::new(
+    let live: Option<(Uuid, tokio::sync::mpsc::UnboundedReceiver<Result<Event, axum::Error>>)> =
+        if terminal {
+            None
+        } else {
+            let (tx, rx) =
+                tokio::sync::mpsc::unbounded_channel::<Result<Event, axum::Error>>();
+            let client_id = registry::register_client(run_id, tx).map_err(|e| {
+                if e == "too many subscribers" {
+                    (
                         StatusCode::TOO_MANY_REQUESTS,
-                        "WORKFLOW_TOO_MANY_SUBSCRIBERS",
-                        e,
-                    ),
-                )
-            } else {
-                (
-                    StatusCode::NOT_FOUND,
-                    AppError::new(
+                        AppError::new(
+                            StatusCode::TOO_MANY_REQUESTS,
+                            "WORKFLOW_TOO_MANY_SUBSCRIBERS",
+                            e,
+                        ),
+                    )
+                } else {
+                    (
                         StatusCode::NOT_FOUND,
-                        "WORKFLOW_RUN_NOT_ACTIVE",
-                        "run not currently active; refetch via GET /api/workflow-runs/{id}",
-                    ),
-                )
-            }
-        })?;
-        Some((client_id, rx))
-    };
+                        AppError::new(
+                            StatusCode::NOT_FOUND,
+                            "WORKFLOW_RUN_NOT_ACTIVE",
+                            "run not currently active; refetch via GET /api/workflow-runs/{id}",
+                        ),
+                    )
+                }
+            })?;
+            Some((client_id, rx))
+        };
 
     let s = stream! {
         // Documented contract (see module header + endpoint docs): the stream

@@ -23,7 +23,7 @@ use crate::modules::llm_model::models::{EngineType, FileFormat};
 use crate::modules::llm_model::types::CreateLlmModelRequest;
 use crate::modules::llm_provider::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
 use ziee_seed::{
-    SEED_PROVIDERS, SeedCtx, SeedEntry, SeedError, SeedMode, SeedOutcome, SeedProvider, SeedSection,
+    SeedCtx, SeedEntry, SeedError, SeedMode, SeedOutcome, SeedProvider, SeedSection, SEED_PROVIDERS,
 };
 
 const SECTION: &str = "llm_providers";
@@ -83,10 +83,7 @@ impl LlmProvidersSeedProvider {
     /// `built_in` lets the caller refuse to adopt an admin-created (built_in = false) row
     /// that merely shares a declared seed name (which reconcile-delete would then wrongly
     /// wipe).
-    async fn find_by_name(
-        pool: &sqlx::PgPool,
-        name: &str,
-    ) -> Result<Option<(Uuid, bool)>, SeedError> {
+    async fn find_by_name(pool: &sqlx::PgPool, name: &str) -> Result<Option<(Uuid, bool)>, SeedError> {
         let row = sqlx::query!(
             "SELECT id, built_in FROM llm_providers WHERE name = $1 ORDER BY created_at LIMIT 1",
             name
@@ -97,11 +94,7 @@ impl LlmProvidersSeedProvider {
     }
 
     /// This tree's `LlmModelRepository` has no by-name lookup; inline it.
-    async fn model_id_by_name(
-        pool: &sqlx::PgPool,
-        provider_id: Uuid,
-        name: &str,
-    ) -> Result<Option<Uuid>, SeedError> {
+    async fn model_id_by_name(pool: &sqlx::PgPool, provider_id: Uuid, name: &str) -> Result<Option<Uuid>, SeedError> {
         Ok(sqlx::query_scalar!(
             "SELECT id FROM llm_models WHERE provider_id = $1 AND name = $2 LIMIT 1",
             provider_id,
@@ -143,8 +136,7 @@ impl LlmProvidersSeedProvider {
                         .as_deref()
                         .and_then(FileFormat::from_str)
                         .unwrap_or(FileFormat::Safetensors);
-                    let created = Repos
-                        .llm_model
+                    let created = Repos.llm_model
                         .create(CreateLlmModelRequest {
                             provider_id,
                             name: m.name.clone(),
@@ -159,9 +151,7 @@ impl LlmProvidersSeedProvider {
                             required_runtime_version_id: None,
                         })
                         .await?;
-                    ctx.ledger
-                        .record(MODELS_SECTION, &key, Some(created.id))
-                        .await?;
+                    ctx.ledger.record(MODELS_SECTION, &key, Some(created.id)).await?;
                     outcome.created += 1;
                 }
             }
@@ -176,9 +166,7 @@ impl LlmProvidersSeedProvider {
                         if let Some(id) = owned.entity_id {
                             Repos.llm_model.delete(id).await?;
                         }
-                        ctx.ledger
-                            .remove(MODELS_SECTION, &owned.natural_key)
-                            .await?;
+                        ctx.ledger.remove(MODELS_SECTION, &owned.natural_key).await?;
                         outcome.deleted += 1;
                     }
                 }
@@ -202,16 +190,11 @@ impl LlmProvidersSeedProvider {
                 continue;
             };
             // Idempotent (ON CONFLICT DO NOTHING).
-            Repos
-                .user_group_llm_provider
+            Repos.user_group_llm_provider
                 .assign_to_group(provider_id, group.id)
                 .await?;
             ctx.ledger
-                .record(
-                    ASSIGN_SECTION,
-                    &assign_key(provider_name, gname),
-                    Some(group.id),
-                )
+                .record(ASSIGN_SECTION, &assign_key(provider_name, gname), Some(group.id))
                 .await?;
         }
 
@@ -235,8 +218,7 @@ impl LlmProvidersSeedProvider {
                 }
                 let key = assign_key(provider_name, &row.name);
                 if ctx.ledger.is_seeded(ASSIGN_SECTION, &key).await? {
-                    Repos
-                        .user_group_llm_provider
+                    Repos.user_group_llm_provider
                         .remove_from_group(row.id, provider_id)
                         .await?;
                     ctx.ledger.remove(ASSIGN_SECTION, &key).await?;
@@ -261,16 +243,12 @@ impl LlmProvidersSeedProvider {
         ctx.ledger.remove(SECTION, name).await?;
         for owned in ctx.ledger.list_owned(MODELS_SECTION).await? {
             if owned.natural_key.starts_with(&format!("{name}/")) {
-                ctx.ledger
-                    .remove(MODELS_SECTION, &owned.natural_key)
-                    .await?;
+                ctx.ledger.remove(MODELS_SECTION, &owned.natural_key).await?;
             }
         }
         for owned in ctx.ledger.list_owned(ASSIGN_SECTION).await? {
             if owned.natural_key.starts_with(&format!("{name}:")) {
-                ctx.ledger
-                    .remove(ASSIGN_SECTION, &owned.natural_key)
-                    .await?;
+                ctx.ledger.remove(ASSIGN_SECTION, &owned.natural_key).await?;
             }
         }
         outcome.deleted += 1;
@@ -337,8 +315,7 @@ impl SeedProvider for LlmProvidersSeedProvider {
                 // Owned already: reconcile re-syncs declared scalars; seed-if-empty leaves them.
                 (Some((id, _)), true) => {
                     if mode == SeedMode::Reconcile {
-                        Repos
-                            .llm_provider
+                        Repos.llm_provider
                             .update(
                                 id,
                                 UpdateLlmProviderRequest {
@@ -372,8 +349,7 @@ impl SeedProvider for LlmProvidersSeedProvider {
                 }
                 // Absent → create.
                 (None, _) => {
-                    let created = Repos
-                        .llm_provider
+                    let created = Repos.llm_provider
                         .create(CreateLlmProviderRequest {
                             name: item.name.clone(),
                             provider_type: item.provider_type.clone(),
@@ -383,9 +359,7 @@ impl SeedProvider for LlmProvidersSeedProvider {
                             proxy_settings: None,
                         })
                         .await?;
-                    ctx.ledger
-                        .record(SECTION, &item.name, Some(created.id))
-                        .await?;
+                    ctx.ledger.record(SECTION, &item.name, Some(created.id)).await?;
                     outcome.created += 1;
                     created.id
                 }
@@ -393,31 +367,16 @@ impl SeedProvider for LlmProvidersSeedProvider {
 
             // Additive relations always converge (idempotent) — a provider assigned to no
             // group is unusable by non-admin users, so this must be self-healing.
-            self.converge_models(
-                provider_id,
-                &item.name,
-                &item.models,
-                mode,
-                ctx,
-                &mut outcome,
-            )
-            .await?;
-            self.converge_groups(
-                provider_id,
-                &item.name,
-                &item.assign_groups,
-                mode,
-                ctx,
-                &mut outcome,
-            )
-            .await?;
+            self.converge_models(provider_id, &item.name, &item.models, mode, ctx, &mut outcome)
+                .await?;
+            self.converge_groups(provider_id, &item.name, &item.assign_groups, mode, ctx, &mut outcome)
+                .await?;
         }
 
         // Explicit `remove:` — delete these specific ledger-owned providers (both modes).
         for name in &section.remove {
             if let Some(row) = ctx.ledger.lookup(SECTION, name).await? {
-                self.delete_owned(name, row.entity_id, ctx, &mut outcome)
-                    .await?;
+                self.delete_owned(name, row.entity_id, ctx, &mut outcome).await?;
             }
         }
 
@@ -442,9 +401,7 @@ impl SeedProvider for LlmProvidersSeedProvider {
         let mut items = Vec::new();
         for row in owned {
             let Some(id) = row.entity_id else { continue };
-            let Some(p) = Repos.llm_provider.get_by_id(id).await? else {
-                continue;
-            };
+            let Some(p) = Repos.llm_provider.get_by_id(id).await? else { continue };
             let has_key = sqlx::query_scalar!(
                 "SELECT (api_key IS NOT NULL OR api_key_encrypted IS NOT NULL) FROM llm_providers WHERE id = $1",
                 id
@@ -453,10 +410,8 @@ impl SeedProvider for LlmProvidersSeedProvider {
             .await?
             .unwrap_or(false);
             let models = Repos.llm_model.list_by_provider(id).await?;
-            let model_names: Vec<(String, String)> = models
-                .into_iter()
-                .map(|m| (m.name, m.display_name))
-                .collect();
+            let model_names: Vec<(String, String)> =
+                models.into_iter().map(|m| (m.name, m.display_name)).collect();
             let groups: Vec<String> = sqlx::query_scalar!(
                 "SELECT g.name FROM user_group_llm_providers ugp JOIN groups g ON g.id = ugp.group_id WHERE ugp.provider_id = $1 ORDER BY g.name",
                 id
@@ -473,10 +428,8 @@ impl SeedProvider for LlmProvidersSeedProvider {
                 &groups,
             ));
         }
-        Ok(Some(
-            serde_norway::to_value(serde_json::json!({ "items": items }))
-                .map_err(|e| SeedError::Other(e.to_string()))?,
-        ))
+        Ok(Some(serde_norway::to_value(serde_json::json!({ "items": items }))
+            .map_err(|e| SeedError::Other(e.to_string()))?))
     }
 }
 
@@ -502,11 +455,7 @@ pub fn provider_dump_value(
     if has_api_key {
         obj.insert(
             "api_key".into(),
-            format!(
-                "${{{}_API_KEY}}",
-                name.to_uppercase().replace([' ', '-'], "_")
-            )
-            .into(),
+            format!("${{{}_API_KEY}}", name.to_uppercase().replace([' ', '-'], "_")).into(),
         );
     }
     if !models.is_empty() {

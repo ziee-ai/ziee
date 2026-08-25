@@ -21,9 +21,7 @@ use crate::{
 };
 
 use super::super::{
-    connection_health::{
-        McpServerWithHealthWarning, enforce_on_create, enforce_on_update_transition,
-    },
+    connection_health::{enforce_on_create, enforce_on_update_transition, McpServerWithHealthWarning},
     events::McpServerEvent,
     models::McpServer,
     permissions::*,
@@ -73,7 +71,12 @@ pub async fn list_system_servers(
 
     let response = Repos
         .mcp
-        .list_system_servers(params.page as i64, params.per_page as i64, search, enabled)
+        .list_system_servers(
+            params.page as i64,
+            params.per_page as i64,
+            search,
+            enabled,
+        )
         .await?;
 
     Ok((StatusCode::OK, Json(response)))
@@ -108,7 +111,11 @@ pub async fn create_system_server(
     // Hub install tracking from the drawer-prefilled flow (Install
     // for the system).
     if let Some(hub_id) = hub_id {
-        crate::modules::hub::install_helpers::track_system_mcp_install(server_id, &hub_id).await?;
+        crate::modules::hub::install_helpers::track_system_mcp_install(
+            server_id,
+            &hub_id,
+        )
+        .await?;
     }
 
     event_bus.emit_async(McpServerEvent::system_server_created(server.id));
@@ -120,20 +127,8 @@ pub async fn create_system_server(
 
     // Cross-device sync: notify AFTER enforcement so peers refetch the final
     // (possibly probe-downgraded) state.
-    sync_publish(
-        SyncEntity::McpServerSystem,
-        SyncAction::Create,
-        server_id,
-        Audience::perm::<McpServersAdminRead>(),
-        origin.0,
-    );
-    sync_publish(
-        SyncEntity::UserMcpServer,
-        SyncAction::Create,
-        server_id,
-        Audience::perm::<McpServersRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Create, server_id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Create, server_id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::CREATED, Json(wrapped)))
 }
@@ -202,24 +197,16 @@ pub async fn update_system_server(
     let persisted = Repos.mcp.update_system_server(id, request).await?;
     event_bus.emit_async(McpServerEvent::system_server_updated(persisted.id));
 
-    let server =
-        enforce_on_update_transition(Repos.mcp.pool(), persisted, prior_enabled, &event_bus)
-            .await?;
+    let server = enforce_on_update_transition(
+        Repos.mcp.pool(),
+        persisted,
+        prior_enabled,
+        &event_bus,
+    )
+    .await?;
 
-    sync_publish(
-        SyncEntity::McpServerSystem,
-        SyncAction::Update,
-        server.id,
-        Audience::perm::<McpServersAdminRead>(),
-        origin.0,
-    );
-    sync_publish(
-        SyncEntity::UserMcpServer,
-        SyncAction::Update,
-        server.id,
-        Audience::perm::<McpServersRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Update, server.id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Update, server.id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::OK, Json(server)))
 }
@@ -253,24 +240,10 @@ pub async fn delete_system_server(
     Repos.mcp.delete_system_server(id).await?;
 
     // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
-    event_bus
-        .emit(McpServerEvent::system_server_deleted(id))
-        .await;
+    event_bus.emit(McpServerEvent::system_server_deleted(id)).await;
 
-    sync_publish(
-        SyncEntity::McpServerSystem,
-        SyncAction::Delete,
-        id,
-        Audience::perm::<McpServersAdminRead>(),
-        origin.0,
-    );
-    sync_publish(
-        SyncEntity::UserMcpServer,
-        SyncAction::Delete,
-        id,
-        Audience::perm::<McpServersRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::McpServerSystem, SyncAction::Delete, id, Audience::perm::<McpServersAdminRead>(), origin.0);
+    sync_publish(SyncEntity::UserMcpServer, SyncAction::Delete, id, Audience::perm::<McpServersRead>(), origin.0);
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

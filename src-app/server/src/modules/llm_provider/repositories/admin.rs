@@ -39,11 +39,13 @@ fn to_chrono(ts: time::OffsetDateTime) -> DateTime<Utc> {
 fn inject_runtime_fields(p: &mut LlmProvider) {
     if p.provider_type == "local" {
         let (host, port, api_prefix) = crate::core::get_server_addr();
-        p.base_url = Some(crate::modules::llm_local_runtime::proxy::derive_proxy_url(
-            &host,
-            port,
-            &api_prefix,
-        ));
+        p.base_url = Some(
+            crate::modules::llm_local_runtime::proxy::derive_proxy_url(
+                &host,
+                port,
+                &api_prefix,
+            ),
+        );
     }
 }
 
@@ -424,6 +426,6 @@ pub async fn delete_llm_provider(
     match still_exists {
         Some(true) => Ok(Err("Cannot delete built-in provider".to_string())),
         Some(false) => Ok(Ok(false)), // raced with another delete
-        None => Ok(Ok(false)),        // provider not found
+        None => Ok(Ok(false)),         // provider not found
     }
 }

@@ -156,10 +156,7 @@ mod tests {
         assert_eq!(recs.len(), 1);
         assert_eq!(recs[0].doi.as_deref(), Some("10.1/core"));
         assert_eq!(recs[0].year, Some(2019));
-        assert_eq!(
-            recs[0].url.as_deref(),
-            Some("https://core.ac.uk/download/12345.pdf")
-        );
+        assert_eq!(recs[0].url.as_deref(), Some("https://core.ac.uk/download/12345.pdf"));
         assert_eq!(recs[0].source_ids, vec!["core:12345"]);
     }
 }

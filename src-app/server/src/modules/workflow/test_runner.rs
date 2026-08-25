@@ -13,6 +13,7 @@
 //! pure-data parts (fixture parse + mock-coverage check + assertion
 //! matching); the run plumbing lives in the handler + `runner::run_for_test`.
 
+
 use std::collections::HashMap;
 
 use schemars::JsonSchema;
@@ -152,12 +153,18 @@ pub fn check_assertions(
             Some(n) => {
                 if let Some(min) = set.min_length {
                     if (n as u64) < min {
-                        return Err(fail("min_length", format!("length >= {min} (got {n})")));
+                        return Err(fail(
+                            "min_length",
+                            format!("length >= {min} (got {n})"),
+                        ));
                     }
                 }
                 if let Some(max) = set.max_length {
                     if (n as u64) > max {
-                        return Err(fail("max_length", format!("length <= {max} (got {n})")));
+                        return Err(fail(
+                            "max_length",
+                            format!("length <= {max} (got {n})"),
+                        ));
                     }
                 }
             }
@@ -301,9 +308,8 @@ mod tests {
     #[test]
     fn matches_schema_object_required() {
         let mut s = aset();
-        s.matches_schema = Some(
-            json!({"type": "object", "required": ["claim"], "properties": {"claim": {"type": "string"}}}),
-        );
+        s.matches_schema =
+            Some(json!({"type": "object", "required": ["claim"], "properties": {"claim": {"type": "string"}}}));
         assert!(check_assertions("o", &s, &json!({"claim": "c1"})).is_ok());
         let missing = check_assertions("o", &s, &json!({"other": 1})).unwrap_err();
         assert_eq!(missing.assertion, "matches_schema");
@@ -337,10 +343,7 @@ expected_outputs:
 "#;
         let f: TestFixture = serde_norway::from_str(yaml).expect("parse fixture");
         assert_eq!(f.mode, FixtureMode::Ci);
-        assert_eq!(
-            f.inputs.get("topic").and_then(|v| v.as_str()),
-            Some("quantum entanglement")
-        );
+        assert_eq!(f.inputs.get("topic").and_then(|v| v.as_str()), Some("quantum entanglement"));
         assert!(f.mocks.contains_key("summarize"));
         let a = f.expected_outputs.get("summary").unwrap();
         assert_eq!(a.contains.as_deref(), Some("Bullet"));

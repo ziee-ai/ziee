@@ -119,10 +119,7 @@ fn do_extract() -> Result<Extracted, Box<dyn std::error::Error>> {
             app_data = %app_data.display(),
             "sandbox-runtime: bundle already extracted (sha matches + items present)"
         );
-        return Ok(Extracted {
-            launcher,
-            guest_root,
-        });
+        return Ok(Extracted { launcher, guest_root });
     }
 
     tracing::info!(
@@ -164,11 +161,7 @@ fn do_extract() -> Result<Extracted, Box<dyn std::error::Error>> {
     let staged_entitlements = staging.join("etc").join("entitlements.plist");
     if !staged_launcher.is_file() {
         let _ = std::fs::remove_dir_all(&staging);
-        return Err(format!(
-            "launcher missing after unpack: {}",
-            staged_launcher.display()
-        )
-        .into());
+        return Err(format!("launcher missing after unpack: {}", staged_launcher.display()).into());
     }
     if !staged_entitlements.is_file() {
         let _ = std::fs::remove_dir_all(&staging);
@@ -220,10 +213,7 @@ fn do_extract() -> Result<Extracted, Box<dyn std::error::Error>> {
         guest_root = %guest_root.display(),
         "sandbox-runtime: extraction complete (flat layout)"
     );
-    Ok(Extracted {
-        launcher,
-        guest_root,
-    })
+    Ok(Extracted { launcher, guest_root })
 }
 
 fn marker_matches(marker: &Path, expected_sha: &str) -> bool {

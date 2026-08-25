@@ -123,7 +123,10 @@ async fn sweep_deprecated_models(pool: &PgPool) {
 /// deprecated; the flag is cleared when it is present and not catalog-deprecated.
 ///
 /// Shared by the background loop and the on-demand refresh handler.
-pub async fn sweep_provider_once(pool: &PgPool, provider: &LlmProvider) -> Result<usize, String> {
+pub async fn sweep_provider_once(
+    pool: &PgPool,
+    provider: &LlmProvider,
+) -> Result<usize, String> {
     // Local providers manage their own model list.
     if provider.provider_type == "local" {
         return Ok(0);
@@ -146,7 +149,8 @@ pub async fn sweep_provider_once(pool: &PgPool, provider: &LlmProvider) -> Resul
     if live.is_empty() {
         return Ok(0);
     }
-    let live_ids: std::collections::HashSet<String> = live.iter().map(|m| m.id.clone()).collect();
+    let live_ids: std::collections::HashSet<String> =
+        live.iter().map(|m| m.id.clone()).collect();
 
     let models = list_llm_models_by_provider(pool, provider.id)
         .await
@@ -165,9 +169,9 @@ pub async fn sweep_provider_once(pool: &PgPool, provider: &LlmProvider) -> Resul
                 );
             }
             Ok(false) => {}
-            Err(e) => {
-                tracing::warn!("llm_model::prune: failed to set is_deprecated on {model_id}: {e}")
-            }
+            Err(e) => tracing::warn!(
+                "llm_model::prune: failed to set is_deprecated on {model_id}: {e}"
+            ),
         }
     }
     Ok(changed)
@@ -271,7 +275,9 @@ async fn reconcile_interrupted_downloads(pool: &PgPool) {
             );
         }
         Ok(_) => {}
-        Err(e) => tracing::warn!("llm_model::prune: interrupted-download reconcile failed: {e}"),
+        Err(e) => tracing::warn!(
+            "llm_model::prune: interrupted-download reconcile failed: {e}"
+        ),
     }
 }
 
@@ -312,9 +318,7 @@ async fn referenced_engine_paths(pool: &PgPool) -> std::collections::HashSet<std
         Err(e) => {
             // Fail SAFE: if we can't read the references, skip engine eviction
             // entirely this tick rather than risk deleting an in-use binary.
-            tracing::warn!(
-                "llm_model::prune: could not read runtime-version paths ({e}); skipping engine-cache eviction this tick"
-            );
+            tracing::warn!("llm_model::prune: could not read runtime-version paths ({e}); skipping engine-cache eviction this tick");
             set.insert(std::path::PathBuf::from("\0__skip_all__"));
         }
     }
@@ -324,7 +328,10 @@ async fn referenced_engine_paths(pool: &PgPool) -> std::collections::HashSet<std
 /// Remove top-level entries directly under `root` whose most-recent
 /// modification is older than [`CACHE_UNUSED_DAYS`]. An entry is preserved if
 /// any path in `protected` equals it or lives underneath it.
-fn evict_dir_by_mtime(root: &Path, protected: &std::collections::HashSet<std::path::PathBuf>) {
+fn evict_dir_by_mtime(
+    root: &Path,
+    protected: &std::collections::HashSet<std::path::PathBuf>,
+) {
     // The sentinel inserted on a DB-read failure means "skip this sweep".
     if protected.contains(&std::path::PathBuf::from("\0__skip_all__")) {
         return;
@@ -355,7 +362,10 @@ fn evict_dir_by_mtime(root: &Path, protected: &std::collections::HashSet<std::pa
                 path.display(),
                 CACHE_UNUSED_DAYS
             ),
-            Err(e) => tracing::warn!("llm_model::prune: failed to evict {}: {e}", path.display()),
+            Err(e) => tracing::warn!(
+                "llm_model::prune: failed to evict {}: {e}",
+                path.display()
+            ),
         }
     }
 }
@@ -396,10 +406,7 @@ fn older_than(path: &Path, now: SystemTime, max_age: Duration) -> bool {
     let mut newest = None;
     newest_mtime(path, &mut newest);
     match newest {
-        Some(m) => now
-            .duration_since(m)
-            .map(|age| age > max_age)
-            .unwrap_or(false),
+        Some(m) => now.duration_since(m).map(|age| age > max_age).unwrap_or(false),
         None => false, // can't read mtime → keep, fail safe
     }
 }

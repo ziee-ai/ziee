@@ -16,7 +16,8 @@ use crate::core::EventBus;
 use crate::module_api::AppModule;
 
 pub use ziee_framework::app_builder::{
-    apply_rate_limit_layer, build_api_router, create_cors_layer, create_modules, initialize_modules,
+    apply_rate_limit_layer, build_api_router, create_cors_layer, create_modules,
+    initialize_modules,
 };
 
 /// Register event handlers from all modules

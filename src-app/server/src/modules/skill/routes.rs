@@ -29,15 +29,9 @@ pub fn user_routes() -> ApiRouter {
         )
         .api_route(
             "/skills/validate",
-            post_with(
-                dev_handlers::validate_skill,
-                dev_handlers::validate_skill_docs,
-            ),
+            post_with(dev_handlers::validate_skill, dev_handlers::validate_skill_docs),
         )
-        .api_route(
-            "/skills/{id}",
-            get_with(get_user_skill, get_user_skill_docs),
-        )
+        .api_route("/skills/{id}", get_with(get_user_skill, get_user_skill_docs))
         .api_route(
             "/skills/{id}/body",
             get_with(get_skill_body, get_skill_body_docs),

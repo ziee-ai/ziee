@@ -110,9 +110,7 @@ impl AppModule for LlmLocalRuntimeModule {
         if let Some(_pool) = &self.pool {
             router.merge(llm_local_runtime_router())
         } else {
-            tracing::error!(
-                "LlmLocalRuntimeModule: Pool not initialized during route registration"
-            );
+            tracing::error!("LlmLocalRuntimeModule: Pool not initialized during route registration");
             router
         }
     }

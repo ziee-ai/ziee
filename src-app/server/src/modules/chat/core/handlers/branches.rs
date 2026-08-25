@@ -8,7 +8,11 @@ use uuid::Uuid;
 use crate::{
     common::{ApiResult, AppError},
     modules::{
-        chat::core::{models::Branch, permissions::*, types::CreateBranchRequest},
+        chat::core::{
+            models::Branch,
+            permissions::*,
+            types::CreateBranchRequest,
+        },
         permissions::{extractors::RequirePermissions, with_permission},
         sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
@@ -37,10 +41,7 @@ pub async fn create_branch(
     Json(request): Json<CreateBranchRequest>,
 ) -> ApiResult<Json<Branch>> {
     // Verify conversation exists and user owns it
-    let conversation = Repos
-        .chat
-        .core
-        .get_conversation(conversation_id, auth.user.id)
+    let conversation = Repos.chat.core.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -53,7 +54,9 @@ pub async fn create_branch(
     })?;
 
     // SECURITY: enforce a per-conversation branch cap (04-chat F-08).
-    let existing = Repos.chat.core.list_branches(conversation_id).await?;
+    let existing = Repos.chat.core
+        .list_branches(conversation_id)
+        .await?;
     if existing.len() as i64 >= MAX_BRANCHES_PER_CONVERSATION {
         return Err(AppError::bad_request(
             "BRANCH_LIMIT",
@@ -63,15 +66,8 @@ pub async fn create_branch(
     }
 
     // Create new branch with message cloning (handled in repository)
-    let branch = Repos
-        .chat
-        .core
-        .create_branch(
-            conversation_id,
-            parent_branch_id,
-            request.from_message_id,
-            &request.fork_level,
-        )
+    let branch = Repos.chat.core
+        .create_branch(conversation_id, parent_branch_id, request.from_message_id, &request.fork_level)
         .await?;
 
     // Cross-device sync: a new branch changes the conversation's branch
@@ -107,14 +103,11 @@ pub async fn list_branches(
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<Branch>>> {
     // Verify conversation exists and user owns it
-    let _conversation = Repos
-        .chat
-        .core
-        .get_conversation(conversation_id, auth.user.id)
+    let _conversation = Repos.chat.core.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
-    let branches = Repos.chat.core.list_branches(conversation_id).await?;
+    let branches = Repos.chat.core.list_branches( conversation_id).await?;
 
     Ok((StatusCode::OK, Json(branches)))
 }
@@ -138,17 +131,12 @@ pub async fn activate_branch(
     Path((conversation_id, branch_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<StatusCode> {
     // Verify conversation exists and user owns it
-    let _conversation = Repos
-        .chat
-        .core
-        .get_conversation(conversation_id, auth.user.id)
+    let _conversation = Repos.chat.core.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
     // Verify branch exists and belongs to this conversation
-    let branch = Repos
-        .chat
-        .core
+    let branch = Repos.chat.core
         .get_branch(branch_id)
         .await?
         .ok_or_else(|| AppError::not_found("Branch"))?;
@@ -162,11 +150,7 @@ pub async fn activate_branch(
     }
 
     // Activate the branch
-    Repos
-        .chat
-        .core
-        .set_active_branch(conversation_id, branch_id)
-        .await?;
+    Repos.chat.core.set_active_branch( conversation_id, branch_id).await?;
 
     sync_publish(
         SyncEntity::Conversation,

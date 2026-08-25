@@ -89,10 +89,7 @@ pub struct SetToolApprovalResponse {
 
 /// Resolve a tool's effective mode from the stored override map.
 fn resolve_effective(overrides: &HashMap<String, String>, tool: &str) -> (ApprovalMode, bool) {
-    match overrides
-        .get(tool)
-        .and_then(|s| s.parse::<ApprovalMode>().ok())
-    {
+    match overrides.get(tool).and_then(|s| s.parse::<ApprovalMode>().ok()) {
         Some(m) => (m, true),
         None => (SERVER_DEFAULT_MODE, false),
     }

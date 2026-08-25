@@ -20,7 +20,9 @@ use crate::{
             models::{SummarizationAdminSettings, UpdateSummarizationAdminSettingsRequest},
             permissions::{SummarizationSettingsManage, SummarizationSettingsRead},
         },
-        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        sync::{
+            Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish,
+        },
     },
 };
 
@@ -107,7 +109,9 @@ pub async fn update_admin_settings(
             )
             .into());
         }
-        if !s.is_empty() && (!s.contains("{previous_summary}") || !s.contains("{new_transcript}")) {
+        if !s.is_empty()
+            && (!s.contains("{previous_summary}") || !s.contains("{new_transcript}"))
+        {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 "incremental_summary_prompt must contain both {previous_summary} and {new_transcript} placeholders",
@@ -242,8 +246,10 @@ pub async fn get_conversation_summary(
     };
 
     let pool = Repos.summarization.pool_clone();
-    let summary =
-        crate::modules::summarization::engine::summarizer::fetch_summary(&pool, branch_id).await?;
+    let summary = crate::modules::summarization::engine::summarizer::fetch_summary(
+        &pool, branch_id,
+    )
+    .await?;
     Ok((StatusCode::OK, Json(summary)))
 }
 

@@ -7,10 +7,11 @@
 //! frontmatter parsing + the 1536-char cap (plan §2: "Skills are EXEMPT
 //! ... Skill validation stays at frontmatter parsing").
 
+
 use aide::transform::TransformOperation;
-use axum::Json;
 use axum::extract::{Multipart, Query};
 use axum::http::StatusCode;
+use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -101,9 +102,7 @@ pub fn validate_skill_docs(op: TransformOperation) -> TransformOperation {
         .id("Skill.validate")
         .tag("Skills")
         .summary("Validate a SKILL.md without installing")
-        .description(
-            "Parses SKILL.md frontmatter (require description, 1536-char cap). No DB row created.",
-        )
+        .description("Parses SKILL.md frontmatter (require description, 1536-char cap). No DB row created.")
         .response::<200, Json<ValidateSkillResponse>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }

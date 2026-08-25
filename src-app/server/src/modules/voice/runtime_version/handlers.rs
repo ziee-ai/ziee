@@ -93,10 +93,7 @@ pub async fn list_versions(
         .await
         .map_err(|e| AppError::database_error(e).to_api_error())?;
     let response = RuntimeVersionListResponse {
-        versions: versions
-            .into_iter()
-            .map(RuntimeVersionResponse::from)
-            .collect(),
+        versions: versions.into_iter().map(RuntimeVersionResponse::from).collect(),
     };
     Ok((StatusCode::OK, Json(response)))
 }
@@ -227,9 +224,7 @@ pub async fn get_download_snapshot(
     Ok((StatusCode::OK, Json(snapshot_of(&task).await)))
 }
 
-pub fn get_download_snapshot_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_download_snapshot_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.getVersionDownload")
         .tag("Voice")
@@ -250,9 +245,7 @@ pub async fn get_version(
     Ok((StatusCode::OK, Json(v)))
 }
 
-pub fn get_version_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn get_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.getVersion")
         .tag("Voice")
@@ -271,9 +264,7 @@ pub async fn subscribe_download_events(
     _auth: RequirePermissions<(VoiceAdminRead,)>,
     Path(key): Path<String>,
 ) -> ApiResult<
-    axum::response::Sse<
-        impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
-    >,
+    axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>>,
 > {
     use axum::response::sse::{Event, KeepAlive, Sse};
 
@@ -304,14 +295,13 @@ pub async fn subscribe_download_events(
                 percent,
             });
         }
-        let complete =
-            snap.result
-                .as_ref()
-                .map(|v| super::download_task::SSEEngineDownloadCompleteData {
-                    version_id: v.id,
-                    bytes_downloaded: snap.bytes_received,
-                    duration_ms: 0,
-                });
+        let complete = snap.result.as_ref().map(|v| {
+            super::download_task::SSEEngineDownloadCompleteData {
+                version_id: v.id,
+                bytes_downloaded: snap.bytes_received,
+                duration_ms: 0,
+            }
+        });
         let failed = snap
             .error
             .as_ref()
@@ -415,10 +405,7 @@ pub async fn delete_version(
         if let Some(parent) = binary_path.parent() {
             if parent.exists() {
                 if let Err(e) = std::fs::remove_dir_all(parent) {
-                    tracing::warn!(
-                        "Failed to remove whisper binary dir {}: {e}",
-                        parent.display()
-                    );
+                    tracing::warn!("Failed to remove whisper binary dir {}: {e}", parent.display());
                 } else {
                     tracing::info!("Removed whisper binary directory: {}", parent.display());
                 }
@@ -465,19 +452,14 @@ pub async fn set_default(
         origin.0,
     );
 
-    Ok((
-        StatusCode::OK,
-        Json(RuntimeVersionResponse::from(version_record)),
-    ))
+    Ok((StatusCode::OK, Json(RuntimeVersionResponse::from(version_record))))
 }
 
 // =====================================================
 // OpenAPI describers
 // =====================================================
 
-pub fn list_versions_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn list_versions_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.listVersions")
         .description("List all registered whisper runtime versions")
@@ -485,21 +467,15 @@ pub fn list_versions_docs(
         .response::<200, Json<RuntimeVersionListResponse>>()
 }
 
-pub fn check_updates_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn check_updates_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.checkVersionUpdates")
-        .description(
-            "Check for available whisper runtime version updates from GitHub, scoped to the host",
-        )
+        .description("Check for available whisper runtime version updates from GitHub, scoped to the host")
         .tag("Voice")
         .response::<200, Json<AvailableUpdatesResponse>>()
 }
 
-pub fn download_version_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn download_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminManage,)>(op)
         .id("Voice.downloadVersion")
         .description(
@@ -514,21 +490,15 @@ pub fn download_version_docs(
         .response_with::<400, (), _>(|res| res.description("Invalid request parameters"))
 }
 
-pub fn list_active_downloads_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn list_active_downloads_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.listVersionDownloads")
-        .description(
-            "List in-flight whisper download tasks (for repainting progress after a page reload)",
-        )
+        .description("List in-flight whisper download tasks (for repainting progress after a page reload)")
         .tag("Voice")
         .response::<200, Json<DownloadListResponse>>()
 }
 
-pub fn subscribe_download_events_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn subscribe_download_events_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminRead,)>(op)
         .id("Voice.subscribeVersionDownloadEvents")
         .description(
@@ -541,9 +511,7 @@ pub fn subscribe_download_events_docs(
         .response_with::<404, (), _>(|res| res.description("No such download task"))
 }
 
-pub fn delete_version_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn delete_version_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminManage,)>(op)
         .id("Voice.deleteVersion")
         .description("Delete a whisper runtime version (409 when it is the default or in use by the instance)")
@@ -552,9 +520,7 @@ pub fn delete_version_docs(
         .response_with::<409, (), _>(|res| res.description("Version is in use / is the system default"))
 }
 
-pub fn set_default_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+pub fn set_default_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
     with_permission::<(VoiceAdminManage,)>(op)
         .id("Voice.setDefaultVersion")
         .description("Set a whisper runtime version as the system default")

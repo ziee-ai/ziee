@@ -90,7 +90,7 @@ pub fn project_for_conversation_docs(op: TransformOperation) -> TransformOperati
         .description(
             "Returns the project the given conversation is currently attached to, \
              or `null` if the conversation is unfiled, doesn't exist, or belongs to \
-             a different user. Always 200 — \"unfiled\" is legitimate data.",
+             a different user. Always 200 — \"unfiled\" is legitimate data."
         )
         .response::<200, Json<Option<Project>>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
@@ -191,8 +191,9 @@ pub async fn attach_conversation(
     // handler is mounted under chat's router (via the chat-extension
     // `register_routes` hook), we fetch it from project's global
     // OnceCell instead — same registry, different access path.
-    let extension_registry = get_project_extension_registry()
-        .ok_or_else(|| AppError::internal_error("Project extension registry not initialized"))?;
+    let extension_registry = get_project_extension_registry().ok_or_else(|| {
+        AppError::internal_error("Project extension registry not initialized")
+    })?;
     // 1. Validate project ownership (404 if missing or foreign).
     let _project = Repos
         .project
@@ -278,11 +279,11 @@ pub fn attach_conversation_docs(op: TransformOperation) -> TransformOperation {
         ProjectsEdit,
         crate::modules::chat::core::permissions::ConversationsEdit,
     )>(op)
-    .id("Project.attachConversation")
-    .tag("Projects")
-    .summary("Attach (or re-attach) a conversation to this project")
-    .description(
-        "Attach an existing conversation to this project. Idempotent: re-POSTing the same \
+        .id("Project.attachConversation")
+        .tag("Projects")
+        .summary("Attach (or re-attach) a conversation to this project")
+        .description(
+            "Attach an existing conversation to this project. Idempotent: re-POSTing the same \
              (project, conv) pair refreshes the project MCP snapshot stored on the conversation. \
              Cross-project moves (attach a conversation already in project A into project B) \
              re-snapshot from B's MCP defaults via ON CONFLICT DO UPDATE.\n\
@@ -292,11 +293,11 @@ pub fn attach_conversation_docs(op: TransformOperation) -> TransformOperation {
                frontend's project chat extension calls this endpoint to file it.\n\
              - **Move existing chat into project**: sidebar drag-drop or context menu calls \
                this directly.",
-    )
-    .response::<200, Json<ConversationResponse>>()
-    .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-    .response_with::<403, (), _>(|res| res.description("Missing required permissions"))
-    .response_with::<404, (), _>(|res| res.description("Project or conversation not found"))
+        )
+        .response::<200, Json<ConversationResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<403, (), _>(|res| res.description("Missing required permissions"))
+        .response_with::<404, (), _>(|res| res.description("Project or conversation not found"))
 }
 
 /// Detach a conversation from this project ("unfile" it). Clears the
@@ -312,8 +313,9 @@ pub async fn detach_conversation(
     Path((project_id, conversation_id)): Path<(Uuid, Uuid)>,
     origin: SyncOrigin,
 ) -> ApiResult<()> {
-    let extension_registry = get_project_extension_registry()
-        .ok_or_else(|| AppError::internal_error("Project extension registry not initialized"))?;
+    let extension_registry = get_project_extension_registry().ok_or_else(|| {
+        AppError::internal_error("Project extension registry not initialized")
+    })?;
     // 1. Validate project ownership.
     let _project = Repos
         .project
@@ -391,19 +393,17 @@ pub fn detach_conversation_docs(op: TransformOperation) -> TransformOperation {
         ProjectsEdit,
         crate::modules::chat::core::permissions::ConversationsEdit,
     )>(op)
-    .id("Project.detachConversation")
-    .tag("Projects")
-    .summary("Detach a conversation from this project")
-    .description(
-        "Detach a conversation from this project (it becomes unfiled). Clears the per-conversation \
+        .id("Project.detachConversation")
+        .tag("Projects")
+        .summary("Detach a conversation from this project")
+        .description(
+            "Detach a conversation from this project (it becomes unfiled). Clears the per-conversation \
              MCP snapshot so subsequent chat use falls back to user/global MCP defaults.",
-    )
-    .response_with::<204, (), _>(|res| res.description("Conversation detached"))
-    .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-    .response_with::<403, (), _>(|res| res.description("Missing required permissions"))
-    .response_with::<404, (), _>(|res| {
-        res.description(
-            "Project not found, conversation not found, or conversation not in this project",
         )
-    })
+        .response_with::<204, (), _>(|res| res.description("Conversation detached"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<403, (), _>(|res| res.description("Missing required permissions"))
+        .response_with::<404, (), _>(|res| {
+            res.description("Project not found, conversation not found, or conversation not in this project")
+        })
 }

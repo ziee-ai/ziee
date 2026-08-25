@@ -77,11 +77,7 @@ mod tests {
         let mut sorted = names.to_vec();
         sorted.sort();
         sorted.dedup();
-        assert_eq!(
-            sorted.len(),
-            names.len(),
-            "permission NAME constants must be distinct"
-        );
+        assert_eq!(sorted.len(), names.len(), "permission NAME constants must be distinct");
     }
 
     #[test]
@@ -96,3 +92,4 @@ mod tests {
         }
     }
 }
+

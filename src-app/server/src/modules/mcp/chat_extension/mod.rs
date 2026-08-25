@@ -10,6 +10,8 @@ pub mod message_servers_routes;
 pub mod repository;
 
 // Re-export key types
-pub use approval::{ApprovalMode, ToolApprovalDecision};
+pub use approval::{
+    ApprovalMode, ToolApprovalDecision,
+};
 pub use extension::McpConfig;
 pub use repository::McpChatRepository;

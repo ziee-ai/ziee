@@ -1,5 +1,5 @@
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 use uuid::Uuid;
 
 use super::client::{Prompt, PromptResult, Resource, Tool, ToolContent};

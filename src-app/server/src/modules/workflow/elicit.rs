@@ -8,10 +8,11 @@
 //! Validation: response is shape-checked against the persisted JSON
 //! Schema before forwarding to the dispatcher.
 
+
 use aide::transform::TransformOperation;
-use axum::Json;
 use axum::extract::Path as AxumPath;
 use axum::http::StatusCode;
+use axum::Json;
 use schemars::JsonSchema;
 use serde::Serialize;
 use uuid::Uuid;
@@ -23,7 +24,9 @@ use crate::modules::workflow::permissions::WorkflowsExecute;
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::runner;
-use crate::modules::workflow::types::{ElicitationResponseRequest, PendingElicitationRecord};
+use crate::modules::workflow::types::{
+    ElicitationResponseRequest, PendingElicitationRecord,
+};
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ElicitAckResponse {
@@ -41,14 +44,11 @@ pub async fn submit_elicit(
         .await?
         .ok_or_else(|| AppError::not_found("WorkflowRun"))?;
     if row.user_id != auth.user.id {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::new(
-                StatusCode::FORBIDDEN,
-                "WORKFLOW_RUN_FORBIDDEN",
-                "workflow run is owned by another user",
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::FORBIDDEN,
+            "WORKFLOW_RUN_FORBIDDEN",
+            "workflow run is owned by another user",
+        )).into());
     }
 
     // Pending record check.
@@ -56,39 +56,30 @@ pub async fn submit_elicit(
         Some(v) => serde_json::from_value(v)
             .map_err(|e| AppError::internal_error(format!("decode pending elicit: {e}")))?,
         None => {
-            return Err::<_, (StatusCode, AppError)>(
-                (AppError::new(
-                    StatusCode::GONE,
-                    "WORKFLOW_ELICIT_STALE",
-                    "no pending elicitation for this run",
-                ))
-                .into(),
-            );
+            return Err::<_, (StatusCode, AppError)>((AppError::new(
+                StatusCode::GONE,
+                "WORKFLOW_ELICIT_STALE",
+                "no pending elicitation for this run",
+            )).into());
         }
     };
     if pending.elicitation_id != elicitation_id {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::new(
-                StatusCode::GONE,
-                "WORKFLOW_ELICIT_STALE",
-                "elicitation_id no longer pending (already resolved or replaced)",
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::GONE,
+            "WORKFLOW_ELICIT_STALE",
+            "elicitation_id no longer pending (already resolved or replaced)",
+        )).into());
     }
     // L6: reject a submission that arrives past the deadline. The
     // dispatcher's timeout arm is authoritative, but a submission landing in
     // the skew window between deadline and the timer firing should be told
     // it's too late rather than delivered as a normal response.
     if chrono::Utc::now() > pending.deadline_at {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::new(
-                StatusCode::GONE,
-                "WORKFLOW_ELICIT_STALE",
-                "elicitation deadline has passed",
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::GONE,
+            "WORKFLOW_ELICIT_STALE",
+            "elicitation deadline has passed",
+        )).into());
     }
 
     // Validate the response against the persisted schema (plan §3:
@@ -96,14 +87,11 @@ pub async fn submit_elicit(
     // validation via `validate_response_shape` (enum/pattern/const/nested/…),
     // falling back to a structural check only for a malformed authoring schema.
     if let Err(msg) = validate_response_shape(&pending.schema, &req.response) {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "WORKFLOW_ELICIT_SCHEMA_MISMATCH",
-                msg,
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "WORKFLOW_ELICIT_SCHEMA_MISMATCH",
+            msg,
+        )).into());
     }
 
     let response = req.response;
@@ -125,30 +113,24 @@ pub async fn submit_elicit(
     if registry::runner_resident(run_id) {
         return match registry::submit_elicitation_response(run_id, elicitation_id, response) {
             Ok(()) => ack(),
-            Err("stale") => Err::<_, (StatusCode, AppError)>(
-                (AppError::new(
-                    StatusCode::GONE,
-                    "WORKFLOW_ELICIT_STALE",
-                    "elicitation_id no longer pending",
-                ))
-                .into(),
-            ),
-            Err("none") => Err::<_, (StatusCode, AppError)>(
-                (AppError::new(
-                    StatusCode::GONE,
-                    "WORKFLOW_ELICIT_STALE",
-                    "no pending elicitation",
-                ))
-                .into(),
-            ),
-            Err(other) => Err::<_, (StatusCode, AppError)>(
-                (AppError::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "WORKFLOW_ELICIT_DELIVER_FAILED",
-                    format!("submit elicit: {other}"),
-                ))
-                .into(),
-            ),
+            Err("stale") => Err::<_, (StatusCode, AppError)>((AppError::new(
+                StatusCode::GONE,
+                "WORKFLOW_ELICIT_STALE",
+                "elicitation_id no longer pending",
+            ))
+            .into()),
+            Err("none") => Err::<_, (StatusCode, AppError)>((AppError::new(
+                StatusCode::GONE,
+                "WORKFLOW_ELICIT_STALE",
+                "no pending elicitation",
+            ))
+            .into()),
+            Err(other) => Err::<_, (StatusCode, AppError)>((AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "WORKFLOW_ELICIT_DELIVER_FAILED",
+                format!("submit elicit: {other}"),
+            ))
+            .into()),
         };
     }
 
@@ -157,14 +139,12 @@ pub async fn submit_elicit(
     // spawn a resume runner that consumes it at the gate (Change B). Only a
     // parked `waiting` run resumes; anything else is stale.
     if row.status != "waiting" {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::new(
-                StatusCode::GONE,
-                "WORKFLOW_ELICIT_STALE",
-                "run is not awaiting input",
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::GONE,
+            "WORKFLOW_ELICIT_STALE",
+            "run is not awaiting input",
+        ))
+        .into());
     }
     let payload = serde_json::json!({
         "step_id": pending.step_id,
@@ -386,8 +366,7 @@ mod tests {
         });
         // A real row + a null (skipped) row → OK.
         assert!(
-            validate_response_shape(&schema, &json!({"extractions": [{"id": "10.1/x"}, null]}))
-                .is_ok(),
+            validate_response_shape(&schema, &json!({"extractions": [{"id": "10.1/x"}, null]})).is_ok(),
             "a null array element must pass when items allows the null type"
         );
         // An OBJECT row still must have `id` (null rows are the only exception).

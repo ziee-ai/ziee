@@ -15,8 +15,8 @@
 //      project chat extension delegates to this via the registry
 //      fan-out so it never references the file module directly).
 
-use ai_providers::ContentBlock;
 use aide::axum::ApiRouter;
+use ai_providers::ContentBlock;
 use async_trait::async_trait;
 use linkme::distributed_slice;
 use sqlx::{PgPool, Postgres, Transaction};

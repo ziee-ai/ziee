@@ -13,7 +13,11 @@
 //! local providers.
 
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, http::StatusCode};
+use axum::{
+    Json, debug_handler,
+    extract::Path,
+    http::StatusCode,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -385,10 +389,7 @@ mod tests {
         assert_eq!(out.len(), 1);
         let m = &out[0];
         assert_eq!(m.id, "anthropic/claude-sonnet-5");
-        assert_eq!(
-            m.display_name.as_deref(),
-            Some("Anthropic: Claude Sonnet 5")
-        );
+        assert_eq!(m.display_name.as_deref(), Some("Anthropic: Claude Sonnet 5"));
         assert_eq!(m.context_length, Some(200000));
         assert_eq!(m.max_output_tokens, Some(64000));
         assert_eq!(m.supports_vision, Some(true));
@@ -464,17 +465,9 @@ mod tests {
         // The dedup/empty filter applies to the `display_name` branch too: a label
         // identical to the id (or empty) is not a useful display name → None.
         let same = json!({ "data": [{ "id": "claude-x", "display_name": "claude-x" }] });
-        assert!(
-            parse_live_models("anthropic", &same)[0]
-                .display_name
-                .is_none()
-        );
+        assert!(parse_live_models("anthropic", &same)[0].display_name.is_none());
         let empty = json!({ "data": [{ "id": "claude-y", "display_name": "" }] });
-        assert!(
-            parse_live_models("anthropic", &empty)[0]
-                .display_name
-                .is_none()
-        );
+        assert!(parse_live_models("anthropic", &empty)[0].display_name.is_none());
     }
 
     #[test]

@@ -17,6 +17,7 @@ pub struct BackgroundUse;
 impl PermissionCheck for BackgroundUse {
     const NAME: &'static str = "BackgroundUse";
     const PERMISSION: &'static str = "background::use";
-    const DESCRIPTION: &'static str = "Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.";
+    const DESCRIPTION: &'static str =
+        "Use the built-in background-run tools to spawn, check, and collect detached sub-agent work.";
     const MODULE: &'static str = "background";
 }

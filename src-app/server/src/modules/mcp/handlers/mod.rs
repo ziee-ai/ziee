@@ -73,8 +73,8 @@ pub(crate) fn validate_sandbox_fields_create(
     req: &CreateMcpServerRequest,
 ) -> Result<(), AppError> {
     validate_sandbox_flavor(req.sandbox_flavor.as_deref())?;
-    let sandboxed =
-        req.transport_type == TransportType::Stdio && req.run_in_sandbox.unwrap_or(false);
+    let sandboxed = req.transport_type == TransportType::Stdio
+        && req.run_in_sandbox.unwrap_or(false);
     if req.transport_type == TransportType::Stdio && !sandboxed {
         if let Some(cmd) = req.command.as_deref() {
             require_host_command(cmd)?;

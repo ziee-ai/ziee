@@ -11,12 +11,15 @@
 //! shape) + the `ProgressEmitter` trait the runner + dispatchers emit
 //! into.
 
+
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::modules::sync::{Audience, SyncAction, SyncEntity, publish as sync_publish};
+use crate::modules::sync::{
+    Audience, SyncAction, SyncEntity, publish as sync_publish,
+};
 use crate::modules::workflow::permissions::{WorkflowsManageSystem, WorkflowsRead};
 use crate::modules::workflow::types::ItemProgress;
 
@@ -55,12 +58,7 @@ pub fn emit_system_workflow(action: SyncAction, workflow_id: Uuid, origin: Optio
 /// Lifecycle event for one workflow_run row (run.started /
 /// run.completed / run.failed / run.cancelled). Notify-only —
 /// rich progress goes through the per-run SSE channel.
-pub fn emit_workflow_run(
-    action: SyncAction,
-    run_id: Uuid,
-    owner_user_id: Uuid,
-    origin: Option<Uuid>,
-) {
+pub fn emit_workflow_run(action: SyncAction, run_id: Uuid, owner_user_id: Uuid, origin: Option<Uuid>) {
     sync_publish(
         SyncEntity::WorkflowRun,
         action,
@@ -432,40 +430,26 @@ mod agent_activity_serde_tests {
         assert_eq!(v["kind"], "tool_call", "kind snake_case: {v}");
         assert_eq!(v["status"], "running", "status snake_case: {v}");
         assert_eq!(v["tool"], "web_search", "tool carried: {v}");
-        let back: ProgressKind = serde_json::from_value(v).expect("deserialize AgentActivity");
+        let back: ProgressKind =
+            serde_json::from_value(v).expect("deserialize AgentActivity");
         assert_eq!(back, ev, "AgentActivity round-trips to an equal value");
     }
 
     #[test]
     fn existing_variants_still_round_trip() {
         for ev in [
-            ProgressKind::Status {
-                message: "hi".into(),
-            },
+            ProgressKind::Status { message: "hi".into() },
             ProgressKind::Bar { fraction: 0.4 },
-            ProgressKind::Counter {
-                current: 2.0,
-                total: 5.0,
-                unit: Some("files".into()),
-            },
-            ProgressKind::Log {
-                line: "log line".into(),
-            },
-            ProgressKind::Phase {
-                name: "compile".into(),
-                index: Some(1),
-                total: Some(3),
-            },
+            ProgressKind::Counter { current: 2.0, total: 5.0, unit: Some("files".into()) },
+            ProgressKind::Log { line: "log line".into() },
+            ProgressKind::Phase { name: "compile".into(), index: Some(1), total: Some(3) },
         ] {
             let v = serde_json::to_value(&ev).expect("serialize variant");
             let back: ProgressKind =
                 serde_json::from_value(v.clone()).expect("deserialize variant");
             assert_eq!(back, ev, "variant round-trips unchanged: {v}");
             // The new variant must not have displaced the existing tags.
-            assert_ne!(
-                v["type"], "agent_activity",
-                "existing variant keeps its tag: {v}"
-            );
+            assert_ne!(v["type"], "agent_activity", "existing variant keeps its tag: {v}");
         }
     }
 }

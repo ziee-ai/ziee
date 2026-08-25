@@ -133,7 +133,10 @@ pub fn csl_identifiers(csl: &Value) -> (Option<String>, Option<String>, Option<S
         .get("DOI")
         .and_then(|v| v.as_str())
         .and_then(normalize_doi);
-    let pmid = csl.get("PMID").and_then(|v| v.as_str()).map(str::to_string);
+    let pmid = csl
+        .get("PMID")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
     let pmcid = csl
         .get("PMCID")
         .and_then(|v| v.as_str())
@@ -303,11 +306,7 @@ async fn idconv_lookup(id: &str) -> Result<IdconvResult, AppError> {
         Some(rec) if rec.get("errmsg").is_some() || rec.get("status").is_some() => {
             Ok(IdconvResult::NotFound)
         }
-        Some(rec) => match rec
-            .get("doi")
-            .and_then(|d| d.as_str())
-            .and_then(normalize_doi)
-        {
+        Some(rec) => match rec.get("doi").and_then(|d| d.as_str()).and_then(normalize_doi) {
             Some(doi) => Ok(IdconvResult::Doi(doi)),
             None => Ok(IdconvResult::RecordNoDoi),
         },
@@ -355,11 +354,7 @@ async fn crossref_title_to_doi(title: &str) -> Result<Option<String>, AppError> 
             .and_then(|t| t.as_str())
             .unwrap_or("");
         if verify::title_matches(title, cand_title) {
-            if let Some(doi) = it
-                .get("DOI")
-                .and_then(|d| d.as_str())
-                .and_then(normalize_doi)
-            {
+            if let Some(doi) = it.get("DOI").and_then(|d| d.as_str()).and_then(normalize_doi) {
                 return Ok(Some(doi));
             }
         }
@@ -380,10 +375,7 @@ pub struct Resolved {
 
 impl Resolved {
     fn unverified(csl: Option<Value>) -> Self {
-        let (doi, pmid, pmcid) = csl
-            .as_ref()
-            .map(csl_identifiers)
-            .unwrap_or((None, None, None));
+        let (doi, pmid, pmcid) = csl.as_ref().map(csl_identifiers).unwrap_or((None, None, None));
         Self {
             csl,
             status: VerificationStatus::Unverified,
@@ -406,10 +398,12 @@ pub async fn resolve_input(input: &CitationInput) -> Result<Resolved, AppError> 
         .or_else(|| input.csl.as_ref().and_then(csl_title));
 
     // Explicit/auto identifier.
-    let id_str = input
-        .id
-        .clone()
-        .or_else(|| input.raw.as_ref().and_then(|r| extract_doi_from_text(r)));
+    let id_str = input.id.clone().or_else(|| {
+        input
+            .raw
+            .as_ref()
+            .and_then(|r| extract_doi_from_text(r))
+    });
 
     if let Some(id) = id_str.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         let kind = match input.kind.as_deref() {
@@ -556,7 +550,10 @@ async fn resolve_by_kind(
 
 /// Resolve a DOI and decide verified/mismatch/not_found, cross-checking the
 /// claimed title against the resolved record's title when provided.
-async fn verify_against_doi(doi: &str, claimed_title: Option<&str>) -> Result<Resolved, AppError> {
+async fn verify_against_doi(
+    doi: &str,
+    claimed_title: Option<&str>,
+) -> Result<Resolved, AppError> {
     match resolve_doi_csl(doi).await? {
         None => Ok(Resolved {
             csl: None,
@@ -628,15 +625,9 @@ mod tests {
     #[test]
     fn arxiv_doi_construction() {
         assert_eq!(arxiv_to_doi("2101.12345"), "10.48550/arXiv.2101.12345");
-        assert_eq!(
-            arxiv_to_doi("arXiv:2101.12345"),
-            "10.48550/arXiv.2101.12345"
-        );
+        assert_eq!(arxiv_to_doi("arXiv:2101.12345"), "10.48550/arXiv.2101.12345");
         // Old-style ids keep their case (case-significant at DataCite).
-        assert_eq!(
-            arxiv_to_doi("math.GT/0309136"),
-            "10.48550/arXiv.math.GT/0309136"
-        );
+        assert_eq!(arxiv_to_doi("math.GT/0309136"), "10.48550/arXiv.math.GT/0309136");
     }
 
     #[test]
@@ -658,10 +649,8 @@ mod tests {
     #[test]
     fn extract_doi_from_reference_string() {
         assert_eq!(
-            extract_doi_from_text(
-                "Smith J. Title. Journal. 2020. doi:10.1038/s41586-020-1, retrieved"
-            )
-            .as_deref(),
+            extract_doi_from_text("Smith J. Title. Journal. 2020. doi:10.1038/s41586-020-1, retrieved")
+                .as_deref(),
             Some("10.1038/s41586-020-1")
         );
         assert_eq!(extract_doi_from_text("no doi here"), None);

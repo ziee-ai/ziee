@@ -70,11 +70,7 @@ fn binary_name(platform: &str) -> &'static str {
 
 /// Release archive extension for a platform (`zip` on Windows, else `tar.gz`).
 fn archive_ext(platform: &str) -> &'static str {
-    if platform == "windows" {
-        "zip"
-    } else {
-        "tar.gz"
-    }
+    if platform == "windows" { "zip" } else { "tar.gz" }
 }
 
 /// The release asset filename for one (platform, arch, backend):
@@ -133,10 +129,7 @@ pub fn asset_size_for_backend(
     assets: &[AssetInfo],
 ) -> Option<u64> {
     let target = archive_name(platform, arch, backend);
-    assets
-        .iter()
-        .find(|a| a.name == target)
-        .map(|a| a.size_bytes)
+    assets.iter().find(|a| a.name == target).map(|a| a.size_bytes)
 }
 
 /// One upstream release, reduced to what update-checking needs.
@@ -529,11 +522,7 @@ impl WhisperDownloader {
 
         let mut file = File::create(dest)?;
         let mut received: u64 = 0;
-        let total_for_cb = if total_size > 0 {
-            Some(total_size)
-        } else {
-            None
-        };
+        let total_for_cb = if total_size > 0 { Some(total_size) } else { None };
         if let Some(cb) = progress {
             cb(0, total_for_cb);
         }
@@ -580,11 +569,7 @@ impl WhisperDownloader {
             let file_name = entry
                 .path()
                 .ok()
-                .and_then(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.to_string())
-                })
+                .and_then(|p| p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string()))
                 .unwrap_or_default();
             if file_name.is_empty() {
                 continue;
@@ -616,8 +601,7 @@ impl WhisperDownloader {
                     _ => {
                         tracing::warn!(
                             "Skipping unsafe or non-library symlink entry in archive: {} -> {:?}",
-                            file_name,
-                            link
+                            file_name, link
                         );
                     }
                 }
@@ -704,11 +688,7 @@ impl WhisperDownloader {
             if !version_dir.is_dir() || version_dir.file_name().unwrap() == ".tmp" {
                 continue;
             }
-            let version = version_dir
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
+            let version = version_dir.file_name().unwrap().to_string_lossy().to_string();
 
             for build_entry in std::fs::read_dir(&version_dir)? {
                 let build_entry = build_entry?;
@@ -842,33 +822,18 @@ mod tests {
     #[test]
     fn asset_backend_parses_and_rejects_siblings() {
         let assets = vec![
-            AssetInfo {
-                name: "whisper-server-linux-x86_64-cpu.tar.gz".into(),
-                size_bytes: 10,
-            },
-            AssetInfo {
-                name: "whisper-server-linux-x86_64-cpu.tar.gz.sha256".into(),
-                size_bytes: 1,
-            },
-            AssetInfo {
-                name: "whisper-server-macos-aarch64-metal.tar.gz".into(),
-                size_bytes: 20,
-            },
+            AssetInfo { name: "whisper-server-linux-x86_64-cpu.tar.gz".into(), size_bytes: 10 },
+            AssetInfo { name: "whisper-server-linux-x86_64-cpu.tar.gz.sha256".into(), size_bytes: 1 },
+            AssetInfo { name: "whisper-server-macos-aarch64-metal.tar.gz".into(), size_bytes: 20 },
         ];
         // Only the matching-host archive is picked up; the `.sha256` sidecar and
         // the other-platform archive are rejected.
-        assert_eq!(
-            available_backends("linux", "x86_64", &assets),
-            vec!["cpu".to_string()]
-        );
+        assert_eq!(available_backends("linux", "x86_64", &assets), vec!["cpu".to_string()]);
         assert_eq!(
             asset_size_for_backend("linux", "x86_64", "cpu", &assets),
             Some(10)
         );
-        assert_eq!(
-            asset_size_for_backend("linux", "x86_64", "cuda", &assets),
-            None
-        );
+        assert_eq!(asset_size_for_backend("linux", "x86_64", "cuda", &assets), None);
     }
 
     #[test]

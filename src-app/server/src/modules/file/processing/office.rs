@@ -1,8 +1,8 @@
 // Office document processor
 
-use super::ProcessingResult;
 use super::pdf::PdfProcessor;
 use super::traits::{ContentProcessor, ImageGenerator};
+use super::ProcessingResult;
 use crate::common::AppError;
 use crate::modules::file::utils::{pandoc, spreadsheet};
 use async_trait::async_trait;
@@ -34,14 +34,19 @@ impl OfficeProcessor {
                 .create_new(true)
                 .mode(0o600)
                 .open(&temp_path)
-                .map_err(|e| AppError::internal_with_id(e))?;
+                .map_err(|e| {
+                    AppError::internal_with_id(e)
+                })?;
             use std::io::Write;
-            file.write_all(data)
-                .map_err(|e| AppError::internal_with_id(e))?;
+            file.write_all(data).map_err(|e| {
+                AppError::internal_with_id(e)
+            })?;
         }
         #[cfg(not(unix))]
         {
-            fs::write(&temp_path, data).map_err(|e| AppError::internal_with_id(e))?;
+            fs::write(&temp_path, data).map_err(|e| {
+                AppError::internal_with_id(e)
+            })?;
         }
 
         Ok(temp_path)
@@ -57,18 +62,14 @@ impl OfficeProcessor {
     /// Detect file extension from MIME type
     fn extension_from_mime(mime_type: &str) -> Option<&str> {
         match mime_type {
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
-                Some("docx")
-            }
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Some("docx"),
             "application/msword" => Some("doc"),
             "application/rtf" | "text/rtf" => Some("rtf"),
             "application/vnd.oasis.opendocument.text" => Some("odt"),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Some("xlsx"),
             "application/vnd.ms-excel" => Some("xls"),
             "application/vnd.oasis.opendocument.spreadsheet" => Some("ods"),
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
-                Some("pptx")
-            }
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Some("pptx"),
             "application/vnd.ms-powerpoint" => Some("ppt"),
             _ => None,
         }
@@ -90,11 +91,11 @@ impl ContentProcessor for OfficeProcessor {
                 | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" // .xlsx
                 | "application/vnd.ms-excel" // .xls
                 | "application/vnd.oasis.opendocument.spreadsheet" // .ods
-                                                                   // NOTE: PPTX / PPT are NOT supported. Pandoc 3.x cannot
-                                                                   // read PowerPoint formats as INPUT; office2pdf 0.6.0
-                                                                   // (the only pure-Rust PPTX renderer found) is published
-                                                                   // broken against quick-xml 0.38.4. Reach back here when
-                                                                   // a viable converter exists.
+            // NOTE: PPTX / PPT are NOT supported. Pandoc 3.x cannot
+            // read PowerPoint formats as INPUT; office2pdf 0.6.0
+            // (the only pure-Rust PPTX renderer found) is published
+            // broken against quick-xml 0.38.4. Reach back here when
+            // a viable converter exists.
         )
     }
 
@@ -112,9 +113,9 @@ impl ContentProcessor for OfficeProcessor {
                 let temp_path = Self::write_temp_file(data, extension)?;
 
                 // Create temp directory for PDF output
-                let temp_dir =
-                    std::env::temp_dir().join(format!("office_text_pdf_{}", Uuid::new_v4()));
-                fs::create_dir_all(&temp_dir).map_err(|e| AppError::internal_with_id(e))?;
+                let temp_dir = std::env::temp_dir().join(format!("office_text_pdf_{}", Uuid::new_v4()));
+                fs::create_dir_all(&temp_dir)
+                    .map_err(|e| AppError::internal_with_id(e))?;
 
                 let temp_pdf = temp_dir.join("document.pdf");
 
@@ -127,16 +128,15 @@ impl ContentProcessor for OfficeProcessor {
                 match result {
                     Ok(_) => {
                         // Read the generated PDF
-                        let pdf_data = fs::read(&temp_pdf).map_err(|e| {
-                            let _ = fs::remove_dir_all(&temp_dir);
-                            AppError::internal_with_id(e)
-                        })?;
+                        let pdf_data = fs::read(&temp_pdf)
+                            .map_err(|e| {
+                                let _ = fs::remove_dir_all(&temp_dir);
+                                AppError::internal_with_id(e)
+                            })?;
 
                         // Use PDF processor to extract text per-page
                         let pdf_processor = PdfProcessor;
-                        let text_pages = pdf_processor
-                            .extract_text(&pdf_data, "application/pdf")
-                            .await;
+                        let text_pages = pdf_processor.extract_text(&pdf_data, "application/pdf").await;
 
                         // Clean up temp directory
                         let _ = fs::remove_dir_all(&temp_dir);
@@ -144,20 +144,11 @@ impl ContentProcessor for OfficeProcessor {
                         match text_pages {
                             Ok(pages) => {
                                 let total_chars: usize = pages.iter().map(|p| p.len()).sum();
-                                tracing::info!(
-                                    "Extracted {} pages ({} total chars) from {} document via PDF conversion",
-                                    pages.len(),
-                                    total_chars,
-                                    extension
-                                );
+                                tracing::info!("Extracted {} pages ({} total chars) from {} document via PDF conversion", pages.len(), total_chars, extension);
                                 Ok(pages)
                             }
                             Err(e) => {
-                                tracing::warn!(
-                                    "Failed to extract text from {} PDF: {}",
-                                    extension,
-                                    e
-                                );
+                                tracing::warn!("Failed to extract text from {} PDF: {}", extension, e);
                                 Ok(vec![])
                             }
                         }
@@ -181,11 +172,7 @@ impl ContentProcessor for OfficeProcessor {
                 match result {
                     Ok(pages) => {
                         let total_chars: usize = pages.iter().map(|p| p.len()).sum();
-                        tracing::info!(
-                            "Extracted {} pages ({} total chars) from XLSX spreadsheet",
-                            pages.len(),
-                            total_chars
-                        );
+                        tracing::info!("Extracted {} pages ({} total chars) from XLSX spreadsheet", pages.len(), total_chars);
                         Ok(pages)
                     }
                     Err(e) => {
@@ -205,11 +192,7 @@ impl ContentProcessor for OfficeProcessor {
                 match result {
                     Ok(pages) => {
                         let total_chars: usize = pages.iter().map(|p| p.len()).sum();
-                        tracing::info!(
-                            "Extracted {} pages ({} total chars) from XLS spreadsheet",
-                            pages.len(),
-                            total_chars
-                        );
+                        tracing::info!("Extracted {} pages ({} total chars) from XLS spreadsheet", pages.len(), total_chars);
                         Ok(pages)
                     }
                     Err(e) => {
@@ -229,11 +212,7 @@ impl ContentProcessor for OfficeProcessor {
                 match result {
                     Ok(pages) => {
                         let total_chars: usize = pages.iter().map(|p| p.len()).sum();
-                        tracing::info!(
-                            "Extracted {} pages ({} total chars) from ODS spreadsheet",
-                            pages.len(),
-                            total_chars
-                        );
+                        tracing::info!("Extracted {} pages ({} total chars) from ODS spreadsheet", pages.len(), total_chars);
                         Ok(pages)
                     }
                     Err(e) => {
@@ -335,7 +314,8 @@ impl ImageGenerator for OfficeProcessor {
                 | "application/msword"
                 | "application/rtf"
                 | "text/rtf"
-                | "application/vnd.oasis.opendocument.text" // PPTX / PPT not listed — see the note in `can_process()`.
+                | "application/vnd.oasis.opendocument.text"
+            // PPTX / PPT not listed — see the note in `can_process()`.
         )
     }
 
@@ -350,7 +330,9 @@ impl ImageGenerator for OfficeProcessor {
 
         let temp_path = Self::write_temp_file(data, extension)?;
         let temp_dir = std::env::temp_dir().join(format!("office_pdf_{}", Uuid::new_v4()));
-        fs::create_dir_all(&temp_dir).map_err(|e| AppError::internal_with_id(e))?;
+        fs::create_dir_all(&temp_dir).map_err(|e| {
+            AppError::internal_with_id(e)
+        })?;
         let temp_pdf = temp_dir.join("document.pdf");
 
         let result = pandoc::convert_to_pdf(&temp_path, &temp_pdf).await;
@@ -397,10 +379,7 @@ mod geometry_tests {
             )
             .await
             .unwrap();
-        assert!(
-            g.is_empty(),
-            "spreadsheet geometry must be empty (page-level fallback)"
-        );
+        assert!(g.is_empty(), "spreadsheet geometry must be empty (page-level fallback)");
     }
 
     #[tokio::test]

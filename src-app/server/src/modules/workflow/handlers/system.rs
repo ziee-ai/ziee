@@ -3,10 +3,11 @@
 //! LIST + GET + UPDATE + DELETE + install-from-hub re-bind + multipart
 //! import + group assignment. Mirrors `skill::handlers` (system half).
 
+
 use aide::transform::TransformOperation;
-use axum::Json;
 use axum::extract::Path as AxumPath;
 use axum::http::StatusCode;
+use axum::Json;
 use uuid::Uuid;
 
 use crate::common::{ApiResult, AppError};
@@ -29,12 +30,9 @@ pub async fn list_system_workflows(
     // workflows, unconditionally. Must NOT use the group-access-filtered
     // `list_for_user` (with nil user that hides any system workflow already
     // assigned to a group). Mirrors skill's `list_system`.
-    let workflows = repository::list_system(
-        Repos.pool(),
-        crate::common::PAGINATION_MAX_PER_PAGE as i64,
-        0,
-    )
-    .await?;
+    let workflows =
+        repository::list_system(Repos.pool(), crate::common::PAGINATION_MAX_PER_PAGE as i64, 0)
+            .await?;
     Ok((StatusCode::OK, Json(WorkflowListResponse { workflows })))
 }
 
@@ -54,14 +52,11 @@ pub async fn get_system_workflow(
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
     if wf.scope != "system" {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::new(
-                StatusCode::FORBIDDEN,
-                "WORKFLOW_NOT_SYSTEM",
-                "workflow is not system-scope",
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::FORBIDDEN,
+            "WORKFLOW_NOT_SYSTEM",
+            "workflow is not system-scope",
+        )).into());
     }
     Ok((StatusCode::OK, Json(wf)))
 }
@@ -77,19 +72,16 @@ pub fn get_system_workflow_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_system_workflow(
     _auth: RequirePermissions<(WorkflowsManageSystem,)>,
     AxumPath(id): AxumPath<Uuid>,
-) -> ApiResult<()> {
+) -> ApiResult<()>  {
     let wf = repository::find_by_id(Repos.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("Workflow"))?;
     if wf.scope != "system" {
-        return Err::<_, (StatusCode, AppError)>(
-            (AppError::new(
-                StatusCode::FORBIDDEN,
-                "WORKFLOW_NOT_SYSTEM",
-                "use user-scope delete for non-system workflows",
-            ))
-            .into(),
-        );
+        return Err::<_, (StatusCode, AppError)>((AppError::new(
+            StatusCode::FORBIDDEN,
+            "WORKFLOW_NOT_SYSTEM",
+            "use user-scope delete for non-system workflows",
+        )).into());
     }
     // Best-effort rm the extracted bundle dir FIRST (mirrors skill +
     // user-scope workflow delete). Ignore NotFound.
@@ -205,10 +197,7 @@ pub async fn get_group_system_workflows(
         return Err::<_, (StatusCode, AppError)>(AppError::not_found("Group").into());
     }
     let workflows = repository::get_system_workflows_for_group(Repos.pool(), group_id).await?;
-    Ok((
-        StatusCode::OK,
-        Json(GroupSystemWorkflowsResponse { workflows }),
-    ))
+    Ok((StatusCode::OK, Json(GroupSystemWorkflowsResponse { workflows })))
 }
 
 pub fn get_group_system_workflows_docs(op: TransformOperation) -> TransformOperation {
@@ -216,9 +205,7 @@ pub fn get_group_system_workflows_docs(op: TransformOperation) -> TransformOpera
         .id("Group.getSystemWorkflows")
         .tag("Admin - Groups")
         .summary("Get all system workflows assigned to a group")
-        .description(
-            "Get all system workflows assigned to a group (for the User Groups assignment widget)",
-        )
+        .description("Get all system workflows assigned to a group (for the User Groups assignment widget)")
         .response::<200, Json<GroupSystemWorkflowsResponse>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }
@@ -245,7 +232,8 @@ pub async fn update_group_system_workflows(
     // fires BEFORE any write, so the group_workflows scope trigger stays a
     // backstop and never surfaces as a 500.
     if !new_ids.is_empty() {
-        let system_count = repository::count_system_workflows_in(Repos.pool(), &desired).await?;
+        let system_count =
+            repository::count_system_workflows_in(Repos.pool(), &desired).await?;
         if system_count as usize != new_ids.len() {
             return Err::<_, (StatusCode, AppError)>(
                 AppError::bad_request(
@@ -261,16 +249,10 @@ pub async fn update_group_system_workflows(
     // whose group membership actually changed.
     let current = repository::get_system_workflows_for_group(Repos.pool(), group_id).await?;
     let current_ids: HashSet<Uuid> = current.iter().map(|w| w.id).collect();
-    let affected: HashSet<Uuid> = new_ids
-        .symmetric_difference(&current_ids)
-        .copied()
-        .collect();
+    let affected: HashSet<Uuid> = new_ids.symmetric_difference(&current_ids).copied().collect();
 
     // Apply the full replace atomically (no partial-write access-loss window).
-    Repos
-        .workflow
-        .set_group_system_workflows(group_id, &desired)
-        .await?;
+    Repos.workflow.set_group_system_workflows(group_id, &desired).await?;
 
     for workflow_id in affected {
         crate::modules::workflow::events::emit_system_workflow(
@@ -281,10 +263,7 @@ pub async fn update_group_system_workflows(
     }
 
     let workflows = repository::get_system_workflows_for_group(Repos.pool(), group_id).await?;
-    Ok((
-        StatusCode::OK,
-        Json(GroupSystemWorkflowsResponse { workflows }),
-    ))
+    Ok((StatusCode::OK, Json(GroupSystemWorkflowsResponse { workflows })))
 }
 
 pub fn update_group_system_workflows_docs(op: TransformOperation) -> TransformOperation {

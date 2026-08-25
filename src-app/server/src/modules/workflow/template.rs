@@ -26,6 +26,7 @@
 //! Unknown variable / missing field / out-of-bounds index / field-on-
 //! non-object → the documented `TemplateError` (§4.5).
 
+
 use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
@@ -80,7 +81,7 @@ enum Access {
 
 #[derive(Debug)]
 struct ParsedExpr {
-    head: String,          // "inputs" or "<step_id>"
+    head: String,         // "inputs" or "<step_id>"
     accesses: Vec<Access>, // full chain after the head
     filter: Filter,
 }
@@ -168,9 +169,9 @@ fn parse_expr(s: &str) -> Result<ParsedExpr, TemplateError> {
                 .find(']')
                 .ok_or_else(|| TemplateError::InvalidSyntax(format!("unbalanced [ in '{s}'")))?;
             let idx_str = stripped[..close].trim();
-            let idx: usize = idx_str.parse().map_err(|_| {
-                TemplateError::InvalidSyntax(format!("non-numeric index '{idx_str}'"))
-            })?;
+            let idx: usize = idx_str
+                .parse()
+                .map_err(|_| TemplateError::InvalidSyntax(format!("non-numeric index '{idx_str}'")))?;
             accesses.push(Access::Index(idx));
             rest = &stripped[close + 1..];
         } else {
@@ -250,11 +251,7 @@ fn resolve_expr(expr: &ParsedExpr, ctx: &RunContext) -> Result<Value, TemplateEr
 /// Walk a chain of `.field` / `[N]` accesses against a starting JSON
 /// value. Object field access + array indexing; out-of-bounds / missing
 /// field / wrong-type → the documented error per §4.5.
-fn walk_value(
-    start: Value,
-    accesses: &[Access],
-    expr: &ParsedExpr,
-) -> Result<Value, TemplateError> {
+fn walk_value(start: Value, accesses: &[Access], expr: &ParsedExpr) -> Result<Value, TemplateError> {
     let mut cur = start;
     for acc in accesses {
         match acc {
@@ -436,10 +433,7 @@ mod tests {
     fn fake_ctx() -> RunContext {
         let mut inputs = HashMap::new();
         inputs.insert("topic".to_string(), Value::String("LLMs".to_string()));
-        inputs.insert(
-            "limit".to_string(),
-            Value::Number(serde_json::Number::from(5)),
-        );
+        inputs.insert("limit".to_string(), Value::Number(serde_json::Number::from(5)));
         RunContext {
             run_id: uuid::Uuid::nil(),
             user_id: uuid::Uuid::nil(),
@@ -563,7 +557,8 @@ mod tests {
 
     #[test]
     fn scan_var_refs_dedupes_and_returns_leading_field() {
-        let refs = scan_var_refs("{{ inputs.a }} and {{ inputs.a }} and {{ s1.output }}").unwrap();
+        let refs = scan_var_refs("{{ inputs.a }} and {{ inputs.a }} and {{ s1.output }}")
+            .unwrap();
         assert_eq!(
             refs,
             vec![
@@ -583,8 +578,10 @@ mod tests {
     #[test]
     fn index_on_input_array() {
         let mut ctx = fake_ctx();
-        ctx.inputs
-            .insert("items".to_string(), serde_json::json!(["a", "b", "c"]));
+        ctx.inputs.insert(
+            "items".to_string(),
+            serde_json::json!(["a", "b", "c"]),
+        );
         let s = render("first={{ inputs.items[1] }}", &ctx).unwrap();
         assert_eq!(s, "first=b");
     }
@@ -661,10 +658,7 @@ mod tests {
             ParsedAs::Json,
         );
         let err = render("{{ gen.output.nope }}", &ctx).unwrap_err();
-        assert!(
-            matches!(err, TemplateError::MissingField { .. }),
-            "got {err:?}"
-        );
+        assert!(matches!(err, TemplateError::MissingField { .. }), "got {err:?}");
     }
 
     #[test]
@@ -672,10 +666,7 @@ mod tests {
         let mut ctx = unique_ctx();
         put_step_output(&mut ctx, "fan", &serde_json::json!(["a"]), ParsedAs::Json);
         let err = render("{{ fan.output[5] }}", &ctx).unwrap_err();
-        assert!(
-            matches!(err, TemplateError::IndexOutOfBounds { .. }),
-            "got {err:?}"
-        );
+        assert!(matches!(err, TemplateError::IndexOutOfBounds { .. }), "got {err:?}");
     }
 
     #[test]
@@ -688,10 +679,7 @@ mod tests {
             ParsedAs::Json,
         );
         let err = render("{{ gen.output.title }}", &ctx).unwrap_err();
-        assert!(
-            matches!(err, TemplateError::NotAnObject { .. }),
-            "got {err:?}"
-        );
+        assert!(matches!(err, TemplateError::NotAnObject { .. }), "got {err:?}");
     }
 
     #[test]
@@ -706,10 +694,7 @@ mod tests {
             ParsedAs::Json,
         );
         let s = render("{{ x.output.items }}", &ctx).unwrap();
-        assert_eq!(
-            serde_json::from_str::<Value>(&s).unwrap(),
-            serde_json::json!(["q1", "q2"])
-        );
+        assert_eq!(serde_json::from_str::<Value>(&s).unwrap(), serde_json::json!(["q1", "q2"]));
     }
 
     // ── H4: per-item binding for llm_map ──────────────────────────────
@@ -777,11 +762,7 @@ mod tests {
         ];
         for tpl in accepted {
             let r = render(tpl, &ctx);
-            assert!(
-                r.is_ok(),
-                "template '{tpl}' failed to resolve: {:?}",
-                r.err()
-            );
+            assert!(r.is_ok(), "template '{tpl}' failed to resolve: {:?}", r.err());
         }
     }
 }

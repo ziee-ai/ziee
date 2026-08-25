@@ -20,9 +20,7 @@ pub struct SamplingMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SamplingContent {
-    Text {
-        text: String,
-    },
+    Text { text: String },
     Image {
         /// Base64-encoded binary data (e.g. a screenshot, chart, or PDF page)
         data: String,
@@ -103,9 +101,7 @@ mod tests {
 
     #[test]
     fn test_sampling_content_text_roundtrip() {
-        let content = SamplingContent::Text {
-            text: "hello".to_string(),
-        };
+        let content = SamplingContent::Text { text: "hello".to_string() };
         let json = serde_json::to_string(&content).unwrap();
         let parsed: SamplingContent = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, SamplingContent::Text { .. }));

@@ -154,20 +154,14 @@ async fn discover_token_endpoint(client: &Client, as_base: &str) -> Result<Strin
         format!("{base}/.well-known/openid-configuration"),
     ];
     for url in candidates.iter() {
-        let resp = match client
-            .get(url)
-            .header("Accept", "application/json")
-            .send()
-            .await
-        {
+        let resp = match client.get(url).header("Accept", "application/json").send().await {
             Ok(r) if r.status().is_success() => r,
             _ => continue,
         };
         if let Ok(md) = resp.json::<AuthServerMetadata>().await
-            && let Some(ep) = md.token_endpoint
-        {
-            return Ok(ep);
-        }
+            && let Some(ep) = md.token_endpoint {
+                return Ok(ep);
+            }
     }
     // Last-resort default per RFC 8414 (token endpoint at /token).
     Ok(format!("{base}/token"))
@@ -182,10 +176,9 @@ async fn request_client_credentials_token(
 ) -> Result<StoredToken, AppError> {
     let mut form = vec![("grant_type", "client_credentials".to_string())];
     if let Some(scope) = &config.scopes
-        && !scope.is_empty()
-    {
-        form.push(("scope", scope.clone()));
-    }
+        && !scope.is_empty() {
+            form.push(("scope", scope.clone()));
+        }
     if let Some(resource) = &config.resource {
         form.push(("resource", resource.clone()));
     }
@@ -219,9 +212,7 @@ async fn request_client_credentials_token(
     Ok(StoredToken {
         access_token: tok.access_token,
         refresh_token: tok.refresh_token,
-        expires_at: tok
-            .expires_in
-            .map(|s| Instant::now() + Duration::from_secs(s)),
+        expires_at: tok.expires_in.map(|s| Instant::now() + Duration::from_secs(s)),
     })
 }
 
@@ -272,16 +263,13 @@ pub async fn refresh_token(
             .await
             .map_err(|e| AppError::internal_error(format!("OAuth refresh failed: {e}")))?;
         if resp.status().is_success()
-            && let Ok(tok) = resp.json::<TokenResponse>().await
-        {
-            return Ok(StoredToken {
-                access_token: tok.access_token,
-                refresh_token: tok.refresh_token.or_else(|| current.refresh_token.clone()),
-                expires_at: tok
-                    .expires_in
-                    .map(|s| Instant::now() + Duration::from_secs(s)),
-            });
-        }
+            && let Ok(tok) = resp.json::<TokenResponse>().await {
+                return Ok(StoredToken {
+                    access_token: tok.access_token,
+                    refresh_token: tok.refresh_token.or_else(|| current.refresh_token.clone()),
+                    expires_at: tok.expires_in.map(|s| Instant::now() + Duration::from_secs(s)),
+                });
+            }
         // Fall through to a fresh client-credentials exchange on refresh failure.
     }
     request_client_credentials_token(client, token_endpoint, config).await
@@ -316,10 +304,7 @@ mod tests {
             refresh_token: None,
             expires_at: Some(Instant::now() + Duration::from_secs(10)), // < 30s skew
         };
-        assert!(
-            !expired.is_valid(),
-            "token within the 30s skew is treated as expired"
-        );
+        assert!(!expired.is_valid(), "token within the 30s skew is treated as expired");
         let fresh = StoredToken {
             access_token: "t".into(),
             refresh_token: None,

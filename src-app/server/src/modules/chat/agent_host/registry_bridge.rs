@@ -24,8 +24,8 @@ use ai_providers::{ChatMessage, ChatRequest, ContentBlock};
 use async_trait::async_trait;
 use axum::response::sse::Event;
 use std::convert::Infallible;
-use tokio::sync::Mutex;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::Mutex;
 
 use crate::common::AppError;
 use crate::modules::chat::core::extension::{

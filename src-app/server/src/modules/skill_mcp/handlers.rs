@@ -5,6 +5,7 @@
 //! `skills::read` is the only permission gate; no per-tool authorization
 //! split.
 
+
 use axum::{
     Json, debug_handler,
     http::StatusCode,
@@ -71,12 +72,11 @@ pub async fn jsonrpc_handler(
         ),
         "tools/list" => ok_response(id, tools::tool_list()),
         "ping" => ok_response(id, json!({})),
-        "tools/call" => {
-            match dispatch_tool_call(auth.user.id, conversation_id, &req.params).await {
-                Ok(value) => ok_response(id, value),
-                Err((http, err)) => error_response(id, http, err),
-            }
-        }
+        "tools/call" => match dispatch_tool_call(auth.user.id, conversation_id, &req.params).await
+        {
+            Ok(value) => ok_response(id, value),
+            Err((http, err)) => error_response(id, http, err),
+        },
         _ => error_response(
             id,
             StatusCode::OK,

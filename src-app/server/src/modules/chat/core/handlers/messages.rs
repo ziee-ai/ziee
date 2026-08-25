@@ -162,17 +162,12 @@ pub async fn get_message(
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<Json<MessageWithContent>> {
     // Verify user owns the conversation containing this message
-    let _conversation = Repos
-        .chat
-        .core
-        .verify_message_ownership(message_id, auth.user.id)
+    let _conversation = Repos.chat.core
+        .verify_message_ownership( message_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 
-    let message_with_content = Repos
-        .chat
-        .core
-        .get_message_with_content(message_id)
+    let message_with_content = Repos.chat.core.get_message_with_content( message_id)
         .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 
@@ -200,9 +195,7 @@ pub async fn edit_message(
 ) -> ApiResult<Json<EditMessageResponse>> {
     // Validate content is not empty
     if request.content.trim().is_empty() {
-        return Err(
-            AppError::bad_request("VALIDATION_ERROR", "Message content cannot be empty").into(),
-        );
+        return Err(AppError::bad_request("VALIDATION_ERROR", "Message content cannot be empty").into());
     }
     // The edited text lands in the same `jsonb` content column as a fresh send,
     // so it needs the same NUL gate — otherwise Postgres rejects the write and
@@ -210,10 +203,7 @@ pub async fn edit_message(
     validation::reject_nul_in_content(&request.content)?;
 
     // Verify conversation exists and user owns it
-    let conversation = Repos
-        .chat
-        .core
-        .get_conversation(conversation_id, auth.user.id)
+    let conversation = Repos.chat.core.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -223,9 +213,7 @@ pub async fn edit_message(
         .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
 
     // Edit message (creates new branch with edited message)
-    let response = Repos
-        .chat
-        .core
+    let response = Repos.chat.core
         .edit_message(message_id, conversation_id, request, current_branch_id)
         .await?;
 
@@ -262,10 +250,8 @@ pub async fn delete_message(
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Verify user owns the conversation containing this message
-    let conversation = Repos
-        .chat
-        .core
-        .verify_message_ownership(message_id, auth.user.id)
+    let conversation = Repos.chat.core
+        .verify_message_ownership( message_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 

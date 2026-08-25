@@ -246,8 +246,7 @@ fn outbound_policy() -> OutboundUrlPolicy {
 /// (matching git/service.rs + oauth2.rs), so a 302 to 169.254.169.254 / a
 /// loopback / an RFC1918 address can't be followed in release.
 fn http_client() -> Result<reqwest::Client, ApiErr> {
-    build_validated_client(outbound_policy())
-        .map_err(|e| AppError::internal_with_id(e).to_api_error())
+    build_validated_client(outbound_policy()).map_err(|e| AppError::internal_with_id(e).to_api_error())
 }
 
 /// Pre-flight the URL itself (initial + each pagination hop) so a poisoned
@@ -333,12 +332,7 @@ fn hf_entry_size(e: &HfTreeEntry) -> i64 {
 
 /// Same host (exact or subdomain) as the pinned base, if both parse.
 fn same_host(url: &str, pinned: &Option<String>) -> bool {
-    match (
-        url::Url::parse(url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_string)),
-        pinned,
-    ) {
+    match (url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)), pinned) {
         (Some(h), Some(p)) => h.eq_ignore_ascii_case(p),
         _ => false,
     }
@@ -371,10 +365,7 @@ async fn fetch_hf_files(
             break;
         }
         preflight(&url)?;
-        let mut req = client
-            .get(&url)
-            .timeout(HTTP_TIMEOUT)
-            .header(USER_AGENT, UA);
+        let mut req = client.get(&url).timeout(HTTP_TIMEOUT).header(USER_AGENT, UA);
         if let Some(ref t) = bearer {
             req = req.header(AUTHORIZATION, format!("Bearer {t}"));
         }
@@ -474,11 +465,10 @@ async fn fetch_github_files(
     if let Some(len) = resp.content_length()
         && len > MAX_BODY_BYTES
     {
-        return Err(AppError::forbidden(
-            "UPSTREAM_TOO_LARGE",
-            "Upstream listing response is too large",
-        )
-        .to_api_error());
+        return Err(
+            AppError::forbidden("UPSTREAM_TOO_LARGE", "Upstream listing response is too large")
+                .to_api_error(),
+        );
     }
     let tree: GhTree = resp
         .json()
@@ -622,12 +612,7 @@ mod tests {
             lfs: Some(HfLfs { size: 4096 }),
         };
         assert_eq!(hf_entry_size(&lfs), 4096);
-        let plain = HfTreeEntry {
-            kind: "file".into(),
-            path: "y".into(),
-            size: 2048,
-            lfs: None,
-        };
+        let plain = HfTreeEntry { kind: "file".into(), path: "y".into(), size: 2048, lfs: None };
         assert_eq!(hf_entry_size(&plain), 2048);
         // LFS object reporting size 0 falls back to the top-level size.
         let zero = HfTreeEntry {
@@ -672,10 +657,7 @@ mod tests {
             ("a-Q4_K_M.gguf".to_string(), 40),
             ("a-Q5_K_M.gguf".to_string(), 60),
         ];
-        assert_eq!(
-            suggest_gguf_with_sizes(&files).as_deref(),
-            Some("a-Q4_K_M.gguf")
-        );
+        assert_eq!(suggest_gguf_with_sizes(&files).as_deref(), Some("a-Q4_K_M.gguf"));
     }
 
     #[test]
@@ -684,10 +666,7 @@ mod tests {
             ("a-Q8_0.gguf".to_string(), 100),
             ("a-Q5_K_M.gguf".to_string(), 60),
         ];
-        assert_eq!(
-            suggest_gguf_with_sizes(&files).as_deref(),
-            Some("a-Q5_K_M.gguf")
-        );
+        assert_eq!(suggest_gguf_with_sizes(&files).as_deref(), Some("a-Q5_K_M.gguf"));
     }
 
     #[test]

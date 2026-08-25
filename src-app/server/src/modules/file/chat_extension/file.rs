@@ -43,8 +43,7 @@ impl ChatExtension for FileExtension {
         context: &StreamContext,
         send_request: &SendMessageRequest,
         _text_content: &str,
-    ) -> Result<Vec<crate::modules::chat::core::models::content::MessageContentData>, AppError>
-    {
+    ) -> Result<Vec<crate::modules::chat::core::models::content::MessageContentData>, AppError> {
         // Check if request has file_ids
         let file_ids = match &send_request.file_ids {
             Some(ids) if !ids.is_empty() => ids,
@@ -92,11 +91,7 @@ impl ChatExtension for FileExtension {
         context: &mut StreamContext,
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
-        _tx: Option<
-            &tokio::sync::mpsc::UnboundedSender<
-                Result<axum::response::sse::Event, std::convert::Infallible>,
-            >,
-        >,
+        _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
         // Capability-gated manifest (Track A). When the model can use tools,
         // inject a compact manifest of ALL files available to this conversation
@@ -110,10 +105,11 @@ impl ChatExtension for FileExtension {
         // (process_content_for_llm) use the SAME resolution and cannot disagree —
         // a resolve failure leaves `manifest_available` false, which makes BOTH
         // the manifest skip and the drop fall back to inlining (no data loss).
-        let tool_capable = crate::modules::file::available_files::ensure_model_tools_capable(
-            &mut context.metadata,
-        )
-        .await;
+        let tool_capable =
+            crate::modules::file::available_files::ensure_model_tools_capable(
+                &mut context.metadata,
+            )
+            .await;
         let avail =
             crate::modules::file::available_files::available_files_from_metadata(&context.metadata);
         let manifest_available =
@@ -347,10 +343,9 @@ impl ChatExtension for FileExtension {
                     FileImageSource::Base64 { media_type, data } => {
                         ImageSource::Base64 { media_type, data }
                     }
-                    FileImageSource::File { file_id } => ImageSource::File {
-                        file_id,
-                        media_type: None,
-                    },
+                    FileImageSource::File { file_id } => {
+                        ImageSource::File { file_id, media_type: None }
+                    }
                 };
 
                 Ok(Some(ContentBlock::Image { source: ai_source }))

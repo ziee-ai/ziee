@@ -258,12 +258,11 @@ pub async fn resolve_chat_approval_policy(
             crate::modules::mcp::chat_extension::mcp::builtin_server_ids().to_vec();
         ids.push(crate::modules::control_mcp::control_mcp_server_id());
         ids.push(crate::modules::background_mcp::background_mcp_server_id());
-        if let Ok(accessible) =
-            crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
-                Repos.pool(),
-                user_id,
-            )
-            .await
+        if let Ok(accessible) = crate::modules::mcp::chat_extension::helpers::get_all_accessible_config(
+            Repos.pool(),
+            user_id,
+        )
+        .await
         {
             ids.extend(accessible.iter().map(|s| s.id));
         }
@@ -436,12 +435,8 @@ impl ApprovalPolicy for ChatApprovalPolicy {
                 // possibly-double-run mutating tool; fall through to re-classify
                 // (→ Prompt for a manual tool), never a silent second execution.
                 if matches!(
-                    approval_repo::delete_tool_approval(
-                        pool,
-                        row.tool_use_id.clone(),
-                        row.message_id
-                    )
-                    .await,
+                    approval_repo::delete_tool_approval(pool, row.tool_use_id.clone(), row.message_id)
+                        .await,
                     Ok(true)
                 ) {
                     return Decision::Auto;
@@ -501,12 +496,9 @@ impl HumanGate for ChatHumanGate {
         // usable id; otherwise the resume path (`execute_approved_tools_sync`) hits
         // "No server_id in approval record" and never executes the approved tool.
         if server_id.is_none() && !server_str.is_empty() {
-            server_id = crate::modules::mcp::agent_tool_call::resolve_tool_server(
-                self.user_id,
-                &server_str,
-            )
-            .await
-            .ok();
+            server_id = crate::modules::mcp::agent_tool_call::resolve_tool_server(self.user_id, &server_str)
+                .await
+                .ok();
         }
         // BARE tool name (the model returned `<tool>` with no `<server>__` prefix):
         // recover which of the user's accessible servers advertises it — the legacy
@@ -687,10 +679,7 @@ mod tests {
         let host = resolve_dest_host(&s).expect("external http host resolved");
         assert_eq!(host, "api.example.com");
         assert!(!host.contains('/'), "host must not carry the URL path");
-        assert!(
-            !host.contains("key="),
-            "host must not carry the query string"
-        );
+        assert!(!host.contains("key="), "host must not carry the query string");
     }
 
     #[test]
@@ -699,10 +688,7 @@ mod tests {
         // view, but the gate resolves from the INTERNAL row (`get_any_server`),
         // whose `url` is real — so the host is resolved server-side regardless of
         // the redacted public view.
-        let mut s = server_row(
-            TransportType::Sse,
-            Some("https://mcp.internal-corp.net/sse"),
-        );
+        let mut s = server_row(TransportType::Sse, Some("https://mcp.internal-corp.net/sse"));
         s.is_system = true;
         let host = resolve_dest_host(&s).expect("is_system external host resolved");
         assert_eq!(host, "mcp.internal-corp.net");
@@ -753,14 +739,7 @@ mod tests {
         ] {
             let p = policy(mode);
             assert_eq!(
-                p.decide_pure(
-                    Some(sid),
-                    &sid.to_string(),
-                    "read_file",
-                    &serde_json::json!({}),
-                    true,
-                    None
-                ),
+                p.decide_pure(Some(sid), &sid.to_string(), "read_file", &serde_json::json!({}), true, None),
                 Decision::Auto
             );
         }
@@ -771,14 +750,7 @@ mod tests {
         let sid = Uuid::new_v4();
         let p = policy(ApprovalMode::Disabled);
         assert_eq!(
-            p.decide_pure(
-                Some(sid),
-                &sid.to_string(),
-                "do_thing",
-                &serde_json::json!({}),
-                false,
-                None
-            ),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Deny
         );
     }
@@ -788,14 +760,7 @@ mod tests {
         let sid = Uuid::new_v4();
         let p = policy(ApprovalMode::AutoApprove);
         assert_eq!(
-            p.decide_pure(
-                Some(sid),
-                &sid.to_string(),
-                "do_thing",
-                &serde_json::json!({}),
-                false,
-                None
-            ),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Auto
         );
     }
@@ -806,14 +771,7 @@ mod tests {
         let mut p = policy(ApprovalMode::ManualApprove);
         // Not on the auto-approve list → Prompt.
         assert_eq!(
-            p.decide_pure(
-                Some(sid),
-                &sid.to_string(),
-                "do_thing",
-                &serde_json::json!({}),
-                false,
-                None
-            ),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Prompt
         );
         // Auto-approved for this (server, tool) → Auto.
@@ -822,14 +780,7 @@ mod tests {
             tools: vec!["do_thing".to_string()],
         }];
         assert_eq!(
-            p.decide_pure(
-                Some(sid),
-                &sid.to_string(),
-                "do_thing",
-                &serde_json::json!({}),
-                false,
-                None
-            ),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Auto
         );
     }
@@ -843,14 +794,7 @@ mod tests {
             tools: vec![], // whole server disabled
         }];
         assert_eq!(
-            p.decide_pure(
-                Some(sid),
-                &sid.to_string(),
-                "do_thing",
-                &serde_json::json!({}),
-                false,
-                None
-            ),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Deny
         );
     }
@@ -862,28 +806,13 @@ mod tests {
         p.unattended = true;
         // Not allow-listed → Deny (no orphaned pending row).
         assert_eq!(
-            p.decide_pure(
-                Some(sid),
-                &sid.to_string(),
-                "do_thing",
-                &serde_json::json!({}),
-                false,
-                None
-            ),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Deny
         );
         // Allow-listed → Auto (pre-authorised by the task creator).
-        p.unattended_allowed =
-            serde_json::json!([{ "server_id": sid.to_string(), "tool_name": "do_thing" }]);
+        p.unattended_allowed = serde_json::json!([{ "server_id": sid.to_string(), "tool_name": "do_thing" }]);
         assert_eq!(
-            p.decide_pure(
-                Some(sid),
-                &sid.to_string(),
-                "do_thing",
-                &serde_json::json!({}),
-                false,
-                None
-            ),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Auto
         );
     }
@@ -937,14 +866,7 @@ mod tests {
         // ManualApprove conversation would Prompt a non-builtin tool …
         let p = policy(ApprovalMode::ManualApprove);
         assert_eq!(
-            p.decide_pure(
-                Some(sid),
-                &sid.to_string(),
-                "do_thing",
-                &serde_json::json!({}),
-                false,
-                None
-            ),
+            p.decide_pure(Some(sid), &sid.to_string(), "do_thing", &serde_json::json!({}), false, None),
             Decision::Prompt
         );
         // … but an admin `auto_approve` override runs it without a prompt.
@@ -998,10 +920,7 @@ mod tests {
         let mut per_tool = std::collections::HashMap::new();
         per_tool.insert("read_file".to_string(), ApprovalMode::Disabled);
         p.admin_tool_overrides.insert(sid, per_tool);
-        assert_eq!(
-            p.admin_override(Some(sid), "read_file"),
-            Some(&ApprovalMode::Disabled)
-        );
+        assert_eq!(p.admin_override(Some(sid), "read_file"), Some(&ApprovalMode::Disabled));
         assert_eq!(
             p.decide_pure(
                 Some(sid),

@@ -23,7 +23,8 @@ use crate::modules::skill::frontmatter::parse_skill_md_frontmatter;
 use crate::modules::skill::models::CreateSkill;
 
 /// Embedded built-in skill source (SKILL.md + optional references/).
-static BUILTIN_SKILLS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/resources/builtin-skills");
+static BUILTIN_SKILLS: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/resources/builtin-skills");
 
 /// Reverse-DNS namespace for built-in capability skills. Distinct from any
 /// likely user/system skill name; the per-scope unique index keys on `name`.
@@ -97,7 +98,10 @@ async fn sync_one(
     let mut file_count = 0i32;
     let mut total_bytes = 0i64;
     for f in dir.files() {
-        let rel = f.path().strip_prefix(leaf).unwrap_or_else(|_| f.path());
+        let rel = f
+            .path()
+            .strip_prefix(leaf)
+            .unwrap_or_else(|_| f.path());
         let target = dest.join(rel);
         if let Some(parent) = target.parent() {
             tokio::fs::create_dir_all(parent)
@@ -117,9 +121,9 @@ async fn sync_one(
             let rel = f.path().strip_prefix(leaf).unwrap_or_else(|_| f.path());
             let target = dest.join(rel);
             if let Some(parent) = target.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| AppError::internal_error(format!("builtin {leaf}: mkdir: {e}")))?;
+                tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                    AppError::internal_error(format!("builtin {leaf}: mkdir: {e}"))
+                })?;
             }
             tokio::fs::write(&target, f.contents())
                 .await

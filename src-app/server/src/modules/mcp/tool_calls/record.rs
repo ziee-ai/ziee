@@ -117,11 +117,9 @@ fn sanitize_inner(value: Value, in_binary_block: bool) -> Value {
                     .collect(),
             )
         }
-        Value::Array(arr) => Value::Array(
-            arr.into_iter()
-                .map(|v| sanitize_inner(v, in_binary_block))
-                .collect(),
-        ),
+        Value::Array(arr) => {
+            Value::Array(arr.into_iter().map(|v| sanitize_inner(v, in_binary_block)).collect())
+        }
         other => other,
     }
 }
@@ -130,9 +128,7 @@ fn sanitize_inner(value: Value, in_binary_block: bool) -> Value {
 /// serialized form exceeds `MAX_ARGS_BYTES`, store a marker instead.
 pub fn cap_arguments(args: &Value) -> Value {
     let redacted = sanitize_value(args.clone());
-    let bytes = serde_json::to_string(&redacted)
-        .map(|s| s.len())
-        .unwrap_or(0);
+    let bytes = serde_json::to_string(&redacted).map(|s| s.len()).unwrap_or(0);
     if bytes > MAX_ARGS_BYTES {
         json!({ "_truncated": true, "_bytes": bytes })
     } else {
@@ -215,8 +211,7 @@ pub fn build_record(
 ) -> Option<CreateMcpToolCall> {
     let user_id = ctx.user_id?;
 
-    let (status, is_error, result_json, content_kinds, result_bytes, error_message) = match outcome
-    {
+    let (status, is_error, result_json, content_kinds, result_bytes, error_message) = match outcome {
         Ok(tr) => {
             let cap = capture_result(tr);
             let status = if tr.is_error {
@@ -325,15 +320,9 @@ mod tests {
         let cap = capture_result(&result);
         let serialized = serde_json::to_string(&cap.result_json).unwrap();
         // No absolute host-path ziee:// survives (content + structured_content).
-        assert!(
-            !serialized.contains("ziee:///"),
-            "host path leaked: {serialized}"
-        );
+        assert!(!serialized.contains("ziee:///"), "host path leaked: {serialized}");
         // workflow_mcp logical handle is preserved (not a host path).
-        assert!(
-            serialized.contains("ziee://workflow-runs/"),
-            "workflow handle dropped"
-        );
+        assert!(serialized.contains("ziee://workflow-runs/"), "workflow handle dropped");
         assert_eq!(cap.result_json["content"][0]["uri"], json!(""));
     }
 
@@ -351,10 +340,7 @@ mod tests {
         let cap = capture_result(&result);
 
         // distinct kinds, first-seen order, no dupes
-        assert_eq!(
-            cap.content_kinds,
-            vec!["text".to_string(), "image".to_string()]
-        );
+        assert_eq!(cap.content_kinds, vec!["text".to_string(), "image".to_string()]);
         // pre-strip size counts the original base64 bytes
         assert!(cap.result_bytes > 0);
         // base64 `data` stripped to a reference
@@ -446,10 +432,7 @@ mod tests {
             1,
         )
         .expect("an owner-stamped session must record");
-        assert!(
-            rec.is_built_in,
-            "built-in server tool call must set is_built_in=true"
-        );
+        assert!(rec.is_built_in, "built-in server tool call must set is_built_in=true");
         assert_eq!(rec.tool_name, "read_file");
         assert_eq!(rec.server_name, "files");
 
@@ -465,10 +448,7 @@ mod tests {
             1,
         )
         .unwrap();
-        assert!(
-            !rec2.is_built_in,
-            "external server tool call must set is_built_in=false"
-        );
+        assert!(!rec2.is_built_in, "external server tool call must set is_built_in=false");
     }
 
     #[test]
@@ -498,11 +478,7 @@ mod tests {
         let out = sanitize_value(v);
         assert_eq!(out["authorization"], json!("[redacted]"));
         assert_eq!(out["nested"]["api_key"], json!("[redacted]"));
-        assert_eq!(
-            out["nested"]["ok"],
-            json!(1),
-            "non-secret values pass through"
-        );
+        assert_eq!(out["nested"]["ok"], json!(1), "non-secret values pass through");
         assert_eq!(
             out["structuredContent"]["data"],
             json!("OK"),
@@ -526,10 +502,7 @@ mod tests {
             "bearer-token",
             "bearer_token",
         ] {
-            assert!(
-                is_secret_key(key),
-                "`{key}` must be treated as a secret key"
-            );
+            assert!(is_secret_key(key), "`{key}` must be treated as a secret key");
             // Case-insensitive: the wire spelling is often `Cookie` / `Bearer-Token`.
             assert!(
                 is_secret_key(&key.to_ascii_uppercase()),
@@ -590,10 +563,7 @@ mod tests {
         // No fragment of any secret survives anywhere in the serialized form.
         let serialized = serde_json::to_string(&out).unwrap();
         for leaked in ["session=abc", "sk-live-123", "abc123", "\"pass\""] {
-            assert!(
-                !serialized.contains(leaked),
-                "leaked {leaked} in {serialized}"
-            );
+            assert!(!serialized.contains(leaked), "leaked {leaked} in {serialized}");
         }
     }
 
@@ -626,10 +596,7 @@ mod tests {
         };
         let cap = capture_result(&result);
         assert_eq!(cap.result_json["_truncated"], json!(true));
-        assert!(
-            cap.result_bytes as usize > MAX_RESULT_BYTES,
-            "pre-strip size recorded"
-        );
+        assert!(cap.result_bytes as usize > MAX_RESULT_BYTES, "pre-strip size recorded");
     }
 
     #[test]

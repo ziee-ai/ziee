@@ -6,15 +6,16 @@
 // NOTE: SESSION_COUNTS is process-global. For multi-process deployments (load balancing),
 // move this counter to a shared store (Redis) or accept that limits are per-process.
 
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use uuid::Uuid;
+use once_cell::sync::Lazy;
 
 use crate::common::AppError;
 
 /// Global session counter map: server_id → active session count
-static SESSION_COUNTS: Lazy<Mutex<HashMap<Uuid, u32>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static SESSION_COUNTS: Lazy<Mutex<HashMap<Uuid, u32>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Acquire the global lock, recovering from poisoning rather than propagating it.
 fn lock_counts() -> std::sync::MutexGuard<'static, HashMap<Uuid, u32>> {
@@ -56,18 +57,8 @@ impl Drop for SessionGuard {
 /// - Returns `Err` if the limit is reached
 pub fn acquire_session(server_id: Uuid, max: Option<i32>) -> Result<SessionGuard, AppError> {
     let max = match max {
-        None => {
-            return Ok(SessionGuard {
-                server_id,
-                holds_slot: false,
-            });
-        }
-        Some(m) if m <= 0 => {
-            return Ok(SessionGuard {
-                server_id,
-                holds_slot: false,
-            });
-        }
+        None => return Ok(SessionGuard { server_id, holds_slot: false }),
+        Some(m) if m <= 0 => return Ok(SessionGuard { server_id, holds_slot: false }),
         Some(m) => m as u32,
     };
 
@@ -82,10 +73,7 @@ pub fn acquire_session(server_id: Uuid, max: Option<i32>) -> Result<SessionGuard
     }
     *count += 1;
 
-    Ok(SessionGuard {
-        server_id,
-        holds_slot: true,
-    })
+    Ok(SessionGuard { server_id, holds_slot: true })
 }
 
 #[cfg(test)]
@@ -101,10 +89,7 @@ mod tests {
 
         // Some(0) also means unlimited
         let guard2 = acquire_session(id, Some(0)).expect("Should succeed with 0 limit");
-        assert!(
-            !guard2.holds_slot,
-            "Zero limit guard should not hold a slot"
-        );
+        assert!(!guard2.holds_slot, "Zero limit guard should not hold a slot");
     }
 
     #[test]

@@ -1,14 +1,21 @@
 //! MCP approval workflow handlers
 
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, http::StatusCode};
+use axum::{
+    debug_handler,
+    extract::Path,
+    http::StatusCode,
+    Json,
+};
 use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError},
     modules::{
-        chat::core::permissions::*,
+        chat::{
+            core::permissions::*,
+        },
         permissions::{extractors::RequirePermissions, with_permission},
         sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
     },
@@ -111,10 +118,7 @@ pub async fn update_mcp_settings(
         origin.0,
     );
 
-    Ok((
-        StatusCode::OK,
-        Json(models::ConversationMcpSettingsResponse::from(settings)),
-    ))
+    Ok((StatusCode::OK, Json(models::ConversationMcpSettingsResponse::from(settings))))
 }
 
 pub fn update_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
@@ -172,9 +176,7 @@ pub fn get_pending_approvals_for_branch_docs(op: TransformOperation) -> Transfor
         .id("Branch.getPendingApprovals")
         .tag("Chat")
         .summary("Get pending tool approvals for a branch")
-        .description(
-            "Get all pending tool use approvals for a specific branch (active conversation)",
-        )
+        .description("Get all pending tool use approvals for a specific branch (active conversation)")
         .response::<200, Json<PendingApprovalsResponse>>()
         .response_with::<404, (), _>(|res| res.description("Branch not found"))
 }

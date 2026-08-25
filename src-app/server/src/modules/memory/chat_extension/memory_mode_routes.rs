@@ -7,9 +7,9 @@
 //! validated `memory_mode` inline — chat no longer knows the
 //! vocabulary (`'inherit'`/`'on'`/`'off'`); the memory bridge owns it.
 
-use aide::axum::{ApiRouter, routing::get_with};
+use aide::axum::{routing::get_with, ApiRouter};
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, http::StatusCode};
+use axum::{debug_handler, extract::Path, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,7 +18,7 @@ use crate::{
     modules::{
         chat::core::permissions::{ConversationsEdit, ConversationsRead},
         permissions::{extractors::RequirePermissions, with_permission},
-        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        sync::{publish as sync_publish, Audience, SyncAction, SyncEntity, SyncOrigin},
     },
 };
 
@@ -53,10 +53,7 @@ pub async fn get_conversation_memory_mode(
         .get_for_user(conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
-    Ok((
-        StatusCode::OK,
-        Json(ConversationMemoryModeResponse { memory_mode }),
-    ))
+    Ok((StatusCode::OK, Json(ConversationMemoryModeResponse { memory_mode })))
 }
 
 pub fn get_conversation_memory_mode_docs(op: TransformOperation) -> TransformOperation {
@@ -95,11 +92,7 @@ pub async fn put_conversation_memory_mode(
     // Ownership check via get_for_user — returns None when the user
     // doesn't own the conversation; conflate to 404 to defeat probing.
     let repo = &crate::core::Repos.chat.memory;
-    if repo
-        .get_for_user(conversation_id, auth.user.id)
-        .await?
-        .is_none()
-    {
+    if repo.get_for_user(conversation_id, auth.user.id).await?.is_none() {
         return Err(AppError::not_found("Conversation").into());
     }
     repo.set_conversation_memory_mode(conversation_id, &req.memory_mode)
@@ -122,10 +115,7 @@ pub async fn put_conversation_memory_mode(
     } else {
         req.memory_mode
     };
-    Ok((
-        StatusCode::OK,
-        Json(ConversationMemoryModeResponse { memory_mode }),
-    ))
+    Ok((StatusCode::OK, Json(ConversationMemoryModeResponse { memory_mode })))
 }
 
 pub fn put_conversation_memory_mode_docs(op: TransformOperation) -> TransformOperation {
@@ -148,13 +138,7 @@ pub fn put_conversation_memory_mode_docs(op: TransformOperation) -> TransformOpe
 pub fn memory_mode_router() -> ApiRouter {
     ApiRouter::new().api_route(
         "/conversations/{id}/memory-mode",
-        get_with(
-            get_conversation_memory_mode,
-            get_conversation_memory_mode_docs,
-        )
-        .put_with(
-            put_conversation_memory_mode,
-            put_conversation_memory_mode_docs,
-        ),
+        get_with(get_conversation_memory_mode, get_conversation_memory_mode_docs)
+            .put_with(put_conversation_memory_mode, put_conversation_memory_mode_docs),
     )
 }

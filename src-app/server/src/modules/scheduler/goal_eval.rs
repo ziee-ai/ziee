@@ -295,22 +295,13 @@ mod tests {
         assert_eq!(parse_verdict("NOT_DONE"), GoalVerdict::NotDone);
         assert_eq!(parse_verdict("not done"), GoalVerdict::NotDone);
         assert_eq!(parse_verdict("NotDone"), GoalVerdict::NotDone);
-        assert_eq!(
-            parse_verdict("not yet — still missing values"),
-            GoalVerdict::NotDone
-        );
-        assert_eq!(
-            parse_verdict("The task is INCOMPLETE."),
-            GoalVerdict::NotDone
-        );
+        assert_eq!(parse_verdict("not yet — still missing values"), GoalVerdict::NotDone);
+        assert_eq!(parse_verdict("The task is INCOMPLETE."), GoalVerdict::NotDone);
 
         // Fail-safe default: empty / malformed / refusal → NotDone (never a false Done).
         assert_eq!(parse_verdict(""), GoalVerdict::NotDone);
         assert_eq!(parse_verdict("   "), GoalVerdict::NotDone);
-        assert_eq!(
-            parse_verdict("I cannot determine that."),
-            GoalVerdict::NotDone
-        );
+        assert_eq!(parse_verdict("I cannot determine that."), GoalVerdict::NotDone);
         assert_eq!(parse_verdict("maybe?"), GoalVerdict::NotDone);
     }
 
@@ -327,45 +318,21 @@ mod tests {
 
         // DONE → self-stop, regardless of turn count.
         assert_eq!(
-            decide(
-                GoalVerdict::Done,
-                1,
-                max_turns,
-                min_interval,
-                horizon_days,
-                created,
-                now
-            ),
+            decide(GoalVerdict::Done, 1, max_turns, min_interval, horizon_days, created, now),
             GoalOutcome::Done,
             "a confirmed condition self-stops"
         );
 
         // NOT_DONE, turns below the cap, within the horizon → re-arm at min_interval.
         assert_eq!(
-            decide(
-                GoalVerdict::NotDone,
-                3,
-                max_turns,
-                min_interval,
-                horizon_days,
-                created,
-                now
-            ),
+            decide(GoalVerdict::NotDone, 3, max_turns, min_interval, horizon_days, created, now),
             GoalOutcome::Continue(now + ChronoDuration::seconds(min_interval)),
             "an unmet condition with turns + horizon to spare re-arms another turn"
         );
 
         // NOT_DONE at exactly the turn cap → stop 'incomplete' (DEC-62 "exceed→incomplete").
         assert_eq!(
-            decide(
-                GoalVerdict::NotDone,
-                max_turns,
-                max_turns,
-                min_interval,
-                horizon_days,
-                created,
-                now
-            ),
+            decide(GoalVerdict::NotDone, max_turns, max_turns, min_interval, horizon_days, created, now),
             GoalOutcome::Incomplete,
             "hitting goal_seek_max_turns stops 'incomplete', not 'completed'"
         );
@@ -373,15 +340,7 @@ mod tests {
         // NOT_DONE past the absolute horizon (created + 7d) → stop 'incomplete'.
         let past_horizon = utc(2026, 7, 9, 0, 0);
         assert_eq!(
-            decide(
-                GoalVerdict::NotDone,
-                2,
-                max_turns,
-                min_interval,
-                horizon_days,
-                created,
-                past_horizon
-            ),
+            decide(GoalVerdict::NotDone, 2, max_turns, min_interval, horizon_days, created, past_horizon),
             GoalOutcome::Incomplete,
             "reaching the max-horizon backstop stops 'incomplete'"
         );

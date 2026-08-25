@@ -6,16 +6,16 @@
 //! - Version lookup with fallback logic
 //! - Cached binary path resolution
 
-use crate::modules::llm_local_runtime::engine::download::parse_asset_variant;
-use crate::modules::llm_local_runtime::engine::release_cache;
-use crate::modules::llm_local_runtime::engine::{
-    BinaryDownloader, EngineType, asset_size_for_backend, available_backends,
-};
+use sqlx::PgPool;
+use crate::modules::llm_local_runtime::runtime_version::repository as version_repo;
 use crate::modules::llm_local_runtime::runtime_version::models::{
     AvailableVersion, InstallableEngine, InstallableVariant, InstallableVersion, RuntimeVersion,
 };
-use crate::modules::llm_local_runtime::runtime_version::repository as version_repo;
-use sqlx::PgPool;
+use crate::modules::llm_local_runtime::engine::download::parse_asset_variant;
+use crate::modules::llm_local_runtime::engine::release_cache;
+use crate::modules::llm_local_runtime::engine::{
+    asset_size_for_backend, available_backends, BinaryDownloader, EngineType,
+};
 
 /// Fallback TTL when the settings row cannot be read. Mirrors the column
 /// default in `202607200500_llm_runtime_release_cache_ttl.sql`; a settings
@@ -74,9 +74,12 @@ impl BinaryManager {
             EngineType::Mistralrs => "mistralrs",
         };
 
-        if let Some(existing) =
-            version_repo::get_by_engine_and_version(&self.pool, engine_name, &binary_info.version)
-                .await?
+        if let Some(existing) = version_repo::get_by_engine_and_version(
+            &self.pool,
+            engine_name,
+            &binary_info.version,
+        )
+        .await?
         {
             tracing::info!(
                 "Runtime version already registered: {} {}",
@@ -122,7 +125,11 @@ impl BinaryManager {
         let binary_path = PathBuf::from(&version.binary_path);
 
         if !binary_path.exists() {
-            return Err(format!("Binary not found at path: {}", binary_path.display()).into());
+            return Err(format!(
+                "Binary not found at path: {}",
+                binary_path.display()
+            )
+            .into());
         }
 
         Ok(binary_path)
@@ -271,7 +278,9 @@ impl BinaryManager {
                 let avail = available_backends(engine_type, platform, arch, &r.assets);
                 let installed_backends: Vec<String> = installed
                     .iter()
-                    .filter(|v| v.version == r.version && v.platform == platform && v.arch == arch)
+                    .filter(|v| {
+                        v.version == r.version && v.platform == platform && v.arch == arch
+                    })
                     .map(|v| v.backend.clone())
                     .collect();
                 let recommended_backend =
@@ -284,7 +293,13 @@ impl BinaryManager {
                     .as_deref()
                     .or_else(|| avail.first().map(|s| s.as_str()))
                     .and_then(|backend| {
-                        asset_size_for_backend(engine_type, platform, arch, backend, &r.assets)
+                        asset_size_for_backend(
+                            engine_type,
+                            platform,
+                            arch,
+                            backend,
+                            &r.assets,
+                        )
                     });
                 AvailableVersion {
                     version: r.version,
@@ -365,7 +380,8 @@ impl BinaryManager {
                     .assets
                     .iter()
                     .filter_map(|a| {
-                        let (platform, arch, backend) = parse_asset_variant(engine_type, &a.name)?;
+                        let (platform, arch, backend) =
+                            parse_asset_variant(engine_type, &a.name)?;
                         let matches_host = platform == host_platform && arch == host_arch;
                         Some(InstallableVariant {
                             platform,
@@ -377,12 +393,13 @@ impl BinaryManager {
                     })
                     .collect();
 
-                let host_backends =
-                    available_backends(engine_type, host_platform, host_arch, &r.assets);
+                let host_backends = available_backends(engine_type, host_platform, host_arch, &r.assets);
                 let installed_backends: Vec<String> = installed
                     .iter()
                     .filter(|v| {
-                        v.version == r.version && v.platform == host_platform && v.arch == host_arch
+                        v.version == r.version
+                            && v.platform == host_platform
+                            && v.arch == host_arch
                     })
                     .map(|v| v.backend.clone())
                     .collect();
@@ -429,9 +446,13 @@ impl BinaryManager {
             };
 
             // Check if already in database
-            if version_repo::get_by_engine_and_version(&self.pool, engine_name, &binary.version)
-                .await?
-                .is_some()
+            if version_repo::get_by_engine_and_version(
+                &self.pool,
+                engine_name,
+                &binary.version,
+            )
+            .await?
+            .is_some()
             {
                 continue;
             }
@@ -484,15 +505,14 @@ impl BinaryManager {
 
             if let Some(record) = model_version
                 && let Some(version_id) = record.required_runtime_version_id
-                && let Some(version) = version_repo::get_by_id(&self.pool, version_id).await?
-            {
-                tracing::debug!(
-                    "Selected runtime version from model: {} {}",
-                    version.engine,
-                    version.version
-                );
-                return Ok(Some(version));
-            }
+                    && let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
+                        tracing::debug!(
+                            "Selected runtime version from model: {} {}",
+                            version.engine,
+                            version.version
+                        );
+                        return Ok(Some(version));
+                    }
         }
 
         // Step 2: Check provider's default version
@@ -506,15 +526,14 @@ impl BinaryManager {
 
             if let Some(record) = provider_version
                 && let Some(version_id) = record.default_runtime_version_id
-                && let Some(version) = version_repo::get_by_id(&self.pool, version_id).await?
-            {
-                tracing::debug!(
-                    "Selected runtime version from provider: {} {}",
-                    version.engine,
-                    version.version
-                );
-                return Ok(Some(version));
-            }
+                    && let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
+                        tracing::debug!(
+                            "Selected runtime version from provider: {} {}",
+                            version.engine,
+                            version.version
+                        );
+                        return Ok(Some(version));
+                    }
         }
 
         // Step 3: Check system default
@@ -544,6 +563,7 @@ impl BinaryManager {
 
 #[cfg(test)]
 mod tests {
+    
 
     // Tests would go here, but require database setup
     // These would be integration tests in tests/integration_tests/

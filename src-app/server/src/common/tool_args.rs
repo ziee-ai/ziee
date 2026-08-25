@@ -198,11 +198,7 @@ pub fn truncate_for_message(s: &str) -> String {
         })
         .collect();
 
-    if overflowed {
-        format!("{clean}…")
-    } else {
-        clean
-    }
+    if overflowed { format!("{clean}…") } else { clean }
 }
 
 /// Build the model-facing refusal. Every variant carries the same three
@@ -234,12 +230,7 @@ pub fn coerce_value(
     }
     // Not a string, and not the declared shape: there is nothing to decode.
     if !value.is_string() {
-        return Err(refuse(
-            arg,
-            &format!("arrived as {}", type_word(&value)),
-            shape,
-            example,
-        ));
+        return Err(refuse(arg, &format!("arrived as {}", type_word(&value)), shape, example));
     }
 
     let mut current = value;
@@ -276,10 +267,7 @@ pub fn coerce_value(
     }
     Err(refuse(
         arg,
-        &format!(
-            "arrived as a string that decodes to {}",
-            type_word(&current)
-        ),
+        &format!("arrived as a string that decodes to {}", type_word(&current)),
         shape,
         example,
     ))
@@ -414,15 +402,7 @@ pub mod conformance {
     where
         F: Fn(Value) -> Result<Option<Value>, String>,
     {
-        let ArgSite {
-            site: name,
-            arg,
-            shape,
-            canonical,
-            example,
-            absent_yields,
-            extract,
-        } = site;
+        let ArgSite { site: name, arg, shape, canonical, example, absent_yields, extract } = site;
         let wrap = |v: Value| json!({ arg: v });
 
         // 1. The shape a PROGRAMMER writes. Must pass through byte-identically —
@@ -453,10 +433,7 @@ pub mod conformance {
             serde_json::to_string(&serde_json::to_string(&canonical).unwrap()).unwrap(),
         );
         match extract(wrap(twice)) {
-            Ok(Some(v)) => assert_eq!(
-                v, canonical,
-                "[{name}] a double-encoded argument must decode"
-            ),
+            Ok(Some(v)) => assert_eq!(v, canonical, "[{name}] a double-encoded argument must decode"),
             other => panic!("[{name}] double-encoded argument was not decoded: {other:?}"),
         }
 
@@ -514,8 +491,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const EX: &str =
-        r#"{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"#;
+    const EX: &str = r#"{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"#;
 
     /// The EXACT payload from the live session that motivated this module. A
     /// model asked to create a project and sent `ask_user`'s object `schema`
@@ -528,10 +504,7 @@ mod tests {
                 .to_string(),
         );
         let out = coerce_value(reported, ArgShape::Object, "schema", EX).expect("must decode");
-        assert!(
-            out.is_object(),
-            "the schema must become an OBJECT, not stay a string"
-        );
+        assert!(out.is_object(), "the schema must become an OBJECT, not stay a string");
         let props = out
             .get("properties")
             .and_then(|p| p.as_object())
@@ -593,10 +566,7 @@ mod tests {
         // the test — observed, not theorised.) 10 layers is 8 past the bound,
         // which is all the assertion needs.
         const DEEP: usize = 10;
-        assert!(
-            DEEP > MAX_STRING_UNWRAPS,
-            "the fixture must exceed the bound"
-        );
+        assert!(DEEP > MAX_STRING_UNWRAPS, "the fixture must exceed the bound");
         let mut deep = serde_json::to_string(&obj).unwrap();
         for _ in 0..DEEP {
             deep = serde_json::to_string(&deep).unwrap();
@@ -701,10 +671,7 @@ mod tests {
             "[\"<uuid>\"]",
         )
         .unwrap_err();
-        assert!(
-            err.message().contains("JSON array is required"),
-            "got: {err}"
-        );
+        assert!(err.message().contains("JSON array is required"), "got: {err}");
     }
 
     /// EVERY refusal names what was received, what is expected, and a literal
@@ -719,21 +686,14 @@ mod tests {
         let cases: Vec<(&str, Value, &str)> = vec![
             // (label, input, the RECEIVED word the message must contain)
             ("not-json", Value::String("nope {".to_string()), "string"),
-            (
-                "decoded-wrong-type",
-                Value::String("42".to_string()),
-                "number",
-            ),
+            ("decoded-wrong-type", Value::String("42".to_string()), "number"),
             ("received-wrong-type", json!(7), "number"),
             ("over-the-bound", Value::String(over), "string"),
         ];
         for (label, input, received_word) in cases {
             let err = coerce_value(input, ArgShape::Object, "schema", EX).unwrap_err();
             let m = err.message();
-            assert!(
-                m.contains("`schema`"),
-                "[{label}] must name the argument: {m}"
-            );
+            assert!(m.contains("`schema`"), "[{label}] must name the argument: {m}");
             assert!(
                 m.contains(received_word),
                 "[{label}] must say what was RECEIVED ({received_word}): {m}"
@@ -762,19 +722,11 @@ mod tests {
         });
         coerce_args_in_place(
             &mut args,
-            &[ArgSpec {
-                key: "body",
-                shape: ArgShape::Object,
-                example: EX,
-            }],
+            &[ArgSpec { key: "body", shape: ArgShape::Object, example: EX }],
         )
         .unwrap();
 
-        assert_eq!(
-            args["body"],
-            json!({ "name": "x" }),
-            "the named key decodes"
-        );
+        assert_eq!(args["body"], json!({ "name": "x" }), "the named key decodes");
         assert_eq!(args["operation_id"], json!("Project.create"));
         assert_eq!(
             args["script"],
@@ -799,7 +751,7 @@ mod tests {
     /// and once through the fixed helper, which must not. (TEST-40)
     #[test]
     fn conformance_battery_is_red_on_the_shipped_behaviour_and_green_on_the_fix() {
-        use super::conformance::{ArgSite, assert_arg_conformance};
+        use super::conformance::{assert_arg_conformance, ArgSite};
 
         let canonical = json!({ "type": "object", "properties": { "name": { "type": "string" } } });
 
@@ -845,7 +797,7 @@ mod tests {
     /// SUBSTITUTES a default when the argument is absent (the `ask_user` shape).
     #[test]
     fn conformance_battery_covers_array_args_and_defaulting_sites() {
-        use super::conformance::{ArgSite, assert_arg_conformance};
+        use super::conformance::{assert_arg_conformance, ArgSite};
 
         assert_arg_conformance(ArgSite {
             site: "ids",
@@ -905,16 +857,8 @@ mod tests {
         let err = coerce_args_in_place(
             &mut args,
             &[
-                ArgSpec {
-                    key: "good",
-                    shape: ArgShape::Object,
-                    example: EX,
-                },
-                ArgSpec {
-                    key: "bad",
-                    shape: ArgShape::Object,
-                    example: EX,
-                },
+                ArgSpec { key: "good", shape: ArgShape::Object, example: EX },
+                ArgSpec { key: "bad", shape: ArgShape::Object, example: EX },
             ],
         );
         assert!(err.is_err());
@@ -951,11 +895,7 @@ mod tests {
         assert!(
             coerce_args_in_place(
                 &mut args,
-                &[ArgSpec {
-                    key: "body",
-                    shape: ArgShape::Object,
-                    example: EX
-                }],
+                &[ArgSpec { key: "body", shape: ArgShape::Object, example: EX }],
             )
             .is_err()
         );
@@ -964,11 +904,7 @@ mod tests {
         let mut args = json!({ "body": null });
         coerce_args_in_place(
             &mut args,
-            &[ArgSpec {
-                key: "body",
-                shape: ArgShape::Object,
-                example: EX,
-            }],
+            &[ArgSpec { key: "body", shape: ArgShape::Object, example: EX }],
         )
         .unwrap();
         assert_eq!(args["body"], Value::Null);
@@ -986,17 +922,10 @@ mod tests {
 
         // Exactly at the bound is NOT truncated; one past it is.
         let at = "a".repeat(MAX_ECHOED_VALUE_CHARS);
-        assert_eq!(
-            truncate_for_message(&at),
-            at,
-            "the boundary length is not cut"
-        );
+        assert_eq!(truncate_for_message(&at), at, "the boundary length is not cut");
         let over = "a".repeat(MAX_ECHOED_VALUE_CHARS + 1);
         let cut = truncate_for_message(&over);
-        assert!(
-            cut.ends_with('…'),
-            "an over-long value is marked as cut: {cut}"
-        );
+        assert!(cut.ends_with('…'), "an over-long value is marked as cut: {cut}");
         assert_eq!(cut.chars().count(), MAX_ECHOED_VALUE_CHARS + 1);
 
         // Multi-byte input must not panic and must cut on a CHARACTER boundary.

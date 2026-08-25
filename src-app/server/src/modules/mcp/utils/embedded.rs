@@ -128,10 +128,7 @@ pub fn ensure_binaries_extracted() -> Result<(), AppError> {
             let bun_path = bin_dir.join(binaries::BUN_NAME);
             crate::common::embedded::extract_atomic("Bun", binaries::BUN, &bun_path)?;
 
-            Ok(ExtractedPaths {
-                uv: uv_path,
-                bun: bun_path,
-            })
+            Ok(ExtractedPaths { uv: uv_path, bun: bun_path })
         })
         .map(|_| ())
 }
@@ -139,11 +136,12 @@ pub fn ensure_binaries_extracted() -> Result<(), AppError> {
 /// Get the path to the embedded UV binary
 /// Returns an error if extraction hasn't been performed yet
 pub fn get_uv_path() -> Result<&'static PathBuf, AppError> {
-    EXTRACTED_PATHS.get().map(|paths| &paths.uv).ok_or_else(|| {
-        AppError::internal_error(
-            "UV binary not extracted - ensure_binaries_extracted() must be called first",
-        )
-    })
+    EXTRACTED_PATHS
+        .get()
+        .map(|paths| &paths.uv)
+        .ok_or_else(|| {
+            AppError::internal_error("UV binary not extracted - ensure_binaries_extracted() must be called first")
+        })
 }
 
 /// Get the path to the embedded Bun binary
@@ -153,9 +151,7 @@ pub fn get_bun_path() -> Result<&'static PathBuf, AppError> {
         .get()
         .map(|paths| &paths.bun)
         .ok_or_else(|| {
-            AppError::internal_error(
-                "Bun binary not extracted - ensure_binaries_extracted() must be called first",
-            )
+            AppError::internal_error("Bun binary not extracted - ensure_binaries_extracted() must be called first")
         })
 }
 
@@ -172,9 +168,8 @@ fn set_executable(path: &PathBuf) -> Result<(), AppError> {
 
     perms.set_mode(0o755);
 
-    fs::set_permissions(path, perms).map_err(|e| {
-        AppError::internal_error(format!("Failed to set executable permissions: {}", e))
-    })?;
+    fs::set_permissions(path, perms)
+        .map_err(|e| AppError::internal_error(format!("Failed to set executable permissions: {}", e)))?;
 
     Ok(())
 }

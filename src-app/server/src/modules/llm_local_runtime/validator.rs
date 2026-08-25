@@ -60,16 +60,15 @@ pub fn spawn_worker(pool: Arc<PgPool>) -> tokio::task::JoinHandle<()> {
                     // model would stop ALL future validations for the
                     // process lifetime (M3).
                     let pool_clone = pool.clone();
-                    let join =
-                        tokio::spawn(
-                            async move { run_validation(&pool_clone, model_id, tier).await },
-                        )
-                        .await;
+                    let join = tokio::spawn(async move {
+                        run_validation(&pool_clone, model_id, tier).await
+                    })
+                    .await;
                     match join {
                         Ok(Ok(_)) => {}
-                        Ok(Err(e)) => {
-                            tracing::warn!("validator: model {model_id} tier {tier:?} failed: {e}")
-                        }
+                        Ok(Err(e)) => tracing::warn!(
+                            "validator: model {model_id} tier {tier:?} failed: {e}"
+                        ),
                         Err(join_err) => tracing::error!(
                             "validator: model {model_id} tier {tier:?} PANICKED: {join_err}"
                         ),
@@ -199,13 +198,7 @@ pub async fn validate_remote_model(
 
     // Detached validation path: notify admin devices that the model's
     // validation_status changed (LlmModel is permission-scoped → owner None).
-    sync_publish(
-        SyncEntity::LlmModel,
-        SyncAction::Update,
-        model_id,
-        Audience::perm::<LlmModelsRead>(),
-        None,
-    );
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, Audience::perm::<LlmModelsRead>(), None);
 
     Ok(result)
 }
@@ -227,13 +220,7 @@ async fn run_validation(
     .await;
     // Surface the "Validating…" transition to other admin devices (this runs
     // seconds-to-90s after the trigger handler already returned 202).
-    sync_publish(
-        SyncEntity::LlmModel,
-        SyncAction::Update,
-        model_id,
-        Audience::perm::<LlmModelsRead>(),
-        None,
-    );
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, Audience::perm::<LlmModelsRead>(), None);
 
     let outcome = run_tier_internal(pool, model_id, tier, started_at).await;
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
@@ -276,13 +263,7 @@ async fn run_validation(
 
     // Terminal transition (validation_status + capabilities now written) —
     // notify admin devices to refresh the model row.
-    sync_publish(
-        SyncEntity::LlmModel,
-        SyncAction::Update,
-        model_id,
-        Audience::perm::<LlmModelsRead>(),
-        None,
-    );
+    sync_publish(SyncEntity::LlmModel, SyncAction::Update, model_id, Audience::perm::<LlmModelsRead>(), None);
 
     outcome
 }
@@ -296,10 +277,11 @@ async fn run_tier_internal(
     tier: ValidationTier,
     started_at: std::time::Instant,
 ) -> Result<ValidationOutcome, AppError> {
-    let start_res = tokio::time::timeout(Duration::from_secs(TIER2_HEALTH_DEADLINE_SECS), async {
-        super::auto_start::ensure_running(pool, model_id).await
-    })
-    .await;
+    let start_res =
+        tokio::time::timeout(Duration::from_secs(TIER2_HEALTH_DEADLINE_SECS), async {
+            super::auto_start::ensure_running(pool, model_id).await
+        })
+        .await;
 
     match start_res {
         Ok(Ok(())) => {}
@@ -400,13 +382,16 @@ async fn tiny_chat_probe(pool: &PgPool, model_id: Uuid) -> Result<(), AppError> 
     .map_err(|e| AppError::database_error(e))?;
     let port = port.ok_or_else(|| AppError::internal_error("no running port"))?;
 
-    let bearer = super::deployment::local::get_instance_api_key(model_id).unwrap_or_default();
+    let bearer =
+        super::deployment::local::get_instance_api_key(model_id).unwrap_or_default();
 
-    let model_name: String =
-        sqlx::query_scalar!("SELECT name FROM llm_models WHERE id = $1", model_id,)
-            .fetch_one(pool)
-            .await
-            .map_err(|e| AppError::database_error(e))?;
+    let model_name: String = sqlx::query_scalar!(
+        "SELECT name FROM llm_models WHERE id = $1",
+        model_id,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| AppError::database_error(e))?;
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
@@ -437,13 +422,19 @@ async fn tiny_chat_probe(pool: &PgPool, model_id: Uuid) -> Result<(), AppError> 
 /// Run metadata extraction on the model's file_path and write the
 /// resulting capabilities JSONB. Logs (does not fail validation) on
 /// extraction error — partial capability info is better than none.
-async fn extract_and_persist_capabilities(pool: &PgPool, model_id: Uuid) -> Result<(), AppError> {
+async fn extract_and_persist_capabilities(
+    pool: &PgPool,
+    model_id: Uuid,
+) -> Result<(), AppError> {
     // engine_type lives on llm_models; the file path lives in
     // llm_model_files (a model may have several files).
-    let model = sqlx::query!("SELECT engine_type FROM llm_models WHERE id = $1", model_id,)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| AppError::database_error(e))?;
+    let model = sqlx::query!(
+        "SELECT engine_type FROM llm_models WHERE id = $1",
+        model_id,
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| AppError::database_error(e))?;
     let Some(model) = model else {
         return Ok(());
     };

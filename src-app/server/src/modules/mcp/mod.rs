@@ -106,9 +106,8 @@ impl AppModule for McpModule {
         let policy_pool = (*ctx.db_pool).clone();
         tokio::spawn(async move {
             match user_policy::load(&policy_pool).await {
-                Ok(p)
-                    if p.allowed_transports.iter().any(|t| t == "stdio")
-                        && crate::modules::code_sandbox::config::get_state().is_none() =>
+                Ok(p) if p.allowed_transports.iter().any(|t| t == "stdio")
+                    && crate::modules::code_sandbox::config::get_state().is_none() =>
                 {
                     // ERROR-level because this is a misconfiguration
                     // that BREAKS user stdio MCP servers — every

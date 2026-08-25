@@ -54,21 +54,12 @@ pub fn knowledge_base_router() -> ApiRouter {
         // Attach to conversation / project (+ list attached).
         .api_route(
             "/conversations/{cid}/knowledge-bases",
-            get_with(
-                handlers::list_conversation_kbs,
-                handlers::list_conversation_kbs_docs,
-            ),
+            get_with(handlers::list_conversation_kbs, handlers::list_conversation_kbs_docs),
         )
         .api_route(
             "/conversations/{cid}/knowledge-bases/{kb_id}",
-            put_with(
-                handlers::attach_conversation,
-                handlers::attach_conversation_docs,
-            )
-            .delete_with(
-                handlers::detach_conversation,
-                handlers::detach_conversation_docs,
-            ),
+            put_with(handlers::attach_conversation, handlers::attach_conversation_docs)
+                .delete_with(handlers::detach_conversation, handlers::detach_conversation_docs),
         )
         .api_route(
             "/projects/{pid}/knowledge-bases",

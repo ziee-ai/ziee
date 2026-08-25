@@ -15,10 +15,16 @@ pub enum LlmLocalRuntimeEvent {
     },
 
     /// A model instance was stopped
-    InstanceStopped { instance_id: Uuid, model_id: Uuid },
+    InstanceStopped {
+        instance_id: Uuid,
+        model_id: Uuid,
+    },
 
     /// A model instance was restarted
-    InstanceRestarted { instance_id: Uuid, model_id: Uuid },
+    InstanceRestarted {
+        instance_id: Uuid,
+        model_id: Uuid,
+    },
 
     /// A model instance status changed
     InstanceStatusChanged {

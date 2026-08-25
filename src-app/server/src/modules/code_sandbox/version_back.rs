@@ -151,11 +151,7 @@ pub async fn reconcile_workspace_versions(
         };
         let new_checksum = storage.calculate_checksum(&bytes);
         // Compare to the base version's checksum (no-op if unchanged).
-        let base = match Repos
-            .file
-            .get_version_by_id(row.base_version_id, user_id)
-            .await?
-        {
+        let base = match Repos.file.get_version_by_id(row.base_version_id, user_id).await? {
             Some(v) => v,
             None => {
                 tracing::warn!(

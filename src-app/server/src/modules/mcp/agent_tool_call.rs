@@ -106,7 +106,9 @@ pub(crate) struct McpCallScope {
 /// subprocess). For an `is_system` server the public `url` is redacted in list
 /// views, but this operates on the INTERNAL row (from `get_any_server`), so the
 /// real host is resolved SERVER-SIDE without depending on the redacted view.
-pub(crate) fn resolve_dest_host(server: &crate::modules::mcp::models::McpServer) -> Option<String> {
+pub(crate) fn resolve_dest_host(
+    server: &crate::modules::mcp::models::McpServer,
+) -> Option<String> {
     use crate::modules::mcp::models::TransportType;
     // Built-in servers are in-process loopback — no external egress destination.
     if server.is_built_in {
@@ -274,9 +276,7 @@ pub(crate) async fn call_mcp_tool(
                 Ok(Some(s))
                     if s.enabled
                         && (s.is_built_in
-                            || crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(
-                                id,
-                            )) =>
+                            || crate::modules::mcp::chat_extension::mcp::is_builtin_server_id(id)) =>
                 {
                     true
                 }
@@ -337,20 +337,19 @@ pub(crate) async fn call_mcp_tool(
                 }
             }
         } else {
-            let defaults =
-                match crate::modules::mcp::chat_extension::defaults::repository::get_user_defaults(
-                    crate::core::Repos.pool(),
-                    scope.user_id,
-                )
-                .await
-                {
-                    Ok(d) => d,
-                    Err(e) => {
-                        return Err(McpToolCallError::Failed(format!(
-                            "tool: could not resolve user MCP defaults: {e}"
-                        )));
-                    }
-                };
+            let defaults = match crate::modules::mcp::chat_extension::defaults::repository::get_user_defaults(
+                crate::core::Repos.pool(),
+                scope.user_id,
+            )
+            .await
+            {
+                Ok(d) => d,
+                Err(e) => {
+                    return Err(McpToolCallError::Failed(format!(
+                        "tool: could not resolve user MCP defaults: {e}"
+                    )));
+                }
+            };
             if let Some(defaults) = defaults {
                 let disabled = defaults.get_disabled_servers();
                 if disabled.iter().any(|d| {
@@ -378,82 +377,75 @@ pub(crate) async fn call_mcp_tool(
     // ephemeral `new_with_sampling` session (server→host sampling round-trips), and
     // the pooled path carries the real branch/message/tool_use context (journaling
     // parity). Workflow (chat_ctx = None) is unchanged — pooled, no chat context.
-    let session: std::sync::Arc<
-        tokio::sync::RwLock<crate::modules::mcp::client::session::McpSession>,
-    > = if let Some(cc) = &chat_ctx {
-        // Lightweight lookup (works for built-in loopback servers too, unlike
-        // `resolve_server_for_session` which is for external un-redacted URLs)
-        // to decide the sampling-vs-pooled branch WITHOUT an early-return that
-        // would skip `call_tool` (and thus the journal recording) for built-ins.
-        let supports_sampling = crate::core::Repos
-            .mcp
-            .get_any_server(server_id)
-            .await
-            .ok()
-            .flatten()
-            .map(|s| s.supports_sampling)
-            .unwrap_or(false);
-        if supports_sampling {
-            let server_row = match manager.resolve_server_for_session(server_id).await {
-                Ok(s) => s,
-                Err(e) => {
-                    return Err(McpToolCallError::Failed(format!(
-                        "tool: resolve server: {e}"
-                    )));
+    let session: std::sync::Arc<tokio::sync::RwLock<crate::modules::mcp::client::session::McpSession>> =
+        if let Some(cc) = &chat_ctx {
+            // Lightweight lookup (works for built-in loopback servers too, unlike
+            // `resolve_server_for_session` which is for external un-redacted URLs)
+            // to decide the sampling-vs-pooled branch WITHOUT an early-return that
+            // would skip `call_tool` (and thus the journal recording) for built-ins.
+            let supports_sampling = crate::core::Repos
+                .mcp
+                .get_any_server(server_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|s| s.supports_sampling)
+                .unwrap_or(false);
+            if supports_sampling {
+                let server_row = match manager.resolve_server_for_session(server_id).await {
+                    Ok(s) => s,
+                    Err(e) => return Err(McpToolCallError::Failed(format!("tool: resolve server: {e}"))),
+                };
+                // Sampling server → fresh ephemeral session WITH the host-LLM
+                // handler (parity with legacy `execute_tool`). No pooled fallback:
+                // a pooled sampling session deadlocks the SSE round-trip.
+                let handler: std::sync::Arc<dyn crate::modules::mcp::sampling::handler::SamplingHandler> =
+                    match crate::modules::mcp::sampling::handler::ChatSamplingHandler::new(cc.model_id, scope.user_id).await {
+                        Ok(h) => std::sync::Arc::new(h),
+                        Err(e) => return Err(McpToolCallError::Failed(format!("tool: sampling handler init: {e}"))),
+                    };
+                let mut s = match crate::modules::mcp::client::session::McpSession::new_with_sampling(server_row.clone(), handler).await {
+                    Ok(s) => s,
+                    Err(e) => return Err(McpToolCallError::Failed(format!("tool: sampling session: {e}"))),
+                };
+                s.set_call_context(crate::modules::mcp::tool_calls::models::McpCallContext {
+                    user_id: Some(scope.user_id),
+                    conversation_id: scope.conversation_id,
+                    branch_id: Some(cc.branch_id),
+                    message_id: Some(cc.message_id),
+                    tool_use_id: Some(cc.tool_use_id.clone()),
+                    source,
+                    server_name: server_row.name.clone(),
+                    is_built_in: server_row.is_built_in,
+                    ..Default::default()
+                });
+                std::sync::Arc::new(tokio::sync::RwLock::new(s))
+            } else {
+                match manager
+                    .get_or_create_with_context(
+                        server_id,
+                        scope.user_id,
+                        scope.conversation_id,
+                        Some(cc.branch_id),
+                        Some(cc.message_id),
+                        Some(cc.tool_use_id.clone()),
+                        source,
+                    )
+                    .await
+                {
+                    Ok(s) => s,
+                    Err(e) => return Err(McpToolCallError::Failed(format!("tool: open session: {e}"))),
                 }
-            };
-            // Sampling server → fresh ephemeral session WITH the host-LLM
-            // handler (parity with legacy `execute_tool`). No pooled fallback:
-            // a pooled sampling session deadlocks the SSE round-trip.
-            let handler: std::sync::Arc<
-                dyn crate::modules::mcp::sampling::handler::SamplingHandler,
-            > = match crate::modules::mcp::sampling::handler::ChatSamplingHandler::new(
-                cc.model_id,
-                scope.user_id,
-            )
-            .await
-            {
-                Ok(h) => std::sync::Arc::new(h),
-                Err(e) => {
-                    return Err(McpToolCallError::Failed(format!(
-                        "tool: sampling handler init: {e}"
-                    )));
-                }
-            };
-            let mut s = match crate::modules::mcp::client::session::McpSession::new_with_sampling(
-                server_row.clone(),
-                handler,
-            )
-            .await
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    return Err(McpToolCallError::Failed(format!(
-                        "tool: sampling session: {e}"
-                    )));
-                }
-            };
-            s.set_call_context(crate::modules::mcp::tool_calls::models::McpCallContext {
-                user_id: Some(scope.user_id),
-                conversation_id: scope.conversation_id,
-                branch_id: Some(cc.branch_id),
-                message_id: Some(cc.message_id),
-                tool_use_id: Some(cc.tool_use_id.clone()),
-                source,
-                server_name: server_row.name.clone(),
-                is_built_in: server_row.is_built_in,
-                ..Default::default()
-            });
-            std::sync::Arc::new(tokio::sync::RwLock::new(s))
+            }
         } else {
             match manager
                 .get_or_create_with_context(
                     server_id,
                     scope.user_id,
                     scope.conversation_id,
-                    Some(cc.branch_id),
-                    Some(cc.message_id),
-                    Some(cc.tool_use_id.clone()),
+                    None, // branch_id
+                    None, // message_id — a workflow run has no chat message
+                    None, // tool_use_id — not an LLM ContentBlock::ToolUse
                     source,
                 )
                 .await
@@ -461,24 +453,7 @@ pub(crate) async fn call_mcp_tool(
                 Ok(s) => s,
                 Err(e) => return Err(McpToolCallError::Failed(format!("tool: open session: {e}"))),
             }
-        }
-    } else {
-        match manager
-            .get_or_create_with_context(
-                server_id,
-                scope.user_id,
-                scope.conversation_id,
-                None, // branch_id
-                None, // message_id — a workflow run has no chat message
-                None, // tool_use_id — not an LLM ContentBlock::ToolUse
-                source,
-            )
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => return Err(McpToolCallError::Failed(format!("tool: open session: {e}"))),
-        }
-    };
+        };
 
     // ITEM-14: the call block reports (outcome, timing); the timing is read off the
     // session INSIDE the write guard, so a pooled session shared with another

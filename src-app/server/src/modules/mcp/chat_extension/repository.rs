@@ -5,9 +5,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 
-use super::approval::models::{
-    ApprovalMode, AutoApprovedServer, ConversationMcpSettings, DisabledServer, ToolUseApproval,
-};
+use super::approval::models::{ApprovalMode, AutoApprovedServer, ConversationMcpSettings, DisabledServer, ToolUseApproval};
 use super::approval::repository;
 use super::defaults::models::LoopSettings;
 
@@ -93,9 +91,7 @@ impl McpChatRepository {
             &items,
         )
         .await?;
-        results
-            .pop()
-            .ok_or_else(|| AppError::internal_error("create_tool_approval returned no rows"))
+        results.pop().ok_or_else(|| AppError::internal_error("create_tool_approval returned no rows"))
     }
 
     /// Create many pending tool-use approvals in a single round-trip.
@@ -214,12 +210,13 @@ impl McpChatRepository {
             return Ok(None);
         }
 
-        let rows: Vec<(Uuid,)> =
-            sqlx::query_as("SELECT server_id FROM message_mcp_servers WHERE message_id = $1")
-                .bind(message_id)
-                .fetch_all(&self.pool)
-                .await
-                .map_err(AppError::database_error)?;
+        let rows: Vec<(Uuid,)> = sqlx::query_as(
+            "SELECT server_id FROM message_mcp_servers WHERE message_id = $1",
+        )
+        .bind(message_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
         Ok(Some(rows.into_iter().map(|(id,)| id).collect()))
     }
 }

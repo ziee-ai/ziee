@@ -1,12 +1,12 @@
 // PDF file processor
 
-use super::ProcessingResult;
 use super::traits::{ContentProcessor, ImageGenerator};
+use super::ProcessingResult;
 use crate::common::AppError;
 use crate::modules::file::models::ProcessingMetadata;
 use crate::modules::file::utils::pdfium::with_pdfium;
 use async_trait::async_trait;
-use image::{ImageBuffer, RgbImage, imageops};
+use image::{imageops, ImageBuffer, RgbImage};
 use pdfium_render::prelude::*;
 use std::collections::HashSet;
 
@@ -52,6 +52,7 @@ impl PdfProcessor {
             .replace("? ", "?\n");
 
         // Clean up any double newlines
+        
 
         result.replace("\n\n", "\n").trim().to_string()
     }
@@ -153,10 +154,7 @@ impl ContentProcessor for PdfProcessor {
 
                 // Extract text from each page
                 for page_index in 0..document.pages().len() {
-                    let page = document
-                        .pages()
-                        .get(page_index)
-                        .map_err(AppError::internal_with_id)?;
+                    let page = document.pages().get(page_index).map_err(AppError::internal_with_id)?;
 
                     let page_text = page.text().map_err(AppError::internal_with_id)?;
 
@@ -217,56 +215,56 @@ impl ImageGenerator for PdfProcessor {
         // async runtime so it cannot block executor threads.
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || {
-            with_pdfium(move |pdfium| {
-                // Load the PDF document from bytes
-                let document = pdfium
-                    .load_pdf_from_byte_slice(&data, None)
-                    .map_err(|e| AppError::internal_with_id(e))?;
+        with_pdfium(move |pdfium| {
+        // Load the PDF document from bytes
+        let document = pdfium
+            .load_pdf_from_byte_slice(&data, None)
+            .map_err(|e| AppError::internal_with_id(e))?;
 
-                let page_count = document.pages().len() as u32;
-                let max_pages = page_count.min(max_thumbnails);
+        let page_count = document.pages().len() as u32;
+        let max_pages = page_count.min(max_thumbnails);
 
-                // Generate all preview images at full size
-                let mut images = Vec::new();
-                for page_index in 0..max_pages {
-                    let page = document
-                        .pages()
-                        .get(page_index as u16)
-                        .map_err(AppError::internal_with_id)?;
+        // Generate all preview images at full size
+        let mut images = Vec::new();
+        for page_index in 0..max_pages {
+            let page = document
+                .pages()
+                .get(page_index as u16)
+                .map_err(AppError::internal_with_id)?;
 
-                    // Generate high-quality image (2000px)
-                    let image_bytes = render_page_to_jpeg(&page, MAX_IMAGE_DIM)?;
-                    images.push(image_bytes);
-                }
+            // Generate high-quality image (2000px)
+            let image_bytes = render_page_to_jpeg(&page, MAX_IMAGE_DIM)?;
+            images.push(image_bytes);
+        }
 
-                // Generate single 300px thumbnail from first page only
-                let thumbnails = if let Ok(first_page) = document.pages().get(0) {
-                    vec![render_page_to_jpeg(&first_page, 300)?]
-                } else {
-                    vec![]
-                };
+        // Generate single 300px thumbnail from first page only
+        let thumbnails = if let Ok(first_page) = document.pages().get(0) {
+            vec![render_page_to_jpeg(&first_page, 300)?]
+        } else {
+            vec![]
+        };
 
-                let metadata = ProcessingMetadata {
-                    has_text: Some(true),
-                    // The doc's actual page count, NOT the rendered image
-                    // count. The frontend reads this alongside the file's
-                    // `preview_page_count` to detect truncation (we cap
-                    // rendered pages at `PREVIEW_PAGE_CAP` in
-                    // processing/mod.rs) and surface a "showing first N of
-                    // M" banner. Without this, the frontend has no way to
-                    // know how many pages the doc actually has.
-                    page_count: Some(page_count),
-                    ..Default::default()
-                };
+        let metadata = ProcessingMetadata {
+            has_text: Some(true),
+            // The doc's actual page count, NOT the rendered image
+            // count. The frontend reads this alongside the file's
+            // `preview_page_count` to detect truncation (we cap
+            // rendered pages at `PREVIEW_PAGE_CAP` in
+            // processing/mod.rs) and surface a "showing first N of
+            // M" banner. Without this, the frontend has no way to
+            // know how many pages the doc actually has.
+            page_count: Some(page_count),
+            ..Default::default()
+        };
 
-                Ok(ProcessingResult {
-                    text_pages: vec![], // Text is extracted separately via ContentProcessor
-                    geometry_pages: vec![],
-                    metadata,
-                    thumbnails, // Single element array
-                    images,     // Multiple elements (one per page)
-                })
-            })
+        Ok(ProcessingResult {
+            text_pages: vec![], // Text is extracted separately via ContentProcessor
+            geometry_pages: vec![],
+            metadata,
+            thumbnails, // Single element array
+            images,     // Multiple elements (one per page)
+        })
+        })
         })
         .await
         .map_err(|e| AppError::internal_with_id(e))?
@@ -295,7 +293,7 @@ fn render_page_to_jpeg(page: &PdfPage, max_dim: u32) -> Result<Vec<u8>, AppError
         rgb_data.push(pixel[2]); // R (from B in BGRA)
         rgb_data.push(pixel[1]); // G
         rgb_data.push(pixel[0]); // B (from R in BGRA)
-        // Skip alpha channel
+                                 // Skip alpha channel
     }
 
     // Create RGB image

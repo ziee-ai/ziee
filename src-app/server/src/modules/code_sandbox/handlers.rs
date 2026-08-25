@@ -9,13 +9,13 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::Query;
 use axum::http::StatusCode;
+use axum::Json;
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -77,11 +77,7 @@ pub async fn jsonrpc_handler(
     let raw: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(e) => {
-            return error_response(
-                None,
-                StatusCode::BAD_REQUEST,
-                JsonRpcError::parse_error(e.to_string()),
-            );
+            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::parse_error(e.to_string()));
         }
     };
 
@@ -108,11 +104,7 @@ pub async fn jsonrpc_handler(
         Ok(r) => r,
         Err(e) => {
             // Valid JSON, but not a valid JSON-RPC request object → -32600.
-            return error_response(
-                None,
-                StatusCode::BAD_REQUEST,
-                JsonRpcError::invalid_request(e.to_string()),
-            );
+            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::invalid_request(e.to_string()));
         }
     };
 
@@ -287,7 +279,10 @@ fn map_tool_error(tool_name: &str, app_err: &crate::common::AppError) -> JsonRpc
 /// Dispatch the stateful methods (the stateless ones — `initialize`,
 /// `tools/list` — are handled in `jsonrpc_handler` before this is
 /// reached, so they don't need a SandboxContext).
-async fn dispatch(ctx: &SandboxContext, req: &JsonRpcRequest) -> Result<Value, JsonRpcError> {
+async fn dispatch(
+    ctx: &SandboxContext,
+    req: &JsonRpcRequest,
+) -> Result<Value, JsonRpcError> {
     match req.method.as_str() {
         "tools/call" => {
             #[derive(Deserialize)]
@@ -370,7 +365,8 @@ async fn invoke_tool(
             struct A {
                 command: String,
             }
-            let a: A = serde_json::from_value(args.clone()).map_err(invalid_tool_args)?;
+            let a: A = serde_json::from_value(args.clone())
+                .map_err(invalid_tool_args)?;
             let flavor = resolve_execute_flavor(Some(args))?;
             tools::execute::execute_command(ctx, &a.command, &flavor).await
         }
@@ -383,7 +379,8 @@ async fn invoke_tool(
                 #[serde(default)]
                 end_line: Option<usize>,
             }
-            let a: A = serde_json::from_value(args.clone()).map_err(invalid_tool_args)?;
+            let a: A = serde_json::from_value(args.clone())
+                .map_err(invalid_tool_args)?;
             tools::files::read_file(ctx, &a.filename, a.start_line, a.end_line).await
         }
         "write_file" => {
@@ -392,7 +389,8 @@ async fn invoke_tool(
                 filename: String,
                 content: String,
             }
-            let a: A = serde_json::from_value(args.clone()).map_err(invalid_tool_args)?;
+            let a: A = serde_json::from_value(args.clone())
+                .map_err(invalid_tool_args)?;
             tools::files::write_file(ctx, &a.filename, &a.content).await
         }
         "edit_file" => {
@@ -403,7 +401,8 @@ async fn invoke_tool(
                 end_line: usize,
                 new_content: String,
             }
-            let a: A = serde_json::from_value(args.clone()).map_err(invalid_tool_args)?;
+            let a: A = serde_json::from_value(args.clone())
+                .map_err(invalid_tool_args)?;
             tools::files::edit_file(ctx, &a.filename, a.start_line, a.end_line, &a.new_content)
                 .await
         }
@@ -416,7 +415,8 @@ async fn invoke_tool(
                 #[serde(default)]
                 save_as: Option<String>,
             }
-            let a: A = serde_json::from_value(args.clone()).map_err(invalid_tool_args)?;
+            let a: A = serde_json::from_value(args.clone())
+                .map_err(invalid_tool_args)?;
             tools::files::get_resource_link(ctx, &a.filename, a.save_as.as_deref()).await
         }
         other => Err(crate::common::AppError::new(
@@ -503,6 +503,7 @@ fn flavor_cached_size_bytes(cache_dir: &std::path::Path, flavor: &str) -> Option
     found.then_some(total)
 }
 
+
 // =====================================================================
 // MCP `list_sandbox_environments` tool support. The structs below are
 // consumed by `build_environments_response()` (above) which the LLM
@@ -571,7 +572,9 @@ pub async fn get_sandbox_flavors_handler(
 pub fn get_sandbox_flavors_docs(
     op: aide::transform::TransformOperation,
 ) -> aide::transform::TransformOperation {
-    with_permission::<(crate::modules::code_sandbox::permissions::CodeSandboxEnvironmentsRead,)>(op)
+    with_permission::<(
+        crate::modules::code_sandbox::permissions::CodeSandboxEnvironmentsRead,
+    )>(op)
         .id("CodeSandbox.listFlavors")
         .tag("Code Sandbox")
         .summary("List selectable sandbox rootfs flavors + host command allowlist")
@@ -585,6 +588,7 @@ pub fn get_sandbox_flavors_docs(
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
 }
 
+
 /// Build the MCP `content[]` array for a tool result.
 ///
 /// If the tool already returned a typed MCP content block
@@ -597,12 +601,17 @@ pub fn get_sandbox_flavors_docs(
 /// block would silently break clients that walk
 /// `content[].type == "resource_link"` to find downloadable URIs.
 pub(crate) fn mcp_content_blocks(result: &Value) -> Vec<Value> {
-    const KNOWN_CONTENT_TYPES: &[&str] = &["text", "image", "audio", "resource_link", "resource"];
+    const KNOWN_CONTENT_TYPES: &[&str] = &[
+        "text",
+        "image",
+        "audio",
+        "resource_link",
+        "resource",
+    ];
     if let Some(t) = result.get("type").and_then(|v| v.as_str())
-        && KNOWN_CONTENT_TYPES.contains(&t)
-    {
-        return vec![result.clone()];
-    }
+        && KNOWN_CONTENT_TYPES.contains(&t) {
+            return vec![result.clone()];
+        }
     vec![json!({
         "type": "text",
         "text": serde_json::to_string(result).unwrap_or_default(),
@@ -646,8 +655,7 @@ pub async fn download_handler(
 
     let workspace = workspace_for(&state, conversation_id);
     let path = crate::modules::code_sandbox::tools::files::canonicalize_in_workspace(
-        &workspace,
-        &q.filename,
+        &workspace, &q.filename,
     )?;
 
     let bytes = tokio::fs::read(&path).await.map_err(|e| {
@@ -984,10 +992,7 @@ async fn stage_editable_files(
         // version save path uses — so the copy-in resolves the head blob
         // regardless of the filename's extension case.
         let ext = crate::modules::file::utils::extension_of(&f.filename);
-        let bytes = match storage
-            .load_original(f.user_id, head.blob_version_id, &ext)
-            .await
-        {
+        let bytes = match storage.load_original(f.user_id, head.blob_version_id, &ext).await {
             Ok(b) => b,
             Err(_) => continue,
         };
@@ -1082,10 +1087,7 @@ async fn stage_attachments_with(
         let ext = crate::modules::file::utils::extension_of(&f.filename);
         // Load the HEAD version's blob — `blob_version_id`, NOT `file_id`
         // (which keys v1 and would stage stale bytes for an edited file).
-        let bytes = match storage
-            .load_original(f.user_id, f.blob_version_id, &ext)
-            .await
-        {
+        let bytes = match storage.load_original(f.user_id, f.blob_version_id, &ext).await {
             Ok(b) => b,
             Err(e) => {
                 tracing::warn!(
@@ -1152,7 +1154,9 @@ async fn stage_attachments_with(
 }
 
 fn workspace_for(state: &CodeSandboxState, conversation_id: Uuid) -> std::path::PathBuf {
-    state.workspace_root.join(conversation_id.to_string())
+    state
+        .workspace_root
+        .join(conversation_id.to_string())
 }
 
 /// Apply the per-conversation workspace mode policy (Audit H-3) so the
@@ -1490,13 +1494,7 @@ pub async fn update_resource_limits_handler(
     // module-private accessor rather than threading state through every
     // handler signature.
     crate::modules::code_sandbox::resource_limits_cache::invalidate(&row);
-    sync_publish(
-        SyncEntity::CodeSandboxSettings,
-        SyncAction::Update,
-        uuid::Uuid::nil(),
-        Audience::perm::<CodeSandboxResourceLimitsRead>(),
-        origin.0,
-    );
+    sync_publish(SyncEntity::CodeSandboxSettings, SyncAction::Update, uuid::Uuid::nil(), Audience::perm::<CodeSandboxResourceLimitsRead>(), origin.0);
     Ok((StatusCode::OK, Json(row)))
 }
 
@@ -1536,10 +1534,7 @@ mod tests {
         use serde_json::json;
 
         // Unchanged default: absent and explicit-null both mean `minimal`.
-        assert_eq!(
-            resolve_execute_flavor(None).unwrap(),
-            crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR
-        );
+        assert_eq!(resolve_execute_flavor(None).unwrap(), crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR);
         assert_eq!(
             resolve_execute_flavor(Some(&json!({ "command": "ls" }))).unwrap(),
             crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR
@@ -1566,24 +1561,14 @@ mod tests {
             .to_string();
         assert!(msg.contains("flavor"), "names the argument: {msg}");
         for name in crate::modules::code_sandbox::known_flavor_names() {
-            assert!(
-                msg.contains(name),
-                "lists the advertised flavor `{name}`: {msg}"
-            );
+            assert!(msg.contains(name), "lists the advertised flavor `{name}`: {msg}");
         }
-        assert!(
-            msg.contains("Example: {"),
-            "carries a copyable example: {msg}"
-        );
+        assert!(msg.contains("Example: {"), "carries a copyable example: {msg}");
 
         // A SUPPLIED-but-unusable value is refused, never swapped for the
         // default — an empty string (which previously passed straight through as
         // an empty flavor) and a non-string.
-        for bad in [
-            json!({ "flavor": "" }),
-            json!({ "flavor": "  " }),
-            json!({ "flavor": 7 }),
-        ] {
+        for bad in [json!({ "flavor": "" }), json!({ "flavor": "  " }), json!({ "flavor": 7 })] {
             assert!(
                 resolve_execute_flavor(Some(&bad)).is_err(),
                 "a supplied-but-invalid flavor must be refused, not defaulted: {bad}"
@@ -1635,7 +1620,8 @@ mod tests {
         let mapped = map_tool_error("read_file", &not_found);
         assert_eq!(mapped.code, JsonRpcError::INVALID_PARAMS);
         assert!(
-            mapped.message.contains("evaluation.json") && mapped.message.contains("list_files"),
+            mapped.message.contains("evaluation.json")
+                && mapped.message.contains("list_files"),
             "client-class message must reach the model: {}",
             mapped.message
         );
@@ -1693,24 +1679,13 @@ mod tests {
         shape.sort();
 
         let expected: Vec<(String, Vec<String>)> = vec![
-            (
-                "edit_file".into(),
-                vec![
-                    "filename".into(),
-                    "start_line".into(),
-                    "end_line".into(),
-                    "new_content".into(),
-                ],
-            ),
+            ("edit_file".into(), vec!["filename".into(), "start_line".into(), "end_line".into(), "new_content".into()]),
             ("execute_command".into(), vec!["command".into()]),
             ("get_resource_link".into(), vec!["filename".into()]),
             ("list_files".into(), vec![]),
             ("list_sandbox_environments".into(), vec![]),
             ("read_file".into(), vec!["filename".into()]),
-            (
-                "write_file".into(),
-                vec!["filename".into(), "content".into()],
-            ),
+            ("write_file".into(), vec!["filename".into(), "content".into()]),
         ];
 
         assert_eq!(
@@ -2116,15 +2091,12 @@ mod tests {
         // Count how many of the staged files made it onto disk.
         let dir = state.workspace_root.join("attachments");
         let staged_count = std::fs::read_dir(&dir)
-            .map(|it| {
-                it.filter(|e| {
-                    e.as_ref()
-                        .ok()
-                        .and_then(|e| e.file_name().to_str().map(|n| !n.contains(".tmp.")))
-                        .unwrap_or(false)
-                })
-                .count()
-            })
+            .map(|it| it.filter(|e| {
+                e.as_ref()
+                    .ok()
+                    .and_then(|e| e.file_name().to_str().map(|n| !n.contains(".tmp.")))
+                    .unwrap_or(false)
+            }).count())
             .unwrap_or(0);
         // total_cap / per_file files should fit; the next attempt
         // hits the cap and breaks the loop.
@@ -2156,15 +2128,12 @@ mod tests {
 
         let dir = state.workspace_root.join("attachments");
         let staged_count = std::fs::read_dir(&dir)
-            .map(|it| {
-                it.filter(|e| {
-                    e.as_ref()
-                        .ok()
-                        .and_then(|e| e.file_name().to_str().map(|n| !n.contains(".tmp.")))
-                        .unwrap_or(false)
-                })
-                .count()
-            })
+            .map(|it| it.filter(|e| {
+                e.as_ref()
+                    .ok()
+                    .and_then(|e| e.file_name().to_str().map(|n| !n.contains(".tmp.")))
+                    .unwrap_or(false)
+            }).count())
             .unwrap_or(0);
         assert_eq!(
             staged_count,
@@ -2187,10 +2156,7 @@ mod tests {
         let files = vec![conv_file(id, user, "a.txt")];
 
         super::stage_attachments_with(&state, &files, &storage).await;
-        let staged_path = state
-            .workspace_root
-            .join("attachments")
-            .join(id.to_string());
+        let staged_path = state.workspace_root.join("attachments").join(id.to_string());
         let mtime1 = std::fs::metadata(&staged_path).unwrap().modified().unwrap();
 
         // Tamper with the upstream storage to confirm the second call
@@ -2199,10 +2165,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         super::stage_attachments_with(&state, &files, &storage).await;
         let mtime2 = std::fs::metadata(&staged_path).unwrap().modified().unwrap();
-        assert_eq!(
-            mtime1, mtime2,
-            "second call must not re-write a staged file"
-        );
+        assert_eq!(mtime1, mtime2, "second call must not re-write a staged file");
     }
 
     #[tokio::test]
@@ -2225,9 +2188,7 @@ mod tests {
         let stage_dir = state.workspace_root.join("attachments");
         tokio::fs::create_dir_all(&stage_dir).await.unwrap();
         let leftover = stage_dir.join(format!("{id}.tmp.99999"));
-        tokio::fs::write(&leftover, b"stale crash leftover")
-            .await
-            .unwrap();
+        tokio::fs::write(&leftover, b"stale crash leftover").await.unwrap();
 
         let files = vec![conv_file(id, user, "a.txt")];
         super::stage_attachments_with(&state, &files, &storage).await;

@@ -141,10 +141,7 @@ mod tests {
         // re-upload).
         let past = (Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
         let m = mapping_with_metadata(json!({ "expires_at": past }));
-        assert!(
-            is_mapping_expired(&m),
-            "an expired mapping must invalidate the cache"
-        );
+        assert!(is_mapping_expired(&m), "an expired mapping must invalidate the cache");
     }
 
     #[test]

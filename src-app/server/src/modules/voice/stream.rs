@@ -73,10 +73,8 @@ pub async fn transcribe_stream(
     // per-tick whisper cost is bounded regardless of recording length (FB-1). Clips
     // at/under the window are decoded whole (fully stitched); longer ones show the
     // recent window. The FINAL on-stop decode (batch /transcribe) is unclamped.
-    let audio = axum::body::Bytes::from(clamp_wav_tail(
-        &audio,
-        settings.stream_max_decode_secs.max(1) as u32,
-    ));
+    let audio =
+        axum::body::Bytes::from(clamp_wav_tail(&audio, settings.stream_max_decode_secs.max(1) as u32));
 
     // Ensure the managed whisper-server is up (lazy auto-start), shared with batch.
     let _guard = InflightGuard::acquire();
@@ -94,19 +92,19 @@ pub async fn transcribe_stream(
     // full-clip decode exceeds INTERIM_WHISPER_TIMEOUT — is TRANSIENT: the client
     // single-flights and simply skips this caption, so surface a transient 503
     // (`VOICE_INTERIM_UNAVAILABLE`) rather than a 500 that reads as a real fault.
-    let text =
-        match forward_to_whisper(&handle.base_url, audio, &lang, INTERIM_WHISPER_TIMEOUT).await {
-            Ok(text) => text,
-            Err(e) => {
-                tracing::debug!("voice interim decode transient failure: {e}");
-                return Err(AppError::new(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "VOICE_INTERIM_UNAVAILABLE",
-                    "interim transcription is temporarily unavailable",
-                )
-                .into());
-            }
-        };
+    let text = match forward_to_whisper(&handle.base_url, audio, &lang, INTERIM_WHISPER_TIMEOUT).await
+    {
+        Ok(text) => text,
+        Err(e) => {
+            tracing::debug!("voice interim decode transient failure: {e}");
+            return Err(AppError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "VOICE_INTERIM_UNAVAILABLE",
+                "interim transcription is temporarily unavailable",
+            )
+            .into());
+        }
+    };
     let duration_ms = started.elapsed().as_millis() as i64;
 
     Ok((
@@ -225,7 +223,8 @@ mod tests {
 
     fn data_secs(wav: &[u8]) -> f64 {
         // fmt byte_rate at offset 28; data size at offset 40.
-        let byte_rate = u32::from_le_bytes([wav[28], wav[29], wav[30], wav[31]]) as f64;
+        let byte_rate =
+            u32::from_le_bytes([wav[28], wav[29], wav[30], wav[31]]) as f64;
         let data_len = u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]) as f64;
         data_len / byte_rate
     }
@@ -234,18 +233,11 @@ mod tests {
     fn clamps_a_long_clip_to_the_trailing_window() {
         let wav = make_wav(10.0);
         let clamped = clamp_wav_tail(&wav, 3);
-        assert!(
-            &clamped[0..4] == b"RIFF" && &clamped[8..12] == b"WAVE",
-            "valid WAV"
-        );
+        assert!(&clamped[0..4] == b"RIFF" && &clamped[8..12] == b"WAVE", "valid WAV");
         let secs = data_secs(&clamped);
         assert!((secs - 3.0).abs() < 0.05, "expected ~3s, got {secs}");
         // The kept bytes are the TAIL of the original data (last sample preserved).
-        assert_eq!(
-            *clamped.last().unwrap(),
-            *wav.last().unwrap(),
-            "keeps the newest audio"
-        );
+        assert_eq!(*clamped.last().unwrap(), *wav.last().unwrap(), "keeps the newest audio");
     }
 
     #[test]

@@ -15,9 +15,7 @@ mod routes;
 pub use models::*;
 pub use routes::{group_router, user_router};
 #[allow(unused_imports)]
-pub use ziee_auth::user::{
-    GroupRepository, UserRepository, UserService, events, repository, types,
-};
+pub use ziee_auth::user::{GroupRepository, UserRepository, UserService, events, repository, types};
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;

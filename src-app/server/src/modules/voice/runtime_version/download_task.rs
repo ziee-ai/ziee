@@ -273,13 +273,8 @@ async fn run_download(
     let started = std::time::Instant::now();
     let task_for_cb = task.clone();
     let progress_cb = move |received: u64, total: Option<u64>| {
-        let percent = total.map(|t| {
-            if t == 0 {
-                0.0
-            } else {
-                (received as f32 / t as f32) * 100.0
-            }
-        });
+        let percent =
+            total.map(|t| if t == 0 { 0.0 } else { (received as f32 / t as f32) * 100.0 });
         if let Ok(mut guard) = task_for_cb.state.try_lock() {
             guard.status = EngineDownloadStatus::Downloading;
             guard.bytes_received = received;
@@ -295,14 +290,14 @@ async fn run_download(
                 percent,
             });
         }
-        let _ = task_for_cb.events.send(SSEEngineDownloadEvent::Progress(
-            SSEEngineDownloadProgressData {
+        let _ = task_for_cb
+            .events
+            .send(SSEEngineDownloadEvent::Progress(SSEEngineDownloadProgressData {
                 status: EngineDownloadStatus::Downloading,
                 bytes_received: received,
                 total_bytes: total,
                 percent,
-            },
-        ));
+            }));
     };
 
     // Race the download against graceful shutdown.
@@ -321,21 +316,23 @@ async fn run_download(
             let msg = "whisper download interrupted by server shutdown".to_string();
             guard.status = EngineDownloadStatus::Failed;
             guard.error = Some(msg.clone());
-            let _ = task.events.send(SSEEngineDownloadEvent::Failed(
-                SSEEngineDownloadFailedData { error: msg },
-            ));
+            let _ = task
+                .events
+                .send(SSEEngineDownloadEvent::Failed(SSEEngineDownloadFailedData {
+                    error: msg,
+                }));
         }
         Some(Ok(version_row)) => {
             let bytes = guard.bytes_received;
             guard.status = EngineDownloadStatus::Completed;
             guard.result = Some(version_row.clone());
-            let _ = task.events.send(SSEEngineDownloadEvent::Complete(
-                SSEEngineDownloadCompleteData {
+            let _ = task
+                .events
+                .send(SSEEngineDownloadEvent::Complete(SSEEngineDownloadCompleteData {
                     version_id: version_row.id,
                     bytes_downloaded: bytes,
                     duration_ms,
-                },
-            ));
+                }));
             // Realtime sync: the version row now exists — notify admin devices
             // (background task, so no originating connection). Notify-and-refetch
             // (the client refetches the version list), so a nil id is sufficient.
@@ -351,9 +348,11 @@ async fn run_download(
             let msg = e.to_string();
             guard.status = EngineDownloadStatus::Failed;
             guard.error = Some(msg.clone());
-            let _ = task.events.send(SSEEngineDownloadEvent::Failed(
-                SSEEngineDownloadFailedData { error: msg },
-            ));
+            let _ = task
+                .events
+                .send(SSEEngineDownloadEvent::Failed(SSEEngineDownloadFailedData {
+                    error: msg,
+                }));
         }
     }
 }

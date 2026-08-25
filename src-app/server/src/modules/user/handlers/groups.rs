@@ -126,8 +126,7 @@ pub async fn get_group(
     Extension(ctx): Extension<AuthContext>,
     Path(group_id): Path<Uuid>,
 ) -> ApiResult<Json<Group>> {
-    let group = ctx
-        .group()
+    let group = ctx.group()
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -191,8 +190,7 @@ pub async fn create_group(
     }
 
     // Create group
-    let group = ctx
-        .group()
+    let group = ctx.group()
         .create(&request.name, request.description, request.permissions)
         .await?;
 
@@ -239,8 +237,7 @@ pub async fn update_group(
     }
 
     // Check if group exists
-    let existing_group = ctx
-        .group()
+    let existing_group = ctx.group()
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -255,50 +252,47 @@ pub async fn update_group(
         && (request.name.is_some()
             || request.is_active == Some(false)
             || request.permissions.is_some())
-    {
-        return Err(AppError::bad_request(
-            "SYSTEM_GROUP",
-            "Cannot modify name, deactivate, or change permissions of system groups",
-        )
-        .into());
-    }
+        {
+            return Err(AppError::bad_request(
+                "SYSTEM_GROUP",
+                "Cannot modify name, deactivate, or change permissions of system groups",
+            )
+            .into());
+        }
 
     // Prevent self-escalation: caller must hold every permission they're
     // trying to grant via this group (admins bypass). Same pattern as
     // create_user (03-user F-04). Closes the second half of 02-permissions
     // F-02.
     if let Some(ref requested_perms) = request.permissions
-        && !auth.user.is_admin
-    {
-        for perm in requested_perms {
-            if !crate::modules::permissions::checker::check_permission_union(
-                &auth.user,
-                &auth.groups,
-                perm,
-            ) {
-                return Err(AppError::forbidden(
-                    "CANNOT_GRANT_PERMISSION",
-                    format!(
-                        "Cannot grant permission '{}' that you do not hold yourself",
-                        perm
-                    ),
-                )
-                .into());
+        && !auth.user.is_admin {
+            for perm in requested_perms {
+                if !crate::modules::permissions::checker::check_permission_union(
+                    &auth.user,
+                    &auth.groups,
+                    perm,
+                ) {
+                    return Err(AppError::forbidden(
+                        "CANNOT_GRANT_PERMISSION",
+                        format!(
+                            "Cannot grant permission '{}' that you do not hold yourself",
+                            perm
+                        ),
+                    )
+                    .into());
+                }
             }
         }
-    }
 
     // Check if new name already exists
     if let Some(ref name) = request.name
         && let Some(existing) = ctx.group().get_by_name(name).await?
-        && existing.id != group_id
-    {
-        return Err(AppError::conflict("Group name").into());
-    }
+            && existing.id != group_id {
+                return Err(AppError::conflict("Group name").into());
+            }
 
     // Update group
-    let group = ctx
-        .group()
+    let group = ctx.group()
         .update(
             group_id,
             request.name,
@@ -350,8 +344,7 @@ pub async fn delete_group(
     origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if group exists
-    let group = ctx
-        .group()
+    let group = ctx.group()
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -401,8 +394,7 @@ pub async fn get_group_members(
     }
 
     // Get group members
-    let (mut users, total) = ctx
-        .group()
+    let (mut users, total) = ctx.group()
         .get_members(group_id, params.page, params.per_page)
         .await?;
 
@@ -456,8 +448,7 @@ pub async fn assign_user_to_group(
     }
 
     // Check if group exists
-    let target_group = ctx
-        .group()
+    let target_group = ctx.group()
         .get_by_id(request.group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -640,8 +631,8 @@ mod tests {
     #[test]
     fn description_rejects_only_nul() {
         assert!(reject_nul("multi\nline\tprose", "Group description").is_ok());
-        let err =
-            reject_nul("bad\u{0}description", "Group description").expect_err("expected rejection");
+        let err = reject_nul("bad\u{0}description", "Group description")
+            .expect_err("expected rejection");
         assert_eq!(err.status_code(), 400);
         assert_eq!(err.error_code(), "VALIDATION_ERROR");
     }

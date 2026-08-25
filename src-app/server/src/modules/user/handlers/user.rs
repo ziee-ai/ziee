@@ -19,10 +19,7 @@ use crate::modules::user::{
     events::UserEvent,
     models::User,
     permissions::*,
-    types::{
-        CreateUserRequest, ResetPasswordRequest, UpdateUserRequest, UserActiveStatusResponse,
-        UserListResponse,
-    },
+    types::{CreateUserRequest, ResetPasswordRequest, UpdateUserRequest, UserActiveStatusResponse, UserListResponse},
 };
 
 // =====================================================
@@ -83,8 +80,7 @@ pub async fn get_user(
     Extension(ctx): Extension<AuthContext>,
     Path(user_id): Path<Uuid>,
 ) -> ApiResult<Json<User>> {
-    let user = ctx
-        .user()
+    let user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -142,29 +138,27 @@ pub async fn create_user(
     // bypass. Without this, any users::create holder can mint a wildcard
     // root by posting {"permissions": ["*"]} — 03-user F-04 (High).
     if let Some(ref requested_perms) = request.permissions
-        && !auth.user.is_admin
-    {
-        for perm in requested_perms {
-            if !crate::modules::permissions::checker::check_permission_union(
-                &auth.user,
-                &auth.groups,
-                perm,
-            ) {
-                return Err(AppError::forbidden(
-                    "CANNOT_GRANT_PERMISSION",
-                    format!(
-                        "Cannot grant permission '{}' that you do not hold yourself",
-                        perm
-                    ),
-                )
-                .into());
+        && !auth.user.is_admin {
+            for perm in requested_perms {
+                if !crate::modules::permissions::checker::check_permission_union(
+                    &auth.user,
+                    &auth.groups,
+                    perm,
+                ) {
+                    return Err(AppError::forbidden(
+                        "CANNOT_GRANT_PERMISSION",
+                        format!(
+                            "Cannot grant permission '{}' that you do not hold yourself",
+                            perm
+                        ),
+                    )
+                    .into());
+                }
             }
         }
-    }
 
     // Check if username already exists
-    if ctx
-        .user()
+    if ctx.user()
         .get_by_username(&request.username)
         .await?
         .is_some()
@@ -179,7 +173,8 @@ pub async fn create_user(
 
     // Validate password strength (min 8 / max 72 bytes / no NUL).
     // Closes 03-user F-05 (Medium).
-    if let Err(msg) = crate::modules::auth::password::validate_password_strength(&request.password)
+    if let Err(msg) =
+        crate::modules::auth::password::validate_password_strength(&request.password)
     {
         return Err(AppError::bad_request("WEAK_PASSWORD", msg).into());
     }
@@ -189,8 +184,7 @@ pub async fn create_user(
         .map_err(|e| AppError::internal_with_id(format!("hash password: {e}")))?;
 
     // Create user
-    let user = ctx
-        .user()
+    let user = ctx.user()
         .create(
             &request.username,
             &request.email,
@@ -205,8 +199,7 @@ pub async fn create_user(
         // Assign user to default group (assigned_by is None for automatic
         // assignment). We don't fail user creation if this fails, but we log
         // it — a silently group-less user can be missing expected permissions.
-        match ctx
-            .user()
+        match ctx.user()
             .assign_to_group(user.id, default_group.id, None)
             .await
         {
@@ -228,8 +221,7 @@ pub async fn create_user(
     }
 
     // Emit UserCreated event asynchronously
-    ctx.events
-        .emit_user(UserEvent::Created { user: user.clone() });
+    ctx.events.emit_user(UserEvent::Created { user: user.clone() });
 
     ctx.sync.publish(
         AuthSyncEntity::User,
@@ -280,8 +272,7 @@ pub async fn update_user(
     }
 
     // Check if user exists and get user data
-    let user = ctx
-        .user()
+    let user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -296,10 +287,9 @@ pub async fn update_user(
     // Check if new username already exists
     if let Some(ref username) = request.username
         && let Some(existing) = ctx.user().get_by_username(username).await?
-        && existing.id != user_id
-    {
-        return Err(AppError::conflict("Username").into());
-    }
+            && existing.id != user_id {
+                return Err(AppError::conflict("Username").into());
+            }
 
     // Update user.
     //
@@ -309,7 +299,13 @@ pub async fn update_user(
     // and 03-user F-03 (High: silent email rewrite → OAuth takeover).
     // Email and permissions are managed via dedicated future endpoints.
     ctx.user()
-        .update(user_id, request.username, None, request.display_name, None)
+        .update(
+            user_id,
+            request.username,
+            None,
+            request.display_name,
+            None,
+        )
         .await?;
 
     // Update active status if provided
@@ -318,16 +314,13 @@ pub async fn update_user(
     }
 
     // Fetch updated user
-    let updated_user = ctx
-        .user()
+    let updated_user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
 
     // Emit update event for other modules to react
-    ctx.events.emit_user(UserEvent::Updated {
-        user: updated_user.clone(),
-    });
+    ctx.events.emit_user(UserEvent::Updated { user: updated_user.clone() });
 
     ctx.sync.publish(
         AuthSyncEntity::User,
@@ -372,8 +365,7 @@ pub async fn toggle_user_active(
     origin: SyncOrigin,
 ) -> ApiResult<Json<UserActiveStatusResponse>> {
     // Get current user
-    let user = ctx
-        .user()
+    let user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -390,14 +382,12 @@ pub async fn toggle_user_active(
     ctx.user().set_active(user_id, new_status).await?;
 
     // Fetch updated user and emit event
-    let updated_user = ctx
-        .user()
+    let updated_user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
 
-    ctx.events
-        .emit_user(UserEvent::Updated { user: updated_user });
+    ctx.events.emit_user(UserEvent::Updated { user: updated_user });
 
     // Mirror update_user: notify admins (User) AND the affected user (Profile,
     // Owner) so their devices re-bootstrap — on deactivation that surfaces the
@@ -449,8 +439,7 @@ pub async fn reset_user_password(
     Json(request): Json<ResetPasswordRequest>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    let target_user = ctx
-        .user()
+    let target_user = ctx.user()
         .get_by_id(request.user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -487,7 +476,11 @@ pub async fn reset_user_password(
     // refresh past the password change. Without this the Session sync below is
     // cosmetic — the still-valid access token keeps passing /auth/me until it
     // expires. After revocation the next refresh fails → forced re-login.
-    crate::modules::auth::refresh_tokens::revoke_all_for_user(ctx.pool(), request.user_id).await?;
+    crate::modules::auth::refresh_tokens::revoke_all_for_user(
+        ctx.pool(),
+        request.user_id,
+    )
+    .await?;
 
     // Signal the affected user's own devices (Owner) so they re-bootstrap
     // /auth/me after the credential change, mirroring delete_user's session
@@ -532,8 +525,7 @@ pub async fn delete_user(
     origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    let user = ctx
-        .user()
+    let user = ctx.user()
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -585,11 +577,7 @@ pub async fn delete_user(
     // Best-effort cleanup of the now-orphaned skill bundle dirs on disk.
     for dir in &skill_bundle_dirs {
         if let Err(e) = std::fs::remove_dir_all(dir) {
-            tracing::warn!(
-                "delete_user: failed to remove skill bundle dir {}: {}",
-                dir,
-                e
-            );
+            tracing::warn!("delete_user: failed to remove skill bundle dir {}: {}", dir, e);
         }
     }
 
@@ -660,3 +648,4 @@ pub fn delete_user_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("User not found"))
 }
+

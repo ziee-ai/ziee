@@ -323,10 +323,7 @@ fn suggest_main(shape: ModelShape, weights: &[String], aux: &[String]) -> Option
 /// still get every shard) plus all aux files.
 ///
 /// Returns an error string when no weight file can be found.
-pub fn select_download_files(
-    source_files: &[String],
-    main_filename: &str,
-) -> Result<Vec<String>, String> {
+pub fn select_download_files(source_files: &[String], main_filename: &str) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::new();
     let main = main_filename.trim();
 
@@ -357,19 +354,12 @@ pub fn select_download_files(
         }
         // Honor the chosen shape: take the WHOLE safetensors set (so a
         // sharded repo without an index.json still gets every shard).
-        out.extend(
-            source_files
-                .iter()
-                .filter(|f| is_safetensors_weight(f))
-                .cloned(),
-        );
+        out.extend(source_files.iter().filter(|f| is_safetensors_weight(f)).cloned());
     } else if is_pickle_weight(main) {
         // A training artifact (optimizer/scheduler/rng/training_args) is never
         // a model weight — reject it with a clear message.
         if is_pickle_noise(main) {
-            return Err(format!(
-                "'{main}' is a training artifact, not a model weight"
-            ));
+            return Err(format!("'{main}' is a training artifact, not a model weight"));
         }
         if !source_files.iter().any(|f| basename(f) == basename(main)) {
             return Err(format!("'{main}' not found in source directory"));
@@ -413,10 +403,7 @@ pub fn select_download_files(
     out.sort();
     out.dedup();
 
-    if !out
-        .iter()
-        .any(|f| is_gguf(f) || is_safetensors_weight(f) || is_pickle_weight(f))
-    {
+    if !out.iter().any(|f| is_gguf(f) || is_safetensors_weight(f) || is_pickle_weight(f)) {
         let repo_has_weights = source_files
             .iter()
             .any(|f| is_gguf(f) || is_safetensors_weight(f) || is_pickle_weight(f));
@@ -450,18 +437,12 @@ mod tests {
         let d = detect_weight_set(&files);
         assert_eq!(d.shape, ModelShape::Safetensors);
         assert_eq!(d.weights.len(), 3);
-        assert_eq!(
-            d.suggested_main.as_deref(),
-            Some("model.safetensors.index.json")
-        );
+        assert_eq!(d.suggested_main.as_deref(), Some("model.safetensors.index.json"));
         // config/tokenizer travel with the weights on copy.
         let copy = select_download_files(&files, "model.safetensors.index.json").unwrap();
         assert!(copy.contains(&"config.json".to_string()));
         assert!(copy.contains(&"tokenizer.json".to_string()));
-        assert_eq!(
-            copy.iter().filter(|f| f.ends_with(".safetensors")).count(),
-            3
-        );
+        assert_eq!(copy.iter().filter(|f| f.ends_with(".safetensors")).count(), 3);
     }
 
     #[test]
@@ -524,16 +505,8 @@ mod tests {
         ]);
         let copy = select_download_files(&files, "pytorch_model.bin").unwrap();
         assert!(copy.contains(&"pytorch_model.bin".to_string()));
-        assert!(
-            !copy
-                .iter()
-                .any(|f| f == "optimizer.pt" || f == "scheduler.pt")
-        );
-        assert!(
-            !copy
-                .iter()
-                .any(|f| f == "rng_state.pth" || f == "training_args.bin")
-        );
+        assert!(!copy.iter().any(|f| f == "optimizer.pt" || f == "scheduler.pt"));
+        assert!(!copy.iter().any(|f| f == "rng_state.pth" || f == "training_args.bin"));
     }
 
     #[test]
@@ -561,7 +534,8 @@ mod tests {
             "big-Q4_K_M-00002-of-00002.gguf",
             "other-Q8_0.gguf",
         ]);
-        let copy = select_download_files(&files, "big-Q4_K_M-00001-of-00002.gguf").unwrap();
+        let copy =
+            select_download_files(&files, "big-Q4_K_M-00001-of-00002.gguf").unwrap();
         assert!(copy.contains(&"big-Q4_K_M-00001-of-00002.gguf".to_string()));
         assert!(copy.contains(&"big-Q4_K_M-00002-of-00002.gguf".to_string()));
         assert!(!copy.contains(&"other-Q8_0.gguf".to_string()));
@@ -569,12 +543,7 @@ mod tests {
 
     #[test]
     fn pickle_fallback() {
-        let files = v(&[
-            "pytorch_model.bin",
-            "config.json",
-            "vocab.json",
-            "merges.txt",
-        ]);
+        let files = v(&["pytorch_model.bin", "config.json", "vocab.json", "merges.txt"]);
         let d = detect_weight_set(&files);
         assert_eq!(d.shape, ModelShape::Pickle);
         let copy = select_download_files(&files, "pytorch_model.bin").unwrap();
@@ -624,10 +593,7 @@ mod tests {
 
     #[test]
     fn classify_and_format() {
-        assert_eq!(
-            classify("model-00001-of-00003.safetensors"),
-            FileRole::Weight
-        );
+        assert_eq!(classify("model-00001-of-00003.safetensors"), FileRole::Weight);
         assert_eq!(classify("model.safetensors.index.json"), FileRole::Index);
         assert_eq!(classify("config.json"), FileRole::Config);
         assert_eq!(classify("tokenizer.json"), FileRole::Tokenizer);

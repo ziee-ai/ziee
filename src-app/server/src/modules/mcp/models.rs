@@ -279,10 +279,7 @@ impl std::fmt::Debug for McpServer {
             .field("environment_variables", &"<redacted>")
             .field("url", &self.url)
             .field("headers", &"<redacted>")
-            .field(
-                "environment_variables_entries",
-                &self.environment_variables_entries,
-            )
+            .field("environment_variables_entries", &self.environment_variables_entries)
             .field("headers_entries", &self.headers_entries)
             .field("timeout_seconds", &self.timeout_seconds)
             .field("supports_sampling", &self.supports_sampling)

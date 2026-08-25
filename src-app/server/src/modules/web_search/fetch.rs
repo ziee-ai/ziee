@@ -14,9 +14,7 @@ use futures_util::StreamExt;
 use serde::Serialize;
 
 use crate::common::AppError;
-use crate::utils::url_validator::{
-    OutboundUrlPolicy, build_validated_client, validate_outbound_url,
-};
+use crate::utils::url_validator::{OutboundUrlPolicy, build_validated_client, validate_outbound_url};
 
 /// Result of a page fetch, returned to the model via `structuredContent`.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
@@ -56,9 +54,8 @@ pub async fn fetch_url(
     let policy = fetch_policy();
     // Pre-flight validate the untrusted URL; the built client's redirect policy
     // re-validates every hop under the SAME policy.
-    validate_outbound_url(url, &policy).map_err(|e| {
-        AppError::bad_request("WEB_FETCH_BLOCKED_URL", format!("url rejected: {e}"))
-    })?;
+    validate_outbound_url(url, &policy)
+        .map_err(|e| AppError::bad_request("WEB_FETCH_BLOCKED_URL", format!("url rejected: {e}")))?;
     let client = build_validated_client(policy)
         .map_err(|e| AppError::internal_error(format!("failed to build http client: {e}")))?;
 
@@ -155,45 +152,11 @@ fn extract_markdown(html: &str, url: &str) -> (String, String) {
 fn looks_like_html(body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
     const HTML_MARKERS: &[&str] = &[
-        "<!doctype html",
-        "<html",
-        "<head>",
-        "<head ",
-        "<body",
-        "<div",
-        "<span",
-        "<p>",
-        "<p ",
-        "<a ",
-        "<a>",
-        "<br",
-        "<table",
-        "<ul>",
-        "<ul ",
-        "<ol>",
-        "<ol ",
-        "<li>",
-        "<li ",
-        "<h1",
-        "<h2",
-        "<h3",
-        "<h4",
-        "<h5",
-        "<h6",
-        "<img",
-        "<article",
-        "<section",
-        "<header",
-        "<footer",
-        "<nav",
-        "<main",
-        "<blockquote",
-        "<pre",
-        "<strong",
-        "<em>",
-        "<em ",
-        "<script",
-        "<style",
+        "<!doctype html", "<html", "<head>", "<head ", "<body", "<div", "<span",
+        "<p>", "<p ", "<a ", "<a>", "<br", "<table", "<ul>", "<ul ", "<ol>",
+        "<ol ", "<li>", "<li ", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6",
+        "<img", "<article", "<section", "<header", "<footer", "<nav", "<main",
+        "<blockquote", "<pre", "<strong", "<em>", "<em ", "<script", "<style",
     ];
     HTML_MARKERS.iter().any(|m| lower.contains(m))
 }
@@ -215,6 +178,7 @@ fn truncate_chars(mut s: String, max_chars: usize) -> (String, bool) {
 mod tests {
     use super::*;
 
+
     #[test]
     fn truncate_respects_char_cap() {
         let (out, trunc) = truncate_chars("hello world".to_string(), 5);
@@ -226,6 +190,7 @@ mod tests {
         assert!(!trunc);
     }
 
+
     #[test]
     fn truncate_is_char_boundary_safe() {
         // Multi-byte chars must not split mid-codepoint.
@@ -234,16 +199,14 @@ mod tests {
         assert!(trunc);
     }
 
+
     #[tokio::test]
     async fn fetch_rejects_imds_and_private_urls() {
         // The default (non-debug-flag) policy is public-only; IMDS + RFC1918
         // are rejected by the SSRF guard before any network call. These two
         // are blocked under BOTH the default and the DEV_LOCAL test policy, so
         // the assertion holds regardless of WEB_SEARCH_FETCH_ALLOW_LOOPBACK.
-        for url in [
-            "http://169.254.169.254/latest/meta-data/",
-            "http://10.0.0.1/",
-        ] {
+        for url in ["http://169.254.169.254/latest/meta-data/", "http://10.0.0.1/"] {
             let err = fetch_url(url, 1_000_000, 10_000, 5).await.unwrap_err();
             assert_eq!(
                 err.error_code(),
@@ -252,6 +215,7 @@ mod tests {
             );
         }
     }
+
 
     #[test]
     fn extract_markdown_strips_boilerplate_and_keeps_body() {
@@ -268,6 +232,7 @@ mod tests {
         // Title best-effort (readability may derive it from <title> or <h1>).
         assert!(!title.is_empty() || md.contains("Real Heading"));
     }
+
 
     /// fetch.rs:122-133 — non-HTML bodies (plain text, XML, a PDF mislabeled
     /// text/html) must NOT panic and must degrade gracefully: Readability
@@ -295,6 +260,7 @@ mod tests {
         let _ = t3;
     }
 
+
     /// Empty body is a valid input — fallback path returns empty strings, no
     /// panic (guards the `unwrap_or_default()` on the htmd error arm).
     #[test]
@@ -303,6 +269,7 @@ mod tests {
         assert!(title.is_empty());
         assert!(md.is_empty());
     }
+
 
     /// Spawn a one-shot loopback HTTP/1.1 server that answers the first request
     /// with a `302 Found` to `location`, and return its port. Dependency-free
@@ -326,6 +293,7 @@ mod tests {
         });
         port
     }
+
 
     /// SSRF: a redirect from an allowed (loopback) origin to a private/IMDS
     /// target must be REFUSED by the validated client's per-hop redirect policy
@@ -360,6 +328,7 @@ mod tests {
             );
         }
     }
+
 
     /// Complement / control: redirects ARE followed when the target is allowed
     /// — so the block above is specific to the private target, not "redirects
@@ -407,24 +376,21 @@ mod tests {
         assert_eq!(res.text().await.unwrap(), "OK-FINAL");
     }
 
+
     #[test]
     fn extract_markdown_preserves_non_html_content_types() {
         // Non-HTML endpoints (JSON / CSV / XML) won't yield a Readability
         // "article", but the fallback (htmd::convert of the raw body) must
         // still preserve the substantive content rather than dropping it.
-        let (_t, json_md) = extract_markdown(
-            r#"{"codeword":"VALUE_JSON_123","n":7}"#,
-            "https://api.example.com/x",
-        );
+        let (_t, json_md) =
+            extract_markdown(r#"{"codeword":"VALUE_JSON_123","n":7}"#, "https://api.example.com/x");
         assert!(
             json_md.contains("VALUE_JSON_123"),
             "JSON content must survive extraction; got: {json_md}"
         );
 
-        let (_t, csv_md) = extract_markdown(
-            "name,score\nalice,VALUE_CSV_456\n",
-            "https://example.com/data.csv",
-        );
+        let (_t, csv_md) =
+            extract_markdown("name,score\nalice,VALUE_CSV_456\n", "https://example.com/data.csv");
         assert!(
             csv_md.contains("VALUE_CSV_456"),
             "CSV content must survive extraction; got: {csv_md}"

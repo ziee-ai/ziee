@@ -27,8 +27,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
-use sqlx::PgPool;
 use sqlx::types::Uuid;
+use sqlx::PgPool;
 use tokio::sync::RwLock;
 
 use crate::common::AppError;

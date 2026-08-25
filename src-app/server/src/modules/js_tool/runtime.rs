@@ -166,12 +166,7 @@ fn line_from_stack(stack: &str) -> Option<u32> {
 /// `cancel` is shared with the caller: setting it makes the interrupt handler
 /// kill the script on the next JS instruction (the executor uses this for the
 /// wall-clock backstop). The handler ALSO trips when `gas` is exhausted.
-pub async fn evaluate<F>(
-    script: &str,
-    limits: &JsLimits,
-    cancel: Arc<AtomicBool>,
-    inject: F,
-) -> JsOutcome
+pub async fn evaluate<F>(script: &str, limits: &JsLimits, cancel: Arc<AtomicBool>, inject: F) -> JsOutcome
 where
     F: for<'js> FnOnce(&Ctx<'js>) -> rquickjs::Result<()> + Send,
 {
@@ -181,10 +176,7 @@ where
             return JsOutcome {
                 value: serde_json::Value::Null,
                 console: Vec::new(),
-                error: Some(JsError {
-                    message: format!("runtime init failed: {e}"),
-                    line: None,
-                }),
+                error: Some(JsError { message: format!("runtime init failed: {e}"), line: None }),
                 truncated_output: false,
             };
         }
@@ -224,10 +216,7 @@ where
             return JsOutcome {
                 value: serde_json::Value::Null,
                 console: Vec::new(),
-                error: Some(JsError {
-                    message: format!("context init failed: {e}"),
-                    line: None,
-                }),
+                error: Some(JsError { message: format!("context init failed: {e}"), line: None }),
                 truncated_output: false,
             };
         }
@@ -325,12 +314,7 @@ where
             }
         })
         .await
-        .unwrap_or_else(|e| {
-            Some(JsError {
-                message: format!("eval failed: {e}"),
-                line: None,
-            })
-        });
+        .unwrap_or_else(|e| Some(JsError { message: format!("eval failed: {e}"), line: None }));
 
     // Phase 2: drive all pending jobs + async host futures to quiescence. A
     // runaway or OOM in an awaited section aborts the job here; caught JS throws
@@ -357,10 +341,7 @@ where
                         .and_then(|e| e.as_str())
                         .unwrap_or("script error")
                         .to_string();
-                    let line = v
-                        .get("stack")
-                        .and_then(|s| s.as_str())
-                        .and_then(line_from_stack);
+                    let line = v.get("stack").and_then(|s| s.as_str()).and_then(line_from_stack);
                     JsOutcome {
                         value: serde_json::Value::Null,
                         console: console_out,
@@ -388,10 +369,7 @@ where
                 Err(e) => JsOutcome {
                     value: serde_json::Value::Null,
                     console: console_out,
-                    error: Some(JsError {
-                        message: format!("result decode failed: {e}"),
-                        line: None,
-                    }),
+                    error: Some(JsError { message: format!("result decode failed: {e}"), line: None }),
                     truncated_output: false,
                 },
             }
@@ -409,12 +387,7 @@ where
                 },
                 line: None,
             });
-            JsOutcome {
-                value: serde_json::Value::Null,
-                console: console_out,
-                error: Some(err),
-                truncated_output: false,
-            }
+            JsOutcome { value: serde_json::Value::Null, console: console_out, error: Some(err), truncated_output: false }
         }
     }
 }
@@ -446,13 +419,7 @@ mod tests {
     }
 
     async fn run(script: &str) -> JsOutcome {
-        evaluate(
-            script,
-            &JsLimits::default(),
-            Arc::new(AtomicBool::new(false)),
-            no_inject,
-        )
-        .await
+        evaluate(script, &JsLimits::default(), Arc::new(AtomicBool::new(false)), no_inject).await
     }
 
     // TEST-1: dep + features + default allocator wired — a trivial eval works.
@@ -474,19 +441,12 @@ mod tests {
     // TEST-3: console.* is captured in order and truncated at the cap.
     #[tokio::test]
     async fn test_console_capture_and_cap() {
-        let out =
-            run("console.log('a'); console.warn('b'); console.error('c'); return null;").await;
+        let out = run("console.log('a'); console.warn('b'); console.error('c'); return null;").await;
         assert!(out.error.is_none(), "unexpected error: {:?}", out.error);
-        assert_eq!(
-            &out.console[..3],
-            &["a".to_string(), "b".to_string(), "c".to_string()]
-        );
+        assert_eq!(&out.console[..3], &["a".to_string(), "b".to_string(), "c".to_string()]);
 
         // Over-cap → dropped + marker appended.
-        let limits = JsLimits {
-            console_bytes: 8,
-            ..JsLimits::default()
-        };
+        let limits = JsLimits { console_bytes: 8, ..JsLimits::default() };
         let out = evaluate(
             "for (let i = 0; i < 100; i++) console.log('xxxx'); return null;",
             &limits,
@@ -494,11 +454,7 @@ mod tests {
             no_inject,
         )
         .await;
-        assert!(
-            out.console.iter().any(|l| l.contains("truncated")),
-            "expected truncation marker: {:?}",
-            out.console
-        );
+        assert!(out.console.iter().any(|l| l.contains("truncated")), "expected truncation marker: {:?}", out.console);
     }
 
     // TEST-4: a throwing script returns error{message, line}.
@@ -513,18 +469,10 @@ mod tests {
     // TEST-5: `while(true){}` is killed by the interrupt handler, not hung.
     #[tokio::test]
     async fn test_cpu_interrupt_kills_infinite_loop() {
-        let limits = JsLimits {
-            gas: 200_000,
-            ..JsLimits::default()
-        };
+        let limits = JsLimits { gas: 200_000, ..JsLimits::default() };
         let out = tokio::time::timeout(
             std::time::Duration::from_secs(10),
-            evaluate(
-                "while (true) {}",
-                &limits,
-                Arc::new(AtomicBool::new(false)),
-                no_inject,
-            ),
+            evaluate("while (true) {}", &limits, Arc::new(AtomicBool::new(false)), no_inject),
         )
         .await
         .expect("evaluate hung past the interrupt — CPU kill failed");
@@ -542,10 +490,7 @@ mod tests {
     // under the default allocator).
     #[tokio::test]
     async fn test_memory_limit_enforced() {
-        let limits = JsLimits {
-            memory_bytes: 1 * 1024 * 1024,
-            ..JsLimits::default()
-        };
+        let limits = JsLimits { memory_bytes: 1 * 1024 * 1024, ..JsLimits::default() };
         let out = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             evaluate(
@@ -557,27 +502,14 @@ mod tests {
         )
         .await
         .expect("evaluate hung — memory kill failed");
-        assert!(
-            out.error.is_some(),
-            "expected a memory error, got value {:?}",
-            out.value
-        );
+        assert!(out.error.is_some(), "expected a memory error, got value {:?}", out.value);
     }
 
     // TEST-7: an oversized final value is truncated to the output cap.
     #[tokio::test]
     async fn test_output_cap_truncates() {
-        let limits = JsLimits {
-            output_bytes: 64,
-            ..JsLimits::default()
-        };
-        let out = evaluate(
-            "return 'x'.repeat(10000);",
-            &limits,
-            Arc::new(AtomicBool::new(false)),
-            no_inject,
-        )
-        .await;
+        let limits = JsLimits { output_bytes: 64, ..JsLimits::default() };
+        let out = evaluate("return 'x'.repeat(10000);", &limits, Arc::new(AtomicBool::new(false)), no_inject).await;
         assert!(out.error.is_none(), "unexpected error: {:?}", out.error);
         assert!(out.truncated_output, "expected truncation");
         assert_eq!(out.value.get("_truncated"), Some(&serde_json::json!(true)));
@@ -587,14 +519,16 @@ mod tests {
     // only injected `ziee` exists.
     #[tokio::test]
     async fn test_no_ambient_capabilities() {
-        let out = run(r#"return {
+        let out = run(
+            r#"return {
                 require: typeof require,
                 fetch: typeof fetch,
                 process: typeof process,
                 deno: typeof globalThis.Deno,
                 xhr: typeof XMLHttpRequest,
                 zieeIsObject: typeof ziee === 'object'
-            };"#)
+            };"#,
+        )
         .await;
         assert!(out.error.is_none(), "unexpected error: {:?}", out.error);
         assert_eq!(out.value["require"], "undefined");
@@ -612,10 +546,7 @@ mod tests {
     // premise doesn't hold for quickjs-ng).
     #[tokio::test]
     async fn test_catastrophic_regex_is_interruptible() {
-        let limits = JsLimits {
-            gas: 2_000_000,
-            ..JsLimits::default()
-        };
+        let limits = JsLimits { gas: 2_000_000, ..JsLimits::default() };
         let out = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             evaluate(
@@ -628,11 +559,7 @@ mod tests {
         .await
         .expect("catastrophic regex hung past the interrupt — quickjs-ng regex poll failed");
         // It is killed (error), not allowed to backtrack to completion.
-        assert!(
-            out.error.is_some(),
-            "expected the regex to be interrupted, got {:?}",
-            out.value
-        );
+        assert!(out.error.is_some(), "expected the regex to be interrupted, got {:?}", out.value);
     }
 
     // Reported error line maps back to the USER's line (preamble subtracted).
@@ -660,10 +587,7 @@ mod tests {
             std::time::Duration::from_secs(10),
             evaluate(
                 "await Promise.resolve(); while (true) {}",
-                &JsLimits {
-                    gas: u64::MAX,
-                    ..JsLimits::default()
-                },
+                &JsLimits { gas: u64::MAX, ..JsLimits::default() },
                 cancel,
                 no_inject,
             ),

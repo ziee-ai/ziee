@@ -265,11 +265,7 @@ fn archive_stem(engine: EngineType) -> &'static str {
 
 /// Release archive extension for a platform (`zip` on Windows, else `tar.gz`).
 fn archive_ext(platform: &str) -> &'static str {
-    if platform == "windows" {
-        "zip"
-    } else {
-        "tar.gz"
-    }
+    if platform == "windows" { "zip" } else { "tar.gz" }
 }
 
 /// The release asset filename for one (engine, platform, arch, backend):
@@ -389,10 +385,7 @@ pub fn asset_size_for_backend(
     assets: &[AssetInfo],
 ) -> Option<u64> {
     let target = archive_name(engine, platform, arch, backend);
-    assets
-        .iter()
-        .find(|a| a.name == target)
-        .map(|a| a.size_bytes)
+    assets.iter().find(|a| a.name == target).map(|a| a.size_bytes)
 }
 
 /// One upstream release, reduced to what update-checking needs.
@@ -529,8 +522,7 @@ impl BinaryDownloader {
         );
 
         // Check if already cached
-        let cache_dir = self
-            .binaries_dir
+        let cache_dir = self.binaries_dir
             .join(match engine {
                 EngineType::Llamacpp => "llamacpp",
                 EngineType::Mistralrs => "mistralrs",
@@ -563,10 +555,7 @@ impl BinaryDownloader {
         // via LLM_RUNTIME_RELEASE_MIRROR for integration tests).
         let download_url = format!(
             "{}/{}/releases/download/{}/{}",
-            release_base_url(),
-            repo,
-            resolved_version,
-            archive_name
+            release_base_url(), repo, resolved_version, archive_name
         );
 
         tracing::info!("Downloading from: {}", download_url);
@@ -986,11 +975,7 @@ impl BinaryDownloader {
 
         let mut file = File::create(dest)?;
         let mut received: u64 = 0;
-        let total_for_cb = if total_size > 0 {
-            Some(total_size)
-        } else {
-            None
-        };
+        let total_for_cb = if total_size > 0 { Some(total_size) } else { None };
         // Initial 0% frame so subscribers see the bar render at start.
         if let Some(cb) = progress {
             cb(0, total_for_cb);
@@ -1046,11 +1031,7 @@ impl BinaryDownloader {
             let file_name = entry
                 .path()
                 .ok()
-                .and_then(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.to_string())
-                })
+                .and_then(|p| p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string()))
                 .unwrap_or_default();
             if file_name.is_empty() {
                 continue;
@@ -1092,8 +1073,7 @@ impl BinaryDownloader {
                     _ => {
                         tracing::warn!(
                             "Skipping unsafe or non-library symlink entry in archive: {} -> {:?}",
-                            file_name,
-                            link
+                            file_name, link
                         );
                     }
                 }
@@ -1210,11 +1190,7 @@ impl BinaryDownloader {
                     continue;
                 }
 
-                let version = version_dir
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string();
+                let version = version_dir.file_name().unwrap().to_string_lossy().to_string();
 
                 // Iterate through platform-arch-backend directories
                 for build_entry in std::fs::read_dir(&version_dir)? {
@@ -1237,19 +1213,11 @@ impl BinaryDownloader {
                     // Find binary file
                     let binary_name = match engine {
                         EngineType::Llamacpp => {
-                            if platform == "windows" {
-                                "llama-server.exe"
-                            } else {
-                                "llama-server"
-                            }
-                        }
+                            if platform == "windows" { "llama-server.exe" } else { "llama-server" }
+                        },
                         EngineType::Mistralrs => {
-                            if platform == "windows" {
-                                "mistralrs-server.exe"
-                            } else {
-                                "mistralrs-server"
-                            }
-                        }
+                            if platform == "windows" { "mistralrs-server.exe" } else { "mistralrs-server" }
+                        },
                     };
 
                     let binary_path = build_dir.join(binary_name);
@@ -1273,6 +1241,7 @@ impl BinaryDownloader {
 
         Ok(binaries)
     }
+
 }
 
 /// Accept a symlink target only when it names a single entry in the SAME
@@ -1314,6 +1283,7 @@ impl Default for BinaryDownloader {
         Self::new().expect("Failed to create default binary downloader")
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -1384,10 +1354,7 @@ mod tests {
             let enc = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
             let mut b = tar::Builder::new(enc);
 
-            let reg = |b: &mut tar::Builder<flate2::write::GzEncoder<File>>,
-                       name: &str,
-                       data: &[u8],
-                       mode: u32| {
+            let reg = |b: &mut tar::Builder<flate2::write::GzEncoder<File>>, name: &str, data: &[u8], mode: u32| {
                 let mut h = tar::Header::new_gnu();
                 h.set_size(data.len() as u64);
                 h.set_mode(mode);
@@ -1398,14 +1365,13 @@ mod tests {
             reg(&mut b, "llama-server", b"#!/bin/true\n", 0o755);
             reg(&mut b, "libfoo.so.1.2.3", b"ELF-ish-bytes", 0o644);
 
-            let link =
-                |b: &mut tar::Builder<flate2::write::GzEncoder<File>>, name: &str, target: &str| {
-                    let mut h = tar::Header::new_gnu();
-                    h.set_entry_type(tar::EntryType::Symlink);
-                    h.set_size(0);
-                    h.set_mode(0o777);
-                    b.append_link(&mut h, name, target).unwrap();
-                };
+            let link = |b: &mut tar::Builder<flate2::write::GzEncoder<File>>, name: &str, target: &str| {
+                let mut h = tar::Header::new_gnu();
+                h.set_entry_type(tar::EntryType::Symlink);
+                h.set_size(0);
+                h.set_mode(0o777);
+                b.append_link(&mut h, name, target).unwrap();
+            };
             // SAFE same-dir SONAME symlink.
             link(&mut b, "libfoo.so.1", "libfoo.so.1.2.3");
             // ESCAPING symlinks (absolute + parent-traversal) — must be dropped.
@@ -1429,29 +1395,16 @@ mod tests {
         // Safe SONAME symlink recreated, relative, and resolves to the real file.
         let link_path = dest.join("libfoo.so.1");
         let meta = std::fs::symlink_metadata(&link_path).unwrap();
-        assert!(
-            meta.file_type().is_symlink(),
-            "libfoo.so.1 must be a symlink"
-        );
+        assert!(meta.file_type().is_symlink(), "libfoo.so.1 must be a symlink");
         assert_eq!(
             std::fs::read_link(&link_path).unwrap(),
             std::path::PathBuf::from("libfoo.so.1.2.3")
         );
-        assert!(
-            std::fs::canonicalize(&link_path)
-                .unwrap()
-                .ends_with("libfoo.so.1.2.3")
-        );
+        assert!(std::fs::canonicalize(&link_path).unwrap().ends_with("libfoo.so.1.2.3"));
 
         // Escaping symlinks were rejected (never created).
-        assert!(
-            dest.join("evil.so").symlink_metadata().is_err(),
-            "absolute-target symlink must be rejected"
-        );
-        assert!(
-            dest.join("escape.so").symlink_metadata().is_err(),
-            "parent-traversal symlink must be rejected"
-        );
+        assert!(dest.join("evil.so").symlink_metadata().is_err(), "absolute-target symlink must be rejected");
+        assert!(dest.join("escape.so").symlink_metadata().is_err(), "parent-traversal symlink must be rejected");
     }
 
     /// TEST-3a — every published variant of the REAL `ziee-ai/llama.cpp`
@@ -1462,34 +1415,13 @@ mod tests {
     #[test]
     fn parse_asset_variant_covers_every_published_asset() {
         let cases: &[(&str, (&str, &str, &str))] = &[
-            (
-                "llama-server-linux-x86_64-cpu.tar.gz",
-                ("linux", "x86_64", "cpu"),
-            ),
-            (
-                "llama-server-linux-x86_64-cuda12.9.tar.gz",
-                ("linux", "x86_64", "cuda12.9"),
-            ),
-            (
-                "llama-server-linux-x86_64-cuda13.2.tar.gz",
-                ("linux", "x86_64", "cuda13.2"),
-            ),
-            (
-                "llama-server-linux-x86_64-rocm5.7.tar.gz",
-                ("linux", "x86_64", "rocm5.7"),
-            ),
-            (
-                "llama-server-macos-aarch64-metal.tar.gz",
-                ("macos", "aarch64", "metal"),
-            ),
-            (
-                "llama-server-windows-x86_64-cpu.zip",
-                ("windows", "x86_64", "cpu"),
-            ),
-            (
-                "llama-server-windows-x86_64-cuda12.4.zip",
-                ("windows", "x86_64", "cuda12.4"),
-            ),
+            ("llama-server-linux-x86_64-cpu.tar.gz", ("linux", "x86_64", "cpu")),
+            ("llama-server-linux-x86_64-cuda12.9.tar.gz", ("linux", "x86_64", "cuda12.9")),
+            ("llama-server-linux-x86_64-cuda13.2.tar.gz", ("linux", "x86_64", "cuda13.2")),
+            ("llama-server-linux-x86_64-rocm5.7.tar.gz", ("linux", "x86_64", "rocm5.7")),
+            ("llama-server-macos-aarch64-metal.tar.gz", ("macos", "aarch64", "metal")),
+            ("llama-server-windows-x86_64-cpu.zip", ("windows", "x86_64", "cpu")),
+            ("llama-server-windows-x86_64-cuda12.4.zip", ("windows", "x86_64", "cuda12.4")),
         ];
         for (asset, want) in cases {
             let got = parse_asset_variant(EngineType::Llamacpp, asset)
@@ -1503,10 +1435,7 @@ mod tests {
 
         // The mistral.rs fork uses a different binary stem.
         assert_eq!(
-            parse_asset_variant(
-                EngineType::Mistralrs,
-                "mistralrs-server-linux-x86_64-cpu.tar.gz"
-            ),
+            parse_asset_variant(EngineType::Mistralrs, "mistralrs-server-linux-x86_64-cpu.tar.gz"),
             Some(("linux".into(), "x86_64".into(), "cpu".into()))
         );
     }

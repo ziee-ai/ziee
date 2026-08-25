@@ -4,12 +4,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::chat::core::models::{
-    Branch, Conversation, MessageContent, MessageContentData,
-};
-use crate::modules::chat::core::types::{
-    ConversationResponse, EditMessageRequest, EditMessageResponse, MessageWithContent,
-};
+use crate::modules::chat::core::models::{Branch, Conversation, MessageContent, MessageContentData};
+use crate::modules::chat::core::types::{ConversationResponse, EditMessageRequest, EditMessageResponse, MessageWithContent};
 
 use super::{branches, contents, conversations, messages};
 
@@ -197,14 +193,8 @@ impl ChatCoreRepository {
         request: EditMessageRequest,
         current_branch_id: Uuid,
     ) -> Result<EditMessageResponse, AppError> {
-        messages::edit_message(
-            &self.pool,
-            message_id,
-            conversation_id,
-            request,
-            current_branch_id,
-        )
-        .await
+        messages::edit_message(&self.pool, message_id, conversation_id, request, current_branch_id)
+            .await
     }
 
     /// Delete a single message. See `messages::delete_message` for the
@@ -273,6 +263,7 @@ impl ChatCoreRepository {
     ) -> Result<MessageContent, AppError> {
         contents::append_content(&self.pool, message_id, content_type, data).await
     }
+
 
     /// Append content with a pre-registered UUID, assigning the next
     /// `sequence_order` atomically (MAX+1). Id-preserving sibling of `append_content`.

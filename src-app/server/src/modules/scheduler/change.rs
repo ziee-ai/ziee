@@ -129,10 +129,7 @@ mod tests {
     fn fingerprint_is_reflow_stable() {
         let a = compute_signature("Found 3 papers on CRISPR.\n\nSee 10.1000/xyz.");
         let b = compute_signature("  found   3 PAPERS on crispr.   see 10.1000/xyz. ");
-        assert_eq!(
-            a.fingerprint, b.fingerprint,
-            "reflow/case should not change fp"
-        );
+        assert_eq!(a.fingerprint, b.fingerprint, "reflow/case should not change fp");
 
         let c = compute_signature("Found 4 papers on CRISPR. See 10.1000/xyz.");
         assert_ne!(a.fingerprint, c.fingerprint, "real content change flips fp");
@@ -141,8 +138,9 @@ mod tests {
     // TEST-42: item extraction pulls normalized DOIs/arXiv/PMIDs.
     #[test]
     fn extracts_identifiable_items() {
-        let sig =
-            compute_signature("New: 10.1234/abc.def and arXiv:2501.01234v2 and PMID: 40123456");
+        let sig = compute_signature(
+            "New: 10.1234/abc.def and arXiv:2501.01234v2 and PMID: 40123456",
+        );
         assert!(sig.items.contains(&"doi:10.1234/abc.def".to_string()));
         assert!(sig.items.contains(&"arxiv:2501.01234".to_string()));
         assert!(sig.items.contains(&"pmid:40123456".to_string()));
@@ -158,10 +156,7 @@ mod tests {
         assert_eq!(out.new_items, vec!["doi:10.3000/c".to_string()]);
 
         // Identical result → not changed, no new items.
-        let same = diff(
-            Some(&prev),
-            &compute_signature("Papers: 10.1000/a, 10.2000/b"),
-        );
+        let same = diff(Some(&prev), &compute_signature("Papers: 10.1000/a, 10.2000/b"));
         assert!(!same.changed);
         assert!(same.new_items.is_empty());
 

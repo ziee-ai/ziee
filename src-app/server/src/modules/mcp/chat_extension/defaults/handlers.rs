@@ -1,7 +1,7 @@
 //! User MCP defaults handlers
 
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, http::StatusCode};
+use axum::{debug_handler, http::StatusCode, Json};
 use serde::Serialize;
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     modules::{
         chat::core::permissions::*,
         permissions::{extractors::RequirePermissions, with_permission},
-        sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish},
+        sync::{publish as sync_publish, Audience, SyncAction, SyncEntity, SyncOrigin},
     },
 };
 
@@ -108,9 +108,7 @@ pub fn update_mcp_defaults_docs(op: TransformOperation) -> TransformOperation {
         .id("Mcp.updateDefaults")
         .tag("MCP")
         .summary("Update user MCP defaults")
-        .description(
-            "Create or update the current user's default MCP settings for new conversations",
-        )
+        .description("Create or update the current user's default MCP settings for new conversations")
         .response::<200, Json<models::UserMcpDefaultsResponse>>()
         .response_with::<400, (), _>(|res| res.description("Invalid request"))
 }

@@ -1,7 +1,7 @@
 // User-facing LLM provider handlers
 
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, extract::Query, http::StatusCode};
+use axum::{debug_handler, extract::Path, extract::Query, http::StatusCode, Json};
 use uuid::Uuid;
 
 use crate::{
@@ -52,12 +52,14 @@ pub async fn get_user_llm_providers(
     let mut providers_with_models = Vec::new();
 
     for provider in providers {
-        let all_models = Repos.llm_model.list_by_provider(provider.id).await?;
+        let all_models = Repos
+            .llm_model
+            .list_by_provider(provider.id)
+            .await?;
 
         let enabled_models: Vec<_> = all_models.into_iter().filter(|m| m.enabled).collect();
 
-        let system_key_configured = provider
-            .api_key
+        let system_key_configured = provider.api_key
             .as_deref()
             .map(|k| !k.trim().is_empty())
             .unwrap_or(false);
@@ -126,11 +128,9 @@ pub async fn save_user_api_key(
         return Err(AppError::bad_request("VALIDATION_ERROR", "API key too long").into());
     }
     if key.bytes().any(|b| b < 0x20 && b != b'\t') {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "API key contains invalid characters",
-        )
-        .into());
+        return Err(
+            AppError::bad_request("VALIDATION_ERROR", "API key contains invalid characters").into(),
+        );
     }
 
     // Local providers authenticate via an internal, server-minted proxy token —
@@ -145,11 +145,9 @@ pub async fn save_user_api_key(
         .map_err(AppError::from)?
         .ok_or_else(|| AppError::not_found("Provider"))?;
     if provider.provider_type == "local" {
-        return Err(AppError::bad_request(
-            "PROVIDER_IS_LOCAL",
-            "Local providers do not use API keys",
-        )
-        .into());
+        return Err(
+            AppError::bad_request("PROVIDER_IS_LOCAL", "Local providers do not use API keys").into(),
+        );
     }
 
     Repos
@@ -185,7 +183,10 @@ pub async fn delete_user_api_key(
     Path(provider_id): Path<Uuid>,
     origin: SyncOrigin,
 ) -> ApiResult<()> {
-    Repos.user_key.delete(auth.user.id, provider_id).await?;
+    Repos
+        .user_key
+        .delete(auth.user.id, provider_id)
+        .await?;
 
     sync_publish(
         SyncEntity::ApiKey,

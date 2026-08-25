@@ -33,8 +33,9 @@ const MAX_ONBOARDING_COMPLETIONS: usize = 256;
 fn is_valid_onboarding_id(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= MAX_ONBOARDING_ID_LEN
-        && s.bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+        && s.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_'
+        })
 }
 
 /// Parse the user id out of the JWT claims.
@@ -174,17 +175,11 @@ pub fn complete_guide_step_docs(op: TransformOperation) -> TransformOperation {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_ONBOARDING_ID_LEN, is_valid_onboarding_id};
+    use super::{is_valid_onboarding_id, MAX_ONBOARDING_ID_LEN};
 
     #[test]
     fn valid_slug_ids_are_accepted() {
-        for id in [
-            "getting-started",
-            "memory-setup",
-            "step_1",
-            "a",
-            "abc-123_xyz",
-        ] {
+        for id in ["getting-started", "memory-setup", "step_1", "a", "abc-123_xyz"] {
             assert!(is_valid_onboarding_id(id), "{id} should be valid");
         }
     }

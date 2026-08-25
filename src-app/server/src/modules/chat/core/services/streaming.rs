@@ -51,20 +51,16 @@ impl StreamingService {
         conversation_id: Uuid,
         user_id: Uuid,
         request: SendMessageRequest,
-    ) -> Result<
-        (
-            // The persisted ids (available synchronously, before generation runs):
-            // the user message (None if an extension suppressed it) + the assistant
-            // message the reply streams into.
-            Option<Uuid>,
-            Uuid,
-            Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, AppError>> + Send>>,
-            tokio::sync::mpsc::UnboundedReceiver<
-                Result<axum::response::sse::Event, std::convert::Infallible>,
-            >,
-        ),
-        AppError,
-    > {
+    ) -> Result<(
+        // The persisted ids (available synchronously, before generation runs):
+        // the user message (None if an extension suppressed it) + the assistant
+        // message the reply streams into.
+        Option<Uuid>,
+        Uuid,
+        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, AppError>> + Send>>,
+        tokio::sync::mpsc::UnboundedReceiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    ), AppError>
+    {
         // Create provider from model_id
         use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 
@@ -73,12 +69,10 @@ impl StreamingService {
 
         // Conditionally create user message (check extensions)
         // Extensions can prevent user message creation (e.g., MCP tool approval resumption)
-        let user_message_id = if self
-            .extension_registry
+        let user_message_id = if self.extension_registry
             .as_ref()
             .map(|reg| reg.should_create_user_message(&request))
-            .unwrap_or(true)
-        // Default to true if no registry
+            .unwrap_or(true)  // Default to true if no registry
         {
             // Create preliminary StreamContext for extensions to use
             // (provider metadata will be populated later in the loop)
@@ -108,15 +102,11 @@ impl StreamingService {
             // owned join tables (migrations 74 + 75) — written by
             // each bridge's `after_user_message_created` hook a few
             // lines below. Chat no longer knows about either.
-            let user_message = Repos
-                .chat
-                .core
-                .create_message(
-                    branch_id,
-                    MessageRole::User.as_str(),
-                    Some(request.model_id),
-                )
-                .await?;
+            let user_message = Repos.chat.core.create_message(
+                branch_id,
+                MessageRole::User.as_str(),
+                Some(request.model_id),
+            ).await?;
 
             // Give extensions a chance to persist per-message state
             // into their own tables (mcp's server snapshot, plus any
@@ -127,52 +117,45 @@ impl StreamingService {
             // current state."
             if let Some(registry) = &self.extension_registry {
                 registry
-                    .after_user_message_created(&preliminary_context, &user_message, &request)
+                    .after_user_message_created(
+                        &preliminary_context,
+                        &user_message,
+                        &request,
+                    )
                     .await?;
             }
 
             // Create content blocks from extensions (text, files, etc.)
             // Extensions are called in priority order (text extension runs first at order 5)
             for (index, content_data) in extension_content.into_iter().enumerate() {
-                Repos
-                    .chat
-                    .core
-                    .create_content(
-                        user_message.id,
-                        &content_data.content_type(),
-                        content_data,
-                        index as i32,
-                    )
-                    .await?;
+                Repos.chat.core.create_content(
+                    user_message.id,
+                    &content_data.content_type(),
+                    content_data,
+                    index as i32,
+                )
+                .await?;
             }
 
             Some(user_message.id)
         } else {
-            None // Extension prevented user message creation
+            None  // Extension prevented user message creation
         };
 
         // Get or create assistant message (BEFORE loop)
         // Extensions can provide existing message for continuation (e.g., MCP tool approval)
         let assistant_message_id = if let Some(reg) = &self.extension_registry {
             if let Some(msg_id) = reg.provide_assistant_message(&request, branch_id).await? {
-                msg_id // Existing message (resuming)
+                msg_id  // Existing message (resuming)
             } else {
                 // No extension provided message, create new one
-                let msg = Repos
-                    .chat
-                    .core
-                    .create_message(branch_id, MessageRole::Assistant.as_str(), None)
-                    .await?;
-                msg.id // New message
+                let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None).await?;
+                msg.id  // New message
             }
         } else {
             // No extension registry, create new message
-            let msg = Repos
-                .chat
-                .core
-                .create_message(branch_id, MessageRole::Assistant.as_str(), None)
-                .await?;
-            msg.id // New message
+            let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None).await?;
+            msg.id  // New message
         };
 
         // Create channel for streaming output
@@ -416,12 +399,7 @@ impl StreamingService {
                 // Call before_llm_call hooks
                 if let Some(registry) = &extension_registry {
                     match registry
-                        .call_before_llm_call(
-                            &mut stream_context,
-                            &mut chat_request,
-                            &request,
-                            Some(&ext_tx),
-                        )
+                        .call_before_llm_call(&mut stream_context, &mut chat_request, &request, Some(&ext_tx))
                         .await
                     {
                         Ok(BeforeLlmAction::Continue) => {
@@ -460,25 +438,17 @@ impl StreamingService {
                             // Stream the final text directly and skip the LLM entirely.
                             tracing::info!("Skipping LLM call - extension provided final content");
 
-                            if let Err(e) = Repos
-                                .chat
-                                .core
-                                .append_content(
-                                    assistant_message_id,
-                                    "text",
-                                    MessageContentData::Text { text: text.clone() },
-                                )
-                                .await
-                            {
+                            if let Err(e) = Repos.chat.core.append_content(
+                                assistant_message_id,
+                                "text",
+                                MessageContentData::Text { text: text.clone() },
+                            ).await {
                                 let _ = tx.send(Err(e));
                                 break;
                             }
 
                             let text_chunk = ChatStreamChunk {
-                                content: vec![ContentBlockDelta::TextDelta {
-                                    index: 0,
-                                    delta: text,
-                                }],
+                                content: vec![ContentBlockDelta::TextDelta { index: 0, delta: text }],
                                 message_id: Some(assistant_message_id),
                                 conversation_id: Some(conversation_id),
                                 branch_id: Some(branch_id),
@@ -557,7 +527,9 @@ impl StreamingService {
 
                 // Call AI provider
                 let mut ai_stream = match provider_for_task.chat_stream(chat_request).await {
-                    Ok(stream) => stream,
+                    Ok(stream) => {
+                        stream
+                    }
                     Err(e) => {
                         // LOG IT. This branch is where a chat against an
                         // UNREACHABLE provider lands, and it said nothing at all
@@ -960,22 +932,21 @@ impl StreamingService {
             ));
         }
 
-        let (user_message_id, assistant_message_id, mut chunk_stream, mut ext_rx) = match self
-            .send_message(branch_id, conversation_id, user_id, request)
-            .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                // Setup failed before the streaming loop — release the slot.
-                crate::modules::chat::stream::end_generation(conversation_id);
-                return Err(e);
-            }
-        };
+        let (user_message_id, assistant_message_id, mut chunk_stream, mut ext_rx) =
+            match self
+                .send_message(branch_id, conversation_id, user_id, request)
+                .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    // Setup failed before the streaming loop — release the slot.
+                    crate::modules::chat::stream::end_generation(conversation_id);
+                    return Err(e);
+                }
+            };
 
         // Stop-generation token, keyed by the assistant message id.
-        let cancel_token = CANCELLATION_TRACKER
-            .create_token(assistant_message_id)
-            .await;
+        let cancel_token = CANCELLATION_TRACKER.create_token(assistant_message_id).await;
         let owner_id = user_id;
 
         tokio::spawn(async move {
@@ -1113,12 +1084,14 @@ impl StreamingService {
             // already enqueued by the time we observe the terminal frame — a
             // non-blocking drain suffices (no late event can still be in flight).
             while let Ok(Ok(raw)) = ext_rx.try_recv() {
-                crate::modules::chat::stream::publish_raw_event(owner_id, conversation_id, raw);
+                crate::modules::chat::stream::publish_raw_event(
+                    owner_id,
+                    conversation_id,
+                    raw,
+                );
             }
 
-            CANCELLATION_TRACKER
-                .remove_download(assistant_message_id)
-                .await;
+            CANCELLATION_TRACKER.remove_download(assistant_message_id).await;
 
             // Turn complete: notify the user's OTHER surfaces (sidebar list +
             // any device with this conversation NOT open) to refetch. `finalize`
@@ -1220,19 +1193,11 @@ impl StreamingService {
                     }
 
                     let block = if let Some(registry) = extension_registry {
-                        match registry
-                            .process_content_for_llm(&content_data, context)
-                            .await?
-                        {
+                        match registry.process_content_for_llm(&content_data, context).await? {
                             Some(transformed_block) => Some(transformed_block),
                             None => {
-                                let ext_content =
-                                    serde_json::to_value(&content_data).map_err(|e| {
-                                        AppError::internal_error(format!(
-                                            "Failed to serialize content: {}",
-                                            e
-                                        ))
-                                    })?;
+                                let ext_content = serde_json::to_value(&content_data)
+                                    .map_err(|e| AppError::internal_error(format!("Failed to serialize content: {}", e)))?;
                                 registry.convert_extension_to_content_block(&ext_content)
                             }
                         }
@@ -1256,18 +1221,11 @@ impl StreamingService {
                 let content_data = content.parse_content()?;
 
                 let block = if let Some(registry) = extension_registry {
-                    match registry
-                        .process_content_for_llm(&content_data, context)
-                        .await?
-                    {
+                    match registry.process_content_for_llm(&content_data, context).await? {
                         Some(transformed_block) => Some(transformed_block),
                         None => {
-                            let ext_content = serde_json::to_value(&content_data).map_err(|e| {
-                                AppError::internal_error(format!(
-                                    "Failed to serialize content: {}",
-                                    e
-                                ))
-                            })?;
+                            let ext_content = serde_json::to_value(&content_data)
+                                .map_err(|e| AppError::internal_error(format!("Failed to serialize content: {}", e)))?;
                             registry.convert_extension_to_content_block(&ext_content)
                         }
                     }
@@ -1593,11 +1551,7 @@ struct DeltaAccumulator {
     /// Reasoning/thinking tokens reported by the provider (final chunk).
     reasoning_tokens: Option<u32>,
     /// Channel for extension events (SSE)
-    extension_tx: Option<
-        tokio::sync::mpsc::UnboundedSender<
-            Result<axum::response::sse::Event, std::convert::Infallible>,
-        >,
-    >,
+    extension_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     /// Flag to track if finalize() has been called (prevents double-finalization)
     finalized: bool,
     /// Set true during `finalize` when this turn persisted at least one
@@ -1715,17 +1669,14 @@ impl DeltaAccumulator {
             }
 
             // Try core conversion first
-            let delta =
-                if let Some(core_delta) = ContentBlockDelta::from_ai_providers_delta(ai_delta) {
-                    Some(core_delta)
-                } else if let Some(registry) = &self.extension_registry {
-                    // Let extensions handle unknown deltas
-                    registry
-                        .process_delta(ai_delta, &self.stream_context)
-                        .await?
-                } else {
-                    None
-                };
+            let delta = if let Some(core_delta) = ContentBlockDelta::from_ai_providers_delta(ai_delta) {
+                Some(core_delta)
+            } else if let Some(registry) = &self.extension_registry {
+                // Let extensions handle unknown deltas
+                registry.process_delta(ai_delta, &self.stream_context).await?
+            } else {
+                None
+            };
 
             if let Some(delta) = delta {
                 // Accumulate delta in memory (no DB write)
@@ -1762,10 +1713,7 @@ impl DeltaAccumulator {
             // Extension deltas - delegate to extensions
             _ => {
                 if let Some(registry) = &self.extension_registry {
-                    registry
-                        .accumulate_delta(delta, &self.stream_context)
-                        .await
-                        .ok();
+                    registry.accumulate_delta(delta, &self.stream_context).await.ok();
                 }
             }
         }
@@ -1876,29 +1824,27 @@ impl DeltaAccumulator {
                 Some(content) => content,
                 // No registry attached (or no extension claimed the block):
                 // fall back to the direct construction.
-                None => {
-                    match accumulated.content_type.as_str() {
-                        "text" => MessageContentData::Text {
-                            text: accumulated.accumulated_text.clone(),
-                        },
-                        "thinking" => MessageContentData::Thinking {
-                            thinking: accumulated.accumulated_text.clone(),
-                            metadata: if accumulated.signature.is_some()
-                                || accumulated.redacted_data.is_some()
-                                || self.reasoning_tokens.is_some()
-                            {
-                                Some(crate::modules::chat::extensions::text::types::ThinkingMetadata {
+                None => match accumulated.content_type.as_str() {
+                    "text" => MessageContentData::Text {
+                        text: accumulated.accumulated_text.clone(),
+                    },
+                    "thinking" => MessageContentData::Thinking {
+                        thinking: accumulated.accumulated_text.clone(),
+                        metadata: if accumulated.signature.is_some()
+                            || accumulated.redacted_data.is_some()
+                            || self.reasoning_tokens.is_some()
+                        {
+                            Some(crate::modules::chat::extensions::text::types::ThinkingMetadata {
                                 token_count: self.reasoning_tokens,
                                 signature: accumulated.signature.clone(),
                                 redacted_data: accumulated.redacted_data.clone(),
                             })
-                            } else {
-                                None
-                            },
+                        } else {
+                            None
                         },
-                        _ => continue, // Skip unknown types (extensions handle their own)
-                    }
-                }
+                    },
+                    _ => continue, // Skip unknown types (extensions handle their own)
+                },
             };
 
             // Serialize to JSON (flattened for Extension variants)
@@ -2006,21 +1952,14 @@ impl DeltaAccumulator {
         // Call extension hooks after database write completes
         if let Some(registry) = &self.extension_registry {
             // Fetch the complete message from database
-            let final_message = Repos
-                .chat
-                .core
-                .get_message(self.assistant_message_id)
+            let final_message = Repos.chat.core.get_message( self.assistant_message_id)
                 .await?
                 .ok_or_else(|| AppError::internal_error("Message not found after finalize"))?;
 
             // Call after_llm_call hooks and store the result
             // Pass the SSE channel so extensions can send events
             match registry
-                .call_after_llm_call(
-                    &self.stream_context,
-                    &final_message,
-                    self.extension_tx.as_ref(),
-                )
+                .call_after_llm_call(&self.stream_context, &final_message, self.extension_tx.as_ref())
                 .await
             {
                 Ok(action) => {
@@ -2416,6 +2355,7 @@ impl Drop for TerminalGuard {
     }
 }
 
+
 // ── Context trimming ─────────────────────────────────────────────────────────
 
 /// Clear old tool_result content once the assembled context exceeds this many
@@ -2454,7 +2394,11 @@ fn block_text_chars(b: &ai_providers::ContentBlock) -> usize {
 /// `tool_use` blocks and the most recent `keep_last` results intact. Mutates only
 /// the outbound messages — stored history is untouched and the model can re-call
 /// a tool (e.g. `read_file`) if it needs a cleared result. Provider-agnostic.
-fn clear_old_tool_results(messages: &mut [ChatMessage], threshold_tokens: usize, keep_last: usize) {
+fn clear_old_tool_results(
+    messages: &mut [ChatMessage],
+    threshold_tokens: usize,
+    keep_last: usize,
+) {
     let total_chars: usize = messages
         .iter()
         .flat_map(|m| m.content.iter())
@@ -2481,11 +2425,8 @@ fn clear_old_tool_results(messages: &mut [ChatMessage], threshold_tokens: usize,
     // can blow the budget on their own).
     let clear_until = positions.len().saturating_sub(keep_last);
     for &(mi, bi) in &positions[..clear_until] {
-        if let ai_providers::ContentBlock::ToolResult {
-            content,
-            tool_use_id,
-            ..
-        } = &mut messages[mi].content[bi]
+        if let ai_providers::ContentBlock::ToolResult { content, tool_use_id, .. } =
+            &mut messages[mi].content[bi]
         {
             // Carry the tool_use_id so the model can recover the EXACT result via
             // get_tool_result (read of stored history; no re-execution).
@@ -2505,13 +2446,11 @@ fn clear_old_tool_results(messages: &mut [ChatMessage], threshold_tokens: usize,
     // to recover the full output. Outbound copy only — stored history is not
     // touched here.
     for &(mi, bi) in &positions[clear_until..] {
-        if let ai_providers::ContentBlock::ToolResult {
-            content,
-            tool_use_id,
-            ..
-        } = &mut messages[mi].content[bi]
+        if let ai_providers::ContentBlock::ToolResult { content, tool_use_id, .. } =
+            &mut messages[mi].content[bi]
         {
-            let chars: usize = content.iter().map(block_text_chars).sum();
+            let chars: usize =
+                content.iter().map(block_text_chars).sum();
             if chars > MAX_KEPT_TOOL_RESULT_CHARS {
                 let tid = tool_use_id.clone();
                 let truncated = truncate_kept_result(content, &tid);
@@ -2536,18 +2475,24 @@ fn clear_old_tool_results(messages: &mut [ChatMessage], threshold_tokens: usize,
 /// Flatten a kept tool_result's text payload and cut it to
 /// `MAX_KEPT_TOOL_RESULT_CHARS`, appending the re-call marker. Char-safe
 /// (truncates on a `char` boundary, not a byte index).
-fn truncate_kept_result(content: &[ai_providers::ContentBlock], tool_use_id: &str) -> String {
+fn truncate_kept_result(
+    content: &[ai_providers::ContentBlock],
+    tool_use_id: &str,
+) -> String {
     use ai_providers::ContentBlock as CB;
     let mut flat = String::new();
     for b in content {
         match b {
             CB::Text { text } => flat.push_str(text),
             CB::Thinking { thinking, .. } => flat.push_str(thinking),
-            CB::ToolUse { input, .. } => flat.push_str(&input.to_string()),
+            CB::ToolUse { input, .. } => {
+                flat.push_str(&input.to_string())
+            }
             _ => {}
         }
     }
-    let kept: String = flat.chars().take(MAX_KEPT_TOOL_RESULT_CHARS).collect();
+    let kept: String =
+        flat.chars().take(MAX_KEPT_TOOL_RESULT_CHARS).collect();
     format!("{kept}{}", kept_truncation_marker(tool_use_id))
 }
 #[cfg(test)]
@@ -2558,18 +2503,14 @@ mod tests {
 
     use serde_json::json;
 
+
     fn text(s: &str) -> ContentBlock {
         ContentBlock::Text {
             text: s.to_string(),
         }
     }
 
-    fn acc(
-        content_type: &str,
-        text: &str,
-        sig: Option<&str>,
-        redacted: Option<&str>,
-    ) -> AccumulatedContent {
+    fn acc(content_type: &str, text: &str, sig: Option<&str>, redacted: Option<&str>) -> AccumulatedContent {
         AccumulatedContent {
             content_type: content_type.to_string(),
             accumulated_text: text.to_string(),
@@ -2621,6 +2562,7 @@ mod tests {
         assert!(accumulated_to_content_block(&acc("tool_use", "", None, None)).is_none());
     }
 
+
     fn tool_use(id: &str, name: &str) -> ContentBlock {
         ContentBlock::ToolUse {
             id: id.to_string(),
@@ -2628,6 +2570,7 @@ mod tests {
             input: json!({}),
         }
     }
+
 
     fn tool_result(id: &str, content: &str) -> ContentBlock {
         ContentBlock::ToolResult {
@@ -2639,6 +2582,7 @@ mod tests {
             is_error: None,
         }
     }
+
 
     /// The core fix: an Assistant turn with text + tool_use + tool_result must
     /// produce TWO messages — `[Assistant { text + tool_use }, Tool { tool_result }]`
@@ -2665,11 +2609,9 @@ mod tests {
         // Second: Tool with tool_result (provider maps Role::Tool appropriately)
         assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
         assert_eq!(msgs[1].content.len(), 1);
-        assert!(matches!(
-            msgs[1].content[0],
-            ContentBlock::ToolResult { .. }
-        ));
+        assert!(matches!(msgs[1].content[0], ContentBlock::ToolResult { .. }));
     }
+
 
     /// Even with NO text, tool_use + tool_result still produce two messages.
     #[test]
@@ -2688,6 +2630,7 @@ mod tests {
         assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
     }
 
+
     /// tool_result without tool_use (e.g. resumed approval) still emits the
     /// Tool message but skips the empty Assistant message.
     #[test]
@@ -2702,6 +2645,7 @@ mod tests {
         assert_eq!(msgs.len(), 1);
         assert!(matches!(msgs[0].role, ai_providers::Role::Tool));
     }
+
 
     /// Plain assistant text (no tool blocks) stays as a single Assistant message
     /// — the categorization path must not fire.
@@ -2720,6 +2664,7 @@ mod tests {
         assert!(matches!(msgs[0].content[0], ContentBlock::Text { .. }));
     }
 
+
     /// User messages are never split — even if they (hypothetically) carried tool
     /// blocks, they're combined into one User message.
     #[test]
@@ -2735,13 +2680,19 @@ mod tests {
         assert!(matches!(msgs[0].role, ai_providers::Role::User));
     }
 
+
     /// Empty blocks → no message emitted.
     #[test]
     fn no_blocks_emits_no_messages() {
-        let msgs =
-            group_blocks_into_provider_messages(MessageRole::Assistant, vec![], vec![], vec![]);
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![],
+            vec![],
+            vec![],
+        );
         assert!(msgs.is_empty());
     }
+
 
     /// Regression guard for the OLD bug: the previous implementation emitted
     /// `[Assistant { tool_use }, Tool { tool_result }, Assistant { text }]` —
@@ -2765,6 +2716,7 @@ mod tests {
             last.role
         );
     }
+
 
     fn thinking(text: &str) -> ContentBlock {
         ContentBlock::Thinking {
@@ -2840,18 +2792,11 @@ mod tests {
             ContentBlock::ToolResult { is_error, .. } => assert_eq!(*is_error, None),
             _ => panic!("expected tool_result"),
         }
-        for (i, want_name) in [
-            (1usize, "srv__run_consensus_analysis"),
-            (2, "srv__run_consensus_analysis"),
-        ] {
+        for (i, want_name) in [(1usize, "srv__run_consensus_analysis"), (2, "srv__run_consensus_analysis")] {
             match &msgs[1].content[i] {
                 ContentBlock::ToolResult { is_error, name, .. } => {
                     assert_eq!(*is_error, Some(true), "synthesized result must be is_error");
-                    assert_eq!(
-                        name.as_deref(),
-                        Some(want_name),
-                        "synthesized result carries the tool_use name"
-                    );
+                    assert_eq!(name.as_deref(), Some(want_name), "synthesized result carries the tool_use name");
                 }
                 _ => panic!("expected tool_result"),
             }
@@ -2893,12 +2838,7 @@ mod tests {
         assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
         assert_eq!(msgs[1].content.len(), 1);
         match &msgs[1].content[0] {
-            ContentBlock::ToolResult {
-                tool_use_id,
-                is_error,
-                content,
-                ..
-            } => {
+            ContentBlock::ToolResult { tool_use_id, is_error, content, .. } => {
                 assert_eq!(tool_use_id, "A");
                 assert_eq!(*is_error, Some(true));
                 assert!(matches!(content[0], ContentBlock::Text { .. }));
@@ -2923,7 +2863,10 @@ mod tests {
             tool_result("X", "orphan"),
         ]);
         assert_eq!(msgs.len(), 2);
-        let total_results: usize = msgs.iter().map(|m| result_ids(&m.content).len()).sum();
+        let total_results: usize = msgs
+            .iter()
+            .map(|m| result_ids(&m.content).len())
+            .sum();
         assert_eq!(total_results, 1, "orphan result must be dropped");
         assert_eq!(result_ids(&msgs[1].content), vec!["A"]);
     }
@@ -3053,11 +2996,7 @@ mod tests {
     fn group_assistant_blocks_resultless_batch_emits_a_bare_unpaired_assistant_turn() {
         let msgs = group_assistant_blocks(vec![tool_use("A", "srv__a")]);
 
-        assert_eq!(
-            msgs.len(),
-            1,
-            "no Tool turn is synthesized for a resultless batch"
-        );
+        assert_eq!(msgs.len(), 1, "no Tool turn is synthesized for a resultless batch");
         assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
         assert_eq!(tool_use_ids(&msgs[0].content), vec!["A"]);
         assert!(
@@ -3090,11 +3029,7 @@ mod tests {
         ];
         let dropped = dedup_tool_results_by_id(&mut msgs);
 
-        assert_eq!(
-            dropped,
-            vec!["B"],
-            "the dropped id is reported to the caller"
-        );
+        assert_eq!(dropped, vec!["B"], "the dropped id is reported to the caller");
         assert_eq!(msgs.len(), 3, "no message became empty here");
         assert_eq!(result_ids(&msgs[1].content), vec!["A", "B"]);
         assert!(
@@ -3110,9 +3045,7 @@ mod tests {
             _ => panic!("expected tool_result"),
         }
         // A non-tool_result block in the same message is untouched.
-        assert!(
-            matches!(&msgs[2].content[0], ContentBlock::Text { text } if text == "trailing note")
-        );
+        assert!(matches!(&msgs[2].content[0], ContentBlock::Text { text } if text == "trailing note"));
     }
 
     /// TEST-3 (fix-duplicate-tool-result): the defense never perturbs a healthy
@@ -3468,6 +3401,7 @@ mod tests {
         assert!(req2.top_k.is_none());
     }
 
+
     #[test]
     fn thinking_block_groups_before_tool_use() {
         // A thinking block must precede tool_use in the assembled assistant turn.
@@ -3487,10 +3421,7 @@ mod tests {
             .iter()
             .map(|b| matches!(b, ai_providers::ContentBlock::Thinking { .. }))
             .collect();
-        assert!(
-            first_kinds.first().copied().unwrap_or(false),
-            "thinking must come first"
-        );
+        assert!(first_kinds.first().copied().unwrap_or(false), "thinking must come first");
     }
 }
 #[cfg(test)]
@@ -3498,6 +3429,7 @@ mod trim_tests {
     use super::*;
 
     use ai_providers::{ChatMessage, ContentBlock, Role};
+
 
     fn tool_result_msg(id: &str, text: &str) -> ChatMessage {
         ChatMessage {
@@ -3513,10 +3445,12 @@ mod trim_tests {
         }
     }
 
+
     fn is_cleared(m: &ChatMessage) -> bool {
         matches!(&m.content[0], ContentBlock::ToolResult { content, .. }
             if matches!(&content[0], ContentBlock::Text { text } if text.contains("cleared")))
     }
+
 
     #[test]
     fn clears_old_keeps_recent_past_threshold() {
@@ -3532,12 +3466,14 @@ mod trim_tests {
         assert!(!is_cleared(&msgs[9]), "kept last 2");
     }
 
+
     #[test]
     fn noop_under_threshold() {
         let mut msgs = vec![tool_result_msg("t", "small")];
         clear_old_tool_results(&mut msgs, 30_000, 2);
         assert!(!is_cleared(&msgs[0]), "nothing trimmed under threshold");
     }
+
 
     #[test]
     fn noop_when_fewer_than_keep_last() {
@@ -3548,12 +3484,16 @@ mod trim_tests {
         assert!(!is_cleared(&msgs[1]));
     }
 
+
     fn result_text_chars(m: &ChatMessage) -> usize {
         match &m.content[0] {
-            ContentBlock::ToolResult { content, .. } => content.iter().map(block_text_chars).sum(),
+            ContentBlock::ToolResult { content, .. } => {
+                content.iter().map(block_text_chars).sum()
+            }
             _ => 0,
         }
     }
+
 
     #[test]
     fn caps_oversized_kept_results() {
@@ -3572,7 +3512,9 @@ mod trim_tests {
             assert!(!is_cleared(m), "result {i} should be kept, not cleared");
             let chars = result_text_chars(m);
             assert!(
-                chars <= MAX_KEPT_TOOL_RESULT_CHARS + kept_truncation_marker("k0").chars().count(),
+                chars
+                    <= MAX_KEPT_TOOL_RESULT_CHARS
+                        + kept_truncation_marker("k0").chars().count(),
                 "kept result {i} not bounded: {chars} chars",
             );
         }
@@ -3584,12 +3526,15 @@ mod trim_tests {
             .flat_map(|m| m.content.iter())
             .map(block_text_chars)
             .sum();
-        let bound = 6 * (MAX_KEPT_TOOL_RESULT_CHARS + kept_truncation_marker("k0").chars().count());
+        let bound = 6
+            * (MAX_KEPT_TOOL_RESULT_CHARS
+                + kept_truncation_marker("k0").chars().count());
         assert!(
             total_chars <= bound,
             "post-trim total {total_chars} exceeds bound {bound}",
         );
     }
+
 
     #[test]
     fn small_kept_results_not_truncated() {
@@ -3617,6 +3562,7 @@ mod trim_tests {
         }
     }
 
+
     // audit id all-643c33d76832 — trimming→recall ROUNDTRIP handoff. Existing
     // tests assert a cleared block merely contains "cleared"; this asserts the
     // placeholder names the EXACT tool_use_id in a get_tool_result(...) call so
@@ -3642,6 +3588,7 @@ mod trim_tests {
         );
     }
 
+
     /// Recall-roundtrip linkage: a CLEARED older result's placeholder must carry
     /// the EXACT `tool_use_id` inside a `get_tool_result(...)` hint, so the model
     /// can recover the full result via the tool_result_mcp recall path (whose own
@@ -3664,10 +3611,7 @@ mod trim_tests {
             },
             _ => String::new(),
         };
-        assert!(
-            txt.contains("get_tool_result"),
-            "placeholder must point at get_tool_result: {txt}"
-        );
+        assert!(txt.contains("get_tool_result"), "placeholder must point at get_tool_result: {txt}");
         assert!(
             txt.contains("tool_use_id=\"tu0\""),
             "placeholder must carry the cleared result's exact tool_use_id for recall: {txt}"

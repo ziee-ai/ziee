@@ -2,8 +2,8 @@
 
 use super::{Deployment, LocalDeployment};
 use crate::common::AppError;
-use crate::modules::llm_local_runtime::BinaryManager;
 use sqlx::PgPool;
+use crate::modules::llm_local_runtime::BinaryManager;
 
 type AppResult<T> = Result<T, AppError>;
 use crate::modules::llm_local_runtime::models::DeploymentConfig;
@@ -15,10 +15,7 @@ pub struct DeploymentManager {
 
 impl DeploymentManager {
     pub fn new(pool: PgPool) -> Result<Self, Box<dyn std::error::Error>> {
-        let binary_manager = BinaryManager::with_cache_dir(
-            pool,
-            std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()),
-        )?;
+        let binary_manager = BinaryManager::with_cache_dir(pool, std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))?;
         Ok(Self {
             local: Arc::new(LocalDeployment::new(Arc::new(binary_manager))),
         })

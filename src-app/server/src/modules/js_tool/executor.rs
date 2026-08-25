@@ -12,8 +12,8 @@
 //! suspend the script in-process for approval (see `approval`).
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use uuid::Uuid;
@@ -154,13 +154,7 @@ impl Dispatcher {
             .auto_approved
             .contains(&(binding.server_id, binding.tool_name.clone()));
 
-        match approval::gate(
-            is_builtin,
-            is_control,
-            is_control_mutating,
-            self.approval_mode.clone(),
-            is_auto,
-        ) {
+        match approval::gate(is_builtin, is_control, is_control_mutating, self.approval_mode.clone(), is_auto) {
             GateDecision::Deny => {
                 self.push_trace(&binding, "denied", 0);
                 return serde_json::json!({
@@ -261,13 +255,7 @@ impl Dispatcher {
         };
         let dur = t0.elapsed().as_millis() as u64;
 
-        if let McpContentData::ToolResult {
-            content,
-            is_error,
-            structured_content,
-            ..
-        } = result
-        {
+        if let McpContentData::ToolResult { content, is_error, structured_content, .. } = result {
             let is_err = is_error.unwrap_or(false);
             self.push_trace(&binding, if is_err { "failed" } else { "completed" }, dur);
             serde_json::json!({
@@ -317,9 +305,7 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
                 tool_use_id: req.tool_use_id.clone(),
                 name: Some("run_js".to_string()),
                 server_id: Some(super::run_js_mcp_server_id().to_string()),
-                content:
-                    "run_js is busy (too many concurrent scripts on this server); try again shortly"
-                        .to_string(),
+                content: "run_js is busy (too many concurrent scripts on this server); try again shortly".to_string(),
                 is_error: Some(true),
                 attachment: None,
                 images: None,
@@ -351,9 +337,7 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
             timeout: req.caps.approval_timeout,
         },
         trace: Arc::new(std::sync::Mutex::new(Vec::new())),
-        dispatch_sem: Arc::new(tokio::sync::Semaphore::new(
-            req.caps.max_concurrent_dispatch.max(1),
-        )),
+        dispatch_sem: Arc::new(tokio::sync::Semaphore::new(req.caps.max_concurrent_dispatch.max(1))),
         approvals_used: Arc::new(AtomicU64::new(0)),
         max_approvals: req.caps.max_approvals,
         max_trace_entries: req.caps.max_trace_entries.max(1),
@@ -398,14 +382,9 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
             let d = d.clone();
             let h = h.clone();
             Box::pin(async move {
-                match h
-                    .spawn(async move { d.dispatch_one(name, args).await })
-                    .await
-                {
+                match h.spawn(async move { d.dispatch_one(name, args).await }).await {
                     Ok(v) => v,
-                    Err(_) => {
-                        serde_json::json!({ "__error": "run_js tool dispatch was cancelled" })
-                    }
+                    Err(_) => serde_json::json!({ "__error": "run_js tool dispatch was cancelled" }),
                 }
             })
         })
@@ -427,10 +406,7 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
         // GLOBAL_RUN_SEM slot occupied for its real lifetime so the concurrent-
         // runtime bound stays accurate under client aborts (audit: concurrency).
         let _global = global_permit;
-        let local = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
+        let local = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
             Ok(rt) => rt,
             Err(e) => {
                 return runtime::JsOutcome {
@@ -444,12 +420,9 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
                 };
             }
         };
-        local.block_on(runtime::evaluate(
-            &script_owned,
-            &limits,
-            cancel_for_eval,
-            move |ctx| host_bridge::install(ctx, &bindings_for_inject, dispatch_fn),
-        ))
+        local.block_on(runtime::evaluate(&script_owned, &limits, cancel_for_eval, move |ctx| {
+            host_bridge::install(ctx, &bindings_for_inject, dispatch_fn)
+        }))
     })
     .await
     .unwrap_or_else(|_| runtime::JsOutcome {
@@ -466,11 +439,7 @@ pub async fn run(req: JsToolRun, script: &str) -> McpContentData {
     cancel.store(true, Ordering::Relaxed);
     watchdog.abort();
 
-    let trace = dispatcher
-        .trace
-        .lock()
-        .map(|t| t.clone())
-        .unwrap_or_default();
+    let trace = dispatcher.trace.lock().map(|t| t.clone()).unwrap_or_default();
     build_result(&req.tool_use_id, outcome, trace)
 }
 
@@ -499,8 +468,8 @@ fn build_result(
         None => {
             // The model reads the final value as JSON text; the trace/console are
             // inspectable via structured_content / get_tool_result.
-            let digest =
-                serde_json::to_string(&outcome.value).unwrap_or_else(|_| "null".to_string());
+            let digest = serde_json::to_string(&outcome.value)
+                .unwrap_or_else(|_| "null".to_string());
             let structured = serde_json::json!({
                 "result": outcome.value,
                 "console": outcome.console,
@@ -566,14 +535,7 @@ mod tests {
         };
         let trace = vec![serde_json::json!({ "tool": "web_search", "status": "completed" })];
         let r = build_result("tu_1", outcome, trace);
-        if let McpContentData::ToolResult {
-            content,
-            is_error,
-            structured_content,
-            name,
-            ..
-        } = r
-        {
+        if let McpContentData::ToolResult { content, is_error, structured_content, name, .. } = r {
             assert_eq!(name.as_deref(), Some("run_js"));
             assert_eq!(is_error, Some(false));
             assert!(content.contains("summary"));
@@ -591,20 +553,11 @@ mod tests {
         let outcome = JsOutcome {
             value: serde_json::Value::Null,
             console: vec![],
-            error: Some(JsError {
-                message: "boom".into(),
-                line: Some(4),
-            }),
+            error: Some(JsError { message: "boom".into(), line: Some(4) }),
             truncated_output: false,
         };
         let r = build_result("tu_2", outcome, vec![]);
-        if let McpContentData::ToolResult {
-            content,
-            is_error,
-            structured_content,
-            ..
-        } = r
-        {
+        if let McpContentData::ToolResult { content, is_error, structured_content, .. } = r {
             assert_eq!(is_error, Some(true));
             assert!(content.contains("line 4"));
             assert_eq!(structured_content.unwrap()["error"]["line"], 4);

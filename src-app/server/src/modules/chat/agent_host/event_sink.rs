@@ -54,6 +54,7 @@
 //!   sender is dropped and the client reconnects + resyncs). A frame that can't
 //!   be delivered is never surfaced back into the loop.
 
+
 use agent_core::{AgentEvent, EventSink, StopReason, Usage as AgentUsage};
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -63,7 +64,7 @@ use crate::modules::chat::core::types::streaming::{
     SSEChatStreamSubAgentActivityData, SSEChatStreamTaskListChangedData, SubAgentActivityChildDto,
     TaskListItemDto, Usage,
 };
-use crate::modules::chat::stream::{ChatStreamFrame, publish_frame, publish_raw_event};
+use crate::modules::chat::stream::{publish_frame, publish_raw_event, ChatStreamFrame};
 
 /// Chat-flavored [`EventSink`]: routes loop events to the per-user chat token
 /// stream for one assistant turn. Constructed per turn by `ChatAgentDispatcher`.
@@ -247,10 +248,11 @@ impl EventSink for ChatEventSink {
             // compacted" divider in place. Compaction is outbound-only (the stored
             // message content is untouched), so this is a display signal only.
             AgentEvent::HistoryReplaced { summary_upto } => {
-                let event = SSEChatStreamEvent::HistoryReplaced(SSEChatStreamHistoryReplacedData {
-                    conversation_id: self.conversation_id,
-                    summary_upto,
-                });
+                let event =
+                    SSEChatStreamEvent::HistoryReplaced(SSEChatStreamHistoryReplacedData {
+                        conversation_id: self.conversation_id,
+                        summary_upto,
+                    });
                 publish_raw_event(self.owner_id, self.conversation_id, event.into());
             }
 

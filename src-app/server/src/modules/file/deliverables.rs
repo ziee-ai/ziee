@@ -10,9 +10,9 @@
 use std::collections::HashSet;
 
 use aide::transform::TransformOperation;
-use axum::Json;
 use axum::extract::Path;
 use axum::http::StatusCode;
+use axum::Json;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -23,7 +23,7 @@ use crate::modules::chat::core::permissions::{ConversationsEdit, ConversationsRe
 use crate::modules::file::models::File;
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::openapi::with_permission;
-use crate::modules::sync::{Audience, SyncAction, SyncEntity, SyncOrigin, publish as sync_publish};
+use crate::modules::sync::{publish as sync_publish, Audience, SyncAction, SyncEntity, SyncOrigin};
 
 // ---------------------------------------------------------------------------
 // repository

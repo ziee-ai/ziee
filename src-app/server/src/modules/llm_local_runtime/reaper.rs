@@ -119,7 +119,10 @@ pub async fn run_one_tick(pool: &PgPool) -> Result<(), AppError> {
         let model_id = row.model_id;
         // Cooperatively gate the proxy front door + drain in-flight.
         if let Err(e) = drain_and_stop(model_id, drain_secs, &dep).await {
-            tracing::warn!("reaper: drain_and_stop({model_id}) failed: {}", e);
+            tracing::warn!(
+                "reaper: drain_and_stop({model_id}) failed: {}",
+                e
+            );
         }
 
         // Mark the row stopped. Use `stopped` so /status surfaces the
@@ -199,8 +202,12 @@ async fn monitor_health(pool: &PgPool) {
     for row in running {
         let model_id = row.model_id;
         let healthy = dep.health_check(&row.base_url).await.unwrap_or(false);
-        if let Some((from, to)) =
-            super::auto_start::report_health(model_id, healthy, "engine /health probe failed").await
+        if let Some((from, to)) = super::auto_start::report_health(
+            model_id,
+            healthy,
+            "engine /health probe failed",
+        )
+        .await
         {
             if let Err(e) = sqlx::query!(
                 "UPDATE llm_runtime_instances
@@ -258,8 +265,8 @@ async fn drain_and_stop(
 ) -> Result<(), AppError> {
     proxy::set_instance_flag(model_id, InstanceFlag::Draining).await;
 
-    let deadline =
-        tokio::time::Instant::now() + Duration::from_secs(drain_timeout_secs.max(1) as u64);
+    let deadline = tokio::time::Instant::now()
+        + Duration::from_secs(drain_timeout_secs.max(1) as u64);
     loop {
         let inflight = proxy::inflight_count(model_id).await;
         if inflight == 0 {

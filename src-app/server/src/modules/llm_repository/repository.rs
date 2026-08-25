@@ -24,26 +24,25 @@ async fn resolve_auth_config(
     plaintext: Option<serde_json::Value>,
 ) -> Option<serde_json::Value> {
     if let Some(ref enc) = encrypted
-        && let Some(key) = storage_key()
-    {
-        match crate::common::secret::decrypt_secret(pool, enc, key).await {
-            Ok(json_text) => {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_text) {
-                    return Some(v);
+        && let Some(key) = storage_key() {
+            match crate::common::secret::decrypt_secret(pool, enc, key).await {
+                Ok(json_text) => {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_text) {
+                        return Some(v);
+                    }
+                    tracing::error!(
+                        "Decrypted llm_repositories.auth_config_encrypted is not valid JSON"
+                    );
                 }
-                tracing::error!(
-                    "Decrypted llm_repositories.auth_config_encrypted is not valid JSON"
-                );
-            }
-            Err(e) => {
-                tracing::error!(
-                    error = ?e,
-                    "Failed to decrypt llm_repositories.auth_config_encrypted; \
-                     falling back to plaintext column"
-                );
+                Err(e) => {
+                    tracing::error!(
+                        error = ?e,
+                        "Failed to decrypt llm_repositories.auth_config_encrypted; \
+                         falling back to plaintext column"
+                    );
+                }
             }
         }
-    }
     plaintext
 }
 
@@ -122,12 +121,14 @@ impl LlmRepositoryRepository {
         record_health_check(&self.pool, repo_id, status, reason).await
     }
 
+
     /// Used by the boot probe when the EventBus isn't available yet;
     /// foreground enable-transition reverts go through the normal
     /// update path so they can emit `AutoDisabled`.
     pub async fn disable_for_health_failure(&self, repo_id: Uuid) -> Result<(), sqlx::Error> {
         disable_for_health_failure(&self.pool, repo_id).await
     }
+
 }
 
 // =====================================================
@@ -162,10 +163,8 @@ pub async fn get_llm_repository_by_id(
             .unwrap_or_default(),
         enabled: r.enabled,
         built_in: r.built_in,
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0)
-            .unwrap_or_else(Utc::now),
-        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0)
-            .unwrap_or_else(Utc::now),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         last_health_check_at: r
             .last_health_check_at
             .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -197,10 +196,8 @@ pub async fn list_llm_repositories(pool: &PgPool) -> Result<Vec<LlmRepository>, 
                 .unwrap_or_default(),
             enabled: r.enabled,
             built_in: r.built_in,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0)
-                .unwrap_or_else(Utc::now),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0)
-                .unwrap_or_else(Utc::now),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
             last_health_check_at: r
                 .last_health_check_at
                 .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -271,10 +268,8 @@ pub async fn create_llm_repository(
             .unwrap_or_default(),
         enabled: row.enabled,
         built_in: row.built_in,
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
-            .unwrap_or_else(Utc::now),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
-            .unwrap_or_else(Utc::now),
+        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         last_health_check_at: row
             .last_health_check_at
             .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -456,10 +451,8 @@ pub async fn find_llm_repository_by_url(
             .unwrap_or_default(),
         enabled: r.enabled,
         built_in: r.built_in,
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0)
-            .unwrap_or_else(Utc::now),
-        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0)
-            .unwrap_or_else(Utc::now),
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
         last_health_check_at: r
             .last_health_check_at
             .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -536,10 +529,8 @@ pub async fn list_enabled_for_health_check(
                 .unwrap_or_default(),
             enabled: r.enabled,
             built_in: r.built_in,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0)
-                .unwrap_or_else(Utc::now),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0)
-                .unwrap_or_else(Utc::now),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap_or_else(Utc::now),
             last_health_check_at: r
                 .last_health_check_at
                 .and_then(|t| DateTime::from_timestamp(t.unix_timestamp(), 0)),
@@ -556,7 +547,10 @@ pub async fn list_enabled_for_health_check(
 /// "no handlers" warning. The enable-transition path on the
 /// foreground request handler instead goes through the normal update
 /// + emits the event so the UI's list reloads in real time.
-pub async fn disable_for_health_failure(pool: &PgPool, repo_id: Uuid) -> Result<(), sqlx::Error> {
+pub async fn disable_for_health_failure(
+    pool: &PgPool,
+    repo_id: Uuid,
+) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"UPDATE llm_repositories
            SET enabled = FALSE, updated_at = CURRENT_TIMESTAMP

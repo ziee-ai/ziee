@@ -95,7 +95,9 @@ pub async fn save(
 /// Validate a candidate policy. Pure (no DB) except for the live
 /// sandbox-state lookup, which is a process-global Lazy and effectively
 /// free. Returns `(normalized_allowed_transports, normalized_flavor)`.
-fn validate(req: UpdateMcpUserPolicyRequest) -> Result<(Vec<String>, Option<String>), AppError> {
+fn validate(
+    req: UpdateMcpUserPolicyRequest,
+) -> Result<(Vec<String>, Option<String>), AppError> {
     // Normalize: dedupe + lowercase, drop empties.
     let mut allowed: Vec<String> = req
         .allowed_transports

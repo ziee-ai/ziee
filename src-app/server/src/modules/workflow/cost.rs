@@ -16,6 +16,7 @@
 //!    common case), the count is "runtime-dependent" and we fall back to
 //!    the `max_parallel` cap.
 
+
 use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::Value;
@@ -241,7 +242,10 @@ steps:
     max_parallel: 5
 "#);
         let mut inputs = serde_json::Map::new();
-        inputs.insert("queries".into(), serde_json::json!(["a", "b", "c", "d"]));
+        inputs.insert(
+            "queries".into(),
+            serde_json::json!(["a", "b", "c", "d"]),
+        );
         let res = dry_run(&w, &inputs);
         assert_eq!(res.steps.len(), 1);
         assert_eq!(res.steps[0].est_calls, 4);

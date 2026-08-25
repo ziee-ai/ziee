@@ -73,10 +73,7 @@ async fn read_instance() -> Result<VoiceInstanceInfo, AppError> {
     .await
     .map_err(AppError::database_error)?;
     // Enrich with live process pid/uptime from the deployment layer (F10).
-    let live = super::deployment::get_deployment_manager()
-        .local()
-        .status()
-        .await;
+    let live = super::deployment::get_deployment_manager().local().status().await;
     Ok(VoiceInstanceInfo {
         active_model: row.active_model,
         local_port: row.local_port,
@@ -185,10 +182,7 @@ pub async fn get_logs(
     axum::extract::Query(q): axum::extract::Query<LogsQuery>,
 ) -> ApiResult<Json<VoiceLogsResponse>> {
     let n = q.lines.unwrap_or(200).min(1000);
-    let lines = super::deployment::get_deployment_manager()
-        .local()
-        .logs(n)
-        .await;
+    let lines = super::deployment::get_deployment_manager().local().logs(n).await;
     Ok((StatusCode::OK, Json(VoiceLogsResponse { lines })))
 }
 
@@ -204,9 +198,7 @@ pub fn get_logs_docs(op: TransformOperation) -> TransformOperation {
 pub async fn stream_logs(
     _auth: RequirePermissions<(VoiceAdminRead,)>,
 ) -> ApiResult<
-    axum::response::Sse<
-        impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
-    >,
+    axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, axum::Error>>>,
 > {
     use axum::response::sse::{Event, KeepAlive, Sse};
     let subscribed = super::deployment::get_deployment_manager()
@@ -229,10 +221,7 @@ pub async fn stream_logs(
             }
         }
     };
-    Ok((
-        StatusCode::OK,
-        Sse::new(stream).keep_alive(KeepAlive::default()),
-    ))
+    Ok((StatusCode::OK, Sse::new(stream).keep_alive(KeepAlive::default())))
 }
 
 pub fn stream_logs_docs(op: TransformOperation) -> TransformOperation {
@@ -248,7 +237,10 @@ pub fn stream_logs_docs(op: TransformOperation) -> TransformOperation {
 /// layer (`voice/routes.rs`).
 pub fn voice_instance_router() -> ApiRouter {
     ApiRouter::new()
-        .api_route("/voice/instance", get_with(get_instance, get_instance_docs))
+        .api_route(
+            "/voice/instance",
+            get_with(get_instance, get_instance_docs),
+        )
         .api_route(
             "/voice/instance/restart",
             post_with(restart_instance, restart_instance_docs),
@@ -257,7 +249,10 @@ pub fn voice_instance_router() -> ApiRouter {
             "/voice/instance/stop",
             post_with(stop_instance, stop_instance_docs),
         )
-        .api_route("/voice/instance/logs", get_with(get_logs, get_logs_docs))
+        .api_route(
+            "/voice/instance/logs",
+            get_with(get_logs, get_logs_docs),
+        )
         .api_route(
             "/voice/instance/logs/stream",
             get_with(stream_logs, stream_logs_docs),

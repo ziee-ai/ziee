@@ -1,12 +1,12 @@
 // File processing system
 
-pub mod image;
-pub mod office;
-pub mod pdf;
-pub mod spreadsheet_image;
+pub mod traits;
 pub mod text;
 pub mod text_image;
-pub mod traits;
+pub mod spreadsheet_image;
+pub mod image;
+pub mod pdf;
+pub mod office;
 
 use crate::common::AppError;
 use traits::{ContentProcessor, ImageGenerator};
@@ -76,15 +76,14 @@ impl ProcessingManager {
             if processor.can_process(mime_type) {
                 result.text_pages = processor.extract_text(data, mime_type).await?;
                 let metadata_json = processor.extract_metadata(data, mime_type).await?;
-                result.metadata = serde_json::from_value(metadata_json).unwrap_or_default();
+                result.metadata = serde_json::from_value(metadata_json)
+                    .unwrap_or_default();
                 // Citation geometry: per-char boxes for the exact-passage
                 // highlight. PDFs capture directly; Office docs via their PDF
                 // render; everything else returns none (page-level fallback).
                 // Best-effort — a failure just opens the page without a box.
-                result.geometry_pages = processor
-                    .extract_geometry(data, mime_type)
-                    .await
-                    .unwrap_or_else(|e| {
+                result.geometry_pages =
+                    processor.extract_geometry(data, mime_type).await.unwrap_or_else(|e| {
                         tracing::warn!("geometry: extract_geometry failed: {e}");
                         Vec::new()
                     });
@@ -107,9 +106,7 @@ impl ProcessingManager {
         // Generate images
         for generator in &self.image_generators {
             if generator.can_generate(mime_type) {
-                let image_result = generator
-                    .generate_images(data, mime_type, PREVIEW_PAGE_CAP)
-                    .await?;
+                let image_result = generator.generate_images(data, mime_type, PREVIEW_PAGE_CAP).await?;
                 result.thumbnails = image_result.thumbnails;
                 result.images = image_result.images;
 
@@ -199,6 +196,7 @@ fn looks_like_text(data: &[u8]) -> bool {
 mod tests {
     use super::*;
 
+
     #[tokio::test]
     async fn r_script_octet_stream_extracts_text() {
         // `.R` resolves to application/octet-stream (no mime_guess mapping),
@@ -208,13 +206,10 @@ mod tests {
             .process_file(src.as_bytes(), "application/octet-stream")
             .await
             .unwrap();
-        assert_eq!(
-            result.text_pages.len(),
-            1,
-            "R script should yield one text page"
-        );
+        assert_eq!(result.text_pages.len(), 1, "R script should yield one text page");
         assert_eq!(result.text_pages[0], src);
     }
+
 
     #[tokio::test]
     async fn code_mimes_outside_allowlist_extract_text() {
@@ -230,29 +225,22 @@ mod tests {
                 .process_file(body.as_bytes(), mime)
                 .await
                 .unwrap();
-            assert_eq!(
-                result.text_pages,
-                vec![body.to_string()],
-                "mime {mime} should extract text"
-            );
+            assert_eq!(result.text_pages, vec![body.to_string()], "mime {mime} should extract text");
         }
     }
+
 
     #[tokio::test]
     async fn binary_data_yields_no_text_pages() {
         // PNG magic + a NUL byte → must stay binary (no garbage text page).
-        let png = [
-            0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01, 0x02,
-        ];
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01, 0x02];
         let result = ProcessingManager::new()
             .process_file(&png, "application/octet-stream")
             .await
             .unwrap();
-        assert!(
-            result.text_pages.is_empty(),
-            "binary data must not be extracted as text"
-        );
+        assert!(result.text_pages.is_empty(), "binary data must not be extracted as text");
     }
+
 
     #[tokio::test]
     async fn csv_still_extracted_by_text_processor() {
@@ -265,6 +253,7 @@ mod tests {
         assert_eq!(result.text_pages, vec![csv.to_string()]);
     }
 
+
     #[test]
     fn looks_like_text_guards() {
         assert!(looks_like_text(b"plain text"));
@@ -272,6 +261,7 @@ mod tests {
         assert!(!looks_like_text(b"has\0nul"));
         assert!(!looks_like_text(&[0xff, 0xfe, 0xfd, 0x00]));
     }
+
 
     // ----- Graceful degradation for failed processing (audit all-f2c43a4939b6) -----
     //
@@ -289,7 +279,8 @@ mod tests {
         // Calamine is pure-Rust (no external binary / runtime dylib), so the
         // failure is deterministic — this is exactly the Err the upload handler
         // catches and degrades to `ProcessingResult::default()`.
-        const XLSX: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        const XLSX: &str =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
         // Leading NUL keeps the text-fallback heuristic from claiming it as text;
         // the bytes are not a zip, so the workbook open fails.
         let not_a_workbook = b"\x00\x01 corrupted, not a real xlsx workbook \x00";
@@ -302,6 +293,7 @@ mod tests {
              handler to map to a degraded ProcessingResult::default()"
         );
     }
+
 
     #[test]
     fn processing_result_default_is_safe_empty_degradation() {
@@ -316,6 +308,7 @@ mod tests {
         assert_eq!(degraded.metadata.text_length, None, "text_length unset");
     }
 
+
     /// Graceful degradation: the upload path falls back to
     /// `ProcessingResult::default()` when processing fails, so the default MUST
     /// be a safe no-artifacts result (empty text pages / thumbnails / images) —
@@ -327,6 +320,7 @@ mod tests {
         assert!(r.thumbnails.is_empty());
         assert!(r.images.is_empty());
     }
+
 
     /// A corrupt file that CLAIMS a rich mime (PDF) but is garbage bytes must
     /// degrade gracefully — no panic, and a safe result (no text pages / no

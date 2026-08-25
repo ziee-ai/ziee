@@ -27,8 +27,8 @@ use crate::modules::chat::core::extension::SendMessageRequest;
 use crate::modules::chat::core::services::StreamingService;
 use crate::modules::chat::extension_registration::auto_register_extensions;
 use crate::modules::notification::models::NewNotification;
-use crate::modules::workflow::runner::{SpawnRunOpts, spawn_run};
 use ziee_notification::create_and_emit;
+use crate::modules::workflow::runner::{SpawnRunOpts, spawn_run};
 
 use super::change::{self, Signature};
 use super::failure::{FailureClass, classify};
@@ -303,16 +303,13 @@ async fn dispatch_prompt(
     config: &Arc<Config>,
     task: &ScheduledTask,
 ) -> Result<RawResult, AppError> {
-    let model_id = task.model_id.ok_or_else(|| AppError::not_found("Model"))?;
+    let model_id = task
+        .model_id
+        .ok_or_else(|| AppError::not_found("Model"))?;
 
     // Re-check assistant access at fire time (defense-in-depth; also gated at create).
     if let Some(aid) = task.assistant_id {
-        if Repos
-            .assistant
-            .get_for_user(aid, task.user_id)
-            .await?
-            .is_none()
-        {
+        if Repos.assistant.get_for_user(aid, task.user_id).await?.is_none() {
             return Err(AppError::not_found("Assistant"));
         }
     }
@@ -470,7 +467,11 @@ async fn dispatch_prompt(
 
 // ── shared finalize (change-detection + notification) ──────────────────
 
-async fn finalize_success(pool: &PgPool, task: &ScheduledTask, raw: RawResult) -> DispatchOutcome {
+async fn finalize_success(
+    pool: &PgPool,
+    task: &ScheduledTask,
+    raw: RawResult,
+) -> DispatchOutcome {
     let sig = change::compute_signature(&raw.text);
     let prev: Option<Signature> = task
         .last_result_signature_json
@@ -518,10 +519,7 @@ async fn finalize_success(pool: &PgPool, task: &ScheduledTask, raw: RawResult) -
     // Build the notification (delta leads the body when we have identifiable items).
     let mut body = String::new();
     if !outcome.new_items.is_empty() {
-        body.push_str(&format!(
-            "{} new since last run.\n\n",
-            outcome.new_items.len()
-        ));
+        body.push_str(&format!("{} new since last run.\n\n", outcome.new_items.len()));
     }
     body.push_str(truncate(&raw.text, NOTIF_BODY_CAP));
     // ITEM-17: be honest — a truncated result must not read as a clean success.
@@ -555,10 +553,7 @@ async fn finalize_success(pool: &PgPool, task: &ScheduledTask, raw: RawResult) -
     let notification_id = match create_and_emit(pool, n).await {
         Ok(row) => Some(row.id),
         Err(e) => {
-            tracing::warn!(
-                "scheduler: failed to create task notification for '{}': {e:?}",
-                task.name
-            );
+            tracing::warn!("scheduler: failed to create task notification for '{}': {e:?}", task.name);
             None
         }
     };
@@ -581,7 +576,11 @@ async fn finalize_success(pool: &PgPool, task: &ScheduledTask, raw: RawResult) -
     }
 }
 
-async fn finalize_failure(pool: &PgPool, task: &ScheduledTask, err: AppError) -> DispatchOutcome {
+async fn finalize_failure(
+    pool: &PgPool,
+    task: &ScheduledTask,
+    err: AppError,
+) -> DispatchOutcome {
     let status = axum::http::StatusCode::from_u16(err.status_code())
         .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
     let class: FailureClass = classify(status, false);
@@ -603,10 +602,7 @@ async fn finalize_failure(pool: &PgPool, task: &ScheduledTask, err: AppError) ->
     let notification_id = match create_and_emit(pool, n).await {
         Ok(row) => Some(row.id),
         Err(e) => {
-            tracing::warn!(
-                "scheduler: failed to create task notification for '{}': {e:?}",
-                task.name
-            );
+            tracing::warn!("scheduler: failed to create task notification for '{}': {e:?}", task.name);
             None
         }
     };
@@ -641,10 +637,7 @@ fn truncate(s: &str, max: usize) -> &str {
 mod tests {
     use super::super::change::ChangeOutcome;
     use super::super::models::{AllowedTool, SkippedTool};
-    use super::{
-        build_change_summary, build_result_preview, build_unattended_mcp_servers,
-        skipped_tools_note,
-    };
+    use super::{build_change_summary, build_result_preview, build_unattended_mcp_servers, skipped_tools_note};
     use uuid::Uuid;
 
     // TEST-41 (ITEM-40): the preview truncates char-safely + collapses whitespace,
@@ -655,16 +648,9 @@ mod tests {
         let p = build_result_preview("Found 3 papers.\n\n  See  10.1000/x.").unwrap();
         assert_eq!(p, "Found 3 papers. See 10.1000/x.", "whitespace collapsed");
         let long: String = "x".repeat(500);
-        assert_eq!(
-            build_result_preview(&long).unwrap().chars().count(),
-            280,
-            "capped at PREVIEW_CHARS"
-        );
+        assert_eq!(build_result_preview(&long).unwrap().chars().count(), 280, "capped at PREVIEW_CHARS");
 
-        let unchanged = build_change_summary(&ChangeOutcome {
-            changed: false,
-            new_items: vec![],
-        });
+        let unchanged = build_change_summary(&ChangeOutcome { changed: false, new_items: vec![] });
         assert_eq!(unchanged["changed"], serde_json::json!(false));
         assert_eq!(unchanged["new_count"], serde_json::json!(0));
         let changed = build_change_summary(&ChangeOutcome {
@@ -686,40 +672,18 @@ mod tests {
         let s2 = Uuid::new_v4();
         // Whole-server grant → tools:[] (= all tools); per-tool grants grouped.
         let grants = vec![
-            AllowedTool {
-                server_id: s1,
-                tool_name: None,
-            },
-            AllowedTool {
-                server_id: s2,
-                tool_name: Some("search".into()),
-            },
-            AllowedTool {
-                server_id: s2,
-                tool_name: Some("fetch".into()),
-            },
+            AllowedTool { server_id: s1, tool_name: None },
+            AllowedTool { server_id: s2, tool_name: Some("search".into()) },
+            AllowedTool { server_id: s2, tool_name: Some("fetch".into()) },
         ];
         let out = build_unattended_mcp_servers(&grants);
         assert_eq!(out.len(), 2, "one entry per distinct server");
-        let e1 = out
-            .iter()
-            .find(|e| e["server_id"] == serde_json::json!(s1))
-            .unwrap();
-        assert_eq!(
-            e1["tools"],
-            serde_json::json!([]),
-            "whole-server grant → all tools"
-        );
-        let e2 = out
-            .iter()
-            .find(|e| e["server_id"] == serde_json::json!(s2))
-            .unwrap();
+        let e1 = out.iter().find(|e| e["server_id"] == serde_json::json!(s1)).unwrap();
+        assert_eq!(e1["tools"], serde_json::json!([]), "whole-server grant → all tools");
+        let e2 = out.iter().find(|e| e["server_id"] == serde_json::json!(s2)).unwrap();
         let tools = e2["tools"].as_array().unwrap();
         assert_eq!(tools.len(), 2, "per-tool grants grouped under the server");
-        assert!(
-            tools.contains(&serde_json::json!("search"))
-                && tools.contains(&serde_json::json!("fetch"))
-        );
+        assert!(tools.contains(&serde_json::json!("search")) && tools.contains(&serde_json::json!("fetch")));
         // A non-allow-listed server is NEVER in the attach set.
         let s3 = Uuid::new_v4();
         assert!(!out.iter().any(|e| e["server_id"] == serde_json::json!(s3)));
@@ -729,23 +693,14 @@ mod tests {
     #[test]
     fn skipped_tools_note_is_honest_and_pluralized() {
         assert_eq!(skipped_tools_note(&[]), None, "no skips → no note");
-        let one = vec![SkippedTool {
-            tool_name: "post_message".into(),
-            reason: "x".into(),
-        }];
+        let one = vec![SkippedTool { tool_name: "post_message".into(), reason: "x".into() }];
         let n1 = skipped_tools_note(&one).unwrap();
         assert!(n1.contains("1 tool was skipped"), "singular: {n1}");
         assert!(n1.contains("post_message"));
         assert!(!n1.contains('⚠'), "no emoji");
         let two = vec![
-            SkippedTool {
-                tool_name: "a".into(),
-                reason: "x".into(),
-            },
-            SkippedTool {
-                tool_name: "b".into(),
-                reason: "x".into(),
-            },
+            SkippedTool { tool_name: "a".into(), reason: "x".into() },
+            SkippedTool { tool_name: "b".into(), reason: "x".into() },
         ];
         let n2 = skipped_tools_note(&two).unwrap();
         assert!(n2.contains("2 tools were skipped"), "plural: {n2}");
@@ -759,19 +714,10 @@ mod tests {
     fn disabled_server_predicate_blocks_correctly() {
         use crate::modules::mcp::chat_extension::approval::models::DisabledServer;
         let sid = Uuid::new_v4();
-        let whole = DisabledServer {
-            server_id: sid,
-            tools: vec![],
-        };
-        assert!(
-            whole.is_server_disabled(),
-            "empty tools = whole server disabled"
-        );
+        let whole = DisabledServer { server_id: sid, tools: vec![] };
+        assert!(whole.is_server_disabled(), "empty tools = whole server disabled");
         assert!(whole.is_tool_disabled("anything"));
-        let scoped = DisabledServer {
-            server_id: sid,
-            tools: vec!["send".into()],
-        };
+        let scoped = DisabledServer { server_id: sid, tools: vec!["send".into()] };
         assert!(!scoped.is_server_disabled(), "tool-scoped ≠ whole-server");
         assert!(scoped.is_tool_disabled("send"));
         assert!(!scoped.is_tool_disabled("read"));

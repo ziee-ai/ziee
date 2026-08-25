@@ -182,20 +182,10 @@ pub fn describe_head(head: &[u8]) -> String {
     if shown.is_empty() {
         return "no data".to_string();
     }
-    let hex = shown
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let hex = shown.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ");
     let printable: String = shown
         .iter()
-        .map(|&b| {
-            if (0x20..0x7f).contains(&b) {
-                b as char
-            } else {
-                '.'
-            }
-        })
+        .map(|&b| if (0x20..0x7f).contains(&b) { b as char } else { '.' })
         .collect();
     format!("`{hex}` (\"{printable}\")")
 }
@@ -239,10 +229,7 @@ pub fn model_path(name: &str) -> PathBuf {
 pub fn installed_model_path(name: &str) -> Option<PathBuf> {
     for fname in [format!("ggml-{name}.bin"), format!("ggml-{name}.gguf")] {
         let p = models_dir().join(&fname);
-        if std::fs::metadata(&p)
-            .map(|m| m.is_file() && m.len() > 0)
-            .unwrap_or(false)
-        {
+        if std::fs::metadata(&p).map(|m| m.is_file() && m.len() > 0).unwrap_or(false) {
             return Some(p);
         }
     }
@@ -347,11 +334,7 @@ where
     // concurrently (they don't share a lock), and a shared `<name>.tmp` would
     // interleave their byte streams into a spurious sha256 mismatch. A uuid
     // suffix isolates each attempt; the loser's temp is cleaned up on drop/error.
-    let tmp = dir.join(format!(
-        "{}.{}.tmp",
-        model_filename(name),
-        uuid::Uuid::new_v4()
-    ));
+    let tmp = dir.join(format!("{}.{}.tmp", model_filename(name), uuid::Uuid::new_v4()));
     let mut file = tokio::fs::File::create(&tmp)
         .await
         .map_err(|e| AppError::internal_error(format!("create temp model file: {e}")))?;
@@ -361,8 +344,8 @@ where
 
     let result: Result<(), AppError> = async {
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk
-                .map_err(|e| AppError::internal_error(format!("download read failed: {e}")))?;
+            let chunk =
+                chunk.map_err(|e| AppError::internal_error(format!("download read failed: {e}")))?;
             downloaded += chunk.len() as u64;
             if downloaded > MAX_MODEL_BYTES {
                 return Err(AppError::bad_request(
@@ -554,8 +537,8 @@ where
                     "download cancelled",
                 ));
             }
-            let chunk = chunk
-                .map_err(|e| AppError::internal_error(format!("download read failed: {e}")))?;
+            let chunk =
+                chunk.map_err(|e| AppError::internal_error(format!("download read failed: {e}")))?;
             if head.len() < 4 {
                 head.extend_from_slice(&chunk[..chunk.len().min(4 - head.len())]);
                 if head.len() >= 4 && !has_whisper_magic(&head) {
@@ -899,10 +882,7 @@ mod tests {
     fn magic_constants_are_derived_from_one_source() {
         assert_eq!(GGML_MAGIC_LE, GGML_FILE_MAGIC.to_le_bytes());
         assert_eq!(GGML_MAGIC_BE, GGML_FILE_MAGIC.to_be_bytes());
-        assert_eq!(
-            GGML_MAGIC_BE, *b"ggml",
-            "big-endian form is the ASCII spelling"
-        );
+        assert_eq!(GGML_MAGIC_BE, *b"ggml", "big-endian form is the ASCII spelling");
         assert_eq!(GGUF_MAGIC, *b"GGUF");
         // The two orderings must be genuinely different, else the test above is
         // vacuous and the original bug would be undetectable.
@@ -913,20 +893,14 @@ mod tests {
     #[test]
     fn rejection_classify_distinguishes_empty_truncated_and_bad_magic() {
         // Empty body — must NOT be reported as a magic failure.
-        assert_eq!(
-            ModelRejection::classify(&[], 0),
-            Some(ModelRejection::Empty)
-        );
+        assert_eq!(ModelRejection::classify(&[], 0), Some(ModelRejection::Empty));
         assert_eq!(
             ModelRejection::classify(b"lmgg", 0),
             Some(ModelRejection::Empty),
             "zero total bytes is Empty regardless of any retained head"
         );
         // Fewer than 4 bytes: identifiable as truncated, not as bad magic.
-        assert_eq!(
-            ModelRejection::classify(b"lm", 2),
-            Some(ModelRejection::Truncated)
-        );
+        assert_eq!(ModelRejection::classify(b"lm", 2), Some(ModelRejection::Truncated));
         // Real bytes, wrong container.
         assert_eq!(
             ModelRejection::classify(b"<!DO", 4096),
@@ -970,14 +944,9 @@ mod tests {
             );
             // (c) ACTION — always tells the user what to do.
             assert!(
-                [
-                    "try the download again",
-                    "re-download",
-                    "check that",
-                    "remove it"
-                ]
-                .iter()
-                .any(|hint| lower.contains(hint)),
+                ["try the download again", "re-download", "check that", "remove it"]
+                    .iter()
+                    .any(|hint| lower.contains(hint)),
                 "{rejection:?}: message must state a corrective action — got: {msg}"
             );
             // Names the thing being rejected, so download vs upload is unambiguous.
@@ -997,15 +966,9 @@ mod tests {
              HTML error page is self-diagnosing — got: {bad}"
         );
         let empty = ModelRejection::Empty.message("the downloaded file", b"");
-        assert!(
-            empty.contains("0 bytes"),
-            "empty message must state the size — got: {empty}"
-        );
+        assert!(empty.contains("0 bytes"), "empty message must state the size — got: {empty}");
         let trunc = ModelRejection::Truncated.message("the downloaded file", b"lm");
-        assert!(
-            trunc.contains('2'),
-            "truncated message must state how much arrived — got: {trunc}"
-        );
+        assert!(trunc.contains('2'), "truncated message must state how much arrived — got: {trunc}");
 
         // The upload path reuses the same builder, so wording cannot drift.
         let up = ModelRejection::Empty.message("the uploaded file", b"");
@@ -1017,16 +980,10 @@ mod tests {
         assert_eq!(describe_head(b"<!DO"), "`3c 21 44 4f` (\"<!DO\")");
         assert_eq!(describe_head(&GGML_MAGIC_LE), "`6c 6d 67 67` (\"lmgg\")");
         // Non-printable bytes become dots rather than mangling the message.
-        assert_eq!(
-            describe_head(&[0x00, 0x01, 0x7f, 0xff]),
-            "`00 01 7f ff` (\"....\")"
-        );
+        assert_eq!(describe_head(&[0x00, 0x01, 0x7f, 0xff]), "`00 01 7f ff` (\"....\")");
         assert_eq!(describe_head(b""), "no data");
         // Never renders more than the 4 magic bytes even if handed more.
-        assert_eq!(
-            describe_head(b"GGUF-extra-bytes"),
-            "`47 47 55 46` (\"GGUF\")"
-        );
+        assert_eq!(describe_head(b"GGUF-extra-bytes"), "`47 47 55 46` (\"GGUF\")");
     }
 
     #[test]
@@ -1062,10 +1019,7 @@ mod tests {
             format!("{err:?}").contains("publish model file"),
             "the failure must preserve context, got: {err:?}"
         );
-        assert!(
-            !dest.exists(),
-            "no partial destination may survive a failed publish"
-        );
+        assert!(!dest.exists(), "no partial destination may survive a failed publish");
         assert!(!tmp.exists(), "the temp must not leak on a failed publish");
 
         // …and the success path still moves the file and clears the temp.
@@ -1103,10 +1057,7 @@ mod tests {
         assert_eq!(sweep_stale_temps(dir.path(), std::time::Duration::ZERO), 2);
         assert!(!download_orphan.exists(), "download temp must be reclaimed");
         assert!(!upload_orphan.exists(), "upload temp must be reclaimed");
-        assert!(
-            real_model.exists(),
-            "an installed model file must NEVER be swept"
-        );
+        assert!(real_model.exists(), "an installed model file must NEVER be swept");
 
         // A missing directory (fresh install) is a no-op, not an error.
         assert_eq!(
@@ -1128,14 +1079,12 @@ mod tests {
     // normal public URL is allowed. (The trusted catalog path is not SSRF-checked.)
     #[test]
     fn arbitrary_url_ssrf_policy_rejects_internal_targets() {
-        use crate::utils::url_validator::{OutboundUrlPolicy, validate_outbound_url};
+        use crate::utils::url_validator::{validate_outbound_url, OutboundUrlPolicy};
         let p = &OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS;
         assert!(validate_outbound_url("http://127.0.0.1/ggml-base.bin", p).is_err());
         assert!(validate_outbound_url("http://169.254.169.254/latest/meta-data", p).is_err());
         assert!(validate_outbound_url("http://10.0.0.5/x.bin", p).is_err());
-        assert!(
-            validate_outbound_url("https://huggingface.co/x/resolve/main/ggml-base.bin", p).is_ok()
-        );
+        assert!(validate_outbound_url("https://huggingface.co/x/resolve/main/ggml-base.bin", p).is_ok());
     }
 
     #[test]

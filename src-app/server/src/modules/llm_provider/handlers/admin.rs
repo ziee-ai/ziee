@@ -81,8 +81,7 @@ pub async fn get_provider(
     _auth: RequirePermissions<(LlmProvidersRead,)>,
     Path(provider_id): Path<Uuid>,
 ) -> ApiResult<Json<LlmProvider>> {
-    let provider = Repos
-        .llm_provider
+    let provider = Repos.llm_provider
         .get_by_id(provider_id)
         .await
         .map_err(|e| {
@@ -338,8 +337,7 @@ pub async fn update_provider(
     }
 
     // Update provider
-    let provider = Repos
-        .llm_provider
+    let provider = Repos.llm_provider
         .update(provider_id, request)
         .await
         .map_err(|e| {
@@ -391,14 +389,10 @@ pub async fn delete_provider(
     origin: SyncOrigin,
 ) -> ApiResult<StatusCode> {
     // Get provider info before deleting (for event emission)
-    let provider = Repos
-        .llm_provider
-        .get_by_id(provider_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get provider {}: {}", provider_id, e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let provider = Repos.llm_provider.get_by_id(provider_id).await.map_err(|e| {
+        tracing::error!("Failed to get provider {}: {}", provider_id, e);
+        AppError::internal_error("Database operation failed")
+    })?;
 
     match Repos.llm_provider.delete(provider_id).await {
         Ok(Ok(true)) => {
@@ -423,7 +417,9 @@ pub async fn delete_provider(
             // Best-effort: remove the provider's on-disk model directory tree
             // (`<app_data>/models/<provider_id>/`). The DB cascade dropped the
             // model rows; without this their downloaded files are orphaned.
-            if let Ok(storage) = crate::modules::llm_model::storage::ModelStorage::new().await {
+            if let Ok(storage) =
+                crate::modules::llm_model::storage::ModelStorage::new().await
+            {
                 let dir = storage.get_provider_dir(&provider_id);
                 if dir.exists() {
                     if let Err(e) = tokio::fs::remove_dir_all(&dir).await {

@@ -16,6 +16,7 @@
 //! Result is a `Vec<ArtifactMeta>` persisted into
 //! `step_artifacts_json[step_id]`.
 
+
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -60,17 +61,17 @@ fn walk_dir(
     for entry in std::fs::read_dir(cur).map_err(|e| {
         AppError::internal_error(format!("artifact_io: read_dir {}: {e}", cur.display()))
     })? {
-        let entry =
-            entry.map_err(|e| AppError::internal_error(format!("artifact_io: entry: {e}")))?;
-        let md = entry
-            .metadata()
-            .map_err(|e| AppError::internal_error(format!("artifact_io: stat: {e}")))?;
+        let entry = entry
+            .map_err(|e| AppError::internal_error(format!("artifact_io: entry: {e}")))?;
+        let md = entry.metadata().map_err(|e| {
+            AppError::internal_error(format!("artifact_io: stat: {e}"))
+        })?;
         // Symlink rejection — defense in depth (bundle extractor already
         // rejects symlinks at the tar layer, and bwrap won't follow them
         // by default; but a sandbox script could have created one).
-        let file_type = entry
-            .file_type()
-            .map_err(|e| AppError::internal_error(format!("artifact_io: file_type: {e}")))?;
+        let file_type = entry.file_type().map_err(|e| {
+            AppError::internal_error(format!("artifact_io: file_type: {e}"))
+        })?;
         if file_type.is_symlink() {
             tracing::warn!(path = %entry.path().display(), "artifact_io: skipping symlink");
             continue;
@@ -113,8 +114,8 @@ fn walk_dir(
         }
 
         let (description, mime_override) = match_decl(&filename, &step.artifacts);
-        let mime_type =
-            mime_override.unwrap_or_else(|| detect_mime_from_extension(&filename).to_string());
+        let mime_type = mime_override
+            .unwrap_or_else(|| detect_mime_from_extension(&filename).to_string());
         let bytes = std::fs::read(&p).map_err(|e| {
             AppError::internal_error(format!("artifact_io: read {}: {e}", p.display()))
         })?;
@@ -343,10 +344,7 @@ mod tests {
     fn mime_detection_smoke() {
         assert_eq!(detect_mime_from_extension("report.md"), "text/markdown");
         assert_eq!(detect_mime_from_extension("chart.png"), "image/png");
-        assert_eq!(
-            detect_mime_from_extension("README"),
-            "application/octet-stream"
-        );
+        assert_eq!(detect_mime_from_extension("README"), "application/octet-stream");
         assert_eq!(detect_mime_from_extension("Data.JSON"), "application/json");
     }
 

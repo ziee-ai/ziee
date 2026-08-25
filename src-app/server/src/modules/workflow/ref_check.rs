@@ -29,13 +29,14 @@
 //! purely on type compatibility. Unknown ids are skipped here (no double
 //! reporting).
 
+
 use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::modules::workflow::type_infer::{
-    InferredType, infer_all_input_types, infer_all_step_types,
+    infer_all_input_types, infer_all_step_types, InferredType,
 };
 use crate::modules::workflow::validate::{StepConfig, ValidationError, WorkflowDef};
 
@@ -451,16 +452,14 @@ fn render_expr(expr: &RefExpr) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::workflow::validate::{Severity, parse_workflow_yaml};
+    use crate::modules::workflow::validate::{parse_workflow_yaml, Severity};
 
     fn wf(yaml: &str) -> WorkflowDef {
         parse_workflow_yaml(yaml).expect("parse")
     }
 
     fn errors(out: &[ValidationError]) -> Vec<&ValidationError> {
-        out.iter()
-            .filter(|e| e.severity == Severity::Error)
-            .collect()
+        out.iter().filter(|e| e.severity == Severity::Error).collect()
     }
     fn warnings(out: &[ValidationError]) -> Vec<&ValidationError> {
         out.iter()

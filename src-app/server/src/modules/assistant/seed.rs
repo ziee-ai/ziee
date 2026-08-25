@@ -15,7 +15,7 @@ use crate::core::Repos;
 use crate::modules::assistant::repository::create_assistant;
 use crate::modules::assistant::types::CreateAssistantRequest;
 use ziee_seed::{
-    SEED_PROVIDERS, SeedCtx, SeedEntry, SeedError, SeedMode, SeedOutcome, SeedProvider, SeedSection,
+    SeedCtx, SeedEntry, SeedError, SeedMode, SeedOutcome, SeedProvider, SeedSection, SEED_PROVIDERS,
 };
 
 const SECTION: &str = "assistants";
@@ -62,9 +62,7 @@ impl SeedProvider for AssistantsSeedProvider {
         ctx: &SeedCtx,
     ) -> Result<SeedOutcome, SeedError> {
         let mut outcome = SeedOutcome::default();
-        let Some(section) = section else {
-            return Ok(outcome);
-        };
+        let Some(section) = section else { return Ok(outcome) };
         let pool = &ctx.pool;
         let mut declared: HashSet<String> = HashSet::new();
 
@@ -110,9 +108,7 @@ impl SeedProvider for AssistantsSeedProvider {
                         },
                     )
                     .await?;
-                    ctx.ledger
-                        .record(SECTION, &item.name, Some(created.id))
-                        .await?;
+                    ctx.ledger.record(SECTION, &item.name, Some(created.id)).await?;
                     outcome.created += 1;
                 }
             }
@@ -161,20 +157,15 @@ impl SeedProvider for AssistantsSeedProvider {
             .fetch_optional(&ctx.pool)
             .await?;
             if let Some(r) = r {
-                items.push(
-                    serde_norway::to_value(serde_json::json!({
-                        "name": r.name,
-                        "description": r.description,
-                        "instructions": r.instructions,
-                        "is_default": r.is_default,
-                    }))
-                    .map_err(|e| SeedError::Other(e.to_string()))?,
-                );
+                items.push(serde_norway::to_value(serde_json::json!({
+                    "name": r.name,
+                    "description": r.description,
+                    "instructions": r.instructions,
+                    "is_default": r.is_default,
+                })).map_err(|e| SeedError::Other(e.to_string()))?);
             }
         }
-        Ok(Some(
-            serde_norway::to_value(serde_json::json!({ "items": items }))
-                .map_err(|e| SeedError::Other(e.to_string()))?,
-        ))
+        Ok(Some(serde_norway::to_value(serde_json::json!({ "items": items }))
+            .map_err(|e| SeedError::Other(e.to_string()))?))
     }
 }

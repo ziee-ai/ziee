@@ -210,7 +210,9 @@ pub fn decide_summarize_action(
         if let Some(prev_anchor_id) = prev.summarized_up_to_id {
             let prev_count = prev.message_count as usize;
             if prev_count <= to_summarize.len() {
-                if let Some(prev_idx) = to_summarize.iter().position(|m| m.id == prev_anchor_id) {
+                if let Some(prev_idx) =
+                    to_summarize.iter().position(|m| m.id == prev_anchor_id)
+                {
                     let new_msgs = &to_summarize[prev_idx + 1..];
                     if new_msgs.is_empty() {
                         // Summary already covers everything we'd
@@ -305,8 +307,9 @@ fn render_incremental_prompt(
 ) -> String {
     const PREV: &str = "{previous_summary}";
     const NEW: &str = "{new_transcript}";
-    let mut out =
-        String::with_capacity(template.len() + previous_summary.len() + new_transcript.len());
+    let mut out = String::with_capacity(
+        template.len() + previous_summary.len() + new_transcript.len(),
+    );
     let mut rest = template;
     while !rest.is_empty() {
         let next_prev = rest.find(PREV);
@@ -544,7 +547,11 @@ pub async fn refresh_summary(
             summarized_up_to_id,
             message_count,
         } => (
-            render_incremental_prompt(&incremental_prompt, &previous_summary, &new_transcript),
+            render_incremental_prompt(
+                &incremental_prompt,
+                &previous_summary,
+                &new_transcript,
+            ),
             summarized_up_to_id,
             message_count,
             "incremental",
@@ -581,12 +588,8 @@ fn message_to_summarizable(
 ) -> SummarizableMessage {
     let mut text = String::new();
     for c in &m.contents {
-        let Ok(data) = c.parse_content() else {
-            continue;
-        };
-        let Ok(value) = serde_json::to_value(&data) else {
-            continue;
-        };
+        let Ok(data) = c.parse_content() else { continue };
+        let Ok(value) = serde_json::to_value(&data) else { continue };
         if value.get("type").and_then(|t| t.as_str()) == Some("text") {
             if let Some(t) = value.get("text").and_then(|t| t.as_str()) {
                 text.push_str(t);
@@ -660,8 +663,10 @@ async fn call_summarization_llm(
                     tracing::warn!(
                         "summarization: stream init failed (attempt {attempt}/{MAX_ATTEMPTS}): {e}; retrying"
                     );
-                    tokio::time::sleep(std::time::Duration::from_millis(250 * attempt as u64))
-                        .await;
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        250 * attempt as u64,
+                    ))
+                    .await;
                     attempt += 1;
                 }
                 Err(e) => {
@@ -731,6 +736,7 @@ mod tests {
 
     use chrono::TimeZone;
 
+
     fn msg(id: Uuid, role: &str, text: &str) -> SummarizableMessage {
         SummarizableMessage {
             id,
@@ -738,6 +744,7 @@ mod tests {
             text: text.to_string(),
         }
     }
+
 
     #[test]
     fn decide_is_token_based_not_message_count() {
@@ -759,6 +766,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn decide_keep_recent_is_a_token_budget() {
         // keep_recent_tokens large enough to hold everything verbatim → nothing
@@ -773,6 +781,7 @@ mod tests {
             SummarizeAction::Noop
         ));
     }
+
 
     #[test]
     fn decide_summarizes_after_keep_recent_clamped_below_trigger() {
@@ -812,7 +821,12 @@ mod tests {
         );
     }
 
-    fn fake_summary(anchor: Option<Uuid>, message_count: i32, text: &str) -> ConversationSummary {
+
+    fn fake_summary(
+        anchor: Option<Uuid>,
+        message_count: i32,
+        text: &str,
+    ) -> ConversationSummary {
         ConversationSummary {
             branch_id: Uuid::nil(),
             summary_text: text.to_string(),
@@ -823,6 +837,7 @@ mod tests {
             updated_at: Utc.timestamp_opt(0, 0).unwrap(),
         }
     }
+
 
     // ---- decide_summarize_action ----
 
@@ -837,6 +852,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn decide_at_trigger_is_noop() {
         // Boundary: `msgs.len() == trigger` is NOT enough to fire.
@@ -848,6 +864,7 @@ mod tests {
             SummarizeAction::Noop
         );
     }
+
 
     #[test]
     fn decide_above_trigger_no_existing_returns_full() {
@@ -880,6 +897,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn decide_incremental_with_valid_anchor() {
         let msgs: Vec<_> = (0..15)
@@ -911,6 +929,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn decide_anchor_at_cutoff_minus_one_is_noop() {
         // Anchor is the LAST message that would be summarized → no
@@ -926,6 +945,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn decide_anchor_not_in_history_falls_back_to_full() {
         let msgs: Vec<_> = (0..12)
@@ -939,6 +959,7 @@ mod tests {
         assert!(matches!(action, SummarizeAction::Full { .. }));
     }
 
+
     #[test]
     fn decide_null_anchor_falls_back_to_full() {
         let msgs: Vec<_> = (0..12)
@@ -949,6 +970,7 @@ mod tests {
         let action = decide_summarize_action(&msgs, 10, 3, Some(&prev));
         assert!(matches!(action, SummarizeAction::Full { .. }));
     }
+
 
     #[test]
     fn decide_keep_recent_expanded_falls_back_to_full() {
@@ -963,17 +985,14 @@ mod tests {
         assert!(matches!(action, SummarizeAction::Full { .. }));
     }
 
+
     #[test]
     fn decide_incremental_with_non_text_new_msgs_is_noop() {
         let msgs: Vec<_> = (0..12)
             .map(|i| {
                 // Last 3 messages (after anchor) have empty text →
                 // nothing for the LLM to fold in.
-                let text = if i < 9 {
-                    format!("m{i}")
-                } else {
-                    String::new()
-                };
+                let text = if i < 9 { format!("m{i}") } else { String::new() };
                 msg(Uuid::new_v4(), "user", &text)
             })
             .collect();
@@ -1009,6 +1028,7 @@ mod tests {
         let _ = prev; // silence unused
     }
 
+
     // ---- build_transcript ----
 
     #[test]
@@ -1020,6 +1040,7 @@ mod tests {
         assert_eq!(build_transcript(&m), "user: hello\nassistant: hi there\n");
     }
 
+
     #[test]
     fn transcript_skips_empty_text() {
         let m = vec![
@@ -1030,6 +1051,7 @@ mod tests {
         assert_eq!(build_transcript(&m), "user: hello\nuser: world\n");
     }
 
+
     #[test]
     fn transcript_empty_when_no_text() {
         let m = vec![
@@ -1038,6 +1060,7 @@ mod tests {
         ];
         assert_eq!(build_transcript(&m), "");
     }
+
 
     // ---- apply_summary_block ----
 
@@ -1050,6 +1073,7 @@ mod tests {
         }
     }
 
+
     fn asst_msg(text: &str) -> ChatMessage {
         ChatMessage {
             role: Role::Assistant,
@@ -1058,6 +1082,7 @@ mod tests {
             }],
         }
     }
+
 
     fn sys_msg(text: &str) -> ChatMessage {
         ChatMessage {
@@ -1068,12 +1093,14 @@ mod tests {
         }
     }
 
+
     fn request_text(req: &ChatRequest, idx: usize) -> &str {
         match &req.messages[idx].content[0] {
             ContentBlock::Text { text } => text.as_str(),
             _ => panic!("expected text content"),
         }
     }
+
 
     #[test]
     fn apply_block_drains_and_inserts_after_system_prefix() {
@@ -1104,6 +1131,7 @@ mod tests {
         assert_eq!(request_text(&req, 3), "m5");
     }
 
+
     #[test]
     fn apply_block_no_system_prefix() {
         let mut req = ChatRequest {
@@ -1118,6 +1146,7 @@ mod tests {
         assert!(matches!(req.messages[0].role, Role::System));
         assert_eq!(request_text(&req, 1), "m2");
     }
+
 
     #[test]
     fn apply_block_clamps_overflow_drain() {
@@ -1135,6 +1164,7 @@ mod tests {
         assert!(matches!(req.messages[0].role, Role::System));
         assert!(request_text(&req, 0).contains("condensed"));
     }
+
 
     fn asst_tool_use_msg(id: &str, name: &str) -> ChatMessage {
         ChatMessage {
@@ -1172,13 +1202,13 @@ mod tests {
         let mut req = ChatRequest {
             model: "x".into(),
             messages: vec![
-                sys_msg("primary instructions"),  // 0
+                sys_msg("primary instructions"), // 0
                 asst_tool_use_msg("A", "srv__a"), // 1
-                tool_result_msg("A"),             // 2
-                user_msg("m"),                    // 3
+                tool_result_msg("A"),            // 2
+                user_msg("m"),                   // 3
                 asst_tool_use_msg("B", "srv__b"), // 4
-                tool_result_msg("B"),             // 5
-                user_msg("keep"),                 // 6
+                tool_result_msg("B"),            // 5
+                user_msg("keep"),                // 6
             ],
             ..Default::default()
         };
@@ -1214,6 +1244,7 @@ mod tests {
         assert_eq!(out, "PREV=S1 NEW=T1 END");
     }
 
+
     #[test]
     fn render_incremental_prompt_does_not_re_substitute_inserted_content() {
         // The prompt-injection guard: a previous_summary that contains
@@ -1223,8 +1254,11 @@ mod tests {
         // passes.
         let prev = "summary ends with {new_transcript} literal";
         let new_tx = "SECRET-NEW-TURNS";
-        let out =
-            render_incremental_prompt("P={previous_summary}|N={new_transcript}", prev, new_tx);
+        let out = render_incremental_prompt(
+            "P={previous_summary}|N={new_transcript}",
+            prev,
+            new_tx,
+        );
         // previous_summary slot keeps the literal `{new_transcript}`
         // text verbatim; only the explicit `{new_transcript}` outside
         // the previous slot gets substituted.
@@ -1237,12 +1271,14 @@ mod tests {
         assert_eq!(out.matches(new_tx).count(), 1);
     }
 
+
     #[test]
     fn render_incremental_prompt_handles_no_placeholders() {
         // Template with neither placeholder is returned unchanged.
         let out = render_incremental_prompt("nothing to substitute", "S", "T");
         assert_eq!(out, "nothing to substitute");
     }
+
 
     #[test]
     fn render_incremental_prompt_handles_only_one_placeholder() {
@@ -1251,6 +1287,7 @@ mod tests {
         let out = render_incremental_prompt("only {new_transcript}", "S", "T");
         assert_eq!(out, "only T");
     }
+
 
     #[test]
     fn apply_block_message_count_zero_just_inserts() {
@@ -1271,6 +1308,7 @@ mod tests {
         assert_eq!(request_text(&req, 3), "m1");
     }
 
+
     // ── Custom prompts ARE used in the rendered LLM prompt (gap 3bb02236012c) ─
     // refresh_summary resolves the admin-overridden full/incremental templates
     // and renders them into the prompt sent to the LLM. These pin that a CUSTOM
@@ -1281,13 +1319,11 @@ mod tests {
     fn render_full_prompt_uses_custom_template_and_substitutes_transcript() {
         let custom = "CUSTOM-FULL-INSTRUCTION: condense ->\n{transcript}\n<- end";
         let out = render_full_prompt(custom, "alice: hi\nbob: hey\n");
-        assert!(
-            out.starts_with("CUSTOM-FULL-INSTRUCTION:"),
-            "custom template kept: {out}"
-        );
+        assert!(out.starts_with("CUSTOM-FULL-INSTRUCTION:"), "custom template kept: {out}");
         assert!(out.contains("alice: hi"), "transcript substituted: {out}");
         assert!(!out.contains("{transcript}"), "placeholder consumed: {out}");
     }
+
 
     #[test]
     fn render_full_prompt_without_placeholder_keeps_custom_text() {
@@ -1297,6 +1333,7 @@ mod tests {
         assert_eq!(out, "JUST SUMMARIZE TERSELY");
     }
 
+
     #[test]
     fn default_full_prompt_differs_from_a_custom_one() {
         // Guards against a regression where the override is ignored: the custom
@@ -1304,12 +1341,10 @@ mod tests {
         let transcript = "u: q\na: r\n";
         let custom = render_full_prompt("MY OWN PROMPT {transcript}", transcript);
         let default = render_full_prompt(&DEFAULT_FULL_SUMMARY_PROMPT, transcript);
-        assert_ne!(
-            custom, default,
-            "a custom prompt must change the rendered text"
-        );
+        assert_ne!(custom, default, "a custom prompt must change the rendered text");
         assert!(custom.contains("MY OWN PROMPT"));
     }
+
 
     // ── Unified nine-section default prompt (ITEM-56 / ITEM-60 / DEC-127) ──────
     // The rolling-summary defaults now source the ONE shared nine-section
@@ -1326,26 +1361,18 @@ mod tests {
             "GOVERNANCE SIGNALS",
             "DURABLE FACTS",
         ] {
-            assert!(
-                full.contains(header),
-                "full default missing section: {header}"
-            );
+            assert!(full.contains(header), "full default missing section: {header}");
         }
-        assert!(
-            full.contains("{transcript}"),
-            "full default keeps its placeholder"
-        );
+        assert!(full.contains("{transcript}"), "full default keeps its placeholder");
         // The shared body is literally the single agent-core source of truth.
         assert!(full.starts_with(agent_core::SUMMARY_PROMPT_9_SECTION));
 
         let incr = &*DEFAULT_INCREMENTAL_SUMMARY_PROMPT;
-        assert!(
-            incr.contains("TASK LIST"),
-            "incremental default is nine-section"
-        );
+        assert!(incr.contains("TASK LIST"), "incremental default is nine-section");
         assert!(incr.contains("{previous_summary}"));
         assert!(incr.contains("{new_transcript}"));
     }
+
 
     #[test]
     fn default_full_prompt_renders_with_a_real_transcript() {
@@ -1380,6 +1407,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn all_non_text_messages_never_summarize() {
         // A branch whose messages are all non-text contributes 0 transcript
@@ -1394,6 +1422,7 @@ mod tests {
             "all-non-text branch must not trigger summarization"
         );
     }
+
 
     // ---- message_to_summarizable (content-block text extraction) ----
 
@@ -1416,6 +1445,7 @@ mod tests {
         }
     }
 
+
     fn message_with(
         role: &str,
         blocks: Vec<serde_json::Value>,
@@ -1434,6 +1464,7 @@ mod tests {
         }
     }
 
+
     #[test]
     fn message_to_summarizable_extracts_only_text_blocks() {
         // A turn mixing a text block with a NON-text (thinking) block — only the
@@ -1447,11 +1478,9 @@ mod tests {
         );
         let s = message_to_summarizable(&m);
         assert_eq!(s.role, "assistant");
-        assert_eq!(
-            s.text, "the answer is 42",
-            "only the text block contributes"
-        );
+        assert_eq!(s.text, "the answer is 42", "only the text block contributes");
     }
+
 
     #[test]
     fn message_to_summarizable_non_text_only_turn_yields_empty_text() {
@@ -1464,6 +1493,7 @@ mod tests {
         let s = message_to_summarizable(&m);
         assert_eq!(s.text, "", "a non-text-only turn must produce empty text");
     }
+
 
     /// Concurrent-refresh race (summarizer.rs:27-32 comment) on the per-branch
     /// `ON CONFLICT (branch_id) DO UPDATE` upsert (summarizer.rs:645-). Two
@@ -1523,12 +1553,8 @@ mod tests {
             upsert_summary(&p1, branch_id, "SUMMARY_ALPHA", None, 5, "model-a"),
             upsert_summary(&p2, branch_id, "SUMMARY_BETA", None, 7, "model-b"),
         );
-        r1.expect(
-            "first concurrent upsert must succeed (ON CONFLICT resolves the race, not error)",
-        );
-        r2.expect(
-            "second concurrent upsert must succeed (ON CONFLICT resolves the race, not error)",
-        );
+        r1.expect("first concurrent upsert must succeed (ON CONFLICT resolves the race, not error)");
+        r2.expect("second concurrent upsert must succeed (ON CONFLICT resolves the race, not error)");
 
         // Exactly ONE row for the branch (PK + ON CONFLICT collapse the race).
         let count: i64 =
@@ -1563,6 +1589,7 @@ mod tests {
             .await;
     }
 
+
     #[test]
     fn empty_or_whitespace_llm_summary_is_not_writable() {
         // The empty-LLM-response rejection: a blank/whitespace-only summary
@@ -1573,16 +1600,16 @@ mod tests {
         assert!(!summary_is_writable("\n\t  \n"));
         // A real summary IS writable.
         assert!(summary_is_writable("The user prefers metric units."));
-        assert!(summary_is_writable(
-            "  leading/trailing trimmed but non-empty  "
-        ));
+        assert!(summary_is_writable("  leading/trailing trimmed but non-empty  "));
     }
+
 
     #[test]
     fn window_override_none_is_identity() {
         // No model context window known → admin thresholds pass through.
         assert_eq!(apply_window_override(8000, 2000, None), (8000, 2000));
     }
+
 
     #[test]
     fn window_override_takes_the_smaller_trigger() {
@@ -1592,6 +1619,7 @@ mod tests {
         assert_eq!(apply_window_override(8000, 2000, Some(20000)), (8000, 2000));
     }
 
+
     #[test]
     fn window_override_reclamps_keep_recent_below_trigger() {
         // Small-context override pushing trigger below keep_recent must NOT
@@ -1599,15 +1627,10 @@ mod tests {
         // summarization). keep_recent is re-clamped to trigger-1.
         let (trigger, keep_recent) = apply_window_override(8000, 2000, Some(1500));
         assert_eq!(trigger, 1500);
-        assert_eq!(
-            keep_recent, 1499,
-            "keep_recent re-clamped strictly below trigger"
-        );
-        assert!(
-            keep_recent < trigger,
-            "summarization must still be able to fire"
-        );
+        assert_eq!(keep_recent, 1499, "keep_recent re-clamped strictly below trigger");
+        assert!(keep_recent < trigger, "summarization must still be able to fire");
     }
+
 
     #[test]
     fn window_override_handles_degenerate_tiny_trigger() {
@@ -1616,6 +1639,7 @@ mod tests {
         assert_eq!(trigger, 1);
         assert_eq!(keep_recent, 0);
     }
+
 
     #[test]
     fn empty_or_whitespace_summary_is_not_writable() {

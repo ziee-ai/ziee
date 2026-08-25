@@ -118,9 +118,8 @@ impl McpContentData {
     pub fn from_message_content(content: &MessageContentData) -> Result<Self, AppError> {
         // Serialize MessageContentData to JSON and try to deserialize as McpContentData
         // This works because both enums have matching variant structures (ToolUse, ToolResult)
-        let json = serde_json::to_value(content).map_err(|e| {
-            AppError::internal_error(format!("Failed to serialize MessageContentData: {}", e))
-        })?;
+        let json = serde_json::to_value(content)
+            .map_err(|e| AppError::internal_error(format!("Failed to serialize MessageContentData: {}", e)))?;
 
         serde_json::from_value(json).map_err(|e| {
             AppError::internal_error(format!("Failed to deserialize as McpContentData: {}", e))
@@ -130,12 +129,7 @@ impl McpContentData {
     /// Convert to ai-providers ContentBlock
     pub fn to_content_block(&self) -> Option<ai_providers::ContentBlock> {
         match self {
-            Self::ToolUse {
-                id,
-                name,
-                server_id,
-                input,
-            } => Some(ai_providers::ContentBlock::ToolUse {
+            Self::ToolUse { id, name, server_id, input } => Some(ai_providers::ContentBlock::ToolUse {
                 id: id.clone(),
                 // Reconstruct server_id__name format for AI providers
                 name: format!("{}__{}", server_id, name),
@@ -239,4 +233,5 @@ impl McpContentData {
             _ => None,
         }
     }
+
 }

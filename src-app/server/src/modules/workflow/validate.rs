@@ -39,6 +39,7 @@
 //! - `sandbox.flavor` value in `code_sandbox::KNOWN_FLAVORS`,
 //! - reject `mock:` in non-dev workflows (called via `validate_for_install`).
 
+
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -275,19 +276,13 @@ impl StepConfig {
     pub fn prompt_fields(&self) -> Option<(&Option<String>, &Option<String>)> {
         match self {
             StepConfig::Llm {
-                prompt,
-                prompt_file,
-                ..
+                prompt, prompt_file, ..
             }
             | StepConfig::LlmMap {
-                prompt,
-                prompt_file,
-                ..
+                prompt, prompt_file, ..
             }
             | StepConfig::Agent {
-                prompt,
-                prompt_file,
-                ..
+                prompt, prompt_file, ..
             } => Some((prompt, prompt_file)),
             StepConfig::Sandbox { .. } | StepConfig::Elicit { .. } | StepConfig::Tool { .. } => {
                 None
@@ -562,7 +557,10 @@ pub fn validate_for_install(
     let findings = validate_collecting(workflow, bundle_root, is_dev);
     // Warnings (type-aware ref-check escape hatch) are surfaced via the
     // `/validate` endpoint but MUST NOT block install. Only errors fail.
-    if let Some(first) = findings.into_iter().find(|e| e.severity == Severity::Error) {
+    if let Some(first) = findings
+        .into_iter()
+        .find(|e| e.severity == Severity::Error)
+    {
         return Err(AppError::bad_request(
             first.code,
             format!(
@@ -673,12 +671,8 @@ pub fn topo_sort_steps(workflow: &WorkflowDef) -> Result<Vec<usize>, AppError> {
             indeg[i] += 1;
         }
     }
-    let mut queue: std::collections::VecDeque<usize> = indeg
-        .iter()
-        .enumerate()
-        .filter(|(_, d)| **d == 0)
-        .map(|(i, _)| i)
-        .collect();
+    let mut queue: std::collections::VecDeque<usize> =
+        indeg.iter().enumerate().filter(|(_, d)| **d == 0).map(|(i, _)| i).collect();
     let mut order = Vec::with_capacity(n);
     while let Some(i) = queue.pop_front() {
         order.push(i);
@@ -726,7 +720,10 @@ fn check_steps_shape(workflow: &WorkflowDef) -> Vec<ValidationError> {
             out.push(ValidationError::at(
                 "schema",
                 "WORKFLOW_BAD_STEP_ID",
-                format!("step id '{}' must match ^[a-z][a-z0-9_]*$", s.id),
+                format!(
+                    "step id '{}' must match ^[a-z][a-z0-9_]*$",
+                    s.id
+                ),
                 &s.id,
             ));
         }
@@ -960,7 +957,8 @@ fn check_outputs(workflow: &WorkflowDef) -> Vec<ValidationError> {
 
 fn check_template_refs(workflow: &WorkflowDef) -> Vec<ValidationError> {
     let mut out = Vec::new();
-    let input_names: HashSet<&str> = workflow.inputs.iter().map(|i| i.name.as_str()).collect();
+    let input_names: HashSet<&str> =
+        workflow.inputs.iter().map(|i| i.name.as_str()).collect();
     let step_ids: HashSet<&str> = workflow.steps.iter().map(|s| s.id.as_str()).collect();
 
     // `item_var` is the per-item binding of an llm_map step — valid as a head
@@ -1437,7 +1435,11 @@ pub fn check_prompt_file_shape(rel: &str) -> Result<(), PromptFileError> {
         .as_bytes()
         .get(1)
         .is_some_and(|b| *b == b':' && rel.as_bytes()[0].is_ascii_alphabetic());
-    if rel.contains("..") || rel.starts_with('/') || rel.contains('\\') || windows_absolute {
+    if rel.contains("..")
+        || rel.starts_with('/')
+        || rel.contains('\\')
+        || windows_absolute
+    {
         return Err(PromptFileError::Unsafe);
     }
     Ok(())
@@ -1507,7 +1509,7 @@ pub fn read_prompt_file(bundle_root: &Path, rel: &str) -> Result<String, PromptF
         &mut std::io::Read::take(&mut file, MAX_PROMPT_FILE_BYTES + 1),
         &mut buf,
     )
-    .map_err(|e| PromptFileError::Unreadable(e.to_string()))?;
+        .map_err(|e| PromptFileError::Unreadable(e.to_string()))?;
     if buf.len() as u64 > MAX_PROMPT_FILE_BYTES {
         return Err(PromptFileError::TooLarge(buf.len() as u64));
     }
@@ -1545,14 +1547,14 @@ fn prompt_file_finding(e: &PromptFileError, rel: &str, step_id: &str) -> Validat
             e.message(rel),
             step_id,
         ),
-        PromptFileError::Unreadable(_) | PromptFileError::Empty | PromptFileError::TooLarge(_) => {
-            ValidationError::at(
-                "semantic",
-                "WORKFLOW_PROMPT_FILE_MISSING",
-                e.message(rel),
-                step_id,
-            )
-        }
+        PromptFileError::Unreadable(_)
+        | PromptFileError::Empty
+        | PromptFileError::TooLarge(_) => ValidationError::at(
+            "semantic",
+            "WORKFLOW_PROMPT_FILE_MISSING",
+            e.message(rel),
+            step_id,
+        ),
     }
 }
 
@@ -1599,11 +1601,7 @@ fn check_prompt_files(workflow: &WorkflowDef, bundle_root: &Path) -> Vec<Validat
         // always exists — so the step validated GREEN and then failed the run
         // with "Is a directory". Absent here, it is reported by the XOR check as
         // `WORKFLOW_PROMPT_MISSING`, which is what it actually is.
-        let Some(p) = s
-            .config
-            .prompt_fields()
-            .and_then(|(_, f)| prompt_file_ref(f))
-        else {
+        let Some(p) = s.config.prompt_fields().and_then(|(_, f)| prompt_file_ref(f)) else {
             continue;
         };
         // Shape is decidable with no bundle, and it is a SECURITY check, so it
@@ -2038,10 +2036,7 @@ inputs:
         let wf = parse_workflow_yaml(yaml).expect("parse");
         match &wf.steps[0].config {
             StepConfig::Elicit { data, .. } => {
-                assert!(
-                    data.is_some(),
-                    "data seed should parse onto the elicit config"
-                );
+                assert!(data.is_some(), "data seed should parse onto the elicit config");
             }
             other => panic!("expected elicit config, got {other:?}"),
         }
@@ -2120,11 +2115,9 @@ steps:
         );
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
-        assert!(
-            !errs
-                .iter()
-                .any(|e| e.code == "WORKFLOW_STEP_DESCRIPTION_TOO_LONG")
-        );
+        assert!(!errs
+            .iter()
+            .any(|e| e.code == "WORKFLOW_STEP_DESCRIPTION_TOO_LONG"));
         assert!(!errs.iter().any(|e| e.code == "WORKFLOW_UNKNOWN_INPUT_REF"));
     }
 
@@ -2137,10 +2130,9 @@ steps:
         let wf = parse_workflow_yaml(&yaml).unwrap();
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
-        assert!(
-            errs.iter()
-                .any(|e| e.code == "WORKFLOW_STEP_DESCRIPTION_TOO_LONG")
-        );
+        assert!(errs
+            .iter()
+            .any(|e| e.code == "WORKFLOW_STEP_DESCRIPTION_TOO_LONG"));
     }
 
     #[test]
@@ -2315,43 +2307,22 @@ steps:
         // rule read `has_file = prompt_file.is_some()`. An empty path is not a
         // second prompt source, so this is now simply an inline prompt — and the
         // run agrees, which is the point (DEC-5).
-        assert_eq!(
-            prompt_source(&some("x"), &some("")),
-            PromptSource::Inline("x")
-        );
+        assert_eq!(prompt_source(&some("x"), &some("")), PromptSource::Inline("x"));
 
         // Whitespace is NOT trimmed (DEC-3) — it stays a real prompt, and a
         // whitespace-only PATH stays a path (it is then reported
         // WORKFLOW_PROMPT_FILE_MISSING, not WORKFLOW_PROMPT_MISSING). Both
         // directions are pinned: a `trim()` creeping into either half of
         // `prompt_source` changes which finding the author sees.
-        assert_eq!(
-            prompt_source(&some("   "), &none),
-            PromptSource::Inline("   ")
-        );
-        assert_eq!(
-            prompt_source(&some("   "), &some("p.md")),
-            PromptSource::Both
-        );
-        assert_eq!(
-            prompt_source(&none, &some("   ")),
-            PromptSource::File("   ")
-        );
+        assert_eq!(prompt_source(&some("   "), &none), PromptSource::Inline("   "));
+        assert_eq!(prompt_source(&some("   "), &some("p.md")), PromptSource::Both);
+        assert_eq!(prompt_source(&none, &some("   ")), PromptSource::File("   "));
         assert_eq!(prompt_file_ref(&some("   ")), Some("   "));
 
         // The ordinary cases are unchanged.
-        assert_eq!(
-            prompt_source(&some("hi"), &none),
-            PromptSource::Inline("hi")
-        );
-        assert_eq!(
-            prompt_source(&none, &some("p.md")),
-            PromptSource::File("p.md")
-        );
-        assert_eq!(
-            prompt_source(&some("hi"), &some("p.md")),
-            PromptSource::Both
-        );
+        assert_eq!(prompt_source(&some("hi"), &none), PromptSource::Inline("hi"));
+        assert_eq!(prompt_source(&none, &some("p.md")), PromptSource::File("p.md"));
+        assert_eq!(prompt_source(&some("hi"), &some("p.md")), PromptSource::Both);
         assert_eq!(prompt_source(&none, &none), PromptSource::Missing);
     }
 
@@ -2456,10 +2427,7 @@ steps:
         // A directory, judged the same way.
         std::fs::create_dir_all(root.join("adir")).unwrap();
         assert!(
-            matches!(
-                read_prompt_file(root, "adir"),
-                Err(PromptFileError::Unreadable(_))
-            ),
+            matches!(read_prompt_file(root, "adir"), Err(PromptFileError::Unreadable(_))),
             "a directory is not a prompt"
         );
 
@@ -2517,10 +2485,7 @@ steps:
         std::fs::write(real_root.join("task.md"), "REAL PROMPT").unwrap();
         // Sanity, both legs: an ordinary root reads through the live path AND
         // through the fallback.
-        assert_eq!(
-            read_prompt_file(&real_root, "task.md").unwrap(),
-            "REAL PROMPT"
-        );
+        assert_eq!(read_prompt_file(&real_root, "task.md").unwrap(), "REAL PROMPT");
         {
             use std::io::Read;
             let mut buf = String::new();
@@ -2654,8 +2619,7 @@ steps:
 
         // A prompt_file: that is a real file but not TEXT passes an
         // existence/is-file check and then fails the run on `read_to_string`.
-        let c =
-            codes("steps:\n  - id: g\n    kind: llm\n    prompt_file: \"prompts/binary.bin\"\n");
+        let c = codes("steps:\n  - id: g\n    kind: llm\n    prompt_file: \"prompts/binary.bin\"\n");
         assert!(
             c.contains(&"WORKFLOW_PROMPT_FILE_MISSING"),
             "a non-UTF-8 prompt_file must be rejected at validate, not at run: {c:?}"
@@ -2711,8 +2675,7 @@ steps:
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
         assert!(
-            errs.iter()
-                .any(|e| e.code == "WORKFLOW_PROMPT_FILE_MISSING"),
+            errs.iter().any(|e| e.code == "WORKFLOW_PROMPT_FILE_MISSING"),
             "absent prompt_file must trip MISSING: {errs:?}"
         );
     }
@@ -2827,8 +2790,7 @@ steps:
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
         assert!(
-            errs.iter()
-                .any(|e| e.code == "WORKFLOW_ARTIFACT_PATH_UNSAFE"),
+            errs.iter().any(|e| e.code == "WORKFLOW_ARTIFACT_PATH_UNSAFE"),
             "unsafe artifact path must trip ARTIFACT_PATH_UNSAFE: {errs:?}"
         );
     }
@@ -2860,10 +2822,7 @@ steps:
         let wf = parse_workflow_yaml(yaml).unwrap();
         let tmp = tempdir().unwrap();
         let errs = validate_collecting(&wf, tmp.path(), false);
-        assert!(
-            errs.iter()
-                .any(|e| e.code == "WORKFLOW_SANDBOX_FLAVOR_REQUIRED")
-        );
+        assert!(errs.iter().any(|e| e.code == "WORKFLOW_SANDBOX_FLAVOR_REQUIRED"));
     }
 
     #[test]
@@ -2878,18 +2837,10 @@ steps:
         let wf = parse_workflow_yaml(yaml).unwrap();
         let tmp = tempdir().unwrap();
         let errs_pub = validate_collecting(&wf, tmp.path(), false);
-        assert!(
-            errs_pub
-                .iter()
-                .any(|e| e.code == "WORKFLOW_MOCK_IN_PUBLISHED")
-        );
+        assert!(errs_pub.iter().any(|e| e.code == "WORKFLOW_MOCK_IN_PUBLISHED"));
         // Allowed when is_dev = true.
         let errs_dev = validate_collecting(&wf, tmp.path(), true);
-        assert!(
-            !errs_dev
-                .iter()
-                .any(|e| e.code == "WORKFLOW_MOCK_IN_PUBLISHED")
-        );
+        assert!(!errs_dev.iter().any(|e| e.code == "WORKFLOW_MOCK_IN_PUBLISHED"));
     }
 
     #[test]
@@ -2931,8 +2882,8 @@ steps:
             )),
         )];
         for (name, yaml) in yamls {
-            let wf =
-                parse_workflow_yaml(yaml).unwrap_or_else(|e| panic!("{name}: parse failed: {e:?}"));
+            let wf = parse_workflow_yaml(yaml)
+                .unwrap_or_else(|e| panic!("{name}: parse failed: {e:?}"));
             validate_for_install(&wf, std::path::Path::new("/tmp/sr"), false)
                 .unwrap_or_else(|e| panic!("{name}: validate failed: {e:?}"));
         }
@@ -2953,18 +2904,13 @@ steps:
             let m: serde_json::Value =
                 serde_json::from_str(manifest).unwrap_or_else(|e| panic!("{name}: manifest: {e}"));
             let want_sha = m["bundle"]["sha256"].as_str().expect("manifest sha256");
-            let want_size = m["bundle"]["size_bytes"]
-                .as_u64()
-                .expect("manifest size_bytes");
+            let want_size = m["bundle"]["size_bytes"].as_u64().expect("manifest size_bytes");
             let got_sha: String = {
                 let mut h = Sha256::new();
                 h.update(tar_gz);
                 h.finalize().iter().map(|b| format!("{b:02x}")).collect()
             };
-            assert_eq!(
-                got_sha, want_sha,
-                "{name}: baked tar.gz sha256 != baked manifest"
-            );
+            assert_eq!(got_sha, want_sha, "{name}: baked tar.gz sha256 != baked manifest");
             assert_eq!(
                 tar_gz.len() as u64,
                 want_size,
@@ -2985,10 +2931,7 @@ steps:
             }
             let packed =
                 packed.unwrap_or_else(|| panic!("{name}: no workflow.yaml in baked tarball"));
-            assert_eq!(
-                packed, source_yaml,
-                "{name}: packed workflow.yaml != committed source"
-            );
+            assert_eq!(packed, source_yaml, "{name}: packed workflow.yaml != committed source");
         }
         macro_rules! sr {
             ($n:literal) => {
@@ -3137,9 +3080,7 @@ mod humanisation_contract {
     }
 
     fn starts_with(ch: &[char], i: usize, pat: &str) -> bool {
-        pat.chars()
-            .enumerate()
-            .all(|(k, p)| ch.get(i + k) == Some(&p))
+        pat.chars().enumerate().all(|(k, p)| ch.get(i + k) == Some(&p))
     }
 
     fn read_ident(ch: &[char], i: &mut usize) -> String {
@@ -3399,8 +3340,9 @@ mod humanisation_contract {
                     scan_field_assignment(&ch, i, line, file, &word, scan);
                 }
                 if word == "ValidationError" && test_body_from.is_none() {
-                    let opens_impl =
-                        scan_validation_error_use(&ch, &mut i, &mut line, file, &prev_word, scan);
+                    let opens_impl = scan_validation_error_use(
+                        &ch, &mut i, &mut line, file, &prev_word, scan,
+                    );
                     if opens_impl {
                         pending_impl_ve = true;
                     }
@@ -3970,11 +3912,9 @@ mod humanisation_contract {
         i += 1;
         skip_ts_trivia(&ch, &mut i);
         if ch.get(i) != Some(&'{') {
-            return Err(
-                "`const HUMAN_COPY` is not initialized with an object literal — \
+            return Err("`const HUMAN_COPY` is not initialized with an object literal — \
                         the drift guard cannot enumerate its keys"
-                    .to_string(),
-            );
+                .to_string());
         }
         i += 1;
 
@@ -4430,7 +4370,8 @@ fn after() -> Vec<ValidationError> {
     /// the builder cannot restate in human language is not.
     #[test]
     fn validation_codes_are_registered_and_humanised() {
-        let registered: BTreeSet<String> = VALIDATION_CODES.iter().map(|s| s.to_string()).collect();
+        let registered: BTreeSet<String> =
+            VALIDATION_CODES.iter().map(|s| s.to_string()).collect();
 
         let scan = scan_emitted_codes();
 

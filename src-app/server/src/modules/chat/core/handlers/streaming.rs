@@ -125,12 +125,7 @@ pub async fn send_message(
     Repos
         .chat
         .core
-        .update_conversation_state(
-            conversation_id,
-            auth.user.id,
-            request.model_id,
-            Some(branch_id),
-        )
+        .update_conversation_state(conversation_id, auth.user.id, request.model_id, Some(branch_id))
         .await?;
 
     // Persist the user + assistant rows, return ids, drive generation detached.
@@ -188,10 +183,7 @@ pub async fn stop_generation(
     // `cancel_download` returns false when nothing is in flight for this message
     // (already finished, or never started). Surface that as 409 so a client can
     // tell "stopped" from "nothing to stop" instead of a misleading success.
-    if !CANCELLATION_TRACKER
-        .cancel_download(assistant_message_id)
-        .await
-    {
+    if !CANCELLATION_TRACKER.cancel_download(assistant_message_id).await {
         return Err(AppError::new(
             StatusCode::CONFLICT,
             "NO_ACTIVE_GENERATION",
@@ -215,5 +207,7 @@ pub fn stop_generation_docs(op: TransformOperation) -> TransformOperation {
         )
         .response_with::<204, (), _>(|res| res.description("Cancellation requested"))
         .response_with::<404, (), _>(|res| res.description("Message not found"))
-        .response_with::<409, (), _>(|res| res.description("No in-flight generation to stop"))
+        .response_with::<409, (), _>(|res| {
+            res.description("No in-flight generation to stop")
+        })
 }

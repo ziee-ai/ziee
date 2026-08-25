@@ -82,6 +82,7 @@ pub struct UnattendedToolGrant {
     pub tool_name: Option<String>,
 }
 
+
 /// Factory function to create the extension instance
 /// Called by the auto-registration system
 pub fn create(pool: PgPool, config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {

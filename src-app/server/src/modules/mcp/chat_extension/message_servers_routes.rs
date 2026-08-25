@@ -8,9 +8,9 @@
 //! enabled-servers selection back to what was active when the
 //! message was originally sent.
 
-use aide::axum::{ApiRouter, routing::get_with};
+use aide::axum::{routing::get_with, ApiRouter};
 use aide::transform::TransformOperation;
-use axum::{Json, debug_handler, extract::Path, http::StatusCode};
+use axum::{debug_handler, extract::Path, http::StatusCode, Json};
 use serde::Serialize;
 use uuid::Uuid;
 

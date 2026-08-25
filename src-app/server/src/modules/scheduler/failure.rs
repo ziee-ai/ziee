@@ -94,18 +94,9 @@ mod tests {
     // TEST-30: auth/perm/validation are terminal; timeout/5xx transient.
     #[test]
     fn classifies_terminal_vs_transient() {
-        assert_eq!(
-            classify(StatusCode::UNAUTHORIZED, false),
-            FailureClass::Auth
-        );
-        assert_eq!(
-            classify(StatusCode::FORBIDDEN, false),
-            FailureClass::Permission
-        );
-        assert_eq!(
-            classify(StatusCode::BAD_REQUEST, false),
-            FailureClass::Validation
-        );
+        assert_eq!(classify(StatusCode::UNAUTHORIZED, false), FailureClass::Auth);
+        assert_eq!(classify(StatusCode::FORBIDDEN, false), FailureClass::Permission);
+        assert_eq!(classify(StatusCode::BAD_REQUEST, false), FailureClass::Validation);
         assert_eq!(
             classify(StatusCode::UNPROCESSABLE_ENTITY, false),
             FailureClass::Validation
