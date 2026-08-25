@@ -14,6 +14,7 @@
 //! per-server session it will reuse for execution.) The `<server_name>__<tool>` NAME
 //! scheme in the doc below applies to the WORKFLOW host, not chat.
 
+pub mod child_sink;
 pub mod dispatcher;
 pub mod event_sink;
 pub mod gate;

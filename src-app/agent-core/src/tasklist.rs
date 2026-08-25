@@ -568,6 +568,7 @@ mod tests {
             model_name: "test".into(),
             resume_executes_pending: true,
             isolate_children: false,
+            child_sink_factory: None,
         }
     }
 

@@ -3,7 +3,6 @@
 //! query set (list_in_flight for startup sweep, mark_running, persist
 //! step metadata, etc.).
 
-
 use axum::http::StatusCode;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -12,7 +11,9 @@ use super::models::{
     CreateBackgroundRun, CreateWorkflow, CreateWorkflowRun, JobKind, RunNote, Workflow,
     WorkflowRun, WorkflowRunStatus,
 };
-use super::types::{BackgroundRunDetail, BackgroundRunSummary, WorkflowRunSummary};
+use super::types::{
+    BackgroundRunDetail, BackgroundRunSummary, SubAgentRunSummary, WorkflowRunSummary,
+};
 use crate::common::AppError;
 
 pub struct WorkflowRepository {
@@ -542,7 +543,9 @@ pub async fn find_run_for_owner(
     run_id: Uuid,
     user_id: Uuid,
 ) -> Result<Option<WorkflowRun>, AppError> {
-    Ok(find_run(pool, run_id).await?.filter(|r| r.user_id == user_id))
+    Ok(find_run(pool, run_id)
+        .await?
+        .filter(|r| r.user_id == user_id))
 }
 
 /// Background-only owner-scoped run fetch: like [`find_run_for_owner`] but ALSO
@@ -634,11 +637,7 @@ pub async fn mark_status(
 /// failure) can name it. `build_error_result` reads `current_step`; without
 /// this, `current_step` was only set on step COMPLETION, so a run that failed
 /// on its first step reported a null `failed_step`.
-pub async fn set_current_step(
-    pool: &PgPool,
-    run_id: Uuid,
-    step_id: &str,
-) -> Result<(), AppError> {
+pub async fn set_current_step(pool: &PgPool, run_id: Uuid, step_id: &str) -> Result<(), AppError> {
     sqlx::query!(
         "UPDATE workflow_runs SET current_step = $2, updated_at = NOW() WHERE id = $1",
         run_id,
@@ -1108,10 +1107,7 @@ pub async fn heartbeat(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
 }
 
 /// Status-guarded cancel CAS (plan §4.3).
-pub async fn cancel_cas(
-    pool: &PgPool,
-    run_id: Uuid,
-) -> Result<Option<String>, AppError> {
+pub async fn cancel_cas(pool: &PgPool, run_id: Uuid) -> Result<Option<String>, AppError> {
     let row = sqlx::query!(
         r#"
         UPDATE workflow_runs
@@ -1386,10 +1382,7 @@ pub async fn update(
 // group_workflows — system-scope group assignment (mirrors group_skills)
 // ============================================================
 
-pub async fn get_workflow_groups(
-    pool: &PgPool,
-    workflow_id: Uuid,
-) -> Result<Vec<Uuid>, AppError> {
+pub async fn get_workflow_groups(pool: &PgPool, workflow_id: Uuid) -> Result<Vec<Uuid>, AppError> {
     let rows = sqlx::query_scalar!(
         r#"SELECT group_id FROM group_workflows WHERE workflow_id = $1"#,
         workflow_id,
@@ -1456,7 +1449,11 @@ pub async fn remove_workflow_group(
 /// moderation / assignment-picker surface: a system workflow already assigned
 /// to a group must still appear here, which the group-filtered `list_for_user`
 /// would hide.
-pub async fn list_system(pool: &PgPool, limit: i64, offset: i64) -> Result<Vec<Workflow>, AppError> {
+pub async fn list_system(
+    pool: &PgPool,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Workflow>, AppError> {
     let rows = sqlx::query_as!(
         Workflow,
         r#"
@@ -1638,7 +1635,10 @@ pub async fn list_run_refs_for_workflow(
     .fetch_all(pool)
     .await
     .map_err(AppError::database_error)?;
-    Ok(rows.into_iter().map(|r| (r.id, r.conversation_id)).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.id, r.conversation_id))
+        .collect())
 }
 
 pub async fn delete_run_row(pool: &PgPool, run_id: Uuid) -> Result<(), AppError> {
@@ -1869,8 +1869,12 @@ pub async fn get_background_run_detail(
     run_id: Uuid,
     user_id: Uuid,
 ) -> Result<Option<BackgroundRunDetail>, AppError> {
-    let row = sqlx::query_as!(
-        BackgroundRunDetail,
+    // Built manually (not `query_as!`) because `activity` is a derived jsonb
+    // PROJECTION (`step_logs_json['agent::agent_activity']`), not a plain column —
+    // `query_as!` requires every struct field be a SELECT column. The persisted
+    // entries are `ProgressKind::AgentActivity` values; deserialize into the DTO's
+    // `Vec<ProgressKind>` (a bad/blank blob degrades to an empty transcript).
+    let row = sqlx::query!(
         r#"
         SELECT
             id,
@@ -1878,13 +1882,14 @@ pub async fn get_background_run_detail(
             status,
             conversation_id,
             model_id,
-            NULLIF(left(inputs_json->>'task', 200), '') as "label?",
+            NULLIF(left(inputs_json->>'task', 200), '') as label,
             (final_output_json IS NOT NULL) as "has_result!",
-            final_output_json as "final_output_json: _",
+            final_output_json,
             error_message,
             total_tokens,
-            created_at as "created_at: _",
-            updated_at as "updated_at: _"
+            created_at as "created_at: chrono::DateTime<chrono::Utc>",
+            updated_at as "updated_at: chrono::DateTime<chrono::Utc>",
+            coalesce(step_logs_json -> 'agent::agent_activity', '[]'::jsonb) as "activity!"
         FROM workflow_runs
         WHERE id = $1
           AND user_id = $2
@@ -1897,7 +1902,106 @@ pub async fn get_background_run_detail(
     .await
     .map_err(AppError::database_error)?;
 
-    Ok(row)
+    Ok(row.map(|r| BackgroundRunDetail {
+        id: r.id,
+        job_kind: r.job_kind,
+        status: r.status,
+        conversation_id: r.conversation_id,
+        model_id: r.model_id,
+        label: r.label,
+        has_result: r.has_result,
+        final_output_json: r.final_output_json,
+        error_message: r.error_message,
+        total_tokens: r.total_tokens,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        activity: serde_json::from_value(r.activity).unwrap_or_default(),
+    }))
+}
+
+/// Insert a fan-out CHILD sub-agent run as a `workflow_runs` row (ITEM-7) with an
+/// EXPLICIT id — the child `run_id` minted in agent-core doubles as the row id, so
+/// its `PersistingActivitySink` (keyed to that id) has a target BEFORE any activity
+/// appends. Linked to its parent chat turn via `parent_message_id` (FK `messages`
+/// ON DELETE CASCADE — DEC-7). Mirrors `insert_background_run` but id-explicit +
+/// parent-linked; `status='running'`, `job_kind='subagent'`, source `'agent'`.
+/// Owner-agnostic — the caller supplies the parent turn's owner.
+pub async fn insert_subagent_child_run(
+    pool: &PgPool,
+    child_run_id: Uuid,
+    parent_message_id: Uuid,
+    conversation_id: Option<Uuid>,
+    user_id: Uuid,
+    model_id: Option<Uuid>,
+    label: &str,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        INSERT INTO workflow_runs (
+            id, workflow_id, job_kind, conversation_id, user_id, model_id,
+            parent_message_id, run_kind, invocation_source, inputs_json, status
+        )
+        VALUES ($1, NULL, 'subagent', $2, $3, $4, $5, 'normal', 'agent', $6, 'running')
+        "#,
+        child_run_id,
+        conversation_id,
+        user_id,
+        model_id,
+        parent_message_id,
+        serde_json::json!({ "task": label }),
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// Set a run's terminal status (ITEM-7 `settle_child`) — a status-only update used
+/// when a fan-out child settles (`completed`/`failed`). Owner-agnostic; the caller
+/// owns the child id. A no-op if the id does not exist (a failed child-row insert
+/// degraded to a no-op sink, so there is nothing to settle).
+pub async fn set_run_status(pool: &PgPool, run_id: Uuid, status: &str) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"UPDATE workflow_runs SET status = $2, updated_at = NOW() WHERE id = $1"#,
+        run_id,
+        status,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
+}
+
+/// List the fan-out CHILD sub-agent runs of one parent chat turn (ITEM-8),
+/// owner-scoped (a foreign `user_id` yields an empty list, never another user's
+/// children). Ordered by spawn time (created_at ASC); the set is hard-bounded by
+/// the fan-out cap, so no pagination is needed.
+pub async fn list_subagent_children(
+    pool: &PgPool,
+    parent_message_id: Uuid,
+    user_id: Uuid,
+) -> Result<Vec<SubAgentRunSummary>, AppError> {
+    let rows = sqlx::query_as!(
+        SubAgentRunSummary,
+        r#"
+        SELECT
+            id,
+            NULLIF(left(inputs_json->>'task', 200), '') as "label?",
+            status,
+            created_at as "created_at: _"
+        FROM workflow_runs
+        WHERE parent_message_id = $1
+          AND user_id = $2
+          AND job_kind = 'subagent'
+        ORDER BY created_at ASC
+        "#,
+        parent_message_id,
+        user_id,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(rows)
 }
 
 // ── ITEM-25: durable steering-note queue (Group F) ──────────────────────────
@@ -1961,10 +2065,7 @@ pub async fn enqueue_run_note(
 
 /// List a run's PENDING (unconsumed) steering notes, oldest-first. Owner-agnostic
 /// (the REST GET resolves the run's owner first). Backs the `GET` list endpoint.
-pub async fn list_pending_run_notes(
-    pool: &PgPool,
-    run_id: Uuid,
-) -> Result<Vec<RunNote>, AppError> {
+pub async fn list_pending_run_notes(pool: &PgPool, run_id: Uuid) -> Result<Vec<RunNote>, AppError> {
     sqlx::query_as!(
         RunNote,
         r#"SELECT id, run_id, note,
@@ -2104,9 +2205,15 @@ mod tests {
         let row = insert_background_run(&pool, bg_req(user_id, JobKind::SandboxExec))
             .await
             .expect("insert background run");
-        assert!(row.workflow_id.is_none(), "background run has NULL workflow_id");
+        assert!(
+            row.workflow_id.is_none(),
+            "background run has NULL workflow_id"
+        );
         assert_eq!(row.job_kind, "sandbox_exec");
-        assert_eq!(JobKind::from_db_str(&row.job_kind), Some(JobKind::SandboxExec));
+        assert_eq!(
+            JobKind::from_db_str(&row.job_kind),
+            Some(JobKind::SandboxExec)
+        );
         assert_eq!(row.status, "pending");
         let run_id = row.id;
 
@@ -2138,8 +2245,15 @@ mod tests {
             .expect("mark completed");
         let done = find_run(&pool, run_id).await.unwrap().unwrap();
         assert_eq!(done.status, "completed");
-        assert!(WorkflowRunStatus::from_db_str(&done.status).unwrap().is_terminal());
-        assert_eq!(done.final_output_json, Some(serde_json::json!({"exit_code": 0})));
+        assert!(
+            WorkflowRunStatus::from_db_str(&done.status)
+                .unwrap()
+                .is_terminal()
+        );
+        assert_eq!(
+            done.final_output_json,
+            Some(serde_json::json!({"exit_code": 0}))
+        );
 
         // TEST-132: a LATE terminal write is a CAS no-op — the completed row is
         // never resurrected to failed.
@@ -2150,7 +2264,12 @@ mod tests {
         assert_eq!(still.status, "completed", "terminal CAS must be a no-op");
 
         // Owner-scoped read seam: owner sees it, a stranger gets None (→ 404).
-        assert!(find_run_for_owner(&pool, run_id, user_id).await.unwrap().is_some());
+        assert!(
+            find_run_for_owner(&pool, run_id, user_id)
+                .await
+                .unwrap()
+                .is_some()
+        );
         assert!(
             find_run_for_owner(&pool, run_id, Uuid::new_v4())
                 .await
@@ -2191,9 +2310,7 @@ mod tests {
         let mut terminal = None;
         for _ in 0..100 {
             let run = find_run(&pool, run_id).await.unwrap().unwrap();
-            if WorkflowRunStatus::from_db_str(&run.status)
-                .is_some_and(|s| s.is_terminal())
-            {
+            if WorkflowRunStatus::from_db_str(&run.status).is_some_and(|s| s.is_terminal()) {
                 terminal = Some(run);
                 break;
             }
@@ -2203,7 +2320,10 @@ mod tests {
         assert_eq!(run.status, "completed");
         assert!(run.workflow_id.is_none());
         assert_eq!(run.job_kind, "subagent");
-        assert_eq!(run.final_output_json, Some(serde_json::json!({"answer": 42})));
+        assert_eq!(
+            run.final_output_json,
+            Some(serde_json::json!({"answer": 42}))
+        );
 
         cleanup_user(&pool, user_id).await;
     }
@@ -2379,7 +2499,10 @@ mod tests {
 
         let pending = list_pending_run_notes(&pool, run.id).await.unwrap();
         assert_eq!(pending.len(), 2, "both notes pending");
-        assert_eq!(pending[0].note, "check the second table too", "oldest-first");
+        assert_eq!(
+            pending[0].note, "check the second table too",
+            "oldest-first"
+        );
         assert_eq!(pending[1].note, "prefer the 2024 revision");
 
         // Consume returns both, oldest-first, and stamps consumed_at.
@@ -2389,8 +2512,18 @@ mod tests {
         assert!(consumed.iter().all(|n| n.consumed_at.is_some()));
 
         // Idempotent: pending is now empty; a second consume yields nothing.
-        assert!(list_pending_run_notes(&pool, run.id).await.unwrap().is_empty());
-        assert!(consume_pending_run_notes(&pool, run.id).await.unwrap().is_empty());
+        assert!(
+            list_pending_run_notes(&pool, run.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            consume_pending_run_notes(&pool, run.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
 
         cleanup_user(&pool, user_id).await;
     }
@@ -2424,7 +2557,10 @@ mod tests {
             "pending is capped at MAX_PENDING_RUN_NOTES"
         );
         // note-0 (oldest) was dropped; note-1..note-8 remain, oldest-first.
-        assert_eq!(pending[0].note, "note-1", "oldest surviving is note-1 (note-0 dropped)");
+        assert_eq!(
+            pending[0].note, "note-1",
+            "oldest surviving is note-1 (note-0 dropped)"
+        );
         assert_eq!(pending.last().unwrap().note, format!("note-{}", over - 1));
 
         cleanup_user(&pool, user_id).await;
@@ -2444,7 +2580,10 @@ mod tests {
         enqueue_run_note(&pool, run.id, "will be cascaded")
             .await
             .expect("enqueue");
-        assert_eq!(list_pending_run_notes(&pool, run.id).await.unwrap().len(), 1);
+        assert_eq!(
+            list_pending_run_notes(&pool, run.id).await.unwrap().len(),
+            1
+        );
 
         delete_run_row(&pool, run.id).await.expect("delete run");
 

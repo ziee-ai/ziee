@@ -30,8 +30,8 @@ use std::time::Instant;
 use agent_core::{
     AgentCore, AgentEvent, AgentTurnRequest, ApprovalMode, ApprovalPolicy, Budget, CancelToken,
     CompactionExtension, Compactor, Decision, EventSink, GateAsk, GateOutcome, GateTicket,
-    HumanGate, IdempotencyKey, ModelClient, ModelClientFactory, ModelResolver,
-    ModelRiskClassifier, ProviderModelClient, ProviderModelClientFactory, Reviewer, Risk, RiskAssessment,
+    HumanGate, IdempotencyKey, ModelClient, ModelClientFactory, ModelResolver, ModelRiskClassifier,
+    ProviderModelClient, ProviderModelClientFactory, Reviewer, Risk, RiskAssessment,
     RiskClassifier, SandboxMode, SteerNotePort, StopReason, SubagentLimits, ToolCall, ToolProvider,
     ToolResult, ToolScope, TranscriptStore, TrustedAutoApprovePolicy, TurnSeed,
 };
@@ -45,11 +45,16 @@ use uuid::Uuid;
 use crate::common::AppError;
 // Shared MCP tool-call chokepoint now lives in `mcp::agent_tool_call` (§9 DAG:
 // shared infra, imported from `mcp/` by both this host and the chat host).
+use crate::modules::agent::models::AgentAdminSettings;
 use crate::modules::mcp::agent_tool_call::{
-    builtin_server_id_by_name, call_mcp_tool, mcp_to_agent_result, resolve_tool_server,
-    split_tool_name, McpCallScope, McpToolCallError,
+    McpCallScope, McpToolCallError, builtin_server_id_by_name, call_mcp_tool, mcp_to_agent_result,
+    resolve_tool_server, split_tool_name,
 };
-use crate::modules::workflow::dispatch::{resolve_prompt, StepDispatcher};
+use crate::modules::workflow::activity_sink::{
+    AGENT_ACTIVITY_DETAIL_MAX_BYTES, AGENT_ACTIVITY_TITLE_MAX_BYTES, MappedActivity,
+    map_agent_event, truncate_bytes,
+};
+use crate::modules::workflow::dispatch::{StepDispatcher, resolve_prompt};
 use crate::modules::workflow::events::{
     AgentActivityKind, AgentActivityStatus, ProgressEmitter, ProgressKind, ProgressTrack,
     SSEElicitationRequiredData, SSEStepProgressData, SSEWorkflowRunEvent,
@@ -60,8 +65,6 @@ use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
 use crate::modules::workflow::types::{ParsedAs, RunContext, StepKindTag, StepResult};
 use crate::modules::workflow::validate::{OutputFormat, StepConfig, StepDef};
-use crate::modules::agent::models::AgentAdminSettings;
-
 
 // ============================================================
 // Approved-for-session allow-rules (ITEM-13 / DEC-2)
@@ -212,14 +215,13 @@ impl ToolProvider for McpToolProvider {
         for server_name in &scope.servers {
             // A server the user can't reach (or that fails to list) contributes
             // no tools rather than failing the whole turn.
-            let server_id =
-                match resolve_tool_server(self.user_id, server_name).await {
-                    Ok(id) => id,
-                    Err(e) => {
-                        tracing::warn!("agent: server '{server_name}' not accessible: {e}");
-                        continue;
-                    }
-                };
+            let server_id = match resolve_tool_server(self.user_id, server_name).await {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!("agent: server '{server_name}' not accessible: {e}");
+                    continue;
+                }
+            };
             let session = match manager
                 .get_or_create_with_context(
                     server_id,
@@ -332,23 +334,11 @@ impl ToolProvider for McpToolProvider {
 // Event sink (ITEM-20)
 // ============================================================
 
-/// Per-entry byte caps applied before an activity is emitted / persisted (so a
-/// runaway thought or tool blob can't bloat the SSE frame or the durable row).
-const AGENT_ACTIVITY_TITLE_MAX_BYTES: usize = 512;
-const AGENT_ACTIVITY_DETAIL_MAX_BYTES: usize = 16 * 1024;
-
-/// Truncate `s` to at most `max` bytes on a UTF-8 char boundary.
-fn truncate_bytes(mut s: String, max: usize) -> String {
-    if s.len() <= max {
-        return s;
-    }
-    let mut end = max;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    s.truncate(end);
-    s
-}
+// The byte caps + `truncate_bytes` + the `AgentEvent` → activity MAPPING now
+// live in the shared `activity_sink` module (ITEM-1), so `WorkflowEventSink`
+// (live SSE + durable) and the persist-only `PersistingActivitySink` (background
+// runs + fan-out children) can never drift. This sink keeps its live-SSE tracks;
+// it delegates the mapping.
 
 /// Maps the loop's coarse `AgentEvent` stream to distinct, durable
 /// `StepProgress` agent-activity entries (ITEM-5). Each observed event becomes
@@ -368,16 +358,17 @@ impl WorkflowEventSink {
     /// goal-eval / schedule progress). Distinct from `push_activity`'s structured,
     /// per-seq `agent-<n>` AgentActivity tracks — both coexist on the step.
     fn push_line(&self, line: String) {
-        self.emit.emit(SSEWorkflowRunEvent::StepProgress(SSEStepProgressData {
-            run_id: self.run_id,
-            step_id: self.step_id.clone(),
-            tracks: vec![ProgressTrack {
-                id: "agent".to_string(),
-                label: Some("Agent".to_string()),
-                done: false,
-                kind: ProgressKind::Log { line },
-            }],
-        }));
+        self.emit
+            .emit(SSEWorkflowRunEvent::StepProgress(SSEStepProgressData {
+                run_id: self.run_id,
+                step_id: self.step_id.clone(),
+                tracks: vec![ProgressTrack {
+                    id: "agent".to_string(),
+                    label: Some("Agent".to_string()),
+                    done: false,
+                    kind: ProgressKind::Log { line },
+                }],
+            }));
     }
 
     /// Emit + durably persist one activity entry.
@@ -402,16 +393,17 @@ impl WorkflowEventSink {
         };
 
         // Live SSE frame — distinct track id per seq so the FE accumulates.
-        self.emit.emit(SSEWorkflowRunEvent::StepProgress(SSEStepProgressData {
-            run_id: self.run_id,
-            step_id: self.step_id.clone(),
-            tracks: vec![ProgressTrack {
-                id: format!("agent-{seq}"),
-                label: Some("Agent".to_string()),
-                done: false,
-                kind: activity.clone(),
-            }],
-        }));
+        self.emit
+            .emit(SSEWorkflowRunEvent::StepProgress(SSEStepProgressData {
+                run_id: self.run_id,
+                step_id: self.step_id.clone(),
+                tracks: vec![ProgressTrack {
+                    id: format!("agent-{seq}"),
+                    label: Some("Agent".to_string()),
+                    done: false,
+                    kind: activity.clone(),
+                }],
+            }));
 
         // Durable append — fire-and-forget; a DB hiccup must NOT fail the run.
         if let Ok(entry) = serde_json::to_value(&activity) {
@@ -432,142 +424,21 @@ impl WorkflowEventSink {
 #[async_trait]
 impl EventSink for WorkflowEventSink {
     async fn emit(&self, ev: AgentEvent) {
-        match ev {
-            AgentEvent::Message(msg) => {
-                // Surface each thinking block + tool request as its own entry,
-                // plus a short assistant-text preview.
-                for b in &msg.content {
-                    match b {
-                        ContentBlock::Thinking { thinking, .. } => {
-                            self.push_activity(
-                                AgentActivityKind::Thinking,
-                                None,
-                                thinking.chars().take(200).collect::<String>(),
-                                Some(thinking.clone()),
-                                AgentActivityStatus::Ok,
-                            );
-                        }
-                        ContentBlock::ToolUse { name, input, .. } => {
-                            self.push_activity(
-                                AgentActivityKind::ToolCall,
-                                Some(name.clone()),
-                                format!("→ {name}"),
-                                serde_json::to_string(input).ok(),
-                                AgentActivityStatus::Running,
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-                if msg.role == Role::Assistant {
-                    let text: String = msg
-                        .content
-                        .iter()
-                        .filter_map(|b| match b {
-                            ContentBlock::Text { text } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join("");
-                    if !text.is_empty() {
-                        self.push_activity(
-                            AgentActivityKind::Message,
-                            None,
-                            text.chars().take(200).collect::<String>(),
-                            Some(text),
-                            AgentActivityStatus::Ok,
-                        );
-                    }
-                }
+        // Structured `Activity` entries accumulate on their own SSE track AND
+        // persist durably; rolled-up `Log` lines (task-list / sub-agent progress)
+        // ride the static "agent" track, SSE-only. The mapping is shared with the
+        // persist-only `PersistingActivitySink` so the two can never drift (ITEM-1).
+        for mapped in map_agent_event(&ev) {
+            match mapped {
+                MappedActivity::Activity {
+                    kind,
+                    tool,
+                    title,
+                    detail,
+                    status,
+                } => self.push_activity(kind, tool, title, detail, status),
+                MappedActivity::Log { line } => self.push_line(line),
             }
-            AgentEvent::ToolNotification { server, note } => {
-                self.push_activity(
-                    AgentActivityKind::ToolResult,
-                    Some(server.clone()),
-                    format!("{server}: {note}"),
-                    Some(note),
-                    AgentActivityStatus::Ok,
-                );
-            }
-            AgentEvent::GateOpened(_) => {
-                self.push_activity(
-                    AgentActivityKind::Gate,
-                    None,
-                    "awaiting human input".to_string(),
-                    None,
-                    AgentActivityStatus::Running,
-                );
-            }
-            AgentEvent::HistoryReplaced { summary_upto } => {
-                self.push_activity(
-                    AgentActivityKind::Compaction,
-                    None,
-                    format!("context compacted ({summary_upto} messages summarized)"),
-                    None,
-                    AgentActivityStatus::Ok,
-                );
-            }
-            // The agent's task list changed (ITEM-36 / DEC-56). The workflow run
-            // has no dedicated checklist surface (the inline `TaskListChecklist`
-            // is the CHAT host's job), so — per DEC-56's "per-run progress track"
-            // — we roll the full list up to ONE compact log line on the existing
-            // "agent" track (mirroring the `HistoryReplaced` line above) rather
-            // than streaming a rich frame. The line shows done/total plus the
-            // active item's present-continuous `active_form`.
-            AgentEvent::TaskListChanged { items, .. } => {
-                let total = items.len();
-                let completed = items
-                    .iter()
-                    .filter(|t| t.status == agent_core::TaskStatus::Completed)
-                    .count();
-                match items
-                    .iter()
-                    .find(|t| t.status == agent_core::TaskStatus::InProgress)
-                {
-                    Some(active) => self.push_line(format!(
-                        "tasks: {completed}/{total} — {}",
-                        active.active_form
-                    )),
-                    None => self.push_line(format!("tasks: {completed}/{total}")),
-                }
-            }
-            // A `delegate` fan-out's per-child status changed (ITEM-4 / DEC-65).
-            // Like TaskListChanged, the workflow run has no dedicated sub-agent
-            // card surface (that's the CHAT host's `SubAgentActivityCard`), so —
-            // per DEC-65's "per-run progress track" — roll the full child list up
-            // to ONE compact log line on the existing "agent" track rather than
-            // streaming a rich frame. The line shows settled/total plus any
-            // failures.
-            AgentEvent::SubAgentActivity { children, .. } => {
-                let total = children.len();
-                let settled = children
-                    .iter()
-                    .filter(|c| {
-                        matches!(
-                            c.status,
-                            agent_core::SubAgentChildStatus::Completed
-                                | agent_core::SubAgentChildStatus::Failed
-                        )
-                    })
-                    .count();
-                let failed = children
-                    .iter()
-                    .filter(|c| c.status == agent_core::SubAgentChildStatus::Failed)
-                    .count();
-                if failed > 0 {
-                    self.push_line(format!(
-                        "sub-agents: {settled}/{total} settled ({failed} failed)"
-                    ));
-                } else {
-                    self.push_line(format!("sub-agents: {settled}/{total} settled"));
-                }
-            }
-            // ContentDelta is the chat host's live token stream; the workflow
-            // host surfaces only the finalized `Message`, so it's ignored here.
-            AgentEvent::ContentDelta(_) => {}
-            // Usage / Stopped are handled by the dispatcher's result-folding;
-            // GateOpened ALSO drives the gate's own ElicitationRequired emit.
-            AgentEvent::Usage(_) | AgentEvent::Stopped(_) => {}
         }
     }
 }
@@ -770,8 +641,10 @@ impl ModelResolver for WorkflowModelResolver {
             ));
         }
         let (provider, ..) =
-            crate::modules::chat::core::ai_provider::create_provider_from_model_id(model_id, user_id)
-                .await?;
+            crate::modules::chat::core::ai_provider::create_provider_from_model_id(
+                model_id, user_id,
+            )
+            .await?;
         Ok(provider)
     }
 }
@@ -1036,6 +909,7 @@ pub async fn build_detached_agent_core(args: DetachedAgentCoreArgs) -> AgentCore
         // The workflow host's transcript is not keyed to a chat message with a
         // run_id guard, so fan-out children keep the legacy `self.clone()` shape.
         isolate_children: false,
+        child_sink_factory: None,
         // Group G (DEC-49/50): the durable per-run task list, keyed by `run_id`.
         task_store: Some(Arc::new(
             crate::modules::agent::task_list::PgTaskListStore::new(pool),
@@ -1349,11 +1223,7 @@ impl StepDispatcher for AgentDispatcher {
                         })
                         .collect::<Vec<_>>()
                         .join("");
-                    if text.is_empty() {
-                        None
-                    } else {
-                        Some(text)
-                    }
+                    if text.is_empty() { None } else { Some(text) }
                 }
                 _ => None,
             })
@@ -1563,7 +1433,7 @@ mod tests {
 
     // (agent-orchestration) reviewer_risk_thresholds must reach the reviewer
     // both detached hosts build — the T1 dead-config guard.
-    use agent_core::{apply_authorization, Authorization};
+    use agent_core::{Authorization, apply_authorization};
 
     /// A settings row with a caller-chosen `reviewer_risk_thresholds`; every
     /// other field is a plausible default (irrelevant to the ladder under test).
@@ -1602,10 +1472,13 @@ mod tests {
             "default ladder: well-authorized High → Auto",
         );
         // Admin override {"high":"deny"}: the identical call is now Denied.
-        let overridden =
-            reviewer_thresholds(&settings_with(serde_json::json!({ "high": "deny" })));
+        let overridden = reviewer_thresholds(&settings_with(serde_json::json!({ "high": "deny" })));
         assert_eq!(
-            apply_authorization(Risk::High, Authorization::Medium, overridden.resolve(Risk::High)),
+            apply_authorization(
+                Risk::High,
+                Authorization::Medium,
+                overridden.resolve(Risk::High)
+            ),
             Decision::Deny,
             "admin `high:deny` override must flip the decision (setting is not inert)",
         );
@@ -1622,7 +1495,10 @@ mod tests {
             serde_json::json!("not-an-object"),
         ] {
             let t = reviewer_thresholds(&settings_with(v.clone()));
-            assert!(t.is_empty(), "value {v} must yield the empty (default) ladder");
+            assert!(
+                t.is_empty(),
+                "value {v} must yield the empty (default) ladder"
+            );
             // The built-in ladder (map_risk) unchanged.
             assert_eq!(t.resolve(Risk::Low), Decision::Auto);
             assert_eq!(t.resolve(Risk::High), Decision::Prompt);

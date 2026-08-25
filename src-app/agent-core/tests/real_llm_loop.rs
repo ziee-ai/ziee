@@ -161,6 +161,7 @@ async fn agent_streams_text_deltas_from_real_model() {
         model_name,
         resume_executes_pending: true,
         isolate_children: false,
+        child_sink_factory: None,
     };
     let req = AgentTurnRequest {
         run_id: Uuid::new_v4(),
@@ -241,6 +242,7 @@ async fn agent_loop_does_real_tool_call_round_trip() {
         model_name,
         resume_executes_pending: true,
         isolate_children: false,
+        child_sink_factory: None,
     };
 
     let req = AgentTurnRequest {

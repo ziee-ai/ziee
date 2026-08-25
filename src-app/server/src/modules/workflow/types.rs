@@ -5,7 +5,6 @@
 //! event payloads consumed by the per-run SSE endpoint
 //! (`progress_sse.rs`) and the workflow_mcp progress bridge (B5).
 
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -14,6 +13,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::events::ProgressKind;
 use super::models::Workflow;
 
 // ============================================================
@@ -172,6 +172,36 @@ pub struct BackgroundRunDetail {
     pub created_at: DateTime<Utc>,
     /// Last transition time — the effective "finished_at" for a terminal run.
     pub updated_at: DateTime<Utc>,
+    /// The durable agent-loop transcript — one entry per thinking block / tool
+    /// call & result / assistant message, projected from
+    /// `step_logs_json['agent::agent_activity']` and rendered by the workflow
+    /// `AgentActivityTimeline`. Empty when the run produced no activity. The
+    /// entries are `ProgressKind::AgentActivity` values (the FE type is
+    /// `Extract<ProgressKind, {type:'agent_activity'}>`).
+    #[serde(default)]
+    pub activity: Vec<ProgressKind>,
+}
+
+/// One fan-out CHILD sub-agent run, listed under its parent chat turn
+/// (`GET /api/subagent-runs?parent_message_id=…`). The compact projection — id,
+/// friendly label, terminal/running status, created_at. The full per-child
+/// transcript is fetched separately via `GET /api/subagent-runs/{id}` (which
+/// reuses [`BackgroundRunDetail`], since a child is a background-kind run).
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct SubAgentRunSummary {
+    pub id: Uuid,
+    /// Friendly per-child label (the child's first system-prompt line), capped.
+    pub label: Option<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Response for `GET /api/subagent-runs?parent_message_id=…` — the fan-out children
+/// of one parent chat turn, spawn-ordered. Hard-bounded by the fan-out cap, so no
+/// pagination.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct SubAgentRunListResponse {
+    pub children: Vec<SubAgentRunSummary>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

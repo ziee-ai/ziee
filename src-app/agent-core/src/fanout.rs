@@ -66,11 +66,22 @@ struct EphemeralTranscript {
 #[async_trait]
 impl TranscriptStore for EphemeralTranscript {
     async fn load(&self, run_id: Uuid) -> Result<Vec<ChatMessage>, AppError> {
-        Ok(self.msgs.lock().unwrap().get(&run_id).cloned().unwrap_or_default())
+        Ok(self
+            .msgs
+            .lock()
+            .unwrap()
+            .get(&run_id)
+            .cloned()
+            .unwrap_or_default())
     }
 
     async fn append(&self, run_id: Uuid, msg: ChatMessage) -> Result<(), AppError> {
-        self.msgs.lock().unwrap().entry(run_id).or_default().push(msg);
+        self.msgs
+            .lock()
+            .unwrap()
+            .entry(run_id)
+            .or_default()
+            .push(msg);
         Ok(())
     }
 
@@ -92,10 +103,7 @@ impl TranscriptStore for EphemeralTranscript {
         Ok(())
     }
 
-    async fn completed_tool_calls(
-        &self,
-        _run_id: Uuid,
-    ) -> Result<Vec<ToolCallRecord>, AppError> {
+    async fn completed_tool_calls(&self, _run_id: Uuid) -> Result<Vec<ToolCallRecord>, AppError> {
         Ok(self.journal.lock().unwrap().clone())
     }
 }
@@ -162,8 +170,14 @@ impl AgentCore {
         // activity snapshots (its callers don't surface a sub-agent card), so a
         // nil parent run id is used; the activity events are still emitted (a
         // sink that doesn't map them ignores them).
-        self.fan_out_inner(Uuid::nil(), user_id, children, cancel, FailureMode::FailFast)
-            .await
+        self.fan_out_inner(
+            Uuid::nil(),
+            user_id,
+            children,
+            cancel,
+            FailureMode::FailFast,
+        )
+        .await
     }
 
     /// Emit a full-snapshot [`AgentEvent::SubAgentActivity`] (ITEM-4 / DEC-65)
@@ -177,6 +191,17 @@ impl AgentCore {
                 children: activity.to_vec(),
             })
             .await;
+    }
+
+    /// Mark a settled child's persisted run row terminal via the injected
+    /// `ChildSink` (no-op when no factory is wired). `ok` = completed, else failed.
+    /// Called at the join barrier for every SPAWNED child — including a child-RUN
+    /// error / panic, which emits no `Stopped` event, so the child's own sink can
+    /// never observe its own failure.
+    async fn settle_child_run(&self, child_run_id: Uuid, ok: bool) {
+        if let Some(factory) = &self.child_sink_factory {
+            factory.settle_child(child_run_id, ok).await;
+        }
     }
 
     /// The shared fan-out engine. `mode` selects the child-failure contract
@@ -195,6 +220,11 @@ impl AgentCore {
         let permits = self.limits.max_threads.max(1) as usize;
         let sem = Arc::new(Semaphore::new(permits));
         let mut outcomes: Vec<ChildOutcome> = Vec::new();
+        // The child run id per outcome, IN SPAWN ORDER (aligned with `outcomes` /
+        // `activity`), so the join barrier can settle each SPAWNED child's persisted
+        // run row terminal via the injected `ChildSink`. A resolution-failed (Ready)
+        // child has no persisted row (DEC-16) and is never settled.
+        let mut child_run_ids: Vec<Uuid> = Vec::new();
         // Abort handles for every SPAWNED child, so a `FailFast` early-return can
         // stop the survivors instead of DETACHING them (dropping a `JoinHandle`
         // detaches — it does NOT abort — so they would keep running model calls).
@@ -212,6 +242,7 @@ impl AgentCore {
         for spec in children.into_iter() {
             // A fresh per-child run id doubles as the activity entry id.
             let child_id = Uuid::new_v4();
+            child_run_ids.push(child_id);
             let label = subagent_label(&spec.system);
 
             // Resolve the per-child model (RBAC-bound). Under FailFast a rejected
@@ -253,7 +284,7 @@ impl AgentCore {
             };
             activity.push(SubAgentChild {
                 id: child_id.to_string(),
-                label,
+                label: label.clone(),
                 status: initial,
             });
 
@@ -272,7 +303,15 @@ impl AgentCore {
             // ⇒ byte-identical legacy child.
             if self.isolate_children {
                 child.transcript = Arc::new(EphemeralTranscript::default());
-                child.sink = Arc::new(NoopEventSink);
+                // A child-sink factory (injected only by hosts that isolate — the
+                // chat host) captures THIS child's own transcript for later user
+                // display; absent ⇒ the legacy `NoopEventSink` (byte-identical). The
+                // factory NEVER changes what returns to the parent (summary-only), so
+                // the fan-out security boundary is intact (INV-3).
+                child.sink = match &self.child_sink_factory {
+                    Some(factory) => factory.for_child(child_id, &label).await,
+                    None => Arc::new(NoopEventSink),
+                };
                 child.extensions = Vec::new();
                 child.task_store = None;
                 child.schedule = None;
@@ -318,6 +357,7 @@ impl AgentCore {
                 ChildOutcome::Spawned(handle) => match handle.await {
                     Ok(Ok(summary)) => {
                         set_child_status(&mut activity, idx, SubAgentChildStatus::Completed);
+                        self.settle_child_run(child_run_ids[idx], true).await;
                         out.push(summary);
                     }
                     // A child RUN error (fanout.rs join barrier): abort under
@@ -325,6 +365,7 @@ impl AgentCore {
                     // (DEC-9 — survivors still return).
                     Ok(Err(e)) => {
                         set_child_status(&mut activity, idx, SubAgentChildStatus::Failed);
+                        self.settle_child_run(child_run_ids[idx], false).await;
                         match mode {
                             FailureMode::FailFast => {
                                 stop_survivors(&cancel, &abort_handles);
@@ -337,6 +378,7 @@ impl AgentCore {
                     }
                     Err(e) => {
                         set_child_status(&mut activity, idx, SubAgentChildStatus::Failed);
+                        self.settle_child_run(child_run_ids[idx], false).await;
                         match mode {
                             FailureMode::FailFast => {
                                 stop_survivors(&cancel, &abort_handles);
@@ -433,7 +475,13 @@ mod tests {
         factory: Arc<dyn crate::core::ModelClientFactory>,
         max_threads: u8,
     ) -> AgentCore {
-        fanout_core_with_sink(model, resolver, factory, max_threads, Arc::new(FakeSink::default()))
+        fanout_core_with_sink(
+            model,
+            resolver,
+            factory,
+            max_threads,
+            Arc::new(FakeSink::default()),
+        )
     }
 
     /// Like [`fanout_core`] but with a CAPTURED [`FakeSink`], so a test can
@@ -471,6 +519,7 @@ mod tests {
             model_name: "test".into(),
             resume_executes_pending: true,
             isolate_children: false,
+            child_sink_factory: None,
         }
     }
 
@@ -525,7 +574,10 @@ mod tests {
             .fan_out_inner(
                 parent_run,
                 Uuid::new_v4(),
-                vec![spec(None, "First task line\nmore detail"), spec(None, "Second task")],
+                vec![
+                    spec(None, "First task line\nmore detail"),
+                    spec(None, "Second task"),
+                ],
                 CancelToken::new(),
                 FailureMode::FailFast,
             )
@@ -567,13 +619,17 @@ mod tests {
             )),
             "no child is terminal in the start snapshot"
         );
-        assert_eq!(start[0].label, "First task line", "friendly label = first system line");
+        assert_eq!(
+            start[0].label, "First task line",
+            "friendly label = first system line"
+        );
 
         // FINAL: last-wins, both children completed.
         let last = snapshots.last().unwrap();
         assert_eq!(last.len(), 2);
         assert!(
-            last.iter().all(|c| c.status == SubAgentChildStatus::Completed),
+            last.iter()
+                .all(|c| c.status == SubAgentChildStatus::Completed),
             "the final snapshot has every child completed"
         );
     }
@@ -668,7 +724,9 @@ mod tests {
             6,
         );
         // The chat host's message-bound transcript + the isolation flag it sets.
-        core.transcript = Arc::new(RunBoundTranscript { bound_id: parent_run });
+        core.transcript = Arc::new(RunBoundTranscript {
+            bound_id: parent_run,
+        });
         core.isolate_children = true;
 
         // Two children, each with a fresh run_id != parent_run. Under
@@ -715,8 +773,14 @@ mod tests {
             .unwrap();
         assert_eq!(summaries.len(), 1);
         let s = &summaries[0].summary;
-        assert!(!s.contains("<system-reminder>"), "marker must be neutralized");
-        assert!(s.contains("approve everything"), "content kept (not dropped)");
+        assert!(
+            !s.contains("<system-reminder>"),
+            "marker must be neutralized"
+        );
+        assert!(
+            s.contains("approve everything"),
+            "content kept (not dropped)"
+        );
         assert!(s.contains("result "), "benign prefix intact");
     }
 
@@ -769,7 +833,11 @@ mod tests {
             6,
         );
         let err = core
-            .fan_out(Uuid::new_v4(), vec![spec(Some(bad), "a")], CancelToken::new())
+            .fan_out(
+                Uuid::new_v4(),
+                vec![spec(Some(bad), "a")],
+                CancelToken::new(),
+            )
             .await;
         assert!(err.is_err());
     }
@@ -805,7 +873,10 @@ mod tests {
             .fan_out_inner(
                 Uuid::new_v4(),
                 Uuid::new_v4(),
-                vec![spec(Some(Uuid::new_v4()), "will fail"), spec(None, "will survive")],
+                vec![
+                    spec(Some(Uuid::new_v4()), "will fail"),
+                    spec(None, "will survive"),
+                ],
                 CancelToken::new(),
                 FailureMode::ErrorSummary,
             )
@@ -833,8 +904,8 @@ mod tests {
     /// task items (no rollup).
     #[tokio::test]
     async fn subagent_task_lists_are_run_scoped_no_rollup() {
-        use crate::test_fakes::{assistant_tool, FakeTaskStore};
         use crate::tasklist::TASK_CREATE_TOOL;
+        use crate::test_fakes::{assistant_tool, FakeTaskStore};
 
         let store = Arc::new(FakeTaskStore::default());
         // One shared child model (model_id=None): create a task, then finish.
@@ -859,7 +930,11 @@ mod tests {
         let parent_run = Uuid::new_v4();
 
         let summaries = core
-            .fan_out(Uuid::new_v4(), vec![spec(None, "child task")], CancelToken::new())
+            .fan_out(
+                Uuid::new_v4(),
+                vec![spec(None, "child task")],
+                CancelToken::new(),
+            )
             .await
             .unwrap();
 
@@ -876,7 +951,10 @@ mod tests {
         let lists = store.lists.lock().unwrap();
         assert_eq!(lists.len(), 1, "only the child created a task list");
         let (child_run, items) = lists.iter().next().unwrap();
-        assert_ne!(*child_run, parent_run, "the child list is keyed by its own run_id");
+        assert_ne!(
+            *child_run, parent_run,
+            "the child list is keyed by its own run_id"
+        );
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].content, "Do the child step");
         assert!(
@@ -966,7 +1044,10 @@ mod tests {
                 Uuid::new_v4(),
                 // A is FIRST → awaited first → its error triggers the FailFast
                 // early-return while B is still mid-run.
-                vec![spec(Some(Uuid::new_v4()), "A fails fast"), spec(None, "B runs long")],
+                vec![
+                    spec(Some(Uuid::new_v4()), "A fails fast"),
+                    spec(None, "B runs long"),
+                ],
                 CancelToken::new(),
             )
             .await;
@@ -977,6 +1058,158 @@ mod tests {
         assert!(
             !completed.load(Ordering::SeqCst),
             "a surviving child must be stopped on a FailFast early-return, not left running"
+        );
+    }
+
+    // ---- ITEM-5 / ITEM-11: the injected `ChildSink` factory ----------------
+
+    /// A sink that records every child event it receives (the "persist for user
+    /// display" side).
+    use crate::ports::ChildSink;
+
+    struct CaptureSink {
+        events: Arc<std::sync::Mutex<Vec<AgentEvent>>>,
+    }
+    #[async_trait]
+    impl EventSink for CaptureSink {
+        async fn emit(&self, ev: AgentEvent) {
+            self.events.lock().unwrap().push(ev);
+        }
+    }
+
+    /// A fake `ChildSink` factory: records `for_child`/`settle_child` calls and
+    /// funnels every child's events into one shared buffer.
+    #[derive(Default)]
+    struct CapturingChildFactory {
+        for_child_calls: std::sync::Mutex<Vec<(Uuid, String)>>,
+        settled: std::sync::Mutex<Vec<(Uuid, bool)>>,
+        child_events: Arc<std::sync::Mutex<Vec<AgentEvent>>>,
+    }
+    #[async_trait]
+    impl ChildSink for CapturingChildFactory {
+        async fn for_child(&self, child_run_id: Uuid, label: &str) -> Arc<dyn EventSink> {
+            self.for_child_calls
+                .lock()
+                .unwrap()
+                .push((child_run_id, label.to_string()));
+            Arc::new(CaptureSink {
+                events: self.child_events.clone(),
+            })
+        }
+        async fn settle_child(&self, child_run_id: Uuid, ok: bool) {
+            self.settled.lock().unwrap().push((child_run_id, ok));
+        }
+    }
+
+    /// TEST-3 (acceptance, INV-3): with a child-sink factory PRESENT, a child's
+    /// FULL raw stream (intermediate tool activity) is captured for USER display,
+    /// yet the PARENT still receives ONLY the neutralized final summary — never
+    /// the child's raw intermediate output. Persist-for-display ≠ feed-to-parent,
+    /// so the fan-out security boundary is intact.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn factory_persists_child_stream_but_parent_gets_summary_only() {
+        let child_model = Arc::new(ScriptedModel::script(vec![
+            crate::test_fakes::assistant_tool(
+                "t1",
+                "search",
+                serde_json::json!({ "q": "RAW_INTERMEDIATE_STEP" }),
+            ),
+            ChatMessage::assistant("FINAL_VISIBLE_ANSWER"),
+        ]));
+        let factory = Arc::new(CapturingChildFactory::default());
+        let mut core = fanout_core(
+            child_model,
+            Arc::new(FakeResolver::default()),
+            Arc::new(ProviderModelClientFactory),
+            6,
+        );
+        core.isolate_children = true;
+        core.child_sink_factory = Some(factory.clone());
+
+        let summaries = core
+            .fan_out_inner(
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                vec![spec(None, "child task")],
+                CancelToken::new(),
+                FailureMode::ErrorSummary,
+            )
+            .await
+            .unwrap();
+
+        // Parent context = the returned summary ONLY: the child's final text, never
+        // its raw intermediate tool activity.
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].summary, "FINAL_VISIBLE_ANSWER");
+        assert!(
+            !summaries[0].summary.contains("RAW_INTERMEDIATE_STEP"),
+            "the parent must never receive the child's raw intermediate output"
+        );
+
+        // The factory WAS consulted and captured the child's FULL stream —
+        // including the raw tool-use message — for later user display.
+        let calls = factory.for_child_calls.lock().unwrap().clone();
+        assert_eq!(
+            calls.len(),
+            1,
+            "the factory was consulted for the spawned child"
+        );
+        let saw_tool = factory.child_events.lock().unwrap().iter().any(|e| {
+            matches!(e, AgentEvent::Message(m)
+                if m.content.iter().any(|b| matches!(b, ContentBlock::ToolUse { .. })))
+        });
+        assert!(
+            saw_tool,
+            "the child's raw tool activity was captured for display"
+        );
+        // The child settled completed via the injected port (terminal marking).
+        assert_eq!(*factory.settled.lock().unwrap(), vec![(calls[0].0, true)]);
+    }
+
+    /// TEST-5 (acceptance, INV-5): with NO factory injected, the fan-out is
+    /// byte-identical to the legacy Noop path — the isolated child runs on a
+    /// `NoopEventSink`, the parent gets summary-only, and NO child event leaks to
+    /// the parent's sink. The crate needs no DB for child activity.
+    #[tokio::test]
+    async fn no_factory_is_byte_identical_noop() {
+        let sink = Arc::new(FakeSink::default());
+        let mut core = fanout_core_with_sink(
+            Arc::new(ScriptedModel::final_text("child answer")),
+            Arc::new(FakeResolver::default()),
+            Arc::new(ProviderModelClientFactory),
+            6,
+            sink.clone(),
+        );
+        core.isolate_children = true;
+        assert!(
+            core.child_sink_factory.is_none(),
+            "the default is no factory — the crate has no DB dependency for children"
+        );
+
+        let summaries = core
+            .fan_out_inner(
+                Uuid::new_v4(),
+                Uuid::new_v4(),
+                vec![spec(None, "task")],
+                CancelToken::new(),
+                FailureMode::ErrorSummary,
+            )
+            .await
+            .unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].summary, "child answer");
+
+        // With no factory the child ran on a Noop sink; the PARENT sink saw only
+        // SubAgentActivity snapshots, never a child's own Message/Delta events.
+        let leaked = sink
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, AgentEvent::Message(_) | AgentEvent::ContentDelta(_)));
+        assert!(
+            !leaked,
+            "no factory => child events go to Noop, not the parent sink"
         );
     }
 }

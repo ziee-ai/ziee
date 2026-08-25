@@ -31,14 +31,40 @@ pub trait TranscriptStore: Send + Sync {
     /// Journal a completed tool call (P5) — the resume replay record.
     async fn journal_tool_call(&self, run_id: Uuid, rec: ToolCallRecord) -> Result<(), AppError>;
     /// The replay set on resume (P6): tool calls already completed this turn.
-    async fn completed_tool_calls(&self, run_id: Uuid)
-        -> Result<Vec<ToolCallRecord>, AppError>;
+    async fn completed_tool_calls(&self, run_id: Uuid) -> Result<Vec<ToolCallRecord>, AppError>;
 }
 
 /// Push loop events out (chat: SSE registry; workflow: `ProgressEmitter`).
 #[async_trait]
 pub trait EventSink: Send + Sync {
     async fn emit(&self, ev: AgentEvent);
+}
+
+/// Persist a fan-out CHILD's own event stream for later USER display, and mark
+/// the child terminal when it settles. Injected (optional) into [`AgentCore`] and
+/// consulted ONLY inside the `isolate_children` fan-out path: when present, each
+/// isolated child's `NoopEventSink` is replaced by
+/// [`for_child`](ChildSink::for_child)'s sink so the child's thinking / tool
+/// activity / messages are captured out-of-band (never fed back to the parent —
+/// the parent still receives summary-only, so this does NOT change the fan-out
+/// security boundary).
+///
+/// The crate stays domain-free: only a `Uuid` (the child's fresh `run_id`) and a
+/// `&str` label cross this seam. The HOST bakes the parent identity
+/// (conversation/message/user/model) into the concrete factory at construction,
+/// so agent-core never sees a DB row, a schema, or a conversation. Absent ⇒ the
+/// child keeps its `NoopEventSink` (byte-identical legacy behavior).
+#[async_trait]
+pub trait ChildSink: Send + Sync {
+    /// Prepare persistence for one about-to-run child and return the sink its
+    /// loop should emit onto. The impl may create durable backing (e.g. a run
+    /// row) here; a failure must degrade to a harmless no-op sink, never error
+    /// the fan-out.
+    async fn for_child(&self, child_run_id: Uuid, label: &str) -> Arc<dyn EventSink>;
+    /// Mark a settled child terminal (`ok` = completed, else failed). Called at
+    /// the join barrier for EVERY spawned child — including a child-RUN error or
+    /// panic, which emits no `Stopped` event, so the sink alone cannot observe it.
+    async fn settle_child(&self, child_run_id: Uuid, ok: bool);
 }
 
 /// Enumerate + call tools, unifying built-in + external MCP (chat + workflow both
@@ -149,9 +175,5 @@ pub trait SteerNotePort: Send + Sync {
 #[async_trait]
 pub trait SchedulePort: Send + Sync {
     /// Record this run's next-fire proposal (last-write-wins within a turn).
-    async fn propose_next(
-        &self,
-        run_id: Uuid,
-        proposal: ScheduleProposal,
-    ) -> Result<(), AppError>;
+    async fn propose_next(&self, run_id: Uuid, proposal: ScheduleProposal) -> Result<(), AppError>;
 }

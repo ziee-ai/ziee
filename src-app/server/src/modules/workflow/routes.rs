@@ -13,7 +13,6 @@
 //! authoring stays admin-multipart-only. install-from-hub + import + the builder
 //! create/edit-definition endpoints cover the real flows.
 
-
 use aide::axum::{
     ApiRouter,
     routing::{delete_with, get_with, post_with, put_with},
@@ -25,11 +24,10 @@ use super::handlers::{self, dev, system};
 use super::log_stream;
 use super::output_stream;
 use super::progress_sse;
+use super::subagent_runs;
 
 pub fn workflow_router() -> ApiRouter {
-    ApiRouter::new()
-        .merge(user_routes())
-        .merge(admin_routes())
+    ApiRouter::new().merge(user_routes()).merge(admin_routes())
 }
 
 pub fn user_routes() -> ApiRouter {
@@ -37,7 +35,10 @@ pub fn user_routes() -> ApiRouter {
         // CRUD
         .api_route(
             "/workflows",
-            get_with(handlers::list_user_workflows, handlers::list_user_workflows_docs),
+            get_with(
+                handlers::list_user_workflows,
+                handlers::list_user_workflows_docs,
+            ),
         )
         .api_route(
             "/workflows/install-from-hub",
@@ -52,7 +53,10 @@ pub fn user_routes() -> ApiRouter {
         )
         .api_route(
             "/workflows/{id}",
-            get_with(handlers::get_user_workflow, handlers::get_user_workflow_docs),
+            get_with(
+                handlers::get_user_workflow,
+                handlers::get_user_workflow_docs,
+            ),
         )
         .api_route(
             "/workflows/{id}",
@@ -91,7 +95,27 @@ pub fn user_routes() -> ApiRouter {
         // Run history (A4)
         .api_route(
             "/workflows/{id}/runs",
-            get_with(handlers::list_workflow_runs, handlers::list_workflow_runs_docs),
+            get_with(
+                handlers::list_workflow_runs,
+                handlers::list_workflow_runs_docs,
+            ),
+        )
+        // ITEM-8 — a chat turn's fan-out CHILD sub-agent transcripts. Owner-scoped,
+        // gated on the EXISTING `WorkflowsRead` (Users group); child rows are
+        // `workflow_runs` rows, so these live here rather than in background_mcp.
+        .api_route(
+            "/subagent-runs",
+            get_with(
+                subagent_runs::list_subagent_runs,
+                subagent_runs::list_subagent_runs_docs,
+            ),
+        )
+        .api_route(
+            "/subagent-runs/{child_id}",
+            get_with(
+                subagent_runs::get_subagent_run,
+                subagent_runs::get_subagent_run_docs,
+            ),
         )
         // Run lifecycle + read-back
         .api_route(
@@ -122,7 +146,10 @@ pub fn user_routes() -> ApiRouter {
         )
         .api_route(
             "/workflow-runs/{run_id}/artifact/{step_id}/{filename}",
-            get_with(artifact_stream::read_artifact, artifact_stream::read_artifact_docs),
+            get_with(
+                artifact_stream::read_artifact,
+                artifact_stream::read_artifact_docs,
+            ),
         )
         .api_route(
             "/workflow-runs/{run_id}/logs/{step_id}/{kind}",
@@ -168,7 +195,10 @@ pub fn admin_routes() -> ApiRouter {
     ApiRouter::new()
         .api_route(
             "/workflows/system",
-            get_with(system::list_system_workflows, system::list_system_workflows_docs),
+            get_with(
+                system::list_system_workflows,
+                system::list_system_workflows_docs,
+            ),
         )
         .api_route(
             "/workflows/system/install-from-hub",
@@ -179,11 +209,17 @@ pub fn admin_routes() -> ApiRouter {
         )
         .api_route(
             "/workflows/system/import",
-            post_with(dev::import_system_workflow, dev::import_system_workflow_docs),
+            post_with(
+                dev::import_system_workflow,
+                dev::import_system_workflow_docs,
+            ),
         )
         .api_route(
             "/workflows/system/{id}",
-            get_with(system::get_system_workflow, system::get_system_workflow_docs),
+            get_with(
+                system::get_system_workflow,
+                system::get_system_workflow_docs,
+            ),
         )
         .api_route(
             "/workflows/system/{id}",
@@ -194,11 +230,17 @@ pub fn admin_routes() -> ApiRouter {
         )
         .api_route(
             "/workflows/system/{id}/groups",
-            get_with(system::get_workflow_groups, system::get_workflow_groups_docs),
+            get_with(
+                system::get_workflow_groups,
+                system::get_workflow_groups_docs,
+            ),
         )
         .api_route(
             "/workflows/system/{id}/groups",
-            post_with(system::set_workflow_groups, system::set_workflow_groups_docs),
+            post_with(
+                system::set_workflow_groups,
+                system::set_workflow_groups_docs,
+            ),
         )
         .api_route(
             "/workflows/system/{id}/groups/{group_id}",

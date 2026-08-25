@@ -17,7 +17,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use agent_core::{
-    AgentEvent, AgentTurnRequest, Budget, CancelToken, EventSink, GateAsk, GateOutcome, HumanGate,
+    AgentEvent, AgentTurnRequest, Budget, CancelToken, GateAsk, GateOutcome, HumanGate,
     ModelClient, ProviderModelClient, ReviewDecision, StopReason, ToolScope, TurnSeed,
 };
 use ai_providers::{ChatMessage, ContentBlock, Role};
@@ -26,7 +26,7 @@ use crate::common::AppError;
 use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 use crate::modules::notification::models::NewNotification;
 use crate::modules::workflow::agent_dispatch::{
-    build_detached_agent_core, DetachedAgentCoreArgs, RunNoteSteerPort,
+    DetachedAgentCoreArgs, RunNoteSteerPort, build_detached_agent_core,
 };
 use crate::modules::workflow::models::{CreateBackgroundRun, JobKind, WorkflowRunStatus};
 use crate::modules::workflow::registry;
@@ -138,7 +138,10 @@ const DEFAULT_KIND: &str = "subagent";
 /// A key outside this set is a TYPO (`cmd`, `prompt`, `script`) — it means
 /// nothing to any kind, and it used to be silently ignored.
 fn spec_key_is_known(key: &str) -> bool {
-    key == "kind" || KIND_CONTRACTS.iter().any(|k| k.own_fields().any(|f| f == key))
+    key == "kind"
+        || KIND_CONTRACTS
+            .iter()
+            .any(|k| k.own_fields().any(|f| f == key))
 }
 
 /// Which OTHER kind does `key` belong to, if it is not valid for `kind`?
@@ -246,7 +249,9 @@ fn read_kind(container: &Value, location: &str) -> Result<Option<String>, AppErr
         // default for a value the caller supplied, which INV-2 forbids. Refusing
         // it as an unknown kind is the only reading that is both accurate and
         // non-silent.
-        Some(Value::String(s)) if s.trim().is_empty() => Err(unknown_kind_error(s.trim(), location)),
+        Some(Value::String(s)) if s.trim().is_empty() => {
+            Err(unknown_kind_error(s.trim(), location))
+        }
         Some(Value::String(s)) => Ok(Some(s.trim().to_string())),
         Some(other) => Err(AppError::bad_request(
             "BACKGROUND_KIND_INVALID",
@@ -594,7 +599,9 @@ fn parse_run_id(args: &Value) -> Result<Uuid, AppError> {
         .get("run_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::bad_request("BACKGROUND_RUN_ID_REQUIRED", "run_id is required"))?;
-    Uuid::parse_str(raw).map_err(|_| AppError::bad_request("BACKGROUND_RUN_ID_INVALID", "run_id must be a valid UUID"))
+    Uuid::parse_str(raw).map_err(|_| {
+        AppError::bad_request("BACKGROUND_RUN_ID_INVALID", "run_id must be a valid UUID")
+    })
 }
 
 /// `spawn_background{kind, spec}` — create + fire-and-forget a background run of
@@ -705,10 +712,21 @@ async fn spawn_subagent(
     // Capture the spec into the detached driver (ITEM-7 / ITEM-9). The driver
     // runs OUTSIDE any per-conversation single-flight lock — this is
     // fire-and-forget, so the foreground chat stays interactive.
-    let run_id = runner::spawn_background_run(pool, request, move |task_pool, run_id, handle| async move {
-        execute_subagent_run(&task_pool, run_id, user_id, conversation_id, model_id, handle, &system, &task).await
-    })
-    .await?;
+    let run_id =
+        runner::spawn_background_run(pool, request, move |task_pool, run_id, handle| async move {
+            execute_subagent_run(
+                &task_pool,
+                run_id,
+                user_id,
+                conversation_id,
+                model_id,
+                handle,
+                &system,
+                &task,
+            )
+            .await
+        })
+        .await?;
 
     Ok(json!({
         "run_id": run_id,
@@ -718,18 +736,13 @@ async fn spawn_subagent(
     }))
 }
 
-/// Quiet [`EventSink`] for a detached background sub-agent. Unlike the workflow
-/// `kind: agent` host (which streams `StepProgress` over a live SSE channel), a
-/// background run has no attached request stream — the foreground chat moved on —
-/// so loop events are dropped. (Surfacing progress into `step_progress_json` for
-/// `check_status` is a follow-up.) `check_status` / `collect_result` are the
-/// owner-scoped read surface for a background run's state + result.
-struct BackgroundEventSink;
-
-#[async_trait]
-impl EventSink for BackgroundEventSink {
-    async fn emit(&self, _ev: AgentEvent) {}
-}
+// The detached background sub-agent's event sink is the shared
+// `workflow::activity_sink::PersistingActivitySink` (ITEM-2), keyed to the
+// background run's OWN `workflow_runs` row + step id `"agent"`. Unlike the
+// workflow `kind: agent` host it has no attached live SSE stream, so it persists
+// ONLY (durable transcript). `check_status` / `collect_result` + the new
+// `GET /api/background/runs/{id}` `activity[]` projection are the owner-scoped
+// read surface for that transcript.
 
 /// Unattended [`HumanGate`] for a detached background sub-agent (DEC-117). A
 /// background run has NO human to answer a prompt, so any call the approval
@@ -946,10 +959,20 @@ async fn spawn_sandbox_exec(
 
     // Fire-and-forget: the driver runs OUTSIDE any per-conversation single-flight
     // lock, so the foreground chat stays interactive while the command runs.
-    let run_id = runner::spawn_background_run(pool, request, move |task_pool, run_id, handle| async move {
-        execute_sandbox_run(&task_pool, run_id, user_id, conversation_id, handle, command, flavor).await
-    })
-    .await?;
+    let run_id =
+        runner::spawn_background_run(pool, request, move |task_pool, run_id, handle| async move {
+            execute_sandbox_run(
+                &task_pool,
+                run_id,
+                user_id,
+                conversation_id,
+                handle,
+                command,
+                flavor,
+            )
+            .await
+        })
+        .await?;
 
     Ok(json!({
         "run_id": run_id,
@@ -1025,7 +1048,10 @@ async fn execute_sandbox_run(
 /// A nonzero `exit_code` is DATA (the run still `completed`); only a sandbox-level
 /// error maps to a failed run.
 fn build_sandbox_final_output(command: &str, flavor: &str, exec: &Value) -> Value {
-    let timed_out = exec.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false);
+    let timed_out = exec
+        .get("timed_out")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let status = if timed_out { "timed_out" } else { "completed" };
     json!({
         "executor": "code-sandbox",
@@ -1054,7 +1080,11 @@ fn sandbox_notification_summary(final_output: &Value) -> String {
             .filter(|s| !s.is_empty())
             .map(|s| s.chars().take(200).collect::<String>())
     };
-    if final_output.get("timed_out").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if final_output
+        .get("timed_out")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         return "Background command timed out.".to_string();
     }
     match final_output.get("exit_code").and_then(|v| v.as_i64()) {
@@ -1096,7 +1126,12 @@ async fn drive_subagent_turn(
     let settings = crate::core::Repos.agent.get_admin_settings().await.ok();
     let (max_steps, per_run_cap) = settings
         .as_ref()
-        .map(|s| (s.default_max_steps.max(1) as u32, s.per_run_token_cap.max(0) as u64))
+        .map(|s| {
+            (
+                s.default_max_steps.max(1) as u32,
+                s.per_run_token_cap.max(0) as u64,
+            )
+        })
         .unwrap_or((30, 1_000_000));
     let budget = Budget::new(max_steps, per_run_cap, per_run_cap);
 
@@ -1113,7 +1148,13 @@ async fn drive_subagent_turn(
         model_name: model_name.clone(),
         model_client,
         cancel: handle.clone(),
-        sink: Arc::new(BackgroundEventSink),
+        sink: Arc::new(
+            crate::modules::workflow::activity_sink::PersistingActivitySink::new(
+                pool.clone(),
+                run_id,
+                "agent",
+            ),
+        ),
         gate: Arc::new(UnattendedDenyGate),
         classifications: Arc::new(Mutex::new(HashMap::new())),
         settings,
@@ -1132,7 +1173,9 @@ async fn drive_subagent_turn(
     let system_blocks: Vec<ContentBlock> = if system.trim().is_empty() {
         Vec::new()
     } else {
-        vec![ContentBlock::Text { text: system.to_string() }]
+        vec![ContentBlock::Text {
+            text: system.to_string(),
+        }]
     };
     let req = AgentTurnRequest {
         run_id,
@@ -1364,17 +1407,17 @@ mod tests {
     fn tool_list_advertises_the_trio() {
         let list = tool_list();
         let tools = list["tools"].as_array().expect("tools array");
-        let names: Vec<&str> = tools
-            .iter()
-            .filter_map(|t| t["name"].as_str())
-            .collect();
+        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
         assert!(names.contains(&"spawn_background"));
         assert!(names.contains(&"check_status"));
         assert!(names.contains(&"collect_result"));
         assert_eq!(names.len(), 3, "exactly the trio, no accidental extras");
 
         // spawn_background requires `spec`; the reads require `run_id`.
-        let spawn = tools.iter().find(|t| t["name"] == "spawn_background").unwrap();
+        let spawn = tools
+            .iter()
+            .find(|t| t["name"] == "spawn_background")
+            .unwrap();
         assert_eq!(spawn["inputSchema"]["required"][0], "spec");
         for read in ["check_status", "collect_result"] {
             let t = tools.iter().find(|t| t["name"] == read).unwrap();
@@ -1416,7 +1459,9 @@ mod tests {
             "spawn_background must tell the model to end its turn: {spawn}"
         );
         assert!(
-            spawn.contains("re-engaged") || spawn.contains("auto-resume") || spawn.contains("automatically"),
+            spawn.contains("re-engaged")
+                || spawn.contains("auto-resume")
+                || spawn.contains("automatically"),
             "spawn_background must describe automatic re-engagement on completion: {spawn}"
         );
         assert!(
@@ -1432,13 +1477,22 @@ mod tests {
     fn spawn_kind_enum_advertises_sandbox_exec() {
         let list = tool_list();
         let tools = list["tools"].as_array().unwrap();
-        let spawn = tools.iter().find(|t| t["name"] == "spawn_background").unwrap();
+        let spawn = tools
+            .iter()
+            .find(|t| t["name"] == "spawn_background")
+            .unwrap();
         let kinds = spawn["inputSchema"]["properties"]["kind"]["enum"]
             .as_array()
             .expect("kind enum");
         let kinds: Vec<&str> = kinds.iter().filter_map(|k| k.as_str()).collect();
-        assert!(kinds.contains(&"subagent"), "subagent kind still advertised");
-        assert!(kinds.contains(&"sandbox_exec"), "sandbox_exec kind advertised");
+        assert!(
+            kinds.contains(&"subagent"),
+            "subagent kind still advertised"
+        );
+        assert!(
+            kinds.contains(&"sandbox_exec"),
+            "sandbox_exec kind advertised"
+        );
     }
 
     // TEST (rootfs-free executor wiring — ITEM-11/13): `build_sandbox_final_output`
@@ -1482,7 +1536,10 @@ mod tests {
             "stdout_truncated": false, "stderr_truncated": false,
         });
         let out = build_sandbox_final_output("false", "minimal", &exec);
-        assert_eq!(out["status"], "completed", "the command ran → completed run");
+        assert_eq!(
+            out["status"], "completed",
+            "the command ran → completed run"
+        );
         assert_eq!(out["exit_code"], json!(2));
         assert_eq!(out["stderr"], "boom");
     }
@@ -1526,16 +1583,22 @@ mod tests {
             &json!({ "stdout": "", "stderr": "nope", "exit_code": 1, "timed_out": false }),
         );
         let s = sandbox_notification_summary(&failed);
-        assert!(s.contains("exited with code 1"), "failure summary names the code: {s}");
-        assert!(s.contains("nope"), "failure summary carries the stderr head: {s}");
+        assert!(
+            s.contains("exited with code 1"),
+            "failure summary names the code: {s}"
+        );
+        assert!(
+            s.contains("nope"),
+            "failure summary carries the stderr head: {s}"
+        );
     }
 }
 
 #[cfg(test)]
 mod stringified_arg_tests {
     use super::*;
-    use crate::common::tool_args::conformance::{assert_arg_conformance, ArgSite};
     use crate::common::tool_args::ArgShape;
+    use crate::common::tool_args::conformance::{ArgSite, assert_arg_conformance};
     use serde_json::json;
 
     /// A double-encoded `spec` used to produce the LIE "spec.task must be a
@@ -1549,8 +1612,14 @@ mod stringified_arg_tests {
 
         let err = decode_spec_arg(&json!({ "spec": "not json {" })).unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("spec") && msg.contains("JSON object"), "got: {msg}");
-        assert!(msg.contains(BACKGROUND_SPEC_EXAMPLE), "must show a spec to copy: {msg}");
+        assert!(
+            msg.contains("spec") && msg.contains("JSON object"),
+            "got: {msg}"
+        );
+        assert!(
+            msg.contains(BACKGROUND_SPEC_EXAMPLE),
+            "must show a spec to copy: {msg}"
+        );
     }
 
     /// The shared conformance battery, applied to `spawn_background.spec`.
@@ -1653,7 +1722,10 @@ mod argument_contract_tests {
             "spec": { "kind": "sandbox_exec", "command": "python hello.py" }
         }))
         .expect("a nested `kind` must be honoured, not dropped");
-        assert_eq!(kind, "sandbox_exec", "the nested `kind` resolves the job kind");
+        assert_eq!(
+            kind, "sandbox_exec",
+            "the nested `kind` resolves the job kind"
+        );
 
         // HAPPY-PATH COUNTERPARTS — the pre-existing behaviour is unchanged.
         let (kind, _) = parse(json!({ "kind": "subagent", "spec": { "task": "x" } })).unwrap();
@@ -1662,7 +1734,10 @@ mod argument_contract_tests {
             parse(json!({ "kind": "sandbox_exec", "spec": { "command": "ls" } })).unwrap();
         assert_eq!(kind, "sandbox_exec", "a top-level sandbox kind still works");
         let (kind, _) = parse(json!({ "spec": { "task": "x" } })).unwrap();
-        assert_eq!(kind, DEFAULT_KIND, "an ABSENT `kind` still falls to the default");
+        assert_eq!(
+            kind, DEFAULT_KIND,
+            "an ABSENT `kind` still falls to the default"
+        );
     }
 
     // TEST-2: two `kind`s that DISAGREE are refused naming both, never resolved
@@ -1675,7 +1750,10 @@ mod argument_contract_tests {
         }))
         .expect_err("a contradiction must not be silently resolved");
         assert!(msg.contains("subagent"), "names the top-level value: {msg}");
-        assert!(msg.contains("sandbox_exec"), "names the nested value: {msg}");
+        assert!(
+            msg.contains("sandbox_exec"),
+            "names the nested value: {msg}"
+        );
         assert_actionable("kind-conflict", &msg, "kind");
 
         // HAPPY-PATH COUNTERPART: the same value in both places is fine.
@@ -1696,7 +1774,10 @@ mod argument_contract_tests {
             "spec": { "kind": "sandbox_exec", "command": "ls -la", "flavor": "full" }
         }))
         .unwrap();
-        assert!(spec.get("kind").is_none(), "`kind` is consumed, not persisted: {spec}");
+        assert!(
+            spec.get("kind").is_none(),
+            "`kind` is consumed, not persisted: {spec}"
+        );
         assert_eq!(spec["command"], json!("ls -la"), "every other key survives");
         assert_eq!(spec["flavor"], json!("full"), "…byte-identically");
 
@@ -1716,9 +1797,16 @@ mod argument_contract_tests {
             json!({ "spec": { "kind": "zee-workflow", "task": "x" } }),
         ] {
             let msg = parse(args.clone()).expect_err("an unknown kind must be refused");
-            assert!(msg.contains("zee-workflow"), "echoes what was received: {msg}");
+            assert!(
+                msg.contains("zee-workflow"),
+                "echoes what was received: {msg}"
+            );
             for k in KIND_CONTRACTS {
-                assert!(msg.contains(k.name), "lists the valid kind `{}`: {msg}", k.name);
+                assert!(
+                    msg.contains(k.name),
+                    "lists the valid kind `{}`: {msg}",
+                    k.name
+                );
             }
             assert_actionable("unknown-kind", &msg, "kind");
         }
@@ -1789,14 +1877,19 @@ mod argument_contract_tests {
         // server applies.
         let list = tool_list();
         let tools = list["tools"].as_array().unwrap();
-        let spawn = tools.iter().find(|t| t["name"] == "spawn_background").unwrap();
+        let spawn = tools
+            .iter()
+            .find(|t| t["name"] == "spawn_background")
+            .unwrap();
         let spec_schema = &spawn["inputSchema"]["properties"]["spec"];
         assert_eq!(
             spec_schema["additionalProperties"],
             json!(false),
             "the schema must advertise the closed key set the server enforces"
         );
-        let props = spec_schema["properties"].as_object().expect("spec properties");
+        let props = spec_schema["properties"]
+            .as_object()
+            .expect("spec properties");
         // Derived from KIND_CONTRACTS, not a hardcoded list: adding a kind to the
         // table without advertising its fields is the advertisement-vs-enforcement
         // gap this whole change closes, so it must fail HERE.
@@ -1818,8 +1911,10 @@ mod argument_contract_tests {
         // Both `kind` enums (top-level AND the one nested in `spec`) must equal
         // the table, so a third kind cannot be enforced-but-never-advertised.
         let table_kinds: Vec<&str> = KIND_CONTRACTS.iter().map(|k| k.name).collect();
-        for path in [&spawn["inputSchema"]["properties"]["kind"], &spec_schema["properties"]["kind"]]
-        {
+        for path in [
+            &spawn["inputSchema"]["properties"]["kind"],
+            &spec_schema["properties"]["kind"],
+        ] {
             let advertised: Vec<&str> = path["enum"]
                 .as_array()
                 .expect("a kind enum")
@@ -1845,13 +1940,21 @@ mod argument_contract_tests {
     fn every_spawn_refusal_is_actionable() {
         // Argument-parsing refusals.
         let cases: &[(&str, serde_json::Value, &str)] = &[
-            ("unknown-kind", json!({ "kind": "nope", "spec": { "task": "x" } }), "kind"),
+            (
+                "unknown-kind",
+                json!({ "kind": "nope", "spec": { "task": "x" } }),
+                "kind",
+            ),
             (
                 "kind-conflict",
                 json!({ "kind": "subagent", "spec": { "kind": "sandbox_exec", "command": "ls" } }),
                 "kind",
             ),
-            ("non-string-kind", json!({ "kind": true, "spec": { "task": "x" } }), "kind"),
+            (
+                "non-string-kind",
+                json!({ "kind": true, "spec": { "task": "x" } }),
+                "kind",
+            ),
             (
                 "unknown-spec-key",
                 json!({ "kind": "subagent", "spec": { "task": "x", "nope": 1 } }),
@@ -1878,8 +1981,16 @@ mod argument_contract_tests {
         for (label, kind_name, spec) in [
             ("missing-task", "subagent", json!({})),
             ("missing-command", "sandbox_exec", json!({})),
-            ("missing-task-with-command", "subagent", json!({ "command": "ls" })),
-            ("missing-command-with-task", "sandbox_exec", json!({ "task": "x" })),
+            (
+                "missing-task-with-command",
+                "subagent",
+                json!({ "command": "ls" }),
+            ),
+            (
+                "missing-command-with-task",
+                "sandbox_exec",
+                json!({ "task": "x" }),
+            ),
         ] {
             let contract = find_kind(kind_name).expect("a table kind");
             let msg = require_spec_field(contract, &spec)
@@ -1891,7 +2002,9 @@ mod argument_contract_tests {
         // The flavor refusals, from both model-facing entry points.
         assert_actionable(
             "bad-spec-flavor",
-            &resolve_spec_flavor(&json!({ "flavor": "nope" })).unwrap_err().to_string(),
+            &resolve_spec_flavor(&json!({ "flavor": "nope" }))
+                .unwrap_err()
+                .to_string(),
             "spec.flavor",
         );
 
@@ -1924,16 +2037,28 @@ mod argument_contract_tests {
         // and the refusal must be the misplaced-kind one.
         let msg = parse(json!({ "spec": { "kind": "sandbox_exec", "task": "Say hello." } }))
             .expect_err("a cross-kind field must be refused");
-        assert!(msg.contains("spec.command"), "demands the field THIS kind needs: {msg}");
-        assert!(msg.contains("spec.task"), "names the field that WAS supplied: {msg}");
-        assert!(msg.contains("subagent"), "…and which kind it belongs to: {msg}");
+        assert!(
+            msg.contains("spec.command"),
+            "demands the field THIS kind needs: {msg}"
+        );
+        assert!(
+            msg.contains("spec.task"),
+            "names the field that WAS supplied: {msg}"
+        );
+        assert!(
+            msg.contains("subagent"),
+            "…and which kind it belongs to: {msg}"
+        );
         assert_actionable("cross-kind-task", &msg, "spec.command");
 
         // Symmetric case: a subagent spec carrying `command`.
         let msg = parse(json!({ "kind": "subagent", "spec": { "command": "ls" } }))
             .expect_err("a cross-kind field must be refused");
         assert!(msg.contains("spec.task"), "demands `task`: {msg}");
-        assert!(msg.contains("spec.command"), "names the misplaced field: {msg}");
+        assert!(
+            msg.contains("spec.command"),
+            "names the misplaced field: {msg}"
+        );
         assert!(msg.contains("sandbox_exec"), "…and its kind: {msg}");
         assert_actionable("cross-kind-command", &msg, "spec.task");
 
@@ -1991,7 +2116,10 @@ mod argument_contract_tests {
             .to_string();
         assert!(msg.contains("spec.flavor"), "names the argument: {msg}");
         for name in crate::modules::code_sandbox::known_flavor_names() {
-            assert!(msg.contains(name), "lists the advertised flavor `{name}`: {msg}");
+            assert!(
+                msg.contains(name),
+                "lists the advertised flavor `{name}`: {msg}"
+            );
         }
         assert_actionable("bad-flavor", &msg, "spec.flavor");
 
@@ -2008,7 +2136,10 @@ mod argument_contract_tests {
                 "the advertised flavor `{name}` must still be accepted"
             );
         }
-        assert_eq!(resolve_spec_flavor(&json!({})).unwrap(), crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR);
+        assert_eq!(
+            resolve_spec_flavor(&json!({})).unwrap(),
+            crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR
+        );
         assert_eq!(
             resolve_spec_flavor(&json!({ "flavor": null })).unwrap(),
             crate::modules::code_sandbox::DEFAULT_TOOL_FLAVOR
@@ -2017,14 +2148,17 @@ mod argument_contract_tests {
         // The schema advertises exactly the flavors the server accepts.
         let list = tool_list();
         let tools = list["tools"].as_array().unwrap();
-        let spawn = tools.iter().find(|t| t["name"] == "spawn_background").unwrap();
-        let advertised: Vec<&str> = spawn["inputSchema"]["properties"]["spec"]["properties"]
-            ["flavor"]["enum"]
-            .as_array()
-            .expect("flavor enum")
+        let spawn = tools
             .iter()
-            .filter_map(|v| v.as_str())
-            .collect();
+            .find(|t| t["name"] == "spawn_background")
+            .unwrap();
+        let advertised: Vec<&str> =
+            spawn["inputSchema"]["properties"]["spec"]["properties"]["flavor"]["enum"]
+                .as_array()
+                .expect("flavor enum")
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect();
         assert_eq!(
             advertised,
             crate::modules::code_sandbox::known_flavor_names(),
@@ -2054,7 +2188,10 @@ mod argument_contract_tests {
                 kind.name
             );
             require_spec_field(kind, &spec).unwrap_or_else(|e| {
-                panic!("the `{}` example must satisfy its required field: {e}", kind.name)
+                panic!(
+                    "the `{}` example must satisfy its required field: {e}",
+                    kind.name
+                )
             });
         }
 
@@ -2103,8 +2240,9 @@ mod argument_contract_tests {
         // (b) An empty / whitespace-only `kind` is an UNKNOWN kind, never a
         // "conflict" with a real sibling value and never silently defaulted.
         for spec_kind in ["", "   "] {
-            let msg = parse(json!({ "kind": "subagent", "spec": { "kind": spec_kind, "task": "x" } }))
-                .expect_err("an empty kind must be refused");
+            let msg =
+                parse(json!({ "kind": "subagent", "spec": { "kind": spec_kind, "task": "x" } }))
+                    .expect_err("an empty kind must be refused");
             assert!(
                 !msg.contains("supplied twice"),
                 "an empty string is not a competing value — it must not be reported as a \
@@ -2137,7 +2275,10 @@ mod argument_contract_tests {
         }
         let msg = parse(json!({ "kind": "subagent", "spec": Value::Object(many) }))
             .expect_err("unknown keys must be refused");
-        assert!(msg.contains("and 3 more"), "the truncated list must say so: {msg}");
+        assert!(
+            msg.contains("and 3 more"),
+            "the truncated list must say so: {msg}"
+        );
         assert_actionable("many-unknown-keys", &msg, "spec");
     }
 
@@ -2226,11 +2367,11 @@ mod argument_contract_tests {
         // The parse layer accepts the type; the REFUSAL lives in the spawner,
         // which needs a pool — so assert the shape the spawner reads, which is
         // what makes the silent default impossible.
-        let (_, spec) =
-            parse(json!({ "kind": "subagent", "spec": { "task": "x", "system": 42 } }))
-                .expect("the key itself is advertised, so parsing accepts it");
+        let (_, spec) = parse(json!({ "kind": "subagent", "spec": { "task": "x", "system": 42 } }))
+            .expect("the key itself is advertised, so parsing accepts it");
         assert!(
-            spec.get("system").is_some_and(|v| !v.is_string() && !v.is_null()),
+            spec.get("system")
+                .is_some_and(|v| !v.is_string() && !v.is_null()),
             "the wrong-typed value must still be PRESENT for the spawner to refuse — \
              if parsing dropped it, the spawner could not tell it apart from absent"
         );
@@ -2249,7 +2390,10 @@ mod argument_contract_tests {
     fn no_spec_property_declares_a_schema_default() {
         let list = tool_list();
         let tools = list["tools"].as_array().unwrap();
-        let spawn = tools.iter().find(|t| t["name"] == "spawn_background").unwrap();
+        let spawn = tools
+            .iter()
+            .find(|t| t["name"] == "spawn_background")
+            .unwrap();
         let props = spawn["inputSchema"]["properties"]["spec"]["properties"]
             .as_object()
             .expect("spec properties");

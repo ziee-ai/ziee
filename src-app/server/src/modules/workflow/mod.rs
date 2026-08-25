@@ -13,6 +13,7 @@
 //! B6 ships the REST surface (user + admin + workflow-runs handlers)
 //! per plan §3.
 
+pub mod activity_sink;
 pub mod agent_dispatch;
 pub mod artifact_io;
 pub mod artifact_stream;
@@ -34,6 +35,7 @@ pub mod progress_sse;
 pub mod ref_check;
 pub mod registry;
 pub mod repository;
+pub mod subagent_runs;
 pub mod routes;
 pub mod runner;
 pub mod sandbox_progress;

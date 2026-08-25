@@ -18,9 +18,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use ai_providers::{
-    ChatMessage, ChatRequest, ContentBlock, ContentBlockDelta, Provider, Role,
-};
+use ai_providers::{ChatMessage, ChatRequest, ContentBlock, ContentBlockDelta, Provider, Role};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use ziee_core::AppError;
@@ -313,6 +311,18 @@ pub struct AgentCore {
     /// `false` ⇒ byte-identical legacy `self.clone()` children (zero behavior
     /// change). Additive for existing hosts.
     pub isolate_children: bool,
+    /// OPTIONAL per-child activity-persistence factory, consulted ONLY on the
+    /// `isolate_children` fan-out path. When `Some`, each isolated child's
+    /// `NoopEventSink` is replaced by `factory.for_child(child_run_id, label)`
+    /// so the child's own transcript (thinking + tool activity + messages) is
+    /// captured for later USER display; the child is marked terminal via
+    /// `factory.settle_child` at the join barrier. `None` (workflow / background /
+    /// fakes, and any chat turn without the wiring) ⇒ the child keeps its
+    /// `NoopEventSink` — byte-identical legacy behavior. This never changes what
+    /// returns to the PARENT (still summary-only), so the fan-out security
+    /// boundary is intact. The crate stays DB-free: it only calls the injected
+    /// port (mirrors `steer`/`schedule`).
+    pub child_sink_factory: Option<Arc<dyn crate::ports::ChildSink>>,
 }
 
 /// What to do with one tool call after the approval gate has decided.
@@ -361,7 +371,8 @@ impl AgentCore {
                 break;
             }
             if let Some(reason) = budget.stop_before(iteration) {
-                self.push_emit(&mut events, AgentEvent::Stopped(reason)).await;
+                self.push_emit(&mut events, AgentEvent::Stopped(reason))
+                    .await;
                 break;
             }
 
@@ -421,7 +432,12 @@ impl AgentCore {
             // carry several; strict providers (vllm/qwen) accept only ONE system
             // message, and it must be first. Concatenating the text is semantically
             // identical (all are turn-level instructions) and valid for every provider.
-            if chat_req.messages.iter().filter(|m| m.role == Role::System).count() > 1
+            if chat_req
+                .messages
+                .iter()
+                .filter(|m| m.role == Role::System)
+                .count()
+                > 1
                 || chat_req
                     .messages
                     .first()
@@ -465,14 +481,13 @@ impl AgentCore {
             // hooks above already flipped the approval rows so the policy resolves
             // them. (Domain-neutral: purely a transcript shape, no chat types.)
             let is_first = iteration == req.start_iteration.max(1);
-            let resume_msg = if self.resume_executes_pending
-                && is_first
-                && matches!(req.seed, TurnSeed::Resume)
-            {
-                last_pending_assistant(&history)
-            } else {
-                None
-            };
+            let resume_msg =
+                if self.resume_executes_pending && is_first && matches!(req.seed, TurnSeed::Resume)
+                {
+                    last_pending_assistant(&history)
+                } else {
+                    None
+                };
             let from_model = resume_msg.is_none();
 
             // Tokens THIS step's model call reported (0 on a resume-executed
@@ -552,14 +567,14 @@ impl AgentCore {
             };
             if let Some(reason) = stop_reason {
                 for call in &tool_calls {
-                    let result = error_tool_result(
-                        format!("tool not executed: agent stopped ({reason:?})"),
-                    );
+                    let result =
+                        error_tool_result(format!("tool not executed: agent stopped ({reason:?})"));
                     let msg = tool_result_message(call, &result);
                     self.transcript.append(req.run_id, msg.clone()).await?;
                     self.push_emit(&mut events, AgentEvent::Message(msg)).await;
                 }
-                self.push_emit(&mut events, AgentEvent::Stopped(reason)).await;
+                self.push_emit(&mut events, AgentEvent::Stopped(reason))
+                    .await;
                 break;
             }
 
@@ -605,10 +620,7 @@ impl AgentCore {
                     continue;
                 }
 
-                let server_key = call
-                    .server
-                    .clone()
-                    .unwrap_or_else(|| call.name.clone());
+                let server_key = call.server.clone().unwrap_or_else(|| call.name.clone());
                 let trusted = self.tools.is_trusted(&server_key);
 
                 let mut decision = self.policy.decide(call, trusted, &self.sandbox).await;
@@ -816,12 +828,10 @@ fn tool_result_message(call: &ToolCall, result: &ToolResult) -> ChatMessage {
 mod tests {
     use super::*;
     use crate::policy::TrustedAutoApprovePolicy;
+    use crate::test_fakes::{assistant_tool, core_with, GateBehavior, ScriptedModel};
+    use crate::types::ApprovalMode;
     use crate::types::ToolScope;
     use uuid::Uuid;
-    use crate::test_fakes::{
-        assistant_tool, core_with, GateBehavior, ScriptedModel,
-    };
-    use crate::types::ApprovalMode;
 
     fn new_req() -> AgentTurnRequest {
         AgentTurnRequest {
@@ -901,6 +911,7 @@ mod tests {
             model_name: "test".into(),
             resume_executes_pending: true,
             isolate_children: false,
+            child_sink_factory: None,
         };
         core.run(new_req(), CancelToken::new()).await.unwrap();
         let deltas = sink
@@ -919,8 +930,17 @@ mod tests {
     #[tokio::test]
     async fn stops_on_no_tool_call() {
         let model = Arc::new(ScriptedModel::final_text("final answer"));
-        let harness = core_with(model, true, GateBehavior::Approve, TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest));
-        let events = harness.core.run(new_req(), CancelToken::new()).await.unwrap();
+        let harness = core_with(
+            model,
+            true,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
+        let events = harness
+            .core
+            .run(new_req(), CancelToken::new())
+            .await
+            .unwrap();
         assert_eq!(last_stop(&events), StopReason::NoToolCall);
         // No tool was executed.
         assert!(harness.transcript.journal.lock().unwrap().is_empty());
@@ -1011,8 +1031,17 @@ mod tests {
             ChatMessage::assistant("done"),
         ]));
         // trusted=true → auto-approve; TrustedAutoApprovePolicy returns Auto.
-        let harness = core_with(model, true, GateBehavior::Approve, TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest));
-        let events = harness.core.run(new_req(), CancelToken::new()).await.unwrap();
+        let harness = core_with(
+            model,
+            true,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
+        let events = harness
+            .core
+            .run(new_req(), CancelToken::new())
+            .await
+            .unwrap();
 
         assert_eq!(last_stop(&events), StopReason::NoToolCall);
         // Exactly one journaled tool call (P5) + the tool was actually invoked.
@@ -1024,9 +1053,18 @@ mod tests {
     async fn iteration_cap_synthesizes_error_results() {
         // Model always wants a tool; max_steps = 1 → cap after the first call.
         let model = Arc::new(ScriptedModel::always_tool("t", "loop_tool"));
-        let mut harness = core_with(model, true, GateBehavior::Approve, TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest));
+        let mut harness = core_with(
+            model,
+            true,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
         harness.core.budget = Budget::new(1, 1_000_000, 1_000_000);
-        let events = harness.core.run(new_req(), CancelToken::new()).await.unwrap();
+        let events = harness
+            .core
+            .run(new_req(), CancelToken::new())
+            .await
+            .unwrap();
 
         assert_eq!(last_stop(&events), StopReason::IterationCap);
         // The unexecuted tool got a synthesized is_error result (no orphan) and
@@ -1042,7 +1080,13 @@ mod tests {
             .flatten()
             .any(|m| {
                 m.content.iter().any(|b| {
-                    matches!(b, ContentBlock::ToolResult { is_error: Some(true), .. })
+                    matches!(
+                        b,
+                        ContentBlock::ToolResult {
+                            is_error: Some(true),
+                            ..
+                        }
+                    )
                 })
             });
         assert!(has_error_result);
@@ -1098,6 +1142,7 @@ mod tests {
             model_name: "test".into(),
             resume_executes_pending: true,
             isolate_children: false,
+            child_sink_factory: None,
         };
         let events = core.run(new_req(), CancelToken::new()).await.unwrap();
 
@@ -1107,17 +1152,17 @@ mod tests {
         assert!(tools.calls.lock().unwrap().is_empty());
         assert!(transcript.journal.lock().unwrap().is_empty());
         // …but its `tool_use` got a synthesized is_error result (no orphan).
-        let has_error_result = transcript
-            .msgs
-            .lock()
-            .unwrap()
-            .values()
-            .flatten()
-            .any(|m| {
-                m.content
-                    .iter()
-                    .any(|b| matches!(b, ContentBlock::ToolResult { is_error: Some(true), .. }))
-            });
+        let has_error_result = transcript.msgs.lock().unwrap().values().flatten().any(|m| {
+            m.content.iter().any(|b| {
+                matches!(
+                    b,
+                    ContentBlock::ToolResult {
+                        is_error: Some(true),
+                        ..
+                    }
+                )
+            })
+        });
         assert!(has_error_result);
     }
 
@@ -1128,8 +1173,17 @@ mod tests {
             assistant_tool("t1", "danger", serde_json::json!({})),
             ChatMessage::assistant("ok"),
         ]));
-        let harness = core_with(model, false, GateBehavior::Approve, TrustedAutoApprovePolicy::new(ApprovalMode::Never));
-        let events = harness.core.run(new_req(), CancelToken::new()).await.unwrap();
+        let harness = core_with(
+            model,
+            false,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::Never),
+        );
+        let events = harness
+            .core
+            .run(new_req(), CancelToken::new())
+            .await
+            .unwrap();
 
         assert_eq!(last_stop(&events), StopReason::NoToolCall);
         // Denied → never executed / journaled, but an error result was appended.
@@ -1151,7 +1205,11 @@ mod tests {
             GateBehavior::Deny,
             TrustedAutoApprovePolicy::new(ApprovalMode::UnlessTrusted),
         );
-        let events = harness.core.run(new_req(), CancelToken::new()).await.unwrap();
+        let events = harness
+            .core
+            .run(new_req(), CancelToken::new())
+            .await
+            .unwrap();
 
         assert_eq!(last_stop(&events), StopReason::NoToolCall);
         // Denied by the human → never executed / journaled.
@@ -1163,10 +1221,21 @@ mod tests {
     async fn gate_suspend_halts_the_turn() {
         // Untrusted + UnlessTrusted → Prompt → the gate suspends durably.
         let model = Arc::new(ScriptedModel::always_tool("t", "mutate"));
-        let harness = core_with(model, false, GateBehavior::Suspend, TrustedAutoApprovePolicy::new(ApprovalMode::UnlessTrusted));
-        let events = harness.core.run(new_req(), CancelToken::new()).await.unwrap();
+        let harness = core_with(
+            model,
+            false,
+            GateBehavior::Suspend,
+            TrustedAutoApprovePolicy::new(ApprovalMode::UnlessTrusted),
+        );
+        let events = harness
+            .core
+            .run(new_req(), CancelToken::new())
+            .await
+            .unwrap();
 
-        assert!(events.iter().any(|e| matches!(e, AgentEvent::GateOpened(_))));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, AgentEvent::GateOpened(_))));
         assert_eq!(last_stop(&events), StopReason::Halted);
         assert!(harness.tools.calls.lock().unwrap().is_empty());
     }
@@ -1174,7 +1243,12 @@ mod tests {
     #[tokio::test]
     async fn cancel_before_start_halts() {
         let model = Arc::new(ScriptedModel::final_text("unused"));
-        let harness = core_with(model, true, GateBehavior::Approve, TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest));
+        let harness = core_with(
+            model,
+            true,
+            GateBehavior::Approve,
+            TrustedAutoApprovePolicy::new(ApprovalMode::OnRequest),
+        );
         let cancel = CancelToken::new();
         cancel.cancel();
         let events = harness.core.run(new_req(), cancel).await.unwrap();
@@ -1188,13 +1262,28 @@ mod tests {
     fn clamp_reviewer_decision_external_veto_only() {
         // TEST-176: a non-trusted (external) reviewer `Auto` is clamped to `Prompt`
         // (the reviewer can only ever downgrade a non-trusted call).
-        assert_eq!(clamp_reviewer_decision(false, Decision::Auto), Decision::Prompt);
+        assert_eq!(
+            clamp_reviewer_decision(false, Decision::Auto),
+            Decision::Prompt
+        );
         // Downgrades / denials on a non-trusted call pass through unchanged.
-        assert_eq!(clamp_reviewer_decision(false, Decision::Prompt), Decision::Prompt);
-        assert_eq!(clamp_reviewer_decision(false, Decision::Deny), Decision::Deny);
+        assert_eq!(
+            clamp_reviewer_decision(false, Decision::Prompt),
+            Decision::Prompt
+        );
+        assert_eq!(
+            clamp_reviewer_decision(false, Decision::Deny),
+            Decision::Deny
+        );
         // TEST-177: a trusted/built-in reviewer `Auto` stays `Auto`.
-        assert_eq!(clamp_reviewer_decision(true, Decision::Auto), Decision::Auto);
-        assert_eq!(clamp_reviewer_decision(true, Decision::Deny), Decision::Deny);
+        assert_eq!(
+            clamp_reviewer_decision(true, Decision::Auto),
+            Decision::Auto
+        );
+        assert_eq!(
+            clamp_reviewer_decision(true, Decision::Deny),
+            Decision::Deny
+        );
     }
 
     #[tokio::test]
@@ -1208,11 +1297,7 @@ mod tests {
         struct FixedAssessment(RiskAssessment);
         #[async_trait]
         impl RiskClassifier for FixedAssessment {
-            async fn classify(
-                &self,
-                _c: &ToolCall,
-                _p: &str,
-            ) -> Result<RiskAssessment, AppError> {
+            async fn classify(&self, _c: &ToolCall, _p: &str) -> Result<RiskAssessment, AppError> {
                 Ok(self.0.clone())
             }
         }
@@ -1241,7 +1326,9 @@ mod tests {
         // The reviewer said Auto, but for an external call the clamp forces Prompt
         // → the human gate opened and the tool never auto-executed.
         assert!(
-            events.iter().any(|e| matches!(e, AgentEvent::GateOpened(_))),
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::GateOpened(_))),
             "external reviewer-Auto must route to the human gate, not auto-execute"
         );
         assert!(

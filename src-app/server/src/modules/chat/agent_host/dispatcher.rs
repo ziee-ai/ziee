@@ -39,11 +39,10 @@ use crate::common::AppError;
 use crate::modules::chat::agent_host::event_sink::ChatEventSink;
 use crate::modules::chat::agent_host::gate::ChatHumanGate;
 use crate::modules::chat::agent_host::resolver::{ChatCancel, ChatModelResolver, ChatToolProvider};
-use crate::modules::mcp::agent_tool_call::CancelSignal;
 use crate::modules::chat::agent_host::transcript::ChatTranscriptStore;
 use crate::modules::chat::core::extension::{ExtensionRegistry, StreamContext};
+use crate::modules::mcp::agent_tool_call::CancelSignal;
 use crate::utils::cancellation::CancellationToken;
-
 
 /// Failsafe iteration cap (chat's `SAFETY_MAX_ITERATIONS`); real per-turn limits
 /// come from MCP settings / the approval gate.
@@ -187,12 +186,13 @@ impl ChatAgentTurn {
         // can't collide with an already-persisted/just-claimed approval row. Wraps
         // ONLY the loop's `model` (compaction keeps the raw client — its summaries
         // carry no tool_use blocks).
-        let model: Arc<dyn agent_core::ModelClient> =
-            Arc::new(crate::modules::chat::agent_host::uniquify::UniquifyingModelClient::new(
+        let model: Arc<dyn agent_core::ModelClient> = Arc::new(
+            crate::modules::chat::agent_host::uniquify::UniquifyingModelClient::new(
                 model_client.clone(),
                 self.pool.clone(),
                 self.assistant_message_id,
-            ));
+            ),
+        );
 
         let core = AgentCore {
             transcript: transcript.clone(),
@@ -219,6 +219,21 @@ impl ChatAgentTurn {
             // message-bound state. (`fanout.rs` swaps in a fresh transcript/sink and
             // drops the inherited extensions when this is set.)
             isolate_children: true,
+            // ITEM-7: persist each fan-out child's OWN transcript for later user
+            // display. The factory creates a `subagent` `workflow_runs` row per
+            // child (linked to THIS turn's assistant message) and keys a
+            // `PersistingActivitySink` to it; the parent still receives summary-only
+            // (INV-3). Injected ONLY on this isolating host — `fanout.rs` consults it
+            // exclusively inside the `isolate_children` block.
+            child_sink_factory: Some(Arc::new(
+                crate::modules::chat::agent_host::child_sink::ChatChildSinkFactory::new(
+                    self.pool.clone(),
+                    self.user_id,
+                    Some(self.conversation_id),
+                    self.assistant_message_id,
+                    Some(self.model_id),
+                ),
+            )),
             // Group G (DEC-49/50): the durable per-run task list, keyed by
             // `run_id` (chat's `assistant_message_id`).
             task_store: Some(Arc::new(
@@ -295,7 +310,7 @@ pub async fn start_generation_agent_core(
     use crate::modules::chat::core::types::streaming::{
         SSEChatStreamErrorData, SSEChatStreamEvent, SSEChatStreamStartedData,
     };
-    use crate::modules::chat::stream::{publish_frame, ChatStreamFrame};
+    use crate::modules::chat::stream::{ChatStreamFrame, publish_frame};
     use crate::utils::cancellation::CANCELLATION_TRACKER;
 
     // Single-flight per conversation (same guard as the legacy path).
@@ -337,7 +352,11 @@ pub async fn start_generation_agent_core(
             let user_message = Repos
                 .chat
                 .core
-                .create_message(branch_id, MessageRole::User.as_str(), Some(request.model_id))
+                .create_message(
+                    branch_id,
+                    MessageRole::User.as_str(),
+                    Some(request.model_id),
+                )
                 .await?;
             if let Some(r) = &registry {
                 r.after_user_message_created(&preliminary_context, &user_message, &request)
@@ -393,15 +412,17 @@ pub async fn start_generation_agent_core(
 
     let (provider, model_name, model_id, provider_id, user_message_id, assistant_message_id) =
         match setup {
-        Ok(v) => v,
-        Err(e) => {
-            crate::modules::chat::stream::end_generation(conversation_id);
-            return Err(e);
-        }
-    };
+            Ok(v) => v,
+            Err(e) => {
+                crate::modules::chat::stream::end_generation(conversation_id);
+                return Err(e);
+            }
+        };
 
     // Per-`assistant_message_id` stop-generation token (bridged into the crate loop).
-    let cancel_token = CANCELLATION_TRACKER.create_token(assistant_message_id).await;
+    let cancel_token = CANCELLATION_TRACKER
+        .create_token(assistant_message_id)
+        .await;
     let owner_id = user_id;
 
     // Opening `started` frame — seeds the message on receiving devices + opens the
@@ -421,8 +442,9 @@ pub async fn start_generation_agent_core(
     // Extension-event SSE channel (McpApprovalRequired / titleUpdated / tool events)
     // — the chat extensions emit raw SSE `Event`s through this; a drain task
     // forwards them to the per-user stream (mirrors the legacy consumer's tail).
-    let (ext_tx, mut ext_rx) =
-        tokio::sync::mpsc::unbounded_channel::<Result<axum::response::sse::Event, std::convert::Infallible>>();
+    let (ext_tx, mut ext_rx) = tokio::sync::mpsc::unbounded_channel::<
+        Result<axum::response::sse::Event, std::convert::Infallible>,
+    >();
     let drain_handle = {
         let owner = owner_id;
         let conv = conversation_id;
@@ -440,9 +462,15 @@ pub async fn start_generation_agent_core(
     // so enabling `delegate` here never touches the legacy chat loop. Children /
     // fan-out stay false (the crate's `fanout.rs` caps `max_depth = 1`). Shared
     // derivation so the chat host and the workflow host agree.
-    let allow_delegate = crate::modules::agent::models::AgentAdminSettings::top_level_allow_delegate(
-        crate::core::Repos.agent.get_admin_settings().await.ok().as_ref(),
-    );
+    let allow_delegate =
+        crate::modules::agent::models::AgentAdminSettings::top_level_allow_delegate(
+            crate::core::Repos
+                .agent
+                .get_admin_settings()
+                .await
+                .ok()
+                .as_ref(),
+        );
 
     tokio::spawn(async move {
         // Group E / ITEM-21 / DEC-42: capture the run's unattended flag before
@@ -493,7 +521,10 @@ pub async fn start_generation_agent_core(
             // chosen tool by its namespaced name (tool-list gathering stays with the
             // MCP extension). The core `delegate` tool is the exception: it is
             // agent-core-injected, gated purely by `allow_delegate` (ITEM-2 / DEC-2).
-            tool_scope: ToolScope { allow_delegate, ..Default::default() },
+            tool_scope: ToolScope {
+                allow_delegate,
+                ..Default::default()
+            },
             inputs: serde_json::Value::Null,
             cancel_token: cancel_token.clone(),
             sse_tx: Some(ext_tx.clone()),
@@ -584,7 +615,9 @@ pub async fn start_generation_agent_core(
             }
         }
 
-        CANCELLATION_TRACKER.remove_download(assistant_message_id).await;
+        CANCELLATION_TRACKER
+            .remove_download(assistant_message_id)
+            .await;
         crate::modules::chat::stream::end_generation(conversation_id);
 
         // Notify the user's other surfaces to refetch the committed turn.
