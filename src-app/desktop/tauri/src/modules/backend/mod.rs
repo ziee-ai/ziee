@@ -305,6 +305,9 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
         min_inner_size: (400.0, 600.0),
         effect_radius: 8.0,
         traffic_light_position: (20.0, 22.0),
+        // Stock behavior: frontend `window.open` pop-out windows stay opt-in and
+        // OFF (window.open denied), matching the pre-field default the sdk documents.
+        enable_popout_windows: false,
     };
 
     spawn_boot_then_window(boot, app_handle, window, move |handle| async move {

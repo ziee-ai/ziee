@@ -21082,6 +21082,135 @@
         ]
       }
     },
+    "/api/subagent-runs": {
+      "get": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "List a chat turn's fan-out sub-agent children",
+        "description": "Owner-scoped list of the fan-out CHILD sub-agent runs spawned under one parent assistant message (`parent_message_id`), spawn-ordered, compact (id / label / status / created_at). The full per-child transcript is fetched via `GET /api/subagent-runs/{id}`. A parent message the acting user does not own yields an empty list. Hard-bounded by the fan-out cap.",
+        "operationId": "SubAgentRuns.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "parent_message_id",
+            "description": "The parent assistant `message_id` whose fan-out children to list.",
+            "required": true,
+            "schema": {
+              "description": "The parent assistant `message_id` whose fan-out children to list.",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed workflows",
+                        "name": "WorkflowsRead",
+                        "value": "workflows::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for `GET /api/subagent-runs?parent_message_id=…` — the fan-out children\n of one parent chat turn, spawn-ordered. Hard-bounded by the fan-out cap, so no\n pagination.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubAgentRunListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-permissions": [
+          "workflows::read"
+        ]
+      }
+    },
+    "/api/subagent-runs/{child_id}": {
+      "get": {
+        "tags": [
+          "workflow"
+        ],
+        "summary": "Get one fan-out sub-agent child's full transcript",
+        "description": "Owner-scoped full detail for one fan-out CHILD sub-agent run, including its `activity[]` transcript (thinking / tool calls & results / messages), rendered by the workflow `AgentActivityTimeline`. A foreign / missing id → 404 (never leaked).",
+        "operationId": "SubAgentRuns.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View installed workflows",
+                        "name": "WorkflowsRead",
+                        "value": "workflows::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: workflows::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /\n sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`\n result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and\n adds the collected result, so the FE can render a completed run's output without a\n second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.\n The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still\n excluded — a background run has none, and a classic `workflow`-kind run is served\n by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundRunDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Sub-agent run not found / not owned"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-required-permissions": [
+          "workflows::read"
+        ]
+      }
+    },
     "/api/workflow-runs/{run_id}": {
       "get": {
         "tags": [
@@ -28805,6 +28934,14 @@
         "description": "Full BACKGROUND-run detail (ITEM-8 follow-up) — one detached sub-agent /\n sandbox-exec run (`job_kind <> 'workflow'`) projected WITH the `final_output_json`\n result body. Mirrors [`BackgroundRunSummary`]'s identity/state/timing fields and\n adds the collected result, so the FE can render a completed run's output without a\n second `collect_result` MCP round-trip. Backs `GET /api/background/runs/{run_id}`.\n The heavy workflow-only JSONB blobs (step outputs / logs / artifacts) are still\n excluded — a background run has none, and a classic `workflow`-kind run is served\n by `GET /api/workflows/runs/{id}` (this endpoint 404s on it).",
         "type": "object",
         "properties": {
+          "activity": {
+            "description": "The durable agent-loop transcript — one entry per thinking block / tool\n call & result / assistant message, projected from\n `step_logs_json['agent::agent_activity']` and rendered by the workflow\n `AgentActivityTimeline`. Empty when the run produced no activity. The\n entries are `ProgressKind::AgentActivity` values (the FE type is\n `Extract<ProgressKind, {type:'agent_activity'}>`).",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProgressKind"
+            }
+          },
           "conversation_id": {
             "type": [
               "string",
@@ -36037,6 +36174,20 @@
         },
         "required": [
           "resources"
+        ]
+      },
+      "ListSubAgentRunsQuery": {
+        "description": "Query params for `GET /api/subagent-runs`.",
+        "type": "object",
+        "properties": {
+          "parent_message_id": {
+            "description": "The parent assistant `message_id` whose fan-out children to list.",
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "parent_message_id"
         ]
       },
       "ListSystemServersQuery": {
@@ -45129,6 +45280,50 @@
           "running",
           "completed",
           "failed"
+        ]
+      },
+      "SubAgentRunListResponse": {
+        "description": "Response for `GET /api/subagent-runs?parent_message_id=…` — the fan-out children\n of one parent chat turn, spawn-ordered. Hard-bounded by the fan-out cap, so no\n pagination.",
+        "type": "object",
+        "properties": {
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubAgentRunSummary"
+            }
+          }
+        },
+        "required": [
+          "children"
+        ]
+      },
+      "SubAgentRunSummary": {
+        "description": "One fan-out CHILD sub-agent run, listed under its parent chat turn\n (`GET /api/subagent-runs?parent_message_id=…`). The compact projection — id,\n friendly label, terminal/running status, created_at. The full per-child\n transcript is fetched separately via `GET /api/subagent-runs/{id}` (which\n reuses [`BackgroundRunDetail`], since a child is a background-kind run).",
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "description": "Friendly per-child label (the child's first system-prompt line), capped.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "created_at"
         ]
       },
       "SuccessResponse": {

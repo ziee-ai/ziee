@@ -379,6 +379,8 @@ export const ApiEndpoints = {
   'SkillSystem.removeFromGroup': 'DELETE /api/skills/system/{id}/groups/{group_id}',
   'SkillSystem.setGroups': 'POST /api/skills/system/{id}/groups',
   'SkillSystem.update': 'PUT /api/skills/system/{id}',
+  'SubAgentRuns.get': 'GET /api/subagent-runs/{child_id}',
+  'SubAgentRuns.list': 'GET /api/subagent-runs',
   'Summarization.getConversationSummary': 'GET /api/conversations/{id}/summary',
   'SummarizationAdmin.get': 'GET /api/summarization/settings',
   'SummarizationAdmin.update': 'PUT /api/summarization/settings',
