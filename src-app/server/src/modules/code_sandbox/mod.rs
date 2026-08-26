@@ -28,6 +28,7 @@ pub mod handlers;
 pub mod providers;
 pub mod runtime_fetch;
 pub mod runtime_mount;
+pub mod chat_extension;
 pub mod mount_context_extension;
 pub mod permissions;
 pub mod repository;

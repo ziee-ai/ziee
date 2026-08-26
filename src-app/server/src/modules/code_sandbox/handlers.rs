@@ -1218,6 +1218,27 @@ async fn assert_owns_conversation(
     Ok(())
 }
 
+/// Per-tool approval classifier (mirrors
+/// `control_mcp::handlers::control_call_needs_approval` /
+/// `background_mcp::tools::background_call_needs_approval`). code_sandbox is
+/// auto-attached to tool-capable chats but is NOT approval-bypassed: its
+/// EXECUTION / MUTATION tools must go through the approval gate even under
+/// `ApprovalMode::AutoApprove` (the security posture — arbitrary code execution is
+/// at least as sensitive as `spawn_background`). `execute_command` runs arbitrary
+/// code; `write_file` / `edit_file` mutate the workspace → all force approval. The
+/// read-only tools (`read_file` / `list_files` / `get_resource_link`, scoped to the
+/// conversation's own sandbox workspace) auto-run. Anything unrecognized fails safe
+/// → require approval. Consumed by the `is_code_sandbox` arm in
+/// `mcp/chat_extension/mcp.rs`'s approval ladder.
+pub fn code_sandbox_call_needs_approval(tool_name: &str) -> bool {
+    match tool_name {
+        "read_file" | "list_files" | "get_resource_link" => false,
+        // execute_command (runs code) + write_file / edit_file (mutate) + anything
+        // unknown → approve (fail-safe).
+        _ => true,
+    }
+}
+
 // --------------------------------------------------------------------
 // Tool catalog (single source of truth — snapshot-tested in Phase 9
 // Tier 1 against a checked-in fixture).

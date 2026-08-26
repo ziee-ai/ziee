@@ -1390,3 +1390,69 @@ async fn hanging_stdio_handshake_is_time_bounded() {
         "expected the stdio handshake to hang until the ~2s timeout; create took {elapsed:?} — did the child fail to spawn?"
     );
 }
+
+// code-sandbox-chat-attach TEST-5: on the REAL chat pipeline with a tool-capable
+// model and code_sandbox DISABLED (the harness default), the registered
+// `code_sandbox_attach` extension must NOT advertise `execute_command` — while the
+// always-on built-ins (`ask_user` / `get_tool_result`) ARE advertised (positive
+// control that the tool list was built and the model is tool-capable). Rootfs-free
+// negative half of INV-1, exercised end-to-end. Covers ITEM-2 (registration wired
+// on the pipeline) + ITEM-3 (consumer does not over-attach when disabled).
+#[tokio::test]
+async fn code_sandbox_not_advertised_when_disabled() {
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "cs_off", &["*"]).await;
+
+    // Plain text reply — we only need ONE captured request carrying the built-in
+    // tool list the MCP extension attached for a tool-capable model.
+    let stub = StubChat::start(StubPlan::text("hi")).await;
+    let model_id_s =
+        register_stub_model(&server, &user.token, &user.user_id, &stub.base_url(), true, None).await;
+    let model_id = Uuid::parse_str(&model_id_s).unwrap();
+
+    let conversation = create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = parse_uuid(&conversation["id"]);
+    let branch_id = parse_uuid(&conversation["active_branch_id"]);
+
+    send_body_and_collect_events(
+        &server,
+        &user.token,
+        conversation_id,
+        json!({
+            "content": "hello",
+            "model_id": model_id,
+            "branch_id": branch_id,
+            "enable_mcp": true,
+        }),
+        &[],
+    )
+    .await;
+
+    // Select the MCP-enriched request (the always-on built-ins attach for a
+    // tool-capable model); a background title-gen call hits the stub WITHOUT tools.
+    let body = stub
+        .requests()
+        .into_iter()
+        .find(|b| {
+            tool_descs(b)
+                .iter()
+                .any(|(n, _)| n.ends_with("__ask_user") || n.ends_with("__get_tool_result"))
+        })
+        .expect("a captured request should carry the always-on built-in tool list");
+    let descs = tool_descs(&body);
+
+    // Positive control: a built-in IS advertised (the request really is the
+    // tool-capable, MCP-enriched one).
+    assert!(
+        descs
+            .iter()
+            .any(|(n, _)| n.ends_with("__ask_user") || n.ends_with("__get_tool_result")),
+        "a built-in tool must be advertised for a tool-capable model; got {descs:?}"
+    );
+
+    // The assertion: with code_sandbox disabled, `execute_command` is absent.
+    assert!(
+        !descs.iter().any(|(n, _)| n.ends_with("__execute_command")),
+        "execute_command must NOT be advertised when code_sandbox is disabled; got {descs:?}"
+    );
+}
