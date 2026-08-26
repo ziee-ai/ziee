@@ -118,6 +118,44 @@ impl StdioMcpClient {
             && code_sandbox::config::get_state().is_some()
     }
 
+    /// The connect/handshake budget for this server: its configured
+    /// `timeout_seconds`, floored to 1s so a 0/negative row can never
+    /// produce a 0-duration timeout that fires instantly. Mirrors the
+    /// HTTP client's `server.timeout_seconds.max(1)` (http.rs) so the same
+    /// per-server tunable governs every transport (DEC-1).
+    fn handshake_budget(timeout_seconds: i32) -> std::time::Duration {
+        std::time::Duration::from_secs(timeout_seconds.max(1) as u64)
+    }
+
+    /// Bound an MCP handshake future by `handshake_budget`. On elapse, return
+    /// the SAME `Unreachable` upstream-error shape a `serve()` failure returns,
+    /// so a timeout flows through `McpSession::new` → `create_session_tracked`
+    /// → `record_connection_failure` and OPENS the circuit breaker. Before
+    /// this, the stdio `().serve(transport).await` handshake was unbounded: a
+    /// server that spawns but never speaks MCP (e.g. `npx` with no package)
+    /// hung forever, so the breaker never tripped and every chat turn re-dialed
+    /// it — and, upstream, one such server stalled the whole tool-collection
+    /// pass and the LLM was never called.
+    async fn with_handshake_timeout<F: std::future::Future>(
+        timeout_seconds: i32,
+        server_name: &str,
+        server_id: Uuid,
+        ctx: &str,
+        fut: F,
+    ) -> Result<F::Output, AppError> {
+        match tokio::time::timeout(Self::handshake_budget(timeout_seconds), fut).await {
+            Ok(v) => Ok(v),
+            Err(_elapsed) => Err(errors::upstream_error(
+                server_name,
+                errors::UpstreamFailure::Unreachable,
+                format!(
+                    "server_id={server_id} stdio handshake ({ctx}) timed out after {}s",
+                    timeout_seconds.max(1)
+                ),
+            )),
+        }
+    }
+
     /// Non-sandboxed connect: original spawn-on-host path. Preserved
     /// byte-for-byte from prior releases for every non-`run_in_sandbox`
     /// server.
@@ -201,7 +239,38 @@ impl StdioMcpClient {
             });
         }
 
-        let connect_result = ().serve(transport).await;
+        // Bound the handshake: a child that spawns but never completes the
+        // MCP `initialize` (misconfigured launcher, wrong package) used to
+        // hang here forever. On timeout we still drain whatever the child
+        // wrote to stderr (log-only, per the security note below) and return
+        // the same `Unreachable` error as a serve() failure so the breaker
+        // records it.
+        let connect_result = match Self::with_handshake_timeout(
+            self.server_config.timeout_seconds,
+            &self.server_config.name,
+            self.server_id,
+            "native",
+            ().serve(transport),
+        )
+        .await
+        {
+            Ok(inner) => inner,
+            Err(timeout_err) => {
+                let stderr_text = captured
+                    .lock()
+                    .map(|buf| String::from_utf8_lossy(&buf).into_owned())
+                    .unwrap_or_default();
+                let trimmed = stderr_text.trim();
+                if !trimmed.is_empty() {
+                    tracing::warn!(
+                        server_id = %self.server_id,
+                        stderr = %trimmed,
+                        "stdio handshake timed out; captured stderr (log-only)"
+                    );
+                }
+                return Err(timeout_err);
+            }
+        };
         match connect_result {
             Ok(service) => {
                 self.service = Some(service);
@@ -280,7 +349,15 @@ impl StdioMcpClient {
         let transport = mcp_spawn::start_mcp_in_sandbox(&state, req).await?;
         match transport {
             McpSandboxTransport::LinuxBwrap { child, _inflight } => {
-                let service = ().serve(child).await.map_err(|e| {
+                let service = Self::with_handshake_timeout(
+                    self.server_config.timeout_seconds,
+                    &self.server_config.name,
+                    self.server_id,
+                    "sandboxed/linux",
+                    ().serve(child),
+                )
+                .await?
+                .map_err(|e| {
                     errors::upstream_error(
                         &self.server_config.name,
                         errors::UpstreamFailure::Unreachable,
@@ -293,7 +370,15 @@ impl StdioMcpClient {
             McpSandboxTransport::VmSession { io, session, _inflight } => {
                 let (rd, wr) = tokio::io::split(io);
                 let transport = rmcp::transport::async_rw::AsyncRwTransport::new_client(rd, wr);
-                let service = ().serve(transport).await.map_err(|e| {
+                let service = Self::with_handshake_timeout(
+                    self.server_config.timeout_seconds,
+                    &self.server_config.name,
+                    self.server_id,
+                    "sandboxed/vm",
+                    ().serve(transport),
+                )
+                .await?
+                .map_err(|e| {
                     errors::upstream_error(
                         &self.server_config.name,
                         errors::UpstreamFailure::Unreachable,
@@ -623,6 +708,72 @@ mod tests {
             last_health_check_status: "untested".into(),
             last_health_check_reason: None,
         }
+    }
+
+    // TEST-4 [covers: ITEM-5] — the handshake budget floors a 0/negative
+    // configured timeout to 1s (never a 0-duration timeout that fires
+    // instantly), and passes a positive value through.
+    #[test]
+    fn handshake_budget_floors_to_one_second() {
+        assert_eq!(
+            StdioMcpClient::handshake_budget(0),
+            std::time::Duration::from_secs(1)
+        );
+        assert_eq!(
+            StdioMcpClient::handshake_budget(-5),
+            std::time::Duration::from_secs(1)
+        );
+        assert_eq!(
+            StdioMcpClient::handshake_budget(30),
+            std::time::Duration::from_secs(30)
+        );
+    }
+
+    // TEST-1 [acceptance] [invariant: INV-1] [covers: ITEM-3, ITEM-4, ITEM-5]
+    // A handshake that NEVER completes (`std::future::pending`) must return an
+    // `Unreachable` Err within ~the budget rather than hanging; a ready future
+    // passes its value through unchanged. If the serve() await were left
+    // unbounded this test would hang and fail via the tokio test timeout.
+    #[tokio::test]
+    async fn with_handshake_timeout_elapses_on_a_never_completing_handshake() {
+        let id = Uuid::new_v4();
+        let started = std::time::Instant::now();
+        let pending = std::future::pending::<Result<(), AppError>>();
+        let res =
+            StdioMcpClient::with_handshake_timeout(1, "stalling-server", id, "native", pending)
+                .await;
+        let elapsed = started.elapsed();
+
+        assert!(
+            res.is_err(),
+            "a never-completing handshake must time out, not resolve"
+        );
+        // Bounded: the 1s budget fired; allow generous slack for CI scheduling
+        // but prove it did NOT hang.
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "handshake timeout did not fire within a bounded window: {elapsed:?}"
+        );
+        // The timeout returns the stable `Unreachable` upstream error (the
+        // "timed out" detail is internal/log-only, not in the Display string —
+        // same contract as a serve() failure), so assert it is that error for
+        // this server rather than the internal detail text.
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("stalling-server"),
+            "timeout must return the server's unreachable error; got: {err}"
+        );
+
+        // Passthrough: a handshake that completes returns its value unchanged.
+        let ok = StdioMcpClient::with_handshake_timeout(
+            30,
+            "healthy-server",
+            id,
+            "native",
+            std::future::ready(Ok::<u8, AppError>(7u8)),
+        )
+        .await;
+        assert!(matches!(ok, Ok(Ok(7u8))), "ready future must pass through");
     }
 
     /// `should_sandbox` requires ALL of: stdio + run_in_sandbox flag

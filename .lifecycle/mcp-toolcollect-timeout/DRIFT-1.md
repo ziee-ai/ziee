@@ -1,0 +1,11 @@
+# DRIFT-1 — implementation vs plan/design
+
+Authored live during Phase 5 as each item landed. Reconciled against PLAN.md
+ITEMs and the design invariants (CODING_GUIDELINES.md §2/§5/§6).
+
+- **DRIFT-1.1** — verdict: none — ITEM-3 (native handshake bound) uses the shared `with_handshake_timeout` helper AND drains the child's captured stderr to the log on the timeout Err arm (preserving the existing security behavior: stderr → log only, never the HTTP body). Matches the plan's "preserve stderr-capture where practical"; the helper (ITEM-5) is genuinely the code on the native path, so TEST-1 covers it.
+- **DRIFT-1.2** — verdict: none — TEST-1 (INV-1 acceptance) drives the helper with `std::future::pending()` rather than a real stalling stdio child. The host command allowlist (npx/uvx/python3/node) + embedded-toolchain/network dependence make a deterministic real-child stall unreliable at unit tier; the helper is the exact code wrapping all three real `serve()` awaits (native + sandboxed linux + sandboxed vm), so a never-completing future is a faithful, deterministic proof that the handshake await is bounded → Err, not hang. This is the approach PLAN/TESTS already specified.
+- **DRIFT-1.3** — verdict: none — for HTTP transport the stalling-server skip in TEST-2/TEST-6 is ALSO caught by the pre-existing reqwest overall timeout (`http.rs:1097`), so those integration tests assert the INV-2 PROMISE (loop tolerates a non-responsive server + still calls the LLM with reachable tools) rather than isolating the new outer `tokio::time::timeout` from the pre-existing HTTP timeout. The genuinely-new, previously-unbounded await — the stdio handshake — is gated directly by TEST-1. The outer timeout remains load-bearing for stdio (no inner reqwest bound there) and defense-in-depth for HTTP. Recorded for the audit; no plan change.
+- **DRIFT-1.4** — verdict: none — ITEM-1/ITEM-2 reuse `server.timeout_seconds.max(1)` inline (not the stdio helper) for the outer collection awaits, exactly as PLAN ITEM-5 scoped it (the helper wraps a serve future; the outer sites wrap `get_or_create`/`list_tools`/`call_tool`, which are not serve futures). Consistent with http.rs budget derivation.
+
+**Unresolved drifts:** 0

@@ -2256,6 +2256,25 @@ impl ChatExtension for McpChatExtension {
                 .ok_or_else(|| AppError::internal_error("Server not found in accessible list"))?;
 
             if server.usage_mode == UsageMode::Always {
+                // Respect the connection breaker BEFORE dialing: always-mode builds
+                // sessions via `McpSession::new` directly (it never goes through
+                // `get_or_create*`, which is where auto-mode consults the breaker),
+                // so without this a hanging always-mode server that already tripped
+                // the breaker would be re-dialed — paying the full handshake timeout —
+                // every single turn. Skipping while the breaker is open is what makes
+                // INV-3's re-dial suppression actually hold for always-mode.
+                if let Err(e) = self
+                    .session_manager
+                    .check_connection_breaker(server.id)
+                    .await
+                {
+                    tracing::warn!(
+                        "Always-mode: skipping server {} — connection breaker open: {}",
+                        server.name,
+                        e
+                    );
+                    continue;
+                }
                 // Always mode: pre-run tools with user's message and inject enriched context
                 if let Some(ref query_text) = user_message_text {
                     let maybe_model_id = context
@@ -2267,41 +2286,86 @@ impl ChatExtension for McpChatExtension {
                     // Create session (with sampling if supported). Build from the
                     // UN-REDACTED server row: the accessible list nulls is_system
                     // URLs, which would fail every build below with MISSING_URL.
-                    let session_result = match self
-                        .session_manager
-                        .resolve_server_for_session(server.id)
-                        .await
-                    {
-                        Err(e) => Err(e),
-                        Ok(real_server) => {
-                            if server.supports_sampling {
-                                if let Some(model_id) = maybe_model_id {
-                                    match ChatSamplingHandler::new(model_id, context.user_id).await
-                                    {
-                                        Ok(h) => {
-                                            McpSession::new_with_sampling(real_server, Arc::new(h))
+                    //
+                    // Bounded by `timeout_seconds` (DEC-1): the session build
+                    // performs the connect (stdio spawn + `initialize` handshake),
+                    // so an always-mode server that never speaks MCP would
+                    // otherwise stall the turn just like an auto-mode one. A
+                    // timeout is routed into the same skip path as a build error.
+                    let always_budget =
+                        std::time::Duration::from_secs(server.timeout_seconds.max(1) as u64);
+                    let session_result = match tokio::time::timeout(always_budget, async {
+                        match self
+                            .session_manager
+                            .resolve_server_for_session(server.id)
+                            .await
+                        {
+                            Err(e) => Err(e),
+                            Ok(real_server) => {
+                                if server.supports_sampling {
+                                    if let Some(model_id) = maybe_model_id {
+                                        match ChatSamplingHandler::new(model_id, context.user_id)
+                                            .await
+                                        {
+                                            Ok(h) => {
+                                                McpSession::new_with_sampling(
+                                                    real_server,
+                                                    Arc::new(h),
+                                                )
                                                 .await
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    "Always-mode: failed to init sampling provider for {}: {}",
+                                                    server.name,
+                                                    e
+                                                );
+                                                McpSession::new(real_server).await
+                                            }
                                         }
-                                        Err(e) => {
-                                            tracing::warn!(
-                                                "Always-mode: failed to init sampling provider for {}: {}",
-                                                server.name,
-                                                e
-                                            );
-                                            McpSession::new(real_server).await
-                                        }
+                                    } else {
+                                        McpSession::new(real_server).await
                                     }
                                 } else {
                                     McpSession::new(real_server).await
                                 }
-                            } else {
-                                McpSession::new(real_server).await
                             }
+                        }
+                    })
+                    .await
+                    {
+                        Ok(r) => r,
+                        Err(_elapsed) => {
+                            // Always-mode builds sessions via `McpSession::new`
+                            // directly, bypassing `create_session_tracked`, so it
+                            // must record the connect timeout itself or a hanging
+                            // always-mode server's breaker never opens (INV-3).
+                            let timeout_err = AppError::internal_error(format!(
+                                "Always-mode MCP server '{}' connect timed out after {}s",
+                                server.name,
+                                server.timeout_seconds.max(1)
+                            ));
+                            self.session_manager
+                                .record_connection_failure(server.id, &timeout_err)
+                                .await;
+                            tracing::warn!(
+                                "Always-mode: timed out connecting to server {} after {}s — skipping",
+                                server.name,
+                                server.timeout_seconds.max(1)
+                            );
+                            continue;
                         }
                     };
 
                     match session_result {
                         Err(e) => {
+                            // Same rationale as the timeout arm above: always-mode
+                            // bypasses the manager's breaker bookkeeping, so a build
+                            // failure (incl. an inner stdio handshake timeout that
+                            // won the race) is recorded here too (INV-3).
+                            self.session_manager
+                                .record_connection_failure(server.id, &e)
+                                .await;
                             tracing::warn!(
                                 "Always-mode: failed to connect to server {}: {}",
                                 server.name,
@@ -2321,17 +2385,28 @@ impl ChatExtension for McpChatExtension {
                                 is_built_in: server.is_built_in,
                                 ..Default::default()
                             });
-                            let mcp_tools = match session.list_tools().await {
-                                Ok(t) => t,
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Always-mode: failed to list tools from {}: {}",
-                                        server.name,
-                                        e
-                                    );
-                                    Vec::new()
-                                }
-                            };
+                            let mcp_tools =
+                                match tokio::time::timeout(always_budget, session.list_tools())
+                                    .await
+                                {
+                                    Ok(Ok(t)) => t,
+                                    Ok(Err(e)) => {
+                                        tracing::warn!(
+                                            "Always-mode: failed to list tools from {}: {}",
+                                            server.name,
+                                            e
+                                        );
+                                        Vec::new()
+                                    }
+                                    Err(_elapsed) => {
+                                        tracing::warn!(
+                                            "Always-mode: timed out listing tools from {} after {}s — skipping",
+                                            server.name,
+                                            server.timeout_seconds.max(1)
+                                        );
+                                        Vec::new()
+                                    }
+                                };
 
                             let tools_to_run: Vec<_> = if requested_tools.is_empty() {
                                 mcp_tools
@@ -2359,11 +2434,19 @@ impl ChatExtension for McpChatExtension {
                                         continue;
                                     }
                                 };
-                                match session
-                                    .call_tool(&tool.name, input, context.message_id, None, None)
-                                    .await
+                                match tokio::time::timeout(
+                                    always_budget,
+                                    session.call_tool(
+                                        &tool.name,
+                                        input,
+                                        context.message_id,
+                                        None,
+                                        None,
+                                    ),
+                                )
+                                .await
                                 {
-                                    Ok(result) => {
+                                    Ok(Ok(result)) => {
                                         // Collect text content from tool result
                                         let text_parts: Vec<String> = result
                                             .content
@@ -2384,13 +2467,29 @@ impl ChatExtension for McpChatExtension {
                                             ));
                                         }
                                     }
-                                    Err(e) => {
+                                    Ok(Err(e)) => {
                                         tracing::warn!(
                                             "Always-mode: tool {} on {} failed: {}",
                                             tool.name,
                                             server.name,
                                             e
                                         );
+                                    }
+                                    Err(_elapsed) => {
+                                        // The in-flight JSON-RPC request was
+                                        // cancelled mid-flight; a late response could
+                                        // arrive on this shared session's transport
+                                        // and be mismatched against a later request.
+                                        // Stop reusing this session — drop it and move
+                                        // on rather than running more tools over a
+                                        // possibly-desynced transport.
+                                        tracing::warn!(
+                                            "Always-mode: tool {} on {} timed out after {}s — abandoning this server's pre-run",
+                                            tool.name,
+                                            server.name,
+                                            server.timeout_seconds.max(1)
+                                        );
+                                        break;
                                     }
                                 }
                             }
@@ -2427,10 +2526,21 @@ impl ChatExtension for McpChatExtension {
                 continue;
             }
 
-            // Auto mode: Get or create MCP session and collect tools for LLM
-            let session_arc = match self
-                .session_manager
-                .get_or_create_with_context(
+            // Auto mode: Get or create MCP session and collect tools for LLM.
+            //
+            // Both the connect (which for stdio spawns a child + performs the MCP
+            // `initialize` handshake) and the subsequent `list_tools` are bounded
+            // by the server's `timeout_seconds` (DEC-1). Without this, a single
+            // misconfigured server that spawns but never speaks MCP hangs the
+            // whole tool-collection pass — the LLM is never called and the user
+            // gets an empty assistant message. A timeout is routed into the SAME
+            // warn+skip arm as a connect/list error: skip this server, keep
+            // collecting the rest, still call the LLM.
+            let collect_budget =
+                std::time::Duration::from_secs(server.timeout_seconds.max(1) as u64);
+            let session_arc = match tokio::time::timeout(
+                collect_budget,
+                self.session_manager.get_or_create_with_context(
                     *server_id,
                     context.user_id,
                     Some(context.conversation_id),
@@ -2439,11 +2549,12 @@ impl ChatExtension for McpChatExtension {
                     // Tool-collection session (list_tools only); source/tool_use moot.
                     None,
                     McpToolCallSource::Always,
-                )
-                .await
+                ),
+            )
+            .await
             {
-                Ok(s) => s,
-                Err(e) => {
+                Ok(Ok(s)) => s,
+                Ok(Err(e)) => {
                     tracing::warn!(
                         "Failed to connect to MCP server '{}': {} — skipping",
                         server.name,
@@ -2451,14 +2562,45 @@ impl ChatExtension for McpChatExtension {
                     );
                     continue;
                 }
+                Err(_elapsed) => {
+                    // The outer timeout cancels `get_or_create_with_context`
+                    // before `create_session_tracked` -> `record_connection_failure`
+                    // can run, so record the connection failure HERE — otherwise a
+                    // hanging server's breaker never opens and every turn re-dials it
+                    // (INV-3). The inner stdio handshake timeout uses the same budget
+                    // but the outer timer starts earlier, so on the collection path
+                    // the outer one wins; this call is what makes INV-3 hold here.
+                    let timeout_err = AppError::internal_error(format!(
+                        "MCP server '{}' connect timed out after {}s during tool collection",
+                        server.name,
+                        server.timeout_seconds.max(1)
+                    ));
+                    self.session_manager
+                        .record_connection_failure(*server_id, &timeout_err)
+                        .await;
+                    tracing::warn!(
+                        "Timed out connecting to MCP server '{}' after {}s — skipping",
+                        server.name,
+                        server.timeout_seconds.max(1)
+                    );
+                    continue;
+                }
             };
             let mut session = session_arc.write().await;
 
-            // List tools from server
-            let mcp_tools = match session.list_tools().await {
-                Ok(tools) => tools,
-                Err(e) => {
+            // List tools from server (bounded — see above).
+            let mcp_tools = match tokio::time::timeout(collect_budget, session.list_tools()).await {
+                Ok(Ok(tools)) => tools,
+                Ok(Err(e)) => {
                     tracing::warn!("Failed to list tools from server {}: {}", server.name, e);
+                    continue; // Skip this server
+                }
+                Err(_elapsed) => {
+                    tracing::warn!(
+                        "Timed out listing tools from server {} after {}s — skipping",
+                        server.name,
+                        server.timeout_seconds.max(1)
+                    );
                     continue; // Skip this server
                 }
             };
