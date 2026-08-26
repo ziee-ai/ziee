@@ -484,6 +484,20 @@ pub async fn insert_background_run(
             "insert_background_run: 'workflow' kind requires a bundle — use insert_run",
         ));
     }
+    insert_background_run_exec(pool, &request).await
+}
+
+/// The background-run INSERT, over an arbitrary executor so it can run either on
+/// the pool directly (`insert_background_run`) or inside the guarded transaction
+/// (`insert_background_run_guarded`). ONE copy of the column list + `RETURNING`,
+/// so the row shape cannot drift between the two spawn paths.
+async fn insert_background_run_exec<'e, E>(
+    exec: E,
+    request: &CreateBackgroundRun,
+) -> Result<WorkflowRun, AppError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
     let row = sqlx::query_as!(
         WorkflowRun,
         r#"
@@ -524,10 +538,157 @@ pub async fn insert_background_run(
         request.invocation_source,
         request.inputs_json,
     )
-    .fetch_one(pool)
+    .fetch_one(exec)
     .await
     .map_err(AppError::database_error)?;
     Ok(row)
+}
+
+/// Outcome of a spawn-guarded background-run insert (see
+/// [`insert_background_run_guarded`]). The guard is what breaks the
+/// completion→re-inject→re-spawn loop and bounds per-conversation growth
+/// (CODING_GUIDELINES §4/§5; background-spawn-loop-guard INV-1/INV-2).
+#[derive(Debug)]
+pub enum GuardedBackgroundInsert {
+    /// No guard fired — a fresh run row was created.
+    Inserted(Box<WorkflowRun>),
+    /// An identical (conversation, job_kind, inputs_json) run already exists in the
+    /// dedup window — NO new row was created; carries the existing run's id.
+    Duplicate(Uuid),
+    /// The conversation is already at the cap of non-terminal background runs — NO
+    /// new row was created; carries the observed active count.
+    OverCap { active: i64 },
+}
+
+/// Race-safe background-run insert that enforces per-conversation DEDUP + a
+/// concurrency CAP inside ONE transaction (background-spawn-loop-guard ITEM-1).
+///
+/// A confused model (esp. a weaker local one) was observed spawning the SAME
+/// background task repeatedly — the completion of each run re-injects a
+/// `[Background task complete]` message that re-triggers the model to spawn again.
+/// This guard refuses at the spawn boundary, which is what actually breaks the
+/// loop (CODING_GUIDELINES §6 — a clear refusal, never a silent second run).
+///
+/// TOCTOU safety (CODING_GUIDELINES §4): a `pg_advisory_xact_lock` keyed on the
+/// conversation serializes concurrent spawns for the SAME conversation across the
+/// dedup SELECT → cap COUNT → INSERT, so two racing identical spawns can never
+/// both insert. Different conversations take different lock keys and stay fully
+/// parallel. The lock releases automatically at txn end (commit or rollback), so
+/// a panic/error cannot strand it.
+///
+/// * `max_active` — the per-conversation cap (reused
+///   `agent_admin_settings.fan_out_max_threads`; DEC-1). `active >= max_active` →
+///   `OverCap`, before any INSERT.
+/// * `dedup_window_secs` — a same-spec run that is non-terminal (any age) OR
+///   recently `completed`/`failed` within this window → `Duplicate` (DEC-2/DEC-3).
+///   `cancelled` runs and terminal runs older than the window do NOT dedup, so a
+///   deliberate re-run is never blocked.
+///
+/// Requires `request.conversation_id` to be `Some` (the guard is per-conversation;
+/// a detached/conversation-less spawn is not guarded — the caller passes no guard
+/// in that case).
+pub async fn insert_background_run_guarded(
+    pool: &PgPool,
+    request: CreateBackgroundRun,
+    max_active: i64,
+    dedup_window_secs: i64,
+) -> Result<GuardedBackgroundInsert, AppError> {
+    if matches!(request.job_kind, JobKind::Workflow) {
+        return Err(AppError::internal_error(
+            "insert_background_run_guarded: 'workflow' kind requires a bundle — use insert_run",
+        ));
+    }
+    let conversation_id = request.conversation_id.ok_or_else(|| {
+        AppError::internal_error(
+            "insert_background_run_guarded: a conversation_id is required to guard a spawn",
+        )
+    })?;
+
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // Serialize concurrent spawns for THIS conversation across the whole
+    // check-then-insert (txn-scoped advisory lock; auto-released at txn end,
+    // including on error via `?`). A blocked spawn holds its pooled connection
+    // while waiting on the lock, but spawn is not a hot path and the cap this
+    // guard enforces bounds the fan-in, so the connection-hold is bounded; a
+    // hashtextextended key collision would at worst serialize two unrelated
+    // conversations (correctness preserved, only extra waiting).
+    sqlx::query!(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        conversation_id.to_string()
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    // DEDUP (INV-1/INV-3): an identical same-spec run that is currently active
+    // (any age) OR recently terminal-successful/failed within the window. Excludes
+    // 'cancelled' (an explicit stop) and old terminal runs (a legitimate re-run).
+    //
+    // The terminal clause keys off `updated_at`, NOT `created_at`: the loop this
+    // guard breaks is completion→[Background task complete] re-inject→re-spawn, and
+    // that re-inject happens at COMPLETION time. `mark_status` stamps
+    // `updated_at = NOW()` on the terminal transition, so `updated_at` is the run's
+    // completion time; `created_at` is its SPAWN time. A run that ran longer than
+    // the window would, keyed on `created_at`, already be outside the window the
+    // instant it completes — so its immediate identical re-spawn would escape
+    // dedup, and (because such runs are sequential) never trip the cap either: the
+    // exact loop for any task > the window. Keying on `updated_at` closes that.
+    let existing = sqlx::query_scalar!(
+        r#"
+        SELECT id FROM workflow_runs
+        WHERE conversation_id = $1
+          AND user_id = $2
+          AND job_kind = $3
+          AND inputs_json = $4
+          AND (
+                status IN ('pending','running','waiting','resumable')
+             OR (status IN ('completed','failed')
+                 AND updated_at > now() - (interval '1 second' * $5))
+          )
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+        conversation_id,
+        request.user_id,
+        request.job_kind.as_str(),
+        request.inputs_json,
+        dedup_window_secs as f64,
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+    if let Some(id) = existing {
+        // No INSERT; the lock releases on rollback at drop / commit below.
+        tx.commit().await.map_err(AppError::database_error)?;
+        return Ok(GuardedBackgroundInsert::Duplicate(id));
+    }
+
+    // CAP (INV-2): count NON-TERMINAL background runs (both kinds) for the
+    // conversation. The row we are about to insert is not pre-counted, so a cap of
+    // N permits N concurrent and refuses the N+1th.
+    let active: i64 = sqlx::query_scalar!(
+        r#"
+        SELECT count(*) AS "count!" FROM workflow_runs
+        WHERE conversation_id = $1
+          AND user_id = $2
+          AND job_kind <> 'workflow'
+          AND status IN ('pending','running','waiting','resumable')
+        "#,
+        conversation_id,
+        request.user_id,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+    if active >= max_active {
+        tx.commit().await.map_err(AppError::database_error)?;
+        return Ok(GuardedBackgroundInsert::OverCap { active });
+    }
+
+    let row = insert_background_run_exec(&mut *tx, &request).await?;
+    tx.commit().await.map_err(AppError::database_error)?;
+    Ok(GuardedBackgroundInsert::Inserted(Box::new(row)))
 }
 
 /// Owner-scoped run fetch. Returns the row ONLY when it belongs to `user_id`; a
@@ -2298,9 +2459,13 @@ mod tests {
         };
         let user_id = make_user(&pool).await;
 
-        let run_id = crate::modules::workflow::runner::spawn_background_run(
+        // TEST-6 (background-spawn-loop-guard): the unguarded (`guard: None`)
+        // detached/scheduler spawn path is unchanged — it drives to terminal and
+        // returns `BackgroundSpawnResult::Spawned`.
+        let run_id = match crate::modules::workflow::runner::spawn_background_run(
             &pool,
             bg_req(user_id, JobKind::SubAgent),
+            None, // no guard — the conversation-less/detached spawn path
             |_pool, _run_id, _handle| async move {
                 crate::modules::workflow::runner::BackgroundOutcome::Completed {
                     final_output: Some(serde_json::json!({"answer": 42})),
@@ -2308,7 +2473,11 @@ mod tests {
             },
         )
         .await
-        .expect("spawn background run");
+        .expect("spawn background run")
+        {
+            crate::modules::workflow::runner::BackgroundSpawnResult::Spawned(id) => id,
+            other => panic!("unguarded spawn must be Spawned, got {other:?}"),
+        };
 
         // Poll for terminal (the driver completes immediately; allow slack for
         // the detached task + terminal write).

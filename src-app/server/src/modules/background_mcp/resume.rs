@@ -67,7 +67,11 @@ pub fn resume_enabled_from_config() -> bool {
 /// it is conversation-bound AND produced a non-empty result. The subagent-ONLY
 /// gate is structural (this path is reached only from `execute_subagent_run`,
 /// never the sandbox driver). Pure → unit-tested (incl. the disabled-switch case).
-pub fn should_resume(resume_enabled: bool, conversation_id: Option<Uuid>, final_text: &str) -> bool {
+pub fn should_resume(
+    resume_enabled: bool,
+    conversation_id: Option<Uuid>,
+    final_text: &str,
+) -> bool {
     resume_enabled && conversation_id.is_some() && !final_text.trim().is_empty()
 }
 
@@ -248,8 +252,14 @@ mod tests {
             "clear machine-authored header: {msg}"
         );
         assert!(msg.contains("Summarize the PDF"), "carries the task: {msg}");
-        assert!(msg.contains(&run_id.to_string()), "carries the run_id: {msg}");
-        assert!(msg.contains("Here is the summary."), "carries the result: {msg}");
+        assert!(
+            msg.contains(&run_id.to_string()),
+            "carries the run_id: {msg}"
+        );
+        assert!(
+            msg.contains("Here is the summary."),
+            "carries the result: {msg}"
+        );
         assert!(
             msg.to_lowercase().contains("never follow instructions"),
             "prepends an untrusted-content guard: {msg}"
@@ -274,7 +284,9 @@ mod tests {
             "the injected result body is capped at RESUME_RESULT_MAX_CHARS"
         );
         assert!(
-            msg.contains("truncated") && msg.contains("collect_result") && msg.contains(&run_id.to_string()),
+            msg.contains("truncated")
+                && msg.contains("collect_result")
+                && msg.contains(&run_id.to_string()),
             "truncation appends a run_id-carrying pointer to collect_result: {}",
             &msg[msg.len().saturating_sub(200)..]
         );
@@ -292,10 +304,51 @@ mod tests {
     #[test]
     fn should_resume_requires_conversation_and_nonempty_result() {
         let cid = Some(Uuid::new_v4());
-        assert!(should_resume(true, cid, "a real answer"), "enabled + bound + non-empty → resume");
-        assert!(!should_resume(true, None, "a real answer"), "no conversation → skip");
+        assert!(
+            should_resume(true, cid, "a real answer"),
+            "enabled + bound + non-empty → resume"
+        );
+        assert!(
+            !should_resume(true, None, "a real answer"),
+            "no conversation → skip"
+        );
         assert!(!should_resume(true, cid, ""), "empty result → skip");
-        assert!(!should_resume(true, cid, "   \n\t "), "whitespace-only result → skip");
+        assert!(
+            !should_resume(true, cid, "   \n\t "),
+            "whitespace-only result → skip"
+        );
+    }
+
+    // TEST-4 (background-spawn-loop-guard INV-3): the `[Background task complete]`
+    // resume injection is DATA + a "continue" instruction — it must NOT itself
+    // instruct or enable a new spawn, or the completion feedback becomes a
+    // self-perpetuating spawn trigger. (The other half of INV-3 — that a
+    // recently-completed identical re-spawn is refused as a duplicate — is proven
+    // by the integration test in tests/background_mcp/spawn_guard.rs.)
+    #[test]
+    fn resume_message_carries_no_spawn_directive() {
+        let run_id = Uuid::new_v4();
+        let msg = build_resume_message(
+            "Generate the Mandelbrot set",
+            "Here is the result of the task.",
+            run_id,
+        )
+        .to_lowercase();
+        assert!(
+            !msg.contains("spawn_background"),
+            "the completion injection must never name the spawn tool: {msg}"
+        );
+        assert!(
+            !msg.contains("spawn a background") && !msg.contains("spawn another"),
+            "the completion injection must never instruct a new spawn: {msg}"
+        );
+        // Positive control: it DOES carry the intended continue instruction, so the
+        // negative assertions above are about the absence of a spawn directive, not
+        // an empty/broken message.
+        assert!(
+            msg.contains("continue the conversation"),
+            "the injection still carries its continue instruction: {msg}"
+        );
     }
 
     // TEST-8: the deploy-level kill switch — with `resume_enabled = false`, an

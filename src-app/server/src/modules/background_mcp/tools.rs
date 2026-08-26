@@ -31,13 +31,83 @@ use crate::modules::workflow::agent_dispatch::{
 use crate::modules::workflow::models::{CreateBackgroundRun, JobKind, WorkflowRunStatus};
 use crate::modules::workflow::registry;
 use crate::modules::workflow::repository;
-use crate::modules::workflow::runner::{self, BackgroundOutcome};
+use crate::modules::workflow::runner::{
+    self, BackgroundOutcome, BackgroundSpawnGuard, BackgroundSpawnResult,
+};
 
 use ziee_notification::create_and_emit;
 
 /// Serialized-output paging cap for `collect_result` (mirrors `tool_result_mcp`).
 const COLLECT_MAX_CHARS_CAP: usize = 100_000;
 const COLLECT_DEFAULT_MAX_CHARS: usize = 20_000;
+
+/// Dedup window for `spawn_background` idempotency (background-spawn-loop-guard
+/// DEC-2). An INTERNAL coordination constant, not an operator tunable — it exists
+/// to catch the completion→re-inject→re-spawn loop (which fires within seconds)
+/// while still allowing a deliberate re-run of the same task later. Same spirit as
+/// `resume.rs`'s `RESUME_MAX_IDLE_WAIT`. The concurrency CAP, by contrast, IS
+/// operator-tunable and reuses `agent_admin_settings.fan_out_max_threads` (DEC-1).
+const SPAWN_DEDUP_WINDOW_SECS: i64 = 300;
+
+/// Build the per-conversation spawn guard (DEDUP + concurrency CAP) for a
+/// conversation-bound `spawn_background` (background-spawn-loop-guard ITEM-3).
+///
+/// Returns `None` for a conversation-LESS spawn (nothing to scope a dedup/cap to —
+/// unchanged detached behavior). The cap reuses the admin-configurable
+/// `agent_admin_settings.fan_out_max_threads` (DEC-1); an unreadable settings row
+/// falls back to the same default the column carries (6), clamped to ≥1 so the
+/// guard can never wedge every spawn.
+async fn spawn_guard_for(conversation_id: Option<Uuid>) -> Option<BackgroundSpawnGuard> {
+    conversation_id?;
+    let cap = crate::core::Repos
+        .agent
+        .get_admin_settings()
+        .await
+        .map(|s| s.fan_out_max_threads as i64)
+        .unwrap_or(6)
+        .max(1);
+    Some(BackgroundSpawnGuard {
+        max_active_per_conversation: cap,
+        dedup_window_secs: SPAWN_DEDUP_WINDOW_SECS,
+    })
+}
+
+/// Map a guarded [`BackgroundSpawnResult`] to the model-facing tool response
+/// (background-spawn-loop-guard ITEM-3). Spawned → the normal pending handle;
+/// Duplicate → a NON-error "already running/queued" result carrying the existing
+/// run_id (INV-1 — tells the model to stop, not retry); OverCap → a clear error
+/// creating no run (INV-2).
+fn map_spawn_result(
+    result: BackgroundSpawnResult,
+    kind_str: &str,
+    spawned_note: &str,
+) -> Result<Value, AppError> {
+    match result {
+        BackgroundSpawnResult::Spawned(run_id) => Ok(json!({
+            "run_id": run_id,
+            "kind": kind_str,
+            "status": "pending",
+            "note": spawned_note,
+        })),
+        BackgroundSpawnResult::Duplicate(run_id) => Ok(json!({
+            "run_id": run_id,
+            "kind": kind_str,
+            "status": "already_running",
+            "note": "An identical background task is already running (or was just started) \
+                     for this conversation — NOT spawning a duplicate. END your turn and wait \
+                     to be re-engaged with its result, or read it with collect_result on this \
+                     run_id. Do not spawn it again.",
+        })),
+        BackgroundSpawnResult::OverCap { active, cap } => Err(AppError::bad_request(
+            "BACKGROUND_SPAWN_CAP_EXCEEDED",
+            format!(
+                "this conversation already has {active} background run(s) in flight (cap {cap}); \
+                 not spawning more. Wait for one to finish (a completed sub-agent re-engages \
+                 this conversation automatically) or cancel one before spawning again."
+            ),
+        )),
+    }
+}
 
 /// Copyable literal-JSON example carried by every `spec`-SHAPE refusal.
 ///
@@ -709,11 +779,20 @@ async fn spawn_subagent(
         inputs_json: spec.clone(),
     };
 
+    // DEDUP + per-conversation CAP guard (background-spawn-loop-guard ITEM-3): a
+    // confused model was observed re-spawning the SAME task on every completion
+    // re-injection. The guard refuses a duplicate / over-cap spawn at the boundary
+    // (race-safe in one txn), which is what breaks the loop.
+    let guard = spawn_guard_for(conversation_id).await;
+
     // Capture the spec into the detached driver (ITEM-7 / ITEM-9). The driver
     // runs OUTSIDE any per-conversation single-flight lock — this is
     // fire-and-forget, so the foreground chat stays interactive.
-    let run_id =
-        runner::spawn_background_run(pool, request, move |task_pool, run_id, handle| async move {
+    let result = runner::spawn_background_run(
+        pool,
+        request,
+        guard,
+        move |task_pool, run_id, handle| async move {
             execute_subagent_run(
                 &task_pool,
                 run_id,
@@ -725,15 +804,15 @@ async fn spawn_subagent(
                 &task,
             )
             .await
-        })
-        .await?;
+        },
+    )
+    .await?;
 
-    Ok(json!({
-        "run_id": run_id,
-        "kind": job_kind.as_str(),
-        "status": "pending",
-        "note": "Background sub-agent started. END your turn now — do NOT poll. When it finishes, this conversation is automatically re-engaged with its result."
-    }))
+    map_spawn_result(
+        result,
+        job_kind.as_str(),
+        "Background sub-agent started. END your turn now — do NOT poll. When it finishes, this conversation is automatically re-engaged with its result.",
+    )
 }
 
 // The detached background sub-agent's event sink is the shared
@@ -957,10 +1036,20 @@ async fn spawn_sandbox_exec(
         inputs_json: spec.clone(),
     };
 
+    // DEDUP + per-conversation CAP guard (background-spawn-loop-guard ITEM-3),
+    // same as the sub-agent path — a duplicate / over-cap command spawn is refused
+    // at the boundary. `conversation_id` is always Some here (required above), so
+    // the guard is always built.
+    let guard = spawn_guard_for(Some(conversation_id)).await;
+
     // Fire-and-forget: the driver runs OUTSIDE any per-conversation single-flight
     // lock, so the foreground chat stays interactive while the command runs.
-    let run_id =
-        runner::spawn_background_run(pool, request, move |task_pool, run_id, handle| async move {
+    let kind_str = kind.job_kind.as_str();
+    let result = runner::spawn_background_run(
+        pool,
+        request,
+        guard,
+        move |task_pool, run_id, handle| async move {
             execute_sandbox_run(
                 &task_pool,
                 run_id,
@@ -971,15 +1060,15 @@ async fn spawn_sandbox_exec(
                 flavor,
             )
             .await
-        })
-        .await?;
+        },
+    )
+    .await?;
 
-    Ok(json!({
-        "run_id": run_id,
-        "kind": kind.job_kind.as_str(),
-        "status": "pending",
-        "note": "Background sandbox command started. END your turn — its completion drops a notification in the inbox; read its output with collect_result on demand."
-    }))
+    map_spawn_result(
+        result,
+        kind_str,
+        "Background sandbox command started. END your turn — its completion drops a notification in the inbox; read its output with collect_result on demand.",
+    )
 }
 
 /// The SandboxExec background driver (ITEM-11/12/13).

@@ -29,6 +29,11 @@ mod transcript_test;
 // DISABLED, so a spawned sandbox run fails fast in its driver and the SPAWN
 // result (what these assert) is produced before any network call.
 mod spawn_contract;
+// DEDUP + per-conversation CAP guard for `spawn_background` (background-spawn-loop-guard,
+// INV-1/INV-2/INV-3). Rootfs-free — the guard decides duplicate/over-cap BEFORE any
+// detached task runs; non-terminal / recent runs are SEEDED directly and the guard
+// reads that live state.
+mod spawn_guard;
 // Group C — background sandbox code execution (ITEM-11/12/13). Rootfs-gated
 // (mirrors the code_sandbox tier6 pattern): the driver runs a REAL bwrap command,
 // so it needs a booted sandbox + a published rootfs. Linux is the reference
