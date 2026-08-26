@@ -261,6 +261,18 @@ fn auto_attach_builtin_ids(
     if flag(crate::modules::knowledge_base::chat_extension::ATTACH_FLAG) {
         ids.push(crate::modules::knowledge_base::knowledge_base_server_id());
     }
+    // `code_sandbox` attaches behind the flag set by the code_sandbox chat
+    // extension (`attach_code_sandbox`), gated on tool-capable + the sandbox
+    // being enabled (`config::get_state().is_some()`). Without this the
+    // `execute_command` tool is never advertised to a chat, so a model told about
+    // it (by the always-on `spawn_background` description) hits "could not resolve
+    // an MCP server" (CLAUDE.md §11 silent-failure class). Like `control` /
+    // `background` it is auto-attached but deliberately NOT approval-bypassed
+    // (see `is_builtin_server_id` — code_sandbox is intentionally absent): it runs
+    // code, so `execute_command` stays behind manual approval.
+    if flag(crate::modules::code_sandbox::chat_extension::ATTACH_FLAG) {
+        ids.push(crate::modules::code_sandbox::code_sandbox_server_id());
+    }
     // `control` attaches behind the flag set by the control chat extension
     // (`attach_control_mcp`), gated on the deploy kill-switch + tool-capable.
     // Unlike the read-only built-ins it is NOT approval-bypassed (see
@@ -3286,6 +3298,16 @@ impl ChatExtension for McpChatExtension {
                 .map(|id| id == crate::modules::background_mcp::background_mcp_server_id())
                 .unwrap_or(false);
 
+            // The code_sandbox server is auto-attached but NOT approval-bypassed:
+            // its read-only tools (read_file / list_files / get_resource_link) may
+            // auto-run, but `execute_command` (arbitrary code) + write_file /
+            // edit_file (mutations) ALWAYS require explicit approval — overriding
+            // even AutoApprove (same posture as control's mutating invoke and
+            // background's spawn_background: an execution tool must never auto-run).
+            let is_code_sandbox = uuid::Uuid::parse_str(&server_id)
+                .map(|id| id == crate::modules::code_sandbox::code_sandbox_server_id())
+                .unwrap_or(false);
+
             // ITEM-54/DEC-112 + FINDING-1: the admin per-(server, tool) approval
             // override. Consulted FIRST by `resolve_tool_approval` below — it
             // WINS over the built-in bypass AND the control/background
@@ -3310,6 +3332,8 @@ impl ChatExtension for McpChatExtension {
                 )
             } else if is_background {
                 crate::modules::background_mcp::tools::background_call_needs_approval(&tool_name)
+            } else if is_code_sandbox {
+                crate::modules::code_sandbox::handlers::code_sandbox_call_needs_approval(&tool_name)
             } else if is_builtin {
                 false
             } else {
@@ -5424,6 +5448,75 @@ mod builtin_tests {
             !is_builtin_server_id(control),
             "control must NOT be approval-bypassed"
         );
+    }
+
+    /// code_sandbox attach seam (code-sandbox-chat-attach ITEM-3/ITEM-4) + the
+    /// security-critical negative. code_sandbox is auto-attached behind
+    /// `attach_code_sandbox` (the FIRST mcp.rs edit — without it `execute_command`
+    /// is never advertised to a chat), but is deliberately NOT on the
+    /// approval-bypass list (the SECOND edit is intentionally omitted): it runs
+    /// code, so `execute_command` is always forced through manual approval. Same
+    /// posture as `control` (attach ≠ bypass).
+    #[test]
+    fn code_sandbox_attaches_on_flag_and_is_not_approval_bypassed() {
+        let code_sandbox = crate::modules::code_sandbox::code_sandbox_server_id();
+
+        // TEST-3 [acceptance] [invariant: INV-3] — auto_attach EXCLUDES
+        // code_sandbox without its flag, INCLUDES it with the flag. The id being
+        // in the collector's fetch list is what makes `execute_command` advertised
+        // (with the `<server_id>__` prefix) and resolvable via the bare-name
+        // recovery map — so the model no longer hits "could not resolve an MCP
+        // server".
+        let mut m: HashMap<String, serde_json::Value> = HashMap::new();
+        m.insert("model_tools_capable".into(), json!(true));
+        assert!(
+            !auto_attach_builtin_ids(&m).contains(&code_sandbox),
+            "code_sandbox must not attach without its flag"
+        );
+        m.insert(
+            crate::modules::code_sandbox::chat_extension::ATTACH_FLAG.into(),
+            json!("true"),
+        );
+        assert!(
+            auto_attach_builtin_ids(&m).contains(&code_sandbox),
+            "attach_code_sandbox must push the code_sandbox server id (the consumer mcp.rs edit)"
+        );
+
+        // TEST-4 [acceptance] [invariant: INV-2] — attached, YET not
+        // approval-bypassed: `execute_command` runs code and must stay behind
+        // manual approval. If code_sandbox were ever added to is_builtin_server_id,
+        // its executions would auto-run.
+        assert!(
+            !is_builtin_server_id(code_sandbox),
+            "code_sandbox must NOT be approval-bypassed (execute_command runs code)"
+        );
+    }
+
+    /// code_sandbox force-approval classifier (code-sandbox-chat-attach ITEM-5).
+    /// TEST-6 [acceptance] [invariant: INV-2] — the `is_code_sandbox` arm of the
+    /// approval ladder consults this: `execute_command` (arbitrary code) +
+    /// `write_file` / `edit_file` (mutations) ALWAYS need approval, overriding even
+    /// AutoApprove (same posture as control/background). The read-only tools
+    /// (`read_file` / `list_files` / `get_resource_link`, scoped to the caller's own
+    /// sandbox workspace) auto-run; an unknown tool fails safe → approve. Without
+    /// this, auto-attaching code_sandbox would let `execute_command` auto-run with
+    /// NO prompt under a conversation set to AutoApprove.
+    #[test]
+    fn code_sandbox_execute_command_forces_approval_even_under_autoapprove() {
+        use crate::modules::code_sandbox::handlers::code_sandbox_call_needs_approval;
+        // Execution + mutations force approval.
+        assert!(
+            code_sandbox_call_needs_approval("execute_command"),
+            "execute_command (arbitrary code) must ALWAYS require approval"
+        );
+        assert!(code_sandbox_call_needs_approval("write_file"));
+        assert!(code_sandbox_call_needs_approval("edit_file"));
+        // Unknown tool fails safe.
+        assert!(code_sandbox_call_needs_approval("something_new"));
+        // Read-only tools auto-run.
+        assert!(!code_sandbox_call_needs_approval("read_file"));
+        assert!(!code_sandbox_call_needs_approval("list_files"));
+        assert!(!code_sandbox_call_needs_approval("get_resource_link"));
     }
 
     /// background_mcp attach seam (ITEM-17 / DEC-33) + the security-critical
