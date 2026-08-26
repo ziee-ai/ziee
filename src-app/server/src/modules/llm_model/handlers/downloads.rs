@@ -7,7 +7,7 @@ use axum::{
     Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
-    response::sse::{Event, Sse},
+    response::sse::{Event, KeepAlive, Sse},
 };
 use futures_util::stream::Stream;
 use schemars::JsonSchema;
@@ -389,7 +389,15 @@ pub async fn subscribe_download_progress(
         remove_client(client_id);
     };
 
-    Ok((StatusCode::OK, Sse::new(stream)))
+    // Keep-alive, as every other SSE route in this tree already does
+    // (`chat/stream/handler.rs`, the framework's `sync/routes.rs`,
+    // `hardware/handlers.rs`, voice, workflow, code_sandbox). This was the ONLY
+    // SSE endpoint without it. A download stream is idle by design between
+    // progress ticks — and completely silent once the monitor loop exits — so
+    // without a heartbeat there is nothing on the wire to distinguish "waiting"
+    // from "dead", and any intermediary on the path (the ngrok tunnel this app
+    // supports, a reverse proxy) is entitled to reap it.
+    Ok((StatusCode::OK, Sse::new(stream).keep_alive(KeepAlive::default())))
 }
 
 pub fn subscribe_download_progress_docs(op: TransformOperation) -> TransformOperation {
@@ -531,4 +539,111 @@ fn remove_client(client_id: ClientId) {
     let mut clients = SSE_CLIENTS.lock().unwrap_or_else(|e| e.into_inner());
     clients.remove(&client_id);
     tracing::info!("Removed download monitoring client: {}", client_id);
+}
+
+/// TEST-9 — pin the FLAT wire shape of `DownloadProgressUpdate`.
+///
+/// The reported "0 Bytes / 0 Bytes" bug was a client that merged this event into
+/// a `DownloadInstance` with a spread, unaware that the server FLATTENS
+/// `progress_data` into top-level fields while every UI reads `progress_data.*`.
+/// The client now maps field-by-field — which is only correct while the wire
+/// stays flat. This test is what makes a later nesting of the payload fail HERE,
+/// next to the `From` impl, instead of silently re-breaking the progress bar.
+#[cfg(test)]
+mod wire_shape_tests {
+    use super::*;
+    use crate::modules::llm_model::models::DownloadProgressData;
+
+    fn instance_with(progress: Option<DownloadProgressData>) -> DownloadInstance {
+        DownloadInstance {
+            id: Uuid::new_v4(),
+            provider_id: Uuid::new_v4(),
+            repository_id: Uuid::new_v4(),
+            request_data: Default::default(),
+            status: DownloadStatus::Downloading,
+            progress_data: progress.into(),
+            error_message: None,
+            started_at: chrono::Utc::now(),
+            completed_at: None,
+            model_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn progress_update_flattens_progress_data_to_the_top_level() {
+        let download = instance_with(Some(DownloadProgressData {
+            phase: DownloadPhase::Downloading,
+            current: 5_637_699_037,
+            total: 5_680_522_464,
+            message: "Downloading model weights".to_string(),
+            speed_bps: 1_606_723,
+            eta_seconds: 26,
+        }));
+
+        let update = DownloadProgressUpdate::from(&download);
+
+        // Serialize rather than read the fields: the CLIENT sees JSON, and what
+        // it must map is the JSON shape, not the Rust struct.
+        let json = serde_json::to_value(&update).expect("update must serialize");
+        let obj = json.as_object().expect("update must be a JSON object");
+
+        assert!(
+            obj.get("progress_data").is_none(),
+            "the SSE payload must stay FLAT — a nested `progress_data` would \
+             silently re-break every consumer that maps the flat fields; got {json}"
+        );
+        assert_eq!(obj.get("current").and_then(|v| v.as_i64()), Some(5_637_699_037));
+        assert_eq!(obj.get("total").and_then(|v| v.as_i64()), Some(5_680_522_464));
+        assert_eq!(obj.get("speed_bps").and_then(|v| v.as_i64()), Some(1_606_723));
+        assert_eq!(obj.get("eta_seconds").and_then(|v| v.as_i64()), Some(26));
+        assert_eq!(
+            obj.get("message").and_then(|v| v.as_str()),
+            Some("Downloading model weights")
+        );
+    }
+
+    /// A download with no `progress_data` yet emits the byte fields as JSON
+    /// `null`, NOT as zeros. That distinction is what lets the client keep the
+    /// figure already on screen instead of blanking it back to "0 Bytes".
+    #[test]
+    fn absent_progress_data_yields_nulls_not_zeros() {
+        let update = DownloadProgressUpdate::from(&instance_with(None));
+        let json = serde_json::to_value(&update).expect("update must serialize");
+        for field in ["current", "total", "speed_bps", "eta_seconds", "message"] {
+            assert!(
+                json.get(field).is_some_and(|v| v.is_null()),
+                "{field} must be null when the row has no progress_data yet, so the \
+                 consumer can distinguish 'unknown' from 'zero'; got {json}"
+            );
+        }
+        // `phase` is the ONE progress field that is NOT optional: it is filled
+        // with `Created` even here. The consumer must therefore not treat its
+        // presence as evidence that progress is known — a guard that did was
+        // inert on every real frame (audit round 2).
+        assert_eq!(
+            json.get("phase").and_then(|v| v.as_str()),
+            Some("created"),
+            "phase is required on the wire and defaults to `created`; got {json}"
+        );
+    }
+
+    /// The two WHOLE-ROW fields carry the row's current value on every frame, so
+    /// an absent one serialises as an explicit `null` rather than being omitted.
+    /// The consumer relies on that to distinguish "cleared" from "unknown" — it
+    /// takes these as-is instead of falling back, which is only correct while
+    /// the key is always present.
+    #[test]
+    fn whole_row_fields_are_present_as_null_when_unset() {
+        let update = DownloadProgressUpdate::from(&instance_with(None));
+        let json = serde_json::to_value(&update).expect("update must serialize");
+        for field in ["error_message", "model_id"] {
+            assert!(
+                json.get(field).is_some_and(|v| v.is_null()),
+                "{field} must be present as null so a server-side CLEAR is \
+                 observable to the consumer; got {json}"
+            );
+        }
+    }
 }

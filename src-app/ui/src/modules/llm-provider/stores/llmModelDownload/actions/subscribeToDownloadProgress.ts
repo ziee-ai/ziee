@@ -3,15 +3,138 @@ import { useLlmProviderStore } from '@/modules/llm-provider/stores/llmProvider'
 import { useLlmModelDownloadStore } from '@/modules/llm-provider/stores/llmModelDownload'
 import type {
   DownloadInstance,
+  DownloadProgressData,
   DownloadProgressUpdate,
+  DownloadStatus,
   SSEDownloadProgressConnectedData,
 } from '@/api-client/types'
+
 import type { LlmModelDownloadGet, LlmModelDownloadSet } from '../state'
 import loadExistingDownloadsFactory from './_loadExistingDownloads'
 import {
   emitLlmModelDownloadCompleted,
   emitLlmModelDownloadFailed,
 } from '@/modules/llm-provider/events/emitters'
+
+/**
+ * Merge one SSE progress frame into the stored download row.
+ *
+ * The wire event is **FLAT** — the server's `From<&DownloadInstance>` lifts
+ * `current` / `total` / `speed_bps` / `eta_seconds` / `message` / `phase` to the
+ * TOP level (`llm_model/handlers/downloads.rs`, pinned by TEST-9) — while every
+ * surface that renders a download reads `download.progress_data.*`:
+ * `DownloadItem` ("N Bytes / M Bytes"), `DownloadProgress` (the percent), and the
+ * hub's `ModelHubCard`.
+ *
+ * This used to be `{ ...download, ...update } as DownloadInstance`, which grafted
+ * the flat keys on as strays and left `progress_data` at whatever the initial
+ * REST snapshot held — zeros for a just-started download. So the bar sat at 0%
+ * and the byte counts read "0 Bytes / 0 Bytes" for an entire 5.68 GB transfer,
+ * in the onboarding step AND the LLM-providers view, because both read this one
+ * store. The `as DownloadInstance` cast is what stopped `tsc` reporting it; it is
+ * gone, and this function is typed end-to-end instead.
+ *
+ * The progress FIGURES fall back to the value already on screen: the server
+ * sends them as `Option`, and a `null` means "unknown right now", never "zero" —
+ * blanking a figure the user is watching would be its own bug (TEST-9 pins that
+ * the absent case really is `null` and not `0`). `error_message` and `model_id`
+ * are the opposite: those carry the WHOLE ROW's value on every frame, so a null
+ * there means genuinely cleared and is taken as-is. Getting that backwards left
+ * stale red error text on a row whose error the server had cleared (audit FIX-5).
+ */
+
+/**
+ * Exhaustive by construction: this is a `Record` keyed on the generated
+ * `DownloadStatus` union, so adding a status server-side is a COMPILE error here
+ * rather than a silent fall-through. A plain `readonly DownloadStatus[]` (what
+ * this was) accepts a short list happily — the same "a literal that can drift
+ * from its source" defect this file's own comments condemn for the CORS header
+ * (audit FIX-6).
+ */
+const DOWNLOAD_STATUSES_EXHAUSTIVE: Record<DownloadStatus, true> = {
+  pending: true,
+  downloading: true,
+  completed: true,
+  failed: true,
+  cancelled: true,
+}
+/**
+ * Membership is tested against a `Set`, NOT with `in`. `wire in obj` walks the
+ * prototype chain, so `'toString'`, `'constructor'`, `'valueOf'` and
+ * `'__proto__'` all answer true and would be written onto the row as a bogus
+ * status — a regression the first version of this rewrite introduced, and one
+ * the "unrecognised status" test did not catch because its input was not a
+ * prototype member (audit round 2).
+ */
+const DOWNLOAD_STATUSES = new Set<string>(Object.keys(DOWNLOAD_STATUSES_EXHAUSTIVE))
+
+/**
+ * The wire carries `status` as a bare `string` (the server stringifies its enum),
+ * so it cannot be assigned to `DownloadInstance['status']` directly. Narrow it,
+ * and keep the row's existing status for anything unrecognised rather than
+ * writing a value the rest of the store would then compare against and miss —
+ * the old `as DownloadInstance` cast is precisely what let this mismatch through.
+ */
+function narrowStatus(wire: string, previous: DownloadStatus): DownloadStatus {
+  return DOWNLOAD_STATUSES.has(wire) ? (wire as DownloadStatus) : previous
+}
+
+export function applyProgressUpdate(
+  download: DownloadInstance,
+  update: DownloadProgressUpdate,
+): DownloadInstance {
+  const previous = download.progress_data
+  // Everything the frame and the row jointly know about progress. All-absent
+  // means the row has no progress yet.
+  const phase = update.phase ?? previous?.phase
+  const current = update.current ?? previous?.current
+  const total = update.total ?? previous?.total
+  const message = update.message ?? previous?.message
+  const speed_bps = update.speed_bps ?? previous?.speed_bps
+  const eta_seconds = update.eta_seconds ?? previous?.eta_seconds
+
+  // Materialise `progress_data` only when something about progress is actually
+  // known. `phase` is excluded because it is the one progress field the server
+  // does NOT send as an `Option` — `From<&DownloadInstance>` fills it with
+  // `Created` even for a row that has none — so including it made this
+  // predicate unconditionally true.
+  //
+  // HONEST SCOPE (audit round 3): this guard is DEFENSIVE, not a fix for the
+  // queued-download "0 Bytes / 0 Bytes" render. That render has a different
+  // cause entirely: the row's INSERT (`llm_model/repository.rs`) seeds a
+  // fully-zeroed `progress_data`, so both the REST snapshot and every SSE frame
+  // carry `current: 0` rather than null, and a queued row therefore HAS progress
+  // data as far as any consumer can tell. An earlier round claimed this guard
+  // removed that symptom; it does not, and the claim is withdrawn rather than
+  // restated. What the guard does do is keep a genuinely progress-less row
+  // (`progress_data: null`, which the schema permits) from acquiring zeros here.
+  const known =
+    current !== undefined ||
+    total !== undefined ||
+    speed_bps !== undefined ||
+    eta_seconds !== undefined ||
+    message !== undefined
+
+  const progress_data: DownloadProgressData | undefined = known
+    ? {
+        phase: phase ?? 'created',
+        current: current ?? 0,
+        total: total ?? 0,
+        message: message ?? '',
+        speed_bps: speed_bps ?? 0,
+        eta_seconds: eta_seconds ?? 0,
+      }
+    : undefined
+
+  return {
+    ...download,
+    status: narrowStatus(update.status, download.status),
+    // Whole-row fields: a null is a CLEAR, not "unknown" (see the header).
+    error_message: update.error_message,
+    model_id: update.model_id,
+    progress_data,
+  }
+}
 
 export default (set: LlmModelDownloadSet, get: LlmModelDownloadGet) => {
   const loadExistingDownloads = loadExistingDownloadsFactory(set, get)
@@ -88,9 +211,7 @@ export default (set: LlmModelDownloadSet, get: LlmModelDownloadGet) => {
             set((state) => {
               const updatedDownloads = state.downloads.map((download) => {
                 const update = updates.find((u) => u.id === download.id)
-                return update
-                  ? ({ ...download, ...update } as DownloadInstance)
-                  : download
+                return update ? applyProgressUpdate(download, update) : download
               })
               const filteredDownloads = updatedDownloads.filter(
                 (download) => download.status !== 'cancelled' && download.status !== 'completed',
