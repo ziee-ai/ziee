@@ -2256,6 +2256,25 @@ impl ChatExtension for McpChatExtension {
                 .ok_or_else(|| AppError::internal_error("Server not found in accessible list"))?;
 
             if server.usage_mode == UsageMode::Always {
+                // Respect the connection breaker BEFORE dialing: always-mode builds
+                // sessions via `McpSession::new` directly (it never goes through
+                // `get_or_create*`, which is where auto-mode consults the breaker),
+                // so without this a hanging always-mode server that already tripped
+                // the breaker would be re-dialed — paying the full handshake timeout —
+                // every single turn. Skipping while the breaker is open is what makes
+                // INV-3's re-dial suppression actually hold for always-mode.
+                if let Err(e) = self
+                    .session_manager
+                    .check_connection_breaker(server.id)
+                    .await
+                {
+                    tracing::warn!(
+                        "Always-mode: skipping server {} — connection breaker open: {}",
+                        server.name,
+                        e
+                    );
+                    continue;
+                }
                 // Always mode: pre-run tools with user's message and inject enriched context
                 if let Some(ref query_text) = user_message_text {
                     let maybe_model_id = context

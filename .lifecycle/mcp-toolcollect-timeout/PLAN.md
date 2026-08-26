@@ -69,7 +69,10 @@ the diagnosis recorded in this file's header.
   or a hanging always-mode server's breaker never opens (audit F4). Also, on a
   per-tool `call_tool` timeout in always-mode, `break` out of the tool loop rather
   than reusing a session whose transport has a cancelled in-flight request (audit
-  F7). (DEC-6.)
+  F7). (DEC-6.) Round-2 completion (audit F-r2-4): always-mode also CONSULTS the
+  breaker (`check_connection_breaker`, made `pub(crate)`) before dialing, so the
+  opened breaker actually suppresses always-mode re-dials — otherwise INV-3's
+  re-dial-suppression was wired but not behaving for always-mode.
 
 ## Files to touch
 

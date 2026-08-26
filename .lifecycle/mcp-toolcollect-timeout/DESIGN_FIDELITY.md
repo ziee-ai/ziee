@@ -17,4 +17,8 @@ One fidelity verdict per invariant (design = CODING_GUIDELINES.md §2/§5/§6 + 
   path). On the tool-collection path the OUTER timeout wins (audit F1), so ITEM-6/ITEM-7
   explicitly call `record_connection_failure` in the auto and always-mode
   connect-timeout/build-error arms — the breaker therefore opens regardless of which
-  timer fires, on both usage modes.
+  timer fires, on both usage modes. Round 2 (F-r2-4) additionally made always-mode
+  CONSULT the breaker (`check_connection_breaker`) before dialing, so a hanging
+  always-mode server that already tripped the breaker is skipped rather than
+  re-dialed every turn — the re-dial-suppression half of INV-3 now holds for
+  always-mode too (auto-mode already consults it via `get_or_create*`).

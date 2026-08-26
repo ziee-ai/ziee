@@ -4,9 +4,12 @@ Backend-only diff (`src-app/server/**`). No `src-app/ui/**` / `src-app/desktop/u
 touched, so the frontend `npm run check` / `gate:ui` / e2e gates do not apply. No new
 permission (no A9/A10), no new MCP server (no A8), no migration, no OpenAPI regen.
 
-Single enumerated run (phase 8). Logs:
-`/data/pbya/ziee/tmp/lifecycle-logs/mcp-toolcollect-timeout-int.log` (first run) and
-`...-int2.log` (final run after the phase-7 test-assertion corrections).
+Enumerated run (phase 8). Logs:
+`/data/pbya/ziee/tmp/lifecycle-logs/mcp-toolcollect-timeout-int.log` (first run),
+`...-int2.log` (after the phase-7 round-1 test-assertion corrections), and
+`...-int3.log` (final, after the round-2 always-mode breaker-consult fix). All three
+enumerated results below are from the final `-int3` run: unit `30 passed; 0 failed`,
+integration (4 enumerated) `4 passed; 0 failed`.
 
 - **TEST-1**: PASS — `modules::mcp::client::stdio::tests::with_handshake_timeout_elapses_on_a_never_completing_handshake` (unit; a `pending()` handshake returns Err in a bounded window, ready future passes through).
 - **TEST-2**: PASS — `mcp::mcp_extension_test::stalling_server_is_skipped_and_llm_still_gets_healthy_tools` (integration; healthy tool reaches LLM, stalling server skipped, bounded).

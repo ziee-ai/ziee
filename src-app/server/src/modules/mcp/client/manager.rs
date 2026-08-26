@@ -162,7 +162,12 @@ impl McpSessionManager {
     /// `Ok(())` when a connect should be attempted (no state, or the window has
     /// elapsed). Called on every `get_or_create*` MISS, before building a
     /// session — see the module-level breaker comment.
-    async fn check_connection_breaker(&self, server_id: Uuid) -> Result<(), AppError> {
+    ///
+    /// `pub(crate)` so the always-mode chat path — which builds sessions via
+    /// `McpSession::new` directly and never goes through `get_or_create*` — can
+    /// consult the breaker before dialing, so a hanging always-mode server that
+    /// already tripped the breaker is not re-dialed every turn (INV-3).
+    pub(crate) async fn check_connection_breaker(&self, server_id: Uuid) -> Result<(), AppError> {
         let failures = self.failures.read().await;
         if let Some(state) = failures.get(&server_id)
             && !should_attempt_connect(Some(state), Instant::now())
