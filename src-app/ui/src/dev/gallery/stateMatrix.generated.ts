@@ -4,7 +4,7 @@
 // renders + overlay triggers + panel/slot registrations) that the reconciliation
 // gate (scripts/reconcile-state-matrix.mjs) checks the gallery entries against.
 //
-// 353 surfaces carry renderable-state signals; 2184 signals total.
+// 353 surfaces carry renderable-state signals; 2185 signals total.
 
 /** A signal is one mechanically-detected render fork (a state the surface can be in). */
 export interface StateSignal {
@@ -250,19 +250,20 @@ export const STATE_MATRIX: Record<string, SurfaceStateMatrix> = {
     surface: "modules/background/components/BackgroundRunCard",
     requiredStates: ["error","open"],
     signals: [
-      { kind: "branch", condition: "!text", line: 115 },
-      { kind: "branch", condition: "run.has_result", line: 153 },
-      { kind: "error", condition: "run.status === 'failed' && run.error_message", line: 165 },
-      { kind: "branch", condition: "terminal", line: 177 },
-      { kind: "branch", condition: "!terminal", line: 190 },
-      { kind: "branch", condition: "!terminal", line: 201 },
-      { kind: "overlay", condition: "<Confirm open>", line: 212 },
-      { kind: "branch", condition: "!terminal && steerOpen", line: 238 },
-      { kind: "branch", condition: "pendingNotes.length > 0", line: 243 },
-      { kind: "branch", condition: "terminal && resultOpen", line: 283 },
-      { kind: "branch", condition: "detailError", line: 289 },
-      { kind: "branch", condition: "detail", line: 296 },
-      { kind: "branch", condition: "transcript.length > 0", line: 308 },
+      { kind: "branch", condition: "!text", line: 130 },
+      { kind: "branch", condition: "tokens !== null", line: 175 },
+      { kind: "branch", condition: "run.has_result", line: 180 },
+      { kind: "error", condition: "run.status === 'failed' && run.error_message", line: 193 },
+      { kind: "branch", condition: "terminal", line: 205 },
+      { kind: "branch", condition: "!terminal", line: 221 },
+      { kind: "branch", condition: "!terminal", line: 232 },
+      { kind: "overlay", condition: "<Confirm open>", line: 243 },
+      { kind: "branch", condition: "!terminal && steerOpen", line: 269 },
+      { kind: "branch", condition: "pendingNotes.length > 0", line: 274 },
+      { kind: "branch", condition: "terminal && detailsOpen", line: 315 },
+      { kind: "branch", condition: "detailError", line: 321 },
+      { kind: "branch", condition: "detail", line: 328 },
+      { kind: "branch", condition: "transcript.length > 0", line: 371 },
     ],
   },
   "modules/background/components/BackgroundRunResult": {

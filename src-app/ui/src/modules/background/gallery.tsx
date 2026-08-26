@@ -34,6 +34,35 @@ const RUN_DETAILS: Record<string, BackgroundRunDetail> = {
     conversation_id: 'c0000000-0000-0000-0000-000000000002',
     created_at: '2026-01-03T09:10:00.000Z',
     updated_at: '2026-01-03T09:18:00.000Z',
+    // The durable agent-loop transcript, rendered under the card's Transcript
+    // tab by the shared `AgentActivityTimeline`. Seeded here so the populated
+    // transcript state is a real, browsable gallery cell (reviewed at desktop +
+    // 390px), not just empty/error.
+    activity: [
+      {
+        type: 'agent_activity',
+        seq: 0,
+        kind: 'thinking',
+        title: 'Grouping the 40 tickets by theme',
+        status: 'ok',
+      },
+      {
+        type: 'agent_activity',
+        seq: 1,
+        kind: 'tool_call',
+        tool: 'search_knowledge',
+        title: 'Searching prior ticket resolutions',
+        detail: 'query=proration upgrade',
+        status: 'ok',
+      },
+      {
+        type: 'agent_activity',
+        seq: 2,
+        kind: 'message',
+        title: 'Wrote the themed summary + recommendation',
+        status: 'ok',
+      },
+    ],
     final_output_json: {
       executor: 'agent-core',
       status: 'completed',

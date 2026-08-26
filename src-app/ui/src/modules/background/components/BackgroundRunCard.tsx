@@ -1,7 +1,7 @@
-import { FileText, MessageSquare, XCircle } from 'lucide-react'
+import { Bot, ChevronDown, MessageSquare, Terminal, XCircle } from 'lucide-react'
 import { useState } from 'react'
 
-import type { BackgroundRunSummary } from '@/api-client/types'
+import type { BackgroundRunDetail, BackgroundRunSummary } from '@/api-client/types'
 import {
   Alert,
   Button,
@@ -10,6 +10,7 @@ import {
   Flex,
   message,
   Spin,
+  Tabs,
   Tag,
   type TagTone,
   Text,
@@ -40,6 +41,13 @@ const KIND_LABEL: Record<string, string> = {
   sandbox_exec: 'Sandbox',
 }
 
+/** Leading glyph per run kind — mirrors the sibling `SubAgentActivityCard`
+ *  (a leading kind icon before the title). Sandbox runs read as a terminal. */
+function KindIcon({ jobKind }: { jobKind: string }) {
+  const Icon = jobKind === 'sandbox_exec' ? Terminal : Bot
+  return <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+}
+
 // Small dependency-free relative time ("2m ago" / "1h ago" / "3d ago") — mirrors
 // the helper in AuthProvidersListSection; Intl.RelativeTimeFormat is heavier than
 // this list UI needs.
@@ -58,19 +66,28 @@ const notifyError = (e: unknown, fallback: string): void => {
 }
 
 /**
- * One background-run row (ITEM-8 / ITEM-25). Shows the run's status badge, label,
- * kind, relative start time and a "result ready" indicator; lets the user cancel
- * a non-terminal run (confirmed) and queue a steering note to it.
+ * One background-run row (ITEM-8 / ITEM-25). Shows the run's kind glyph, status
+ * badge, label, relative start time and token count; lets the user cancel a
+ * non-terminal run (confirmed) and queue a steering note to it.
+ *
+ * A TERMINAL run expands (lazily) into a two-tab detail region — **Transcript**
+ * (the durable agent-loop transcript, the shared workflow `AgentActivityTimeline`
+ * over `detail.activity`) and **Result** (`BackgroundRunResult`). Transcript is
+ * the default tab: the job a user has here is "open a task and see what the agent
+ * did", and the result is one click away. Detail is fetched once on first expand
+ * (`loadRunDetail`, cached), so the panel never eagerly fans out N detail fetches.
+ *
+ * The card carries `shrink-0`: the kit `Card` is `overflow-hidden`, which as a
+ * flex child computes `min-height:0` and would otherwise let the panel's flex
+ * column SHRINK each card and clip its meta row/actions (measured 58px offset vs
+ * 152px content). `shrink-0` keeps the card at its natural height so the panel's
+ * `overflow-y-auto` owns the scroll.
  *
  * Cancel + steer are gated on `!isTerminalRunStatus(run.status)` — the exact
- * boundary the backend enforces (both endpoints 409 on a terminal run).
- *
- * There is deliberately NO "Open conversation" affordance: the card's only render
- * site is the in-conversation Tasks panel, and the endpoint's disjoint scope
- * guarantees every run it lists belongs to the conversation the user is already
- * reading — so the button was a no-op that, inside a split pane, would have
- * navigated the whole window. (It existed for the deleted global page, which
- * listed runs from many conversations at once.)
+ * boundary the backend enforces (both endpoints 409 on a terminal run). There is
+ * deliberately NO "Open conversation" affordance: the card's only render site is
+ * the in-conversation Tasks panel, whose runs already belong to the conversation
+ * being read.
  */
 export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -78,23 +95,21 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
   const [steerOpen, setSteerOpen] = useState(false)
   const [note, setNote] = useState('')
   const [posting, setPosting] = useState(false)
-  const [resultOpen, setResultOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   const terminal = isTerminalRunStatus(run.status)
   // Reactive read (subscribes) — the row re-renders when its notes load / change.
   const notes = BackgroundRuns.notesByRun[run.id] ?? []
   const pendingNotes = notes.filter(n => !n.consumed_at)
 
-  // Reactive reads for the inline result view (subscribe → re-render on fetch).
-  // `runDetailLoading` is the store's internal fetch-dedup guard; here the panel
-  // derives its loading state from `detail` being absent (no error) instead.
+  // Reactive reads for the inline detail view (subscribe → re-render on fetch).
   const detail = BackgroundRuns.detailsByRun[run.id]
   const detailError = BackgroundRuns.detailErrorByRun[run.id]
 
-  const toggleResult = () => {
-    setResultOpen(open => {
+  const toggleDetails = () => {
+    setDetailsOpen(open => {
       const next = !open
-      // Lazy-fetch the result body only when the view is first opened; the store
+      // Lazy-fetch the detail body only when the region is first opened; the store
       // caches it, so re-expanding a terminal run never refetches.
       if (next) void BackgroundRuns.loadRunDetail(run.id)
       return next
@@ -125,11 +140,21 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
     }
   }
 
+  const tokens = run.total_tokens > 0 ? run.total_tokens : null
+
   return (
-    <Card data-testid={`background-run-card-${run.id}`}>
+    <Card size="sm" className="shrink-0" data-testid={`background-run-card-${run.id}`}>
       <Flex className="flex-col gap-2">
-        {/* Status + label */}
-        <Flex className="flex-wrap items-center gap-2">
+        {/* Kind glyph + title + status pill on one row. The title is `flex-1
+            min-w-0 line-clamp-2`, so it takes the row's width and clamps to two
+            lines (never a hard single-line truncate) while the status pill hugs
+            the end; at 390px the title wraps to two lines and the pill stays
+            top-right beside it — no clip. */}
+        <Flex className="flex-wrap items-start gap-x-2 gap-y-1">
+          <KindIcon jobKind={run.job_kind} />
+          <Text strong className="min-w-0 flex-1 line-clamp-2 break-words text-sm">
+            {run.label ?? 'Untitled run'}
+          </Text>
           <Tag
             variant="outline"
             tone={STATUS_TONE[run.status] ?? 'default'}
@@ -137,23 +162,26 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
           >
             {run.status}
           </Tag>
-          <Text strong className="min-w-0 truncate">
-            {run.label ?? 'Untitled run'}
-          </Text>
         </Flex>
 
-        {/* Kind + start time + result indicator */}
-        <Flex className="flex-wrap items-center gap-2">
+        {/* Compact meta row: kind · time · tokens · result-ready. */}
+        <Flex className="flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
           <Tag variant="outline" data-testid={`background-run-kind-${run.id}`}>
             {KIND_LABEL[run.job_kind] ?? run.job_kind}
           </Tag>
           <Text type="secondary" className="text-xs">
             {relativeTime(run.created_at)}
           </Text>
+          {tokens !== null && (
+            <Text type="secondary" className="text-xs">
+              {tokens.toLocaleString()} tokens
+            </Text>
+          )}
           {run.has_result && (
             <Tag
               variant="outline"
               tone="success"
+              className="ms-auto"
               data-testid={`background-run-result-${run.id}`}
             >
               Result ready
@@ -177,14 +205,17 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
           {terminal && (
             <Button
               variant="ghost"
-              icon={<FileText />}
-              aria-expanded={resultOpen}
-              aria-controls={`background-run-result-panel-${run.id}`}
-              aria-label={resultOpen ? 'Hide result' : 'View result'}
-              data-testid={`background-run-result-toggle-${run.id}`}
-              onClick={toggleResult}
+              icon={
+                <ChevronDown
+                  className={detailsOpen ? 'rotate-180 transition-transform' : 'transition-transform'}
+                />
+              }
+              aria-expanded={detailsOpen}
+              aria-controls={`background-run-details-panel-${run.id}`}
+              data-testid={`background-run-details-toggle-${run.id}`}
+              onClick={toggleDetails}
             >
-              {resultOpen ? 'Hide result' : 'View result'}
+              {detailsOpen ? 'Hide details' : 'Show details'}
             </Button>
           )}
           {!terminal && (
@@ -279,45 +310,88 @@ export function BackgroundRunCard({ run }: { run: BackgroundRunSummary }) {
           </Flex>
         )}
 
-        {/* Inline result view (terminal runs only) — lazily fetched on expand. */}
-        {terminal && resultOpen && (
-          <Flex
-            id={`background-run-result-panel-${run.id}`}
-            className="flex-col gap-2 rounded-md border p-3"
-            data-testid={`background-run-result-panel-${run.id}`}
+        {/* Detail region (terminal runs only) — Transcript + Result tabs,
+            lazily fetched on expand. */}
+        {terminal && detailsOpen && (
+          <div
+            id={`background-run-details-panel-${run.id}`}
+            className="rounded-md border p-3"
+            data-testid={`background-run-details-panel-${run.id}`}
           >
             {detailError ? (
               <Alert
                 tone="error"
-                title="Couldn't load the result"
+                title="Couldn't load the details"
                 description={detailError}
-                data-testid={`background-run-result-error-${run.id}`}
+                data-testid={`background-run-detail-error-${run.id}`}
               />
             ) : detail ? (
-              <Flex className="flex-col gap-3">
-                <BackgroundRunResult detail={detail} />
-                {/* ITEM-4 — the durable agent-loop transcript, rendered by the
-                    shared workflow timeline. Only when the run produced ≥1
-                    agent-activity entry (no empty timeline block otherwise). */}
-                {(() => {
-                  const transcript: AgentActivityEntry[] = (
-                    detail.activity ?? []
-                  ).filter(
-                    (e): e is AgentActivityEntry => e.type === 'agent_activity',
-                  )
-                  return transcript.length > 0 ? (
-                    <AgentActivityTimeline stepId="agent" entries={transcript} />
-                  ) : null
-                })()}
-              </Flex>
+              <BackgroundRunDetailTabs run={run} detail={detail} />
             ) : (
               <Flex className="justify-center py-4">
-                <Spin label="Loading result" />
+                <Spin label="Loading details" />
               </Flex>
             )}
-          </Flex>
+          </div>
         )}
       </Flex>
     </Card>
+  )
+}
+
+/**
+ * The Transcript + Result tab region for a terminal run's detail. Transcript is
+ * the default tab (the primary job here); Result holds the final output. Both
+ * reuse SHARED primitives — `AgentActivityTimeline` (`stepId="agent"`, the exact
+ * projection the detail endpoint serves) and `BackgroundRunResult` — never a
+ * bespoke re-implementation.
+ */
+export function BackgroundRunDetailTabs({
+  run,
+  detail,
+}: {
+  run: BackgroundRunSummary
+  detail: BackgroundRunDetail
+}) {
+  const transcript: AgentActivityEntry[] = (detail.activity ?? []).filter(
+    (e): e is AgentActivityEntry => e.type === 'agent_activity',
+  )
+
+  return (
+    <Tabs
+      data-testid={`background-run-detail-tabs-${run.id}`}
+      defaultValue="transcript"
+      variant="line"
+      size="sm"
+      items={[
+        {
+          key: 'transcript',
+          label: 'Transcript',
+          children:
+            transcript.length > 0 ? (
+              <div className="pt-2">
+                <AgentActivityTimeline stepId="agent" entries={transcript} />
+              </div>
+            ) : (
+              <Text
+                type="secondary"
+                className="block pt-2 text-sm"
+                data-testid={`background-run-transcript-empty-${run.id}`}
+              >
+                No transcript was recorded for this task.
+              </Text>
+            ),
+        },
+        {
+          key: 'result',
+          label: 'Result',
+          children: (
+            <div className="pt-2">
+              <BackgroundRunResult detail={detail} />
+            </div>
+          ),
+        },
+      ]}
+    />
   )
 }

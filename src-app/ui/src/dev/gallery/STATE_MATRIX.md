@@ -8,7 +8,7 @@
 ## Summary
 
 - **353** surfaces carry at least one renderable-state signal.
-- **2184** signals total: 1714 branch, 142 empty, 127 error, 94 loading, 102 overlay, 5 panel.
+- **2185** signals total: 1715 branch, 142 empty, 127 error, 94 loading, 102 overlay, 5 panel.
 - **5** right-panel renderers registered (each a right-panel-open state).
 - **35** slot registrations (sidebar / settings / chat mount points).
 
@@ -314,19 +314,20 @@ Required states: `error`, `open`
 
 | kind | condition | line |
 |---|---|---|
-| branch | `!text` | 115 |
-| branch | `run.has_result` | 153 |
-| error | `run.status === 'failed' && run.error_message` | 165 |
-| branch | `terminal` | 177 |
-| branch | `!terminal` | 190 |
-| branch | `!terminal` | 201 |
-| overlay | `<Confirm open>` | 212 |
-| branch | `!terminal && steerOpen` | 238 |
-| branch | `pendingNotes.length > 0` | 243 |
-| branch | `terminal && resultOpen` | 283 |
-| branch | `detailError` | 289 |
-| branch | `detail` | 296 |
-| branch | `transcript.length > 0` | 308 |
+| branch | `!text` | 130 |
+| branch | `tokens !== null` | 175 |
+| branch | `run.has_result` | 180 |
+| error | `run.status === 'failed' && run.error_message` | 193 |
+| branch | `terminal` | 205 |
+| branch | `!terminal` | 221 |
+| branch | `!terminal` | 232 |
+| overlay | `<Confirm open>` | 243 |
+| branch | `!terminal && steerOpen` | 269 |
+| branch | `pendingNotes.length > 0` | 274 |
+| branch | `terminal && detailsOpen` | 315 |
+| branch | `detailError` | 321 |
+| branch | `detail` | 328 |
+| branch | `transcript.length > 0` | 371 |
 
 ### `modules/background/components/BackgroundRunResult`
 

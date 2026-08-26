@@ -8,24 +8,22 @@ import {
 } from './helpers/background-helpers'
 
 /**
- * TEST-12 / ITEM-4 — a completed background run's card lazily EXPANDS to render
- * its durable agent-loop transcript via the shared workflow `AgentActivityTimeline`
- * (`stepId="agent"`, testid `wf-activity-timeline-agent`), and that transcript
- * SURVIVES a full page reload; a run that recorded NO agent activity shows no
- * timeline block at all.
+ * TEST-2 / TEST-3 / TEST-4 (ITEM-3 / ITEM-5) — a completed background run's card
+ * expands into a two-tab detail region whose DEFAULT, discoverable **Transcript**
+ * tab renders the durable agent-loop transcript via the shared workflow
+ * `AgentActivityTimeline` (`stepId="agent"`, testid `wf-activity-timeline-agent`),
+ * and whose **Result** tab renders the final output. The transcript SURVIVES a
+ * full page reload; a run that recorded NO agent activity shows the Transcript
+ * tab's empty note while the Result tab still renders.
  *
- * Mirrors `background-persist.spec.ts` (durable rehydrate on reload) and the
- * SQL-seeding technique of `background-in-conversation.spec.ts`: there is no
- * create API for these runs (the agent backbone spawns them), so a `workflow_runs`
- * row is inserted directly — its `activity` transcript lives in
- * `step_logs_json['agent::agent_activity']`, the exact projection the real
- * `GET /api/background/runs/{id}` endpoint reads — and then exercised end-to-end
- * through the real REST fetch + the real card render. NO API mocking.
+ * This supersedes the pre-redesign flow where the timeline was buried below the
+ * result under a single "View result" toggle with no "Transcript" affordance.
  *
  * SQL-seeding (rather than a real bridge sub-agent) is deliberate: it makes the
  * transcript deterministic (a fixed thinking / tool / message sequence) so the
- * spec always runs and asserts specific rows, instead of gating on a live LLM
- * whose minimal reply may record only one entry.
+ * spec always runs and asserts specific rows. Its `activity` lives in
+ * `step_logs_json['agent::agent_activity']`, the exact projection the real
+ * `GET /api/background/runs/{id}` endpoint reads. NO API mocking.
  */
 
 /** The agent-activity transcript entries, in the persisted `ProgressKind::AgentActivity`
@@ -82,8 +80,8 @@ async function seedCompletedRun(
   return r.rows[0].id as string
 }
 
-test.describe('background run — transcript drill-in (ITEM-4)', () => {
-  test('a completed run expands to its AgentActivityTimeline and it survives a reload', async ({
+test.describe('background run — transcript tab (ITEM-3)', () => {
+  test('TEST-2/TEST-3: a completed run opens the Transcript tab (shared timeline) + a Result tab, surviving reload', async ({
     page,
     testInfra,
   }) => {
@@ -102,26 +100,35 @@ test.describe('background run — transcript drill-in (ITEM-4)', () => {
     const card = byTestId(page, `background-run-card-${runId}`)
     await expect(card).toBeVisible({ timeout: 15_000 })
 
-    // The transcript is lazily fetched on expand (like every other run detail):
-    // no timeline before the result view is opened.
+    // Detail is lazily fetched on expand: no timeline before the region opens.
     await expect(byTestId(page, 'wf-activity-timeline-agent')).toHaveCount(0)
 
-    // Expand the result → the durable transcript renders via the shared workflow
-    // timeline, one row per recorded thinking / tool / message entry.
-    await byTestId(page, `background-run-result-toggle-${runId}`).click()
+    // Expand → the detail region shows a NAMED "Transcript" tab, selected by
+    // default (TEST-3: discoverable, not buried under the result).
+    await byTestId(page, `background-run-details-toggle-${runId}`).click()
+    const transcriptTab = byTestId(page, `background-run-detail-tabs-${runId}-tab-transcript`)
+    await expect(transcriptTab).toBeVisible({ timeout: 15_000 })
+    await expect(transcriptTab).toContainText('Transcript')
+
+    // TEST-3 (INV-3): drawn by the SHARED workflow timeline, one row per entry.
     const timeline = byTestId(page, 'wf-activity-timeline-agent')
     await expect(timeline).toBeVisible({ timeout: 15_000 })
     await expect(timeline.locator('[data-testid^="wf-activity-row-agent-"]')).toHaveCount(
       TRANSCRIPT.length,
     )
 
-    // Durable rehydrate: reload → reopen the persisted Tasks tab → re-expand →
-    // the transcript is STILL served (the `workflow_runs` row is the source of
-    // truth, re-fetched through the same REST endpoint), not lost across reload.
+    // The Result tab renders the existing BackgroundRunResult final-text (reuse).
+    await byTestId(page, `background-run-detail-tabs-${runId}-tab-result`).click()
+    await expect(byTestId(page, `background-run-final-text-${runId}`)).toBeVisible({
+      timeout: 15_000,
+    })
+
+    // TEST-2 durable rehydrate: reload → reopen the persisted Tasks tab →
+    // re-expand → the transcript is STILL served through the same REST endpoint.
     await page.reload()
     await expect(byTestId(page, 'background-panel-list')).toBeVisible({ timeout: 30_000 })
     await expect(card).toBeVisible({ timeout: 15_000 })
-    await byTestId(page, `background-run-result-toggle-${runId}`).click()
+    await byTestId(page, `background-run-details-toggle-${runId}`).click()
     await expect(byTestId(page, 'wf-activity-timeline-agent')).toBeVisible({ timeout: 15_000 })
     await expect(
       byTestId(page, 'wf-activity-timeline-agent').locator(
@@ -130,7 +137,10 @@ test.describe('background run — transcript drill-in (ITEM-4)', () => {
     ).toHaveCount(TRANSCRIPT.length)
   })
 
-  test('a run with no recorded activity shows no timeline block', async ({ page, testInfra }) => {
+  test('TEST-4: a run with no recorded activity shows the empty note; Result tab still renders', async ({
+    page,
+    testInfra,
+  }) => {
     const { baseURL, apiURL, sql } = testInfra
     await loginAsAdmin(page, baseURL)
     const token = await getAdminToken(apiURL)
@@ -142,13 +152,19 @@ test.describe('background run — transcript drill-in (ITEM-4)', () => {
     await openTasksPanel(page, baseURL, conv)
     await expect(byTestId(page, `background-run-card-${runId}`)).toBeVisible({ timeout: 15_000 })
 
-    // Expand the result → the result body renders (positive control that the
-    // detail loaded), but there is NO transcript timeline for an activity-less run.
-    await byTestId(page, `background-run-result-toggle-${runId}`).click()
-    await expect(byTestId(page, `background-run-result-panel-${runId}`)).toBeVisible({
+    await byTestId(page, `background-run-details-toggle-${runId}`).click()
+
+    // The default Transcript tab shows the friendly empty note (never a blank
+    // tab or a timeline) for an activity-less run.
+    await expect(byTestId(page, `background-run-transcript-empty-${runId}`)).toBeVisible({
       timeout: 15_000,
     })
-    await expect(byTestId(page, `background-run-final-text-${runId}`)).toBeVisible()
     await expect(byTestId(page, 'wf-activity-timeline-agent')).toHaveCount(0)
+
+    // Positive control: the detail DID load — the Result tab renders the body.
+    await byTestId(page, `background-run-detail-tabs-${runId}-tab-result`).click()
+    await expect(byTestId(page, `background-run-final-text-${runId}`)).toBeVisible({
+      timeout: 15_000,
+    })
   })
 })
