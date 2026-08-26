@@ -432,6 +432,12 @@ pub use aide::transform::TransformOperation;
 // layers to their own merged-in routes (axum's `.merge()` does NOT
 // propagate parent layers onto merged routes).
 pub use core::app_builder::{create_cors_layer, create_modules, build_api_router, initialize_modules};
+// A custom request header the API READS, so any CORS allowlist fronting this API
+// must permit it — including the desktop app's, which lives in another crate.
+// Exported so those allowlists can reference the constant instead of re-spelling
+// the literal; its absence from an allowlist fails SILENTLY (the browser refuses
+// the preflight and `fetch` rejects without a status).
+pub use modules::chat::stream::handler::CHAT_STREAM_CONNECTION_HEADER;
 pub use core::database::initialize_database;
 pub use core::{init_repositories, is_repos_initialized};
 pub use module_api::AppModule;

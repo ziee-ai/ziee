@@ -82,6 +82,10 @@ bcrypt = "0.17.1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+# `desktop_cors_allows_the_chat_stream_subscription_header` drives the REAL CORS
+# layer with a real OPTIONS preflight via `tower::ServiceExt::oneshot` — what a
+# browser obeys is the response header, which only the layer produces.
+tower = { workspace = true, features = ["util"] }
 tempfile.workspace = true
 serial_test.workspace = true
 reqwest.workspace = true

@@ -17,6 +17,12 @@ pub use state::BackendState;
 
 use crate::module_api::DesktopModule;
 use anyhow::Result;
+// Used only by `proxy_to_vite` below, which is `#[cfg(debug_assertions)]`.
+// Without the same gate these go unused in a release build, and the workspace
+// lint policy sets `unused_imports = "deny"` (src-app/Cargo.toml) — so a
+// release build, which is what `tauri build` runs, fails to compile. A debug
+// `cargo check` on any OS misses it.
+#[cfg(debug_assertions)]
 use axum::{body::Body, http::Request, response::Response};
 use sqlx::PgPool;
 use std::sync::{Arc, OnceLock};
@@ -136,39 +142,7 @@ impl DesktopModule for BackendModule {
         // Placed here, before the server is started or any provider is read.
         capture_server_addr(&config.server);
 
-        config.server.cors = Some(ziee::CorsConfig {
-            allow_origins: vec![
-                "tauri://localhost".to_string(),
-                "http://tauri.localhost".to_string(),
-                format!("http://127.0.0.1:{}", port),
-                format!("http://localhost:{}", port),
-                "http://localhost:1420".to_string(),
-            ],
-            allow_methods: vec![
-                "GET".to_string(),
-                "POST".to_string(),
-                "PUT".to_string(),
-                "PATCH".to_string(),
-                "DELETE".to_string(),
-                "OPTIONS".to_string(),
-            ],
-            allow_headers: vec![
-                "Authorization".to_string(),
-                "Content-Type".to_string(),
-                "Accept".to_string(),
-                "Origin".to_string(),
-                // Self-echo suppression for realtime sync: every
-                // mutation from the SPA carries the SyncClient's
-                // connection id, which the server echoes back so the
-                // originating tab is skipped in fan-out. Without
-                // this entry the browser preflight rejects every
-                // mutating request as soon as the SyncClient is
-                // connected — every form Save / Delete / Toggle in
-                // the desktop UI fails with a CORS error before
-                // ever reaching the handler.
-                "X-Sync-Connection-Id".to_string(),
-            ],
-        });
+        config.server.cors = Some(desktop_cors_config(port));
 
         // Desktop flips every opt-in feature ON by default. The
         // single-admin device should NOT have to dig through admin
@@ -305,6 +279,15 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
         min_inner_size: (400.0, 600.0),
         effect_radius: 8.0,
         traffic_light_position: (20.0, 22.0),
+        // Ziee's desktop pop-out does NOT go through the frontend's
+        // `window.open`: `openConversationWindow.desktop.ts` overrides the web
+        // path and opens a real OS window via Tauri's `WebviewWindow` API. So
+        // the harness's window.open opt-in stays off (its stock behavior).
+        //
+        // The field was added in the harness (`ziee_desktop_harness::WindowConfig`)
+        // and this consumer was never updated, so `ziee-desktop` did not compile
+        // AT ALL — E0063, in every profile, not just release.
+        enable_popout_windows: false,
     };
 
     spawn_boot_then_window(boot, app_handle, window, move |handle| async move {
@@ -535,6 +518,68 @@ fn capture_server_addr(server: &ziee::HttpServerConfig) {
     );
 }
 
+/// The desktop's CORS allowlist: the Tauri custom-protocol origins, the loopback
+/// origins for the bound port, and the dev Vite server on 1420. An explicit
+/// allowlist, not the "permissive default" branch: that one gives Any origin Any
+/// method Any header, readable by any tab the user has open.
+///
+/// **Extracted as a free function so it is TESTABLE.** It used to be an inline
+/// literal inside `start_backend_server`, which needs a live Tauri `AppHandle` —
+/// so nothing could exercise it without launching the whole application, and a
+/// missing entry was invisible to every test in the tree. That is exactly how
+/// `X-Chat-Stream-Connection-Id` came to be absent while its sibling
+/// `X-Sync-Connection-Id` was present, with a comment describing this very
+/// failure mode sitting one line above it.
+fn desktop_cors_config(port: u16) -> ziee::CorsConfig {
+    ziee::CorsConfig {
+        allow_origins: vec![
+            "tauri://localhost".to_string(),
+            "http://tauri.localhost".to_string(),
+            format!("http://127.0.0.1:{}", port),
+            format!("http://localhost:{}", port),
+            "http://localhost:1420".to_string(),
+        ],
+        allow_methods: vec![
+            "GET".to_string(),
+            "POST".to_string(),
+            "PUT".to_string(),
+            "PATCH".to_string(),
+            "DELETE".to_string(),
+            "OPTIONS".to_string(),
+        ],
+        allow_headers: vec![
+            "Authorization".to_string(),
+            "Content-Type".to_string(),
+            "Accept".to_string(),
+            "Origin".to_string(),
+            // Self-echo suppression for realtime sync: every mutation from the
+            // SPA carries the SyncClient's connection id, which the server
+            // echoes back so the originating tab is skipped in fan-out. Without
+            // this entry the browser preflight rejects every mutating request as
+            // soon as the SyncClient is connected — every form Save / Delete /
+            // Toggle in the desktop UI fails with a CORS error before ever
+            // reaching the handler.
+            "X-Sync-Connection-Id".to_string(),
+            // Scopes a chat-token SSE connection to one conversation, via
+            // `PUT /api/chat/stream/subscription`
+            // (`chat::stream::handler::CHAT_STREAM_CONNECTION_HEADER`).
+            //
+            // Its absence was a live defect with the same shape its sibling
+            // above documents, and worse consequences: the webview loads over
+            // the Tauri protocol, so that PUT is cross-origin and preflights.
+            // The preflight refused the header, so the browser never sent the
+            // PUT — and a preflight refusal REJECTS `fetch` rather than
+            // returning a status, so the client had nothing to report. The SSE
+            // connection then sat open and healthy, scoped to no conversation,
+            // forever: `publish_frame` delivers only to connections whose
+            // `active_conversation` matches, so every live assistant token was
+            // dropped at the registry while the reply persisted normally. The
+            // user saw a spinner that only a page reload resolved.
+            "X-Chat-Stream-Connection-Id".to_string(),
+        ],
+    }
+}
+
 fn create_desktop_config(
     data_dir: &std::path::Path,
     port: u16,
@@ -754,6 +799,101 @@ mod tests {
             !derived.contains(":3000/"),
             "resolving to :3000 is the bug: nothing listens there on desktop",
         );
+    }
+
+    /// REGRESSION GUARD — the desktop's own CORS config must accept the
+    /// chat-stream subscription header at preflight.
+    ///
+    /// This is the EXACT request a running desktop instance refused. Measured
+    /// against one (read-only OPTIONS probe):
+    ///
+    /// ```text
+    /// $ curl -i -X OPTIONS http://127.0.0.1:8082/api/chat/stream/subscription \
+    ///     -H 'Origin: tauri://localhost' \
+    ///     -H 'Access-Control-Request-Method: PUT' \
+    ///     -H 'Access-Control-Request-Headers: authorization,content-type,x-chat-stream-connection-id'
+    /// access-control-allow-headers: authorization,content-type,accept,origin,x-sync-connection-id
+    /// ```
+    ///
+    /// The header is absent, so the browser never sends the PUT — and because a
+    /// preflight refusal REJECTS `fetch` rather than returning a status, the
+    /// client had nothing to report and the stream sat open, scoped to nothing.
+    ///
+    /// Asserted through the REAL tower service rather than by inspecting the
+    /// `Vec<String>`: what a browser obeys is `Access-Control-Allow-Headers` on
+    /// the response, and that is produced by the layer, not by the config.
+    #[tokio::test]
+    async fn desktop_cors_allows_the_chat_stream_subscription_header() {
+        use axum::{body::Body, http::Request, routing::put, Router};
+        use tower::ServiceExt;
+
+        let mut config = {
+            let tmp = TempDir::new().unwrap();
+            create_desktop_config(tmp.path(), 8080).expect("desktop config should build")
+        };
+        config.server.cors = Some(desktop_cors_config(8080));
+
+        let app = Router::new()
+            .route(
+                "/api/chat/stream/subscription",
+                put(|| async { axum::http::StatusCode::NO_CONTENT }),
+            )
+            .layer(ziee::create_cors_layer(&config));
+
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("OPTIONS")
+                    .uri("/api/chat/stream/subscription")
+                    .header("Origin", "tauri://localhost")
+                    .header("Access-Control-Request-Method", "PUT")
+                    .header(
+                        "Access-Control-Request-Headers",
+                        "authorization,content-type,x-chat-stream-connection-id",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .expect("preflight must produce a response");
+
+        let allowed = res
+            .headers()
+            .get("access-control-allow-headers")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_ascii_lowercase)
+            .expect("an explicit allow-list must echo Access-Control-Allow-Headers");
+
+        assert!(
+            allowed.contains("x-chat-stream-connection-id"),
+            "the desktop preflight must allow the chat-stream subscription header; \
+             got {allowed:?}"
+        );
+        // Its sibling must not regress while we are in here.
+        assert!(
+            allowed.contains("x-sync-connection-id"),
+            "the sync connection header must stay allowed; got {allowed:?}"
+        );
+    }
+
+    /// The header list itself, sourced from the handler's own constant rather
+    /// than a re-spelled literal — so a rename on the server side turns this red
+    /// instead of silently un-allowing the header again.
+    #[test]
+    fn desktop_cors_config_lists_both_connection_id_headers() {
+        let cors = desktop_cors_config(8080);
+        for header in [
+            "X-Sync-Connection-Id",
+            ziee::CHAT_STREAM_CONNECTION_HEADER,
+        ] {
+            assert!(
+                cors.allow_headers
+                    .iter()
+                    .any(|h| h.eq_ignore_ascii_case(header)),
+                "desktop_cors_config must list {header}; got {:?}",
+                cors.allow_headers
+            );
+        }
     }
 
     #[test]

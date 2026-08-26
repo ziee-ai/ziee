@@ -28,7 +28,14 @@ use super::registry::{CHAT_STREAM_CHANNEL_CAPACITY, ChatConn, registry};
 
 /// Header the client echoes (from the `connected` handshake) so a subscription
 /// PUT targets the right stream connection.
-const CHAT_STREAM_CONNECTION_HEADER: &str = "X-Chat-Stream-Connection-Id";
+///
+/// `pub` (and re-exported from the crate root) because every CORS allowlist that
+/// fronts this API must permit it, and those allowlists live in OTHER crates —
+/// notably the desktop app's. Omitting it there is a SILENT failure: the browser
+/// refuses the preflight, `fetch` rejects rather than returning a status, and
+/// the stream stays scoped to no conversation forever. Referencing the constant
+/// instead of re-spelling the literal is what keeps a rename from re-opening it.
+pub const CHAT_STREAM_CONNECTION_HEADER: &str = "X-Chat-Stream-Connection-Id";
 
 /// Re-resolve `is_active` this often while a stream is open, tearing it down on
 /// deactivation / loss of the baseline permission within the window.

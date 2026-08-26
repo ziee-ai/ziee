@@ -56,7 +56,23 @@ server:
     # Add "X-Refresh-Cookie" ONLY for cross-origin browser deployments (SPA on
     # a different origin than the API) — the web client sends it to opt into
     # httpOnly refresh-token cookies. Same-origin deployments don't need it.
-    allow_headers: ["Content-Type", "Authorization"]
+    #
+    # The two connection-id headers below are NOT optional the way that one is:
+    # the API reads them, so a deployment that omits them is broken, and broken
+    # silently (the browser refuses the preflight, `fetch` rejects without a
+    # status, and the server logs nothing). X-Sync-Connection-Id carries the
+    # self-echo suppression id on every mutation; X-Chat-Stream-Connection-Id
+    # scopes a chat-token SSE connection to one conversation via
+    # `PUT /api/chat/stream/subscription` — omit it and live assistant tokens
+    # are dropped at the registry while the reply persists, so the user sees a
+    # spinner that only a reload resolves.
+    allow_headers:
+      [
+        "Content-Type",
+        "Authorization",
+        "X-Sync-Connection-Id",
+        "X-Chat-Stream-Connection-Id",
+      ]
 
 # Logging
 logging:

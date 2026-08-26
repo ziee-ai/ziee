@@ -101,6 +101,23 @@ server:
       # same-origin reverse proxy) don't need it. Cross-origin cookie mode
       # additionally requires allow_credentials + explicit (non-"*") origins.
       - "X-Refresh-Cookie"
+      # Two connection-id headers the API READS. Unlike the opt-in flag above,
+      # these are not operator preferences — a deployment that omits them is
+      # simply broken, and broken SILENTLY: the browser refuses the preflight,
+      # so the request is never sent, the server logs nothing, and the client's
+      # `fetch` REJECTS instead of returning a status.
+      #
+      # X-Sync-Connection-Id  — echoed on every mutation so realtime sync can
+      #   skip the originating tab in fan-out. Omit it and every Save / Delete /
+      #   Toggle fails as soon as the SyncClient connects.
+      # X-Chat-Stream-Connection-Id — echoed on
+      #   `PUT /api/chat/stream/subscription` to scope a chat-token SSE
+      #   connection to one conversation. Omit it and the stream stays scoped to
+      #   nothing: live assistant tokens are dropped at the registry while the
+      #   reply persists normally, so the user sees a spinner only a reload
+      #   resolves.
+      - "X-Sync-Connection-Id"
+      - "X-Chat-Stream-Connection-Id"
 
 # Logging settings
 logging:
