@@ -71,11 +71,19 @@ pub struct LitSearchModule {
     // Module handle retained for parity with other modules; not read yet.
     #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
+    /// Resolved `lit_search.enabled`, cached at `init()` so `register_routes()`
+    /// can consult it. Defaults to the DISABLED value so route registration
+    /// fails CLOSED if `init()` never ran or returned early; the real default
+    /// (absent config section ⇒ enabled) is unchanged and lives in `init()`.
+    enabled: bool,
 }
 
 impl LitSearchModule {
     pub fn new() -> Self {
-        Self { pool: None }
+        Self {
+            pool: None,
+            enabled: false,
+        }
     }
 }
 
@@ -107,6 +115,7 @@ impl AppModule for LitSearchModule {
             .as_ref()
             .map(|c| c.enabled)
             .unwrap_or(true);
+        self.enabled = enabled;
         if !enabled {
             tracing::info!("lit_search: disabled in config; skipping registration");
             return Ok(());
@@ -136,6 +145,21 @@ impl AppModule for LitSearchModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        router.merge(routes::lit_search_router())
+        // The kill switch MUST guard route registration too (CLAUDE.md §16).
+        // Skipping the `mcp_servers` upsert in `init()` only stops the model
+        // being OFFERED the tools; the JSON-RPC endpoint stayed mounted and is
+        // gated solely on `lit_search::use`, which the Users group holds — so
+        // with the switch off, an ordinary user could still drive live scholarly
+        // queries (five of the six connectors work KEYLESS) and the terms would
+        // still egress. "Disabled" meant "unadvertised".
+        //
+        // The settings/connectors REST always mounts: it only reads and writes
+        // configuration, and its admin page should keep working on a deployment
+        // that has turned the feature off.
+        let router = router.merge(routes::lit_search_router());
+        if !self.enabled {
+            return router;
+        }
+        router.merge(routes::lit_search_mcp_router())
     }
 }

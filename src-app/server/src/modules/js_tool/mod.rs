@@ -76,11 +76,21 @@ static JS_TOOL_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
 pub struct JsToolModule {
     #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
+    /// Resolved `js_tool.enabled`, cached at `init()` so `register_routes()` can
+    /// consult it (it gets no `ModuleContext`). Mirrors `VoiceModule`.
+    ///
+    /// Defaults to the DISABLED value so route registration fails CLOSED if
+    /// `init()` never ran or returned early; the real default (absent config
+    /// section ⇒ enabled) is unchanged and lives in `is_enabled`.
+    enabled: bool,
 }
 
 impl JsToolModule {
     pub fn new() -> Self {
-        Self { pool: None }
+        Self {
+            pool: None,
+            enabled: false,
+        }
     }
 }
 
@@ -104,8 +114,10 @@ impl AppModule for JsToolModule {
 
         // Deploy-level kill switch (default enabled) — mirrors web_search /
         // lit_search. When off, the server row is never registered so the chat
-        // extension never attaches run_js.
-        if !is_enabled(&crate::module_api::app_config(ctx)) {
+        // extension never attaches run_js, AND `register_routes` mounts nothing
+        // (below).
+        self.enabled = is_enabled(&crate::module_api::app_config(ctx));
+        if !self.enabled {
             tracing::info!("js_tool: disabled by config (js_tool.enabled=false); run_js not registered");
             return Ok(());
         }
@@ -129,6 +141,21 @@ impl AppModule for JsToolModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
+        // The kill switch MUST guard route registration too (CLAUDE.md §16).
+        // Skipping the `mcp_servers` upsert in `init()` only stops the model
+        // being OFFERED run_js; the JSON-RPC endpoint stayed mounted and is
+        // gated solely on `js_tool::use`, which migration
+        // 202607146040_js_tool_grant_permissions.sql grants to the Users group.
+        // So with `js_tool: { enabled: false }` any ordinary user could still
+        // POST /api/run-js/mcp and execute arbitrary script in the embedded
+        // QuickJS runtime, with the conversation's MCP tools injected as host
+        // functions. "Disabled" meant "unadvertised", not "off".
+        //
+        // Unlike web_search / lit_search there is nothing to split out here:
+        // js_tool's entire route surface IS the JSON-RPC endpoint.
+        if !self.enabled {
+            return router;
+        }
         router.merge(routes::js_tool_router())
     }
 }

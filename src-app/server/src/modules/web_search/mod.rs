@@ -56,11 +56,23 @@ pub struct WebSearchModule {
     // Module handle retained for parity with other modules; not read yet.
     #[allow(dead_code)]
     pool: Option<Arc<PgPool>>,
+    /// Resolved `web_search.enabled`, cached at `init()` so `register_routes()`
+    /// can consult it (it gets no `ModuleContext`). Mirrors `VoiceModule`.
+    ///
+    /// Defaults to the DISABLED value so route registration fails CLOSED if
+    /// `init()` never ran or returned early — a stale initializer defaulting a
+    /// kill switch to ON is precisely how a switch gets bypassed. The real
+    /// default (absent config section ⇒ enabled) is unchanged and still lives in
+    /// `init()`.
+    enabled: bool,
 }
 
 impl WebSearchModule {
     pub fn new() -> Self {
-        Self { pool: None }
+        Self {
+            pool: None,
+            enabled: false,
+        }
     }
 }
 
@@ -92,6 +104,7 @@ impl AppModule for WebSearchModule {
             .as_ref()
             .map(|c| c.enabled)
             .unwrap_or(true);
+        self.enabled = enabled;
         if !enabled {
             tracing::info!("web_search: disabled in config; skipping registration");
             return Ok(());
@@ -122,6 +135,21 @@ impl AppModule for WebSearchModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        router.merge(routes::web_search_router())
+        // The kill switch MUST guard route registration too (CLAUDE.md §16).
+        // Skipping the `mcp_servers` upsert in `init()` only stops the model
+        // being OFFERED the tools; the JSON-RPC endpoint stayed mounted and is
+        // gated solely on `web_search::use`, which the Users group holds — so
+        // with the switch off, an ordinary user could still drive live searches
+        // and page fetches, and the query terms the switch exists to keep
+        // in-house would still egress. "Disabled" meant "unadvertised".
+        //
+        // The settings/admin REST always mounts: it only reads and writes
+        // configuration, and its admin page should keep working on a deployment
+        // that has turned the feature off.
+        let router = router.merge(routes::web_search_router());
+        if !self.enabled {
+            return router;
+        }
+        router.merge(routes::web_search_mcp_router())
     }
 }
