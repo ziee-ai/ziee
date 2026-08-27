@@ -33,13 +33,15 @@ cd src-app/server && cargo test --test integration_tests --
   `lit_search_disabled_unmounts_mcp_but_keeps_settings`,
   `defaults_leave_every_mcp_endpoint_mounted` — **4 passed, 0 failed.**
 - **TEST-9**: PASS — `subscribeToDownloadProgress.store.test.ts`, via `npm run check --workspace=@ziee/ui-core` (25 chained steps), EXIT=0.
-- **TEST-10**: PASS — same suite: null-figure keeps the on-screen value; null whole-row field is a genuine clear.
+- **TEST-10**: PASS — `subscribeToDownloadProgress.store.test.ts` (a file this branch modifies), via npm run check: null-figure keeps the on-screen value; null whole-row field is a genuine clear.
 - **TEST-11**: PASS — `llm_model::handlers::downloads::wire_shape_tests` (3 tests) in the `ziee` lib suite.
 - **TEST-12**: PASS — `download_progress_stream_sends_keepalives_while_idle` compiles and is enumerated; **see the honest limit below**.
-- **TEST-13**: **NOT VERIFIED** — the `tier: e2e` spec for the download-progress UI change. Stated, not hidden: ITEM-4 is a pure store-action change with no new surface, its behaviour is pinned by TEST-9/10 against the real store, and driving a multi-GB download through Playwright is not something this box can do. A spec that merely opened the page would satisfy the gate and prove nothing — the hollow-test failure this process exists to prevent.
+- **TEST-19**: PASS — `kill_switch_gate_test`, the three disabled cases + the defaults control; 4 passed, 0 failed.
+- **TEST-20**: PASS — same file: each disabled module keeps its settings REST mounted (the split).
+- **TEST-13**: NOT VERIFIED — the `tier: e2e` spec for the download-progress UI change. Stated, not hidden: ITEM-4 is a pure store-action change with no new surface, its behaviour is pinned by TEST-9/10 against the real store, and driving a multi-GB download through Playwright is not something this box can do. A spec that merely opened the page would satisfy the gate and prove nothing — the hollow-test failure this process exists to prevent.
 - **TEST-14**: PASS — the same `create_modules…` test, now sorting by `(order, name)` so it no longer depends on linker order.
-- **TEST-15**: **PARTIALLY VERIFIED.** The `cargo:warning=` conversion is exercised on every build of this branch. `MACOSX_DEPLOYMENT_TARGET=11.0` sits inside `target.contains("apple")` and is **unreachable on Linux** — no Darwin toolchain here, and macOS builds are forbidden by the brief. `beforeBuildCommand` is only executed by a real `tauri build`. Reasoned from the toolchain's own error, not tested.
-- **TEST-16**: PASS — verified command, output EMPTY:
+- **TEST-15**: NOT VERIFIED (partial) The `cargo:warning=` conversion is exercised on every build of this branch. `MACOSX_DEPLOYMENT_TARGET=11.0` sits inside `target.contains("apple")` and is **unreachable on Linux** — no Darwin toolchain here, and macOS builds are forbidden by the brief. `beforeBuildCommand` is only executed by a real `tauri build`. Reasoned from the toolchain's own error, not tested.
+- **TEST-16**: NOT VERIFIED as a test — it is a verified COMMAND, not a code test, and A11 is right that no test earns it. Output EMPTY:
   `git diff upstream/main...HEAD --stat -- sdk agent-kit src-app/server/vendor/pgvector .github src-app/ui/openapi src-app/desktop/ui`
   No submodule gitlink moved, no generated OpenAPI/types drift, no paws CI, desktop UI untouched. `src-app/Cargo.lock`'s only delta is the single `tower` dev-dep line.
 - **TEST-17**: PASS — `llm_repository::utils::tests::capability_url_targets_the_kinds_listing_surface`. **Verified RED first on `upstream/main`**: `left: Some(".../models/api/models?limit=1")` vs `right: Some(".../api/models?limit=1")`.

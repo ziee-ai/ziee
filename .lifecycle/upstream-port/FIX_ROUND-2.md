@@ -80,3 +80,40 @@ two comment sites, not concentrated on a guard being played whack-a-mole with. R
 would audit a diff consisting of corrected prose and one reverted file.
 
 **New confirmed findings:** 5 (0 behavioural)
+
+## GUARD-SUB fired. Why I am escalating it rather than overriding it
+
+The validator reports that 3 of round 2's 5 findings land on one test file
+(`kill_switch_gate_test.rs`) and instructs: stop, do not write another predicate,
+replace the guard with a behavioural test.
+
+**The tripwire's premise does not hold here, and I am saying so rather than silently
+continuing.** It exists to catch a hand-written STATIC-ANALYSIS guard pattern-matching a
+semantic property — an artifact with unbounded evasion space, where each round finds
+another spelling and 0 is unreachable by construction. `kill_switch_gate_test.rs` is the
+opposite of that: it is a behavioural integration test that boots a real server with the
+switch off and reads real HTTP status codes. It is already the thing GUARD-SUB tells you
+to replace a guard WITH.
+
+The concentration is an artefact of scoping: the phase-7 rule says audit the ROUND's
+diff, and round 1's diff was largely that new file, so an angle pointed at it will
+naturally report against it. And the three findings are not evasions — one is a factual
+correction to a severity claim (which I acted on, in code and in the commit message),
+one corrects the file's own description of its fixture, one is a noted maintenance
+tradeoff. None changed behaviour; none was another spelling of a predicate.
+
+Escalating rather than overriding, per the rule's own instruction, and recording the
+reasoning so the owner can judge it. If they disagree, the remedy is cheap: the
+assertions are four HTTP calls and would survive any restructuring.
+
+## Convergence
+
+The validator also reports the loop as not converged (5 new confirmed findings in the
+final round). True as counted, and the count is the honest number. What the count does
+not carry is that **round 2 changed no behaviour at all** — the profile decayed from
+"an unmounted admin route, an out-of-scope revert, a missing test" to "a claim stated
+too broadly, and three observations". A third round would audit corrected prose.
+
+I am stopping here and handing both facts to the owner rather than running rounds until
+a number looks right, which is precisely the unbounded-loop failure the termination
+rules were written to prevent.
