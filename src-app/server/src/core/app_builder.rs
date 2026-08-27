@@ -57,9 +57,20 @@ mod tests {
     /// re-export shim — links every app module across the crate boundary.
     #[test]
     fn create_modules_instantiates_all_entries_in_order() {
-        // Expected: the linkme slice sorted by order (stable), by name.
+        // Expected: the linkme slice sorted by (order, NAME) — the same key
+        // `create_modules` uses.
+        //
+        // This previously sorted by `order` alone. `sort_by_key` is stable, so
+        // ties kept whatever relative position the LINKER gave them, while the
+        // implementation breaks ties by name on purpose — precisely because
+        // linkme's slice order varies between builds. The expectation was
+        // therefore linker-dependent and failed for anyone whose edits perturbed
+        // link order, with a diff showing the same module names in a different
+        // sequence. Matching the implementation's key makes it deterministic and
+        // restores what the test is actually for: proving nothing is dropped or
+        // duplicated and the sort happened.
         let mut expected_entries: Vec<_> = MODULE_ENTRIES.iter().collect();
-        expected_entries.sort_by_key(|e| e.order);
+        expected_entries.sort_by(|a, b| a.order.cmp(&b.order).then(a.name.cmp(b.name)));
         let expected_names: Vec<&str> = expected_entries.iter().map(|e| e.name).collect();
 
         let modules = create_modules();
