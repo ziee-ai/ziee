@@ -347,14 +347,24 @@ fn setup_external_binaries() {
     // self-disables at boot via the boot probe.
     let out_dir_path = PathBuf::from(&out_dir);
     if let Err(e) = pgvector_build::build_pgvector(&target, &out_dir_path) {
-        eprintln!(
-            "Warning: pgvector build failed; writing stub assets. \
-             Memory features will be disabled at runtime. \
-             Underlying error: {}",
-            e
+        // `cargo:warning=` (stdout), NOT eprintln! — cargo SWALLOWS build-script
+        // stderr unless the script itself fails or you pass `-vv`, so the reason
+        // this failed was invisible in CI. It matters more than the old wording
+        // admitted: without pgvector the app does not merely lose memory
+        // features, it FAILS TO BOOT, because the first framework migration
+        // (202607140001_app_bootstrap.sql) does an unconditional
+        // `CREATE EXTENSION vector`.
+        //
+        // One line per warning — cargo truncates each at the first newline.
+        let reason = e.to_string().replace('\n', " | ");
+        println!(
+            "cargo:warning=pgvector build FAILED for target {target}; wrote stub assets. \
+             The built binary will NOT BOOT (migration 202607140001 requires the vector \
+             extension unconditionally). Underlying error: {reason}"
         );
         if let Err(stub_err) = pgvector_build::write_stubs(&out_dir_path) {
-            eprintln!("ERROR: also failed to write pgvector stubs: {}", stub_err);
+            let stub_reason = stub_err.to_string().replace('\n', " | ");
+            println!("cargo:warning=pgvector: ALSO failed to write stubs: {stub_reason}");
         }
     }
 
