@@ -477,7 +477,7 @@ fn decode_spec_arg(args: &Value) -> Result<Value, AppError> {
             format!(
                 "`spec` was not supplied, but a JSON object describing the work is \
                  required. Example: {example}",
-                example = BACKGROUND_SPEC_EXAMPLE,
+                example = default_example(),
             ),
         )
     })
