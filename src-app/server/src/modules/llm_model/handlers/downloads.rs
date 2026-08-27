@@ -541,7 +541,7 @@ fn remove_client(client_id: ClientId) {
     tracing::info!("Removed download monitoring client: {}", client_id);
 }
 
-/// TEST-9 — pin the FLAT wire shape of `DownloadProgressUpdate`.
+/// Pin the FLAT wire shape of `DownloadProgressUpdate`.
 ///
 /// The reported "0 Bytes / 0 Bytes" bug was a client that merged this event into
 /// a `DownloadInstance` with a spread, unaware that the server FLATTENS
@@ -621,7 +621,7 @@ mod wire_shape_tests {
         // `phase` is the ONE progress field that is NOT optional: it is filled
         // with `Created` even here. The consumer must therefore not treat its
         // presence as evidence that progress is known — a guard that did was
-        // inert on every real frame (audit round 2).
+        // inert on every real frame.
         assert_eq!(
             json.get("phase").and_then(|v| v.as_str()),
             Some("created"),

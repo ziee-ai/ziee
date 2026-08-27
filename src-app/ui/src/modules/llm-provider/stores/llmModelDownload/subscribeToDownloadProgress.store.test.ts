@@ -112,10 +112,10 @@ describe('subscribeToDownloadProgress reconnect accounting', () => {
 })
 
 /**
- * TEST-8 — acceptance test for INV-3: "a download's progress, as RENDERED by the
- * UI, must advance while the transfer runs."
+ * REGRESSION GUARD — "a download's progress, as RENDERED by the UI, must advance
+ * while the transfer runs."
  *
- * The owner watched a 5.68 GB model download run to completion while the
+ * Found on a real install: a 5.68 GB model download ran to completion while the
  * onboarding bar sat at 0% and the LLM-providers view read "0 Bytes / 0 Bytes".
  * The record was correct throughout — queried live mid-transfer it held
  * `current 5637699037 / total 5680522464` with a real speed and ETA — and the
@@ -127,7 +127,7 @@ describe('subscribeToDownloadProgress reconnect accounting', () => {
  * These assert what a VIEW would render, not what the server wrote. The previous
  * round asserted the write, and the write was never the broken half.
  */
-describe('TEST-8: the progress a view renders advances', () => {
+describe('the progress a view renders advances', () => {
   const BASE: DownloadInstance = {
     id: 'd1',
     provider_id: 'p1',
@@ -156,10 +156,10 @@ describe('TEST-8: the progress a view renders advances', () => {
    * A flat wire frame.
    *
    * `phase` is REQUIRED on the wire and `error_message`/`model_id` are always
-   * present (as explicit nulls when unset) — both pinned server-side by TEST-9 —
-   * so every fixture here carries them.
+   * present (as explicit nulls when unset) — both pinned server-side by
+   * `downloads.rs`'s `wire_shape_tests` — so every fixture here carries them.
    *
-   * HONEST LIMIT (audit round 3): the all-null FIGURE fixture used below for the
+   * HONEST LIMIT: the all-null FIGURE fixture used below for the
    * progress-less case is NOT something the current server emits. Its INSERT
    * seeds a fully-zeroed `progress_data`, so a real queued row arrives with
    * `current: 0`, not null. That case therefore exercises the schema's
@@ -178,8 +178,8 @@ describe('TEST-8: the progress a view renders advances', () => {
       provider_id: 'p1',
       status: 'downloading',
       phase: 'downloading',
-      // The real wire always carries these keys (TEST-9 pins that an absent
-      // value serialises as null, not as a missing field), so the fixture does
+      // The real wire always carries these keys (`wire_shape_tests` pins that an
+      // absent value serialises as null, not as a missing field), so the fixture does
       // too — otherwise the whole-row semantics below would be untested.
       error_message: null,
       model_id: null,
@@ -264,7 +264,7 @@ describe('TEST-8: the progress a view renders advances', () => {
   it('a prototype-chain name is NOT accepted as a status', () => {
     // `wire in obj` answers true for 'toString'/'constructor'/'valueOf', which
     // would be written onto the row as a bogus status. Membership is tested
-    // against a Set for exactly this reason (audit round 2).
+    // against a Set for exactly this reason.
     for (const bogus of ['toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
       const merged = applyProgressUpdate(BASE, frame({ status: bogus as never }))
       expect(merged.status).toBe('downloading')
@@ -275,7 +275,7 @@ describe('TEST-8: the progress a view renders advances', () => {
     // These whole-row fields are the opposite of the progress figures: the frame
     // carries the row's current value every time, so a null means "cleared", not
     // "unknown". Falling back to the previous value left stale red error text on
-    // a row whose error the server had cleared (audit FIX-5).
+    // a row whose error the server had cleared.
     const failed = { ...BASE, error_message: 'network unreachable' } as DownloadInstance
     const recovered = applyProgressUpdate(
       failed,

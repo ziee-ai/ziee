@@ -1,4 +1,4 @@
-//! TEST-10 — the download progress stream must not go silent.
+//! The download progress stream must not go silent.
 //!
 //! `GET /api/llm-models/downloads/subscribe` was the ONLY SSE route in the tree
 //! without `KeepAlive` (`chat/stream/handler.rs`, the framework's
@@ -15,7 +15,7 @@
 //!
 //! Cost: axum's default keep-alive interval is 15s, so this test spends ~16s
 //! waiting. That is the whole point — a shorter assertion would not be observing
-//! the behaviour (DEC-12).
+//! the behaviour.
 
 use std::time::Duration;
 
@@ -81,6 +81,3 @@ async fn download_progress_stream_sends_keepalives_while_idle() {
          without either end noticing. Transcript: {transcript:?}"
     );
 }
-
-/// Keeps the enumerated id greppable in the test this branch added (A11).
-const _TEST_ID: &str = "TEST-10";

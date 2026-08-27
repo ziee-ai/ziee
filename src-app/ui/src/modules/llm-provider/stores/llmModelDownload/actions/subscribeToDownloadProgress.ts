@@ -21,7 +21,7 @@ import {
  *
  * The wire event is **FLAT** — the server's `From<&DownloadInstance>` lifts
  * `current` / `total` / `speed_bps` / `eta_seconds` / `message` / `phase` to the
- * TOP level (`llm_model/handlers/downloads.rs`, pinned by TEST-9) — while every
+ * TOP level (`llm_model/handlers/downloads.rs`, pinned by that module's `wire_shape_tests`) — while every
  * surface that renders a download reads `download.progress_data.*`:
  * `DownloadItem` ("N Bytes / M Bytes"), `DownloadProgress` (the percent), and the
  * hub's `ModelHubCard`.
@@ -36,11 +36,12 @@ import {
  *
  * The progress FIGURES fall back to the value already on screen: the server
  * sends them as `Option`, and a `null` means "unknown right now", never "zero" —
- * blanking a figure the user is watching would be its own bug (TEST-9 pins that
- * the absent case really is `null` and not `0`). `error_message` and `model_id`
+ * blanking a figure the user is watching would be its own bug (the server-side
+ * `wire_shape_tests` pin that the absent case really is `null` and not `0`).
+ * `error_message` and `model_id`
  * are the opposite: those carry the WHOLE ROW's value on every frame, so a null
  * there means genuinely cleared and is taken as-is. Getting that backwards left
- * stale red error text on a row whose error the server had cleared (audit FIX-5).
+ * stale red error text on a row whose error the server had cleared.
  */
 
 /**
@@ -48,8 +49,7 @@ import {
  * `DownloadStatus` union, so adding a status server-side is a COMPILE error here
  * rather than a silent fall-through. A plain `readonly DownloadStatus[]` (what
  * this was) accepts a short list happily — the same "a literal that can drift
- * from its source" defect this file's own comments condemn for the CORS header
- * (audit FIX-6).
+ * from its source" defect class.
  */
 const DOWNLOAD_STATUSES_EXHAUSTIVE: Record<DownloadStatus, true> = {
   pending: true,
@@ -64,7 +64,7 @@ const DOWNLOAD_STATUSES_EXHAUSTIVE: Record<DownloadStatus, true> = {
  * `'__proto__'` all answer true and would be written onto the row as a bogus
  * status — a regression the first version of this rewrite introduced, and one
  * the "unrecognised status" test did not catch because its input was not a
- * prototype member (audit round 2).
+ * prototype member.
  */
 const DOWNLOAD_STATUSES = new Set<string>(Object.keys(DOWNLOAD_STATUSES_EXHAUSTIVE))
 
@@ -99,15 +99,14 @@ export function applyProgressUpdate(
   // `Created` even for a row that has none — so including it made this
   // predicate unconditionally true.
   //
-  // HONEST SCOPE (audit round 3): this guard is DEFENSIVE, not a fix for the
-  // queued-download "0 Bytes / 0 Bytes" render. That render has a different
-  // cause entirely: the row's INSERT (`llm_model/repository.rs`) seeds a
-  // fully-zeroed `progress_data`, so both the REST snapshot and every SSE frame
-  // carry `current: 0` rather than null, and a queued row therefore HAS progress
-  // data as far as any consumer can tell. An earlier round claimed this guard
-  // removed that symptom; it does not, and the claim is withdrawn rather than
-  // restated. What the guard does do is keep a genuinely progress-less row
-  // (`progress_data: null`, which the schema permits) from acquiring zeros here.
+  // HONEST SCOPE: this guard is DEFENSIVE, not a fix for the queued-download
+  // "0 Bytes / 0 Bytes" render. That render has a different cause entirely: the
+  // row's INSERT (`llm_model/repository.rs`) seeds a fully-zeroed
+  // `progress_data`, so both the REST snapshot and every SSE frame carry
+  // `current: 0` rather than null, and a queued row therefore HAS progress data
+  // as far as any consumer can tell. What the guard does do is keep a genuinely
+  // progress-less row (`progress_data: null`, which the schema permits) from
+  // acquiring zeros here.
   const known =
     current !== undefined ||
     total !== undefined ||

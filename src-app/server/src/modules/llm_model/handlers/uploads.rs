@@ -1257,8 +1257,20 @@ pub async fn initiate_repository_download_internal(
                     )
                     .await;
 
-                // Create new progress channel for LFS
-                let (lfs_progress_tx, _lfs_progress_rx) = mpsc::unbounded_channel::<GitProgress>();
+                // LFS progress → the download record.
+                //
+                // This used to be `let (tx, _lfs_progress_rx) = channel()`, with
+                // nothing ever reading the receiver. Two consequences, both
+                // real: the record stayed frozen at the "Checking for LFS
+                // files..." write above for the whole multi-GB transfer (the 0%
+                // bar), and — because the binding is underscore-PREFIXED rather
+                // than `_`, so the receiver lives to the end of scope — every
+                // per-chunk send SUCCEEDED and queued forever, growing memory in
+                // proportion to the number of chunks. The helper owns both ends
+                // and hands back only the sender, so a receiver cannot be
+                // orphaned here again.
+                let (lfs_progress_tx, lfs_progress_forwarder) =
+                    super::lfs_progress::spawn_forwarder(download_id);
 
                 // Pull LFS files
                 let lfs_result = git_service
@@ -1270,6 +1282,12 @@ pub async fn initiate_repository_download_internal(
                         Some(cancellation_token.clone()),
                     )
                     .await;
+
+                // Drain the forwarder BEFORE any terminal write below. The pull
+                // drops its sender on return, so this ends promptly — but queued
+                // updates may still be in flight, and a progress write landing
+                // after the completion status would un-finish the record.
+                let _ = lfs_progress_forwarder.await;
 
                 // Check LFS result
                 if let Err(e) = lfs_result {
