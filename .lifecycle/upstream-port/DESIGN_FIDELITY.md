@@ -11,14 +11,24 @@ in upstream's shape**, not "the paws diff was copied".
   clean (`cargo check --workspace --all-targets`, exit 0). The release-only half (the
   un-cfg-gated axum import under `unused_imports = "deny"`) is fixed by the same
   item.
-- **INV-2** — fidelity: UPHELD — `register_routes` now guards in all three modules.
+- **INV-2** — fidelity: UPHELD — `register_routes` now guards in all three modules,
+  and the round-2 audit corrected the SEVERITY claim attached to it: the guard is
+  right for all three, but only `web_search` and `lit_search` dispatch `tools/call`
+  over that transport (live egress). `js_tool` refuses it, so what it leaked is the
+  surface of a switched-off feature, not code execution. Stated per module now.
   Upstream's own `VoiceModule` already did; this makes the set consistent rather than
   introducing a new pattern.
-- **INV-3** — fidelity: UPHELD — all four module structs (`js_tool`, `web_search`,
-  `lit_search`, and `voice`, whose `new()` still defaulted `true`) now initialise
-  `enabled: false`, so `register_routes` fails CLOSED on any path where `init()` never
-  ran. Note this is the ONLY part of paws' voice change taken: paws' default FLIP
-  (`voice_enabled()`) is product direction and is not ported.
+- **INV-3** — fidelity: UPHELD for the THREE modules that gain the field, and
+  deliberately NOT applied to voice. `js_tool`, `web_search` and `lit_search` now
+  initialise `enabled: false`, so `register_routes` fails CLOSED on any path where
+  `init()` never ran. The invariant is lifted verbatim from paws and names voice too —
+  but the round-1 audit established that upstream voice ALREADY guards
+  `register_routes` (voice/mod.rs:126-132), so flipping its initialiser fixes no defect
+  this branch names and is the C1-forbidden shape (a default changed rather than a
+  guard added). voice is reverted and untouched. Stating this narrowing rather than
+  quietly claiming the invariant whole. Consequence, recorded not hidden: voice now
+  fails OPEN in its initialiser where the other three fail closed — benign today
+  (voice assigns `enabled` before any early return) and reported to the owner.
 - **INV-4** — fidelity: UPHELD, with the rationale re-derived for upstream. paws
   justifies keeping the settings REST mounted because its admin UI module is not
   hidden. Upstream hides nothing, so that reason does not transfer; the reason that
