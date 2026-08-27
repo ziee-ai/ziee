@@ -389,10 +389,10 @@ pub async fn subscribe_download_progress(
         remove_client(client_id);
     };
 
-    // Keep-alive, as every other SSE route in this tree already does
+    // Keep-alive, as the other long-lived SSE routes in this tree already do
     // (`chat/stream/handler.rs`, the framework's `sync/routes.rs`,
-    // `hardware/handlers.rs`, voice, workflow, code_sandbox). This was the ONLY
-    // SSE endpoint without it. A download stream is idle by design between
+    // `hardware/handlers.rs`, voice, workflow, `llm_local_runtime/handlers.rs`).
+    // A download stream is idle by design between
     // progress ticks — and completely silent once the monitor loop exits — so
     // without a heartbeat there is nothing on the wire to distinguish "waiting"
     // from "dead", and any intermediary on the path (the ngrok tunnel this app

@@ -202,6 +202,9 @@ yanked = false
         refresh_token_expiry_days: None,
         max_file_upload_mb: None,
         voice_enabled: None,
+        js_tool_enabled: None,
+        web_search_enabled: None,
+        lit_search_enabled: None,
     };
     let server = TestServer::start_with_options(opts).await;
 

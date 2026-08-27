@@ -1,9 +1,13 @@
 //! The download progress stream must not go silent.
 //!
-//! `GET /api/llm-models/downloads/subscribe` was the ONLY SSE route in the tree
-//! without `KeepAlive` (`chat/stream/handler.rs`, the framework's
-//! `sync/routes.rs`, `hardware/handlers.rs`, voice, workflow and code_sandbox
-//! all set it). A download stream is idle by design between progress ticks, and
+//! `GET /api/llm-models/downloads/subscribe` had no `KeepAlive`, unlike the
+//! other long-lived SSE routes in the tree (`chat/stream/handler.rs`, the
+//! framework's `sync/routes.rs`, `hardware/handlers.rs`, voice, workflow and
+//! `llm_local_runtime/handlers.rs` all set one). NOTE
+//! `code_sandbox/streaming.rs:250` still does not — that stream is bounded by a
+//! single command's lifetime rather than idling indefinitely, and fixing it is
+//! out of scope here, but the sweep is deliberately NOT claimed to be complete.
+//! A download stream is idle by design between progress ticks, and
 //! completely silent once the monitor loop exits — so with no heartbeat there is
 //! nothing on the wire to distinguish "waiting" from "dead", and any
 //! intermediary on the path (the ngrok tunnel this app supports, a reverse

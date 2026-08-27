@@ -188,6 +188,14 @@ pub struct TestServerOptions {
     /// whole voice surface (no routes mounted, no reaper) — mirrors
     /// `control_mcp_enabled`.
     pub voice_enabled: Option<bool>,
+    /// Deploy-level kill switches for the three modules whose MCP JSON-RPC
+    /// endpoint is gated by `register_routes`. `None` omits the config section
+    /// (module default = enabled). `Some(false)` must leave the settings/admin
+    /// REST mounted while unmounting the JSON-RPC endpoint — the split these
+    /// exist to prove.
+    pub js_tool_enabled: Option<bool>,
+    pub web_search_enabled: Option<bool>,
+    pub lit_search_enabled: Option<bool>,
 }
 
 /// Ziee's `HarnessApp` implementation — supplies the app-specific couplings the
@@ -411,6 +419,19 @@ secrets:
         // kill switch unmounts the whole voice surface).
         if let Some(voice_enabled) = opts.voice_enabled {
             config.push_str(&format!("\nvoice:\n  enabled: {voice_enabled}\n"));
+        }
+
+        // Same shape for the three modules whose MCP JSON-RPC endpoint is gated
+        // by `register_routes`. All default ON; the section is written only when
+        // a test overrides it, so every other test's config is byte-unchanged.
+        if let Some(enabled) = opts.js_tool_enabled {
+            config.push_str(&format!("\njs_tool:\n  enabled: {enabled}\n"));
+        }
+        if let Some(enabled) = opts.web_search_enabled {
+            config.push_str(&format!("\nweb_search:\n  enabled: {enabled}\n"));
+        }
+        if let Some(enabled) = opts.lit_search_enabled {
+            config.push_str(&format!("\nlit_search:\n  enabled: {enabled}\n"));
         }
 
         // Pick binary: server-only `ziee` (default) or `ziee-desktop --headless`

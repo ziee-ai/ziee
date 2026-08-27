@@ -575,7 +575,10 @@ fn desktop_cors_config(port: u16) -> ziee::CorsConfig {
             // `active_conversation` matches, so every live assistant token was
             // dropped at the registry while the reply persisted normally. The
             // user saw a spinner that only a page reload resolved.
-            "X-Chat-Stream-Connection-Id".to_string(),
+            //
+            // Sourced from the handler's own constant, not re-spelled: a rename
+            // on the server side must not be able to silently un-allow it again.
+            ziee::CHAT_STREAM_CONNECTION_HEADER.to_string(),
         ],
     }
 }

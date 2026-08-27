@@ -146,17 +146,27 @@ impl AppModule for JsToolModule {
         // being OFFERED run_js; the JSON-RPC endpoint stayed mounted and is
         // gated solely on `js_tool::use`, which migration
         // 202607146040_js_tool_grant_permissions.sql grants to the Users group.
-        // So with `js_tool: { enabled: false }` any ordinary user could still
-        // POST /api/run-js/mcp and execute arbitrary script in the embedded
-        // QuickJS runtime, with the conversation's MCP tools injected as host
-        // functions. "Disabled" meant "unadvertised", not "off".
         //
-        // Unlike web_search / lit_search there is nothing to split out here:
-        // js_tool's entire route surface IS the JSON-RPC endpoint.
+        // SCOPE, stated precisely, because it differs from the sibling modules:
+        // this endpoint does NOT execute. Its `tools/call` arm refuses ("run_js
+        // must be invoked in a chat context; it is executed inline by the chat
+        // runtime, not over the loopback transport" — handlers.rs), so the
+        // execution gate proper lives in the chat extension, not here. What a
+        // "disabled" deployment leaked was therefore the SURFACE, not code
+        // execution: any Users-group member could still `initialize` and
+        // `tools/list` a feature the operator had switched off. Worth closing —
+        // "disabled" should mean not served — but NOT the arbitrary-execution
+        // hole web_search and lit_search had, whose `tools/call` DOES dispatch.
+        //
+        // The settings REST always mounts, exactly as in web_search /
+        // lit_search: it only reads and writes configuration, executes nothing,
+        // and its admin page should keep working on a deployment that has
+        // turned run_js off.
+        let router = router.merge(routes::js_tool_router());
         if !self.enabled {
             return router;
         }
-        router.merge(routes::js_tool_router())
+        router.merge(routes::js_tool_mcp_router())
     }
 }
 
