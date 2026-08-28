@@ -257,7 +257,6 @@ export function ProfileSettingsPage() {
                   hideLabel="Hide password"
                   autoComplete="new-password"
                   placeholder="New password"
-                  maxLength={72}
                 />
               </FormField>
               <FormField
@@ -270,7 +269,6 @@ export function ProfileSettingsPage() {
                   showLabel="Show password"
                   hideLabel="Hide password"
                   autoComplete="new-password"
-                  maxLength={72}
                   placeholder="Confirm new password"
                 />
               </FormField>
